@@ -101,6 +101,12 @@ linters:
             - "**/internal/*/auth.go"
             - "**/internal/onboard/onboard.go"
             - "**/internal/*/blog.go"
+            - "**/internal/*/ledger.go"
+            - "**/internal/*/wallet.go"
+            - "**/internal/*/category.go"
+            - "**/internal/*/transaction.go"
+            - "**/internal/*/period.go"
+            - "**/internal/report/reader.go"
             - "**/internal/blog/*/{category,tag,store,errors}.go"
             - "**/internal/*/store.go"
             - "**/internal/*/errors.go"
@@ -118,6 +124,8 @@ linters:
             - altalune.id/yasaku/internal/apperror
             - altalune.id/yasaku/gen/go/apperror/v1
             - altalune.id/yasaku/reqid
+            - altalune.id/yasaku/money
+            - altalune.id/yasaku/civil
             - google.golang.org/grpc/codes
         scheduler-purity:
           list-mode: strict
