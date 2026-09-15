@@ -107,6 +107,7 @@ linters:
             - "**/internal/*/transaction.go"
             - "**/internal/*/period.go"
             - "**/internal/report/reader.go"
+            - "**/internal/*/report.go"
             - "**/internal/blog/*/{category,tag,store,errors}.go"
             - "**/internal/*/store.go"
             - "**/internal/*/errors.go"
