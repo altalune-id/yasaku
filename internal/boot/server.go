@@ -247,9 +247,20 @@ func BootServer(ctx context.Context, cfg *config.Config, opts ...Option) (*Serve
 		logSetupToken(cfg, log, setup)
 	}
 
-	webHandler := buildWebHandler(cfg, kernel, caps, log, reporter, healthOK,
-		svcs.Auth, svcs.Users, svcs.Orgs, svcs.Projects, svcs.Todos, svcs.Invites, svcs.Onboards,
-		svcs.Posts, svcs.Categories, svcs.Tags, required, setup, apiHandler, bundle, defaultLoc)
+	webHandler := buildWebHandler(webHandlerDeps{
+		Cfg:        cfg,
+		Kernel:     kernel,
+		Caps:       caps,
+		Log:        log,
+		Reporter:   reporter,
+		HealthOK:   healthOK,
+		Services:   svcs,
+		Required:   required,
+		SetupToken: setup,
+		APIHandler: apiHandler,
+		Bundle:     bundle,
+		DefaultLoc: defaultLoc,
+	})
 
 	httpHandler := webHandler
 	if o.schedulerOnly {

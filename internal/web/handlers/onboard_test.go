@@ -44,7 +44,7 @@ func TestOnboardingGate_AllowsOnboardAndHealth(t *testing.T) {
 	})
 	h := gate(next)
 
-	for _, path := range []string{"/onboard", "/onboard/local", "/onboard/oidc", "/healthz", "/readyz", "/robots.txt", "/static/app.css", "/oauth/callback", "/login/oidc"} {
+	for _, path := range []string{"/onboard", "/onboard/local", "/onboard/oidc", "/healthz", "/readyz", "/robots.txt", "/static/app.css", "/oauth/callback", "/login/oidc", "/mcp", "/.well-known/oauth-protected-resource"} {
 		called = false
 		rec := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodGet, path, nil)
@@ -52,6 +52,32 @@ func TestOnboardingGate_AllowsOnboardAndHealth(t *testing.T) {
 		assert.True(t, called, "path=%q: next not called", path)
 		assert.Less(t, rec.Code, 400, "path=%q: status=%d", path, rec.Code)
 	}
+}
+
+func TestOnboardingGate_AllowsMCPAndWellKnownUnderBasePath(t *testing.T) {
+	t.Parallel()
+	req := &atomic.Bool{}
+	req.Store(true)
+	gate := handlers.OnboardingGate("/app", req)
+	called := false
+	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	})
+	h := gate(next)
+
+	for _, path := range []string{"/app/mcp", "/.well-known/oauth-protected-resource", "/.well-known/oauth-authorization-server"} {
+		called = false
+		rec := httptest.NewRecorder()
+		r := httptest.NewRequest(http.MethodGet, path, nil)
+		h.ServeHTTP(rec, r)
+		assert.True(t, called, "path=%q: next not called", path)
+		assert.Less(t, rec.Code, 400, "path=%q: status=%d", path, rec.Code)
+	}
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/mcp", nil))
+	assert.Equal(t, http.StatusSeeOther, rec.Code, "/mcp without the base path must still be gated")
 }
 
 func TestOnboardingGate_NoRedirectWhenNotRequired(t *testing.T) {
