@@ -138,6 +138,39 @@ linters:
             - $gostd
             - github.com/go-resty/resty/v2
             - go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp
+        civil-purity:
+          list-mode: strict
+          files:
+            - "**/civil/*.go"
+            - "!**/civil/*_test.go"
+          allow:
+            - $gostd
+        money-purity:
+          list-mode: strict
+          files:
+            - "**/money/*.go"
+            - "!**/money/*_test.go"
+          allow:
+            - $gostd
+            - golang.org/x/text
+        opensheet-purity:
+          list-mode: strict
+          files:
+            - "**/opensheet/*.go"
+            - "!**/opensheet/*_test.go"
+          allow:
+            - $gostd
+            - altalune.id/yasaku/httpclient
+            - github.com/go-resty/resty/v2
+            - go.opentelemetry.io/otel
+        mcp-purity:
+          list-mode: strict
+          files:
+            - "**/mcp/*.go"
+            - "!**/mcp/*_test.go"
+          allow:
+            - $gostd
+            - github.com/modelcontextprotocol/go-sdk
         application-purity:
           list-mode: lax
           files:
@@ -186,6 +219,10 @@ linters:
             - "**/telemetry/**"
             - "**/mailer/**"
             - "**/httpclient/**"
+            - "**/civil/*.go"
+            - "**/money/*.go"
+            - "**/mcp/*.go"
+            - "**/opensheet/*.go"
           deny:
             - pkg: "altalune.id/yasaku/internal"
               desc: "root-level shared packages must NOT depend on any internal/ package (import inversion)"
