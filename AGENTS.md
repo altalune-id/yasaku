@@ -36,6 +36,8 @@ When invoked (Claude Code loads them automatically on task match):
 - `cobra-viper` — CLI + config conventions.
 - `go-release` — semver, breaking changes, tagging, GoReleaser.
 - `go-spec-reviewer` — spec review before implementation.
+- `template-module` — adding or reviewing a domain module.
+- `opensheet-api` — calling the opensheet HTTP data plane (copied from altalune-id/opensheet).
 
 ## Rules that override defaults
 
