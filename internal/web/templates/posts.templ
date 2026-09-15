@@ -1,0 +1,175 @@
+package templates
+
+import (
+	"altalune.id/yasaku/internal/web"
+	"altalune.id/yasaku/internal/web/icons"
+)
+
+// Post form error kinds the post screens render as a banner.
+const (
+	PostErrorTaken    = "taken"
+	PostErrorTitle    = "title"
+	PostErrorSlug     = "slug"
+	PostErrorBody     = "body"
+	PostErrorCategory = "category"
+	PostErrorTag      = "tag"
+	PostErrorFailed   = "failed"
+)
+
+type PostRow struct {
+	ID           string
+	Title        string
+	Slug         string
+	CategoryName string
+	TagNames     []string
+	Published    bool
+}
+
+type PostsView struct {
+	OrgSlug     string
+	ProjectSlug string
+	ProjectName string
+	Items       []PostRow
+	ErrorKind   string
+	ErrorCode   string
+}
+
+templ postBanner(d web.LayoutData, kind, code string) {
+	if kind == PostErrorTaken {
+		@ErrorBanner(d, d.Tr("blog.post_error_taken"), code)
+	} else if kind == PostErrorTitle {
+		@ErrorBanner(d, d.Tr("blog.post_error_title"), code)
+	} else if kind == PostErrorSlug {
+		@ErrorBanner(d, d.Tr("blog.post_error_slug"), code)
+	} else if kind == PostErrorBody {
+		@ErrorBanner(d, d.Tr("blog.post_error_body"), code)
+	} else if kind == PostErrorCategory {
+		@ErrorBanner(d, d.Tr("blog.post_error_category"), code)
+	} else if kind == PostErrorTag {
+		@ErrorBanner(d, d.Tr("blog.post_error_tag"), code)
+	} else if kind == PostErrorFailed {
+		@ErrorBanner(d, d.Tr("blog.post_error_failed"), code)
+	}
+}
+
+templ postStatusBadge(d web.LayoutData, published bool) {
+	if published {
+		<span class="shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-200">
+			{ d.Tr("blog.post_status_published") }
+		</span>
+	} else {
+		<span class="shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+			{ d.Tr("blog.post_status_draft") }
+		</span>
+	}
+}
+
+// PostList is the HTMX-swappable list section — every post action form targets #post-list.
+templ PostList(d web.LayoutData, v PostsView) {
+	<div id="post-list" class="mt-6">
+		@postBanner(d, v.ErrorKind, v.ErrorCode)
+		<ul class="mt-4 divide-y divide-border/50 overflow-hidden rounded-lg border border-border bg-card shadow-sm">
+			if len(v.Items) == 0 {
+				<li class="px-4 py-8 text-center text-sm text-muted-foreground">{ d.Tr("blog.posts_empty") }</li>
+			}
+			for _, p := range v.Items {
+				<li class="flex flex-wrap items-center gap-3 px-4 py-3">
+					<div class="min-w-0 flex-1">
+						<a
+							href={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/posts/"+p.ID+"/edit")) }
+							class="block truncate text-sm font-medium text-foreground hover:underline"
+						>
+							{ p.Title }
+						</a>
+						<p class="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+							<code class="font-mono">{ p.Slug }</code>
+							<span>·</span>
+							if p.CategoryName == "" {
+								<span>{ d.Tr("blog.post_uncategorized") }</span>
+							} else {
+								<span>{ p.CategoryName }</span>
+							}
+						</p>
+						if len(p.TagNames) > 0 {
+							<p class="mt-1.5 flex flex-wrap gap-1">
+								for _, name := range p.TagNames {
+									<span class="rounded-full border border-border px-2 py-0.5 text-[11px] text-muted-foreground">{ name }</span>
+								}
+							</p>
+						}
+					</div>
+					@postStatusBadge(d, p.Published)
+					<form
+						method="post"
+						action={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/posts/"+p.ID+"/"+postToggleAction(p.Published))) }
+						hx-post={ d.ProjectPath(v.ProjectSlug, "/posts/"+p.ID+"/"+postToggleAction(p.Published)) }
+						hx-target="#post-list"
+						hx-swap="outerHTML"
+						class="inline"
+					>
+						<button type="submit" class="shrink-0 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-foreground/90 hover:bg-muted">
+							if p.Published {
+								{ d.Tr("blog.post_unpublish") }
+							} else {
+								{ d.Tr("blog.post_publish") }
+							}
+						</button>
+					</form>
+					<a
+						href={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/posts/"+p.ID+"/edit")) }
+						aria-label={ d.Tr("blog.post_edit") + ": " + p.Title }
+						class="rounded p-1.5 text-muted-foreground/70 hover:bg-muted hover:text-foreground"
+					>
+						@icons.Icon("pencil", "h-4 w-4")
+					</a>
+					<form
+						method="post"
+						action={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/posts/"+p.ID+"/delete")) }
+						hx-post={ d.ProjectPath(v.ProjectSlug, "/posts/"+p.ID+"/delete") }
+						hx-target="#post-list"
+						hx-swap="outerHTML"
+						class="inline"
+					>
+						<button
+							type="submit"
+							aria-label={ d.Tr("blog.post_delete") + ": " + p.Title }
+							class="rounded p-1.5 text-muted-foreground/70 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 dark:hover:text-red-400"
+						>
+							@icons.Icon("trash-2", "h-4 w-4")
+						</button>
+					</form>
+				</li>
+			}
+		</ul>
+	</div>
+}
+
+templ PostsPage(d web.LayoutData, v PostsView) {
+	<section>
+		<header class="flex flex-wrap items-end justify-between gap-3 border-b border-border pb-4">
+			<div>
+				<h1 class="text-2xl font-semibold text-foreground">{ d.Tr("blog.posts_title") }</h1>
+				<p class="mt-1 text-sm text-muted-foreground">{ d.Tr("blog.posts_subtitle") }</p>
+			</div>
+			<a
+				href={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/posts/new")) }
+				class="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+			>
+				@icons.Icon("plus", "h-4 w-4")
+				<span>{ d.Tr("blog.post_new") }</span>
+			</a>
+		</header>
+		@PostList(d, v)
+	</section>
+}
+
+templ PostsLayout(d web.LayoutData, v PostsView) {
+	@Layout(web.WithContent(d, PostsPage(d, v)))
+}
+
+func postToggleAction(published bool) string {
+	if published {
+		return "unpublish"
+	}
+	return "publish"
+}

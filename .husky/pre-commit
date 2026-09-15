@@ -1,0 +1,5 @@
+set -e
+
+go tool i18n-lint --check
+
+pnpm exec lint-staged

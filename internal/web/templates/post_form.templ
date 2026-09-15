@@ -1,0 +1,275 @@
+package templates
+
+import (
+	"altalune.id/yasaku/internal/web"
+	"altalune.id/yasaku/internal/web/icons"
+)
+
+// easyMDEVersion pins the markdown editor loaded on the post form. Keep in step with scripts/ui-vendor.sh.
+const easyMDEVersion = "2.21.0"
+
+type PostTagOption struct {
+	ID       string
+	Name     string
+	Selected bool
+}
+
+type PostTagPickerView struct {
+	Options   []PostTagOption
+	ErrorKind string
+	ErrorCode string
+}
+
+type PostCategoryOption struct {
+	ID       string
+	Name     string
+	Selected bool
+}
+
+type PostFormView struct {
+	OrgSlug     string
+	ProjectSlug string
+	ProjectName string
+	ID          string
+	Title       string
+	Slug        string
+	Body        string
+	Categories  []PostCategoryOption
+	Tags        PostTagPickerView
+	PreviewHTML string
+	ErrorKind   string
+	ErrorCode   string
+}
+
+// PostTagPicker is the HTMX-swappable tag checkbox set — the quick-add control targets #post-tag-picker.
+templ PostTagPicker(d web.LayoutData, v PostTagPickerView) {
+	<div id="post-tag-picker" class="flex flex-wrap gap-2">
+		if len(v.Options) == 0 {
+			<p class="text-sm text-muted-foreground">{ d.Tr("blog.post_tags_empty") }</p>
+		}
+		for _, t := range v.Options {
+			<label class="inline-flex cursor-pointer items-center gap-2 rounded-full border border-border px-3 py-1 text-sm text-foreground/90 hover:bg-muted has-[:checked]:border-primary has-[:checked]:bg-primary/10">
+				if t.Selected {
+					<input type="checkbox" name="tags" value={ t.ID } checked class="h-3.5 w-3.5 rounded border-border"/>
+				} else {
+					<input type="checkbox" name="tags" value={ t.ID } class="h-3.5 w-3.5 rounded border-border"/>
+				}
+				<span>{ t.Name }</span>
+			</label>
+		}
+		if v.ErrorKind != "" {
+			<div class="w-full">
+				@tagBanner(d, TagsView{ErrorKind: v.ErrorKind, ErrorCode: v.ErrorCode})
+			</div>
+		}
+	</div>
+}
+
+// postQuickTag is the inline tag-creation control. It is a div, not a form — a nested form inside the
+// post form is invalid HTML — so htmx posts the fields it names to the shared /tags/quick route.
+templ postQuickTag(d web.LayoutData, v PostFormView) {
+	<details class="relative mt-3" data-switcher>
+		<summary class="inline-flex w-fit items-center gap-2 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-foreground/90 hover:bg-muted">
+			@icons.Icon("plus", "h-3.5 w-3.5")
+			<span>{ d.Tr("blog.post_quick_tag") }</span>
+		</summary>
+		<div class="absolute start-0 top-full z-40 mt-2 w-72 popover-surface p-3" style="background:hsl(var(--popover));color:hsl(var(--popover-foreground));">
+			<p class="text-xs font-medium uppercase tracking-wider text-muted-foreground/70">{ d.Tr("blog.post_quick_tag") }</p>
+			<div id="quick-tag-fields" class="mt-2">
+				<input type="hidden" name="picker" value="1"/>
+				<input
+					id="quick-tag-name"
+					name="name"
+					type="text"
+					placeholder={ d.Tr("blog.post_quick_tag_name") }
+					aria-label={ d.Tr("blog.post_quick_tag_name") }
+					class="w-full rounded-md border border-border bg-card px-3 py-1.5 text-sm text-foreground placeholder:text-muted-foreground/70 shadow-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
+				/>
+			</div>
+			<button
+				type="button"
+				hx-post={ d.ProjectPath(v.ProjectSlug, "/tags/quick") }
+				hx-include="#quick-tag-fields, #post-tag-picker"
+				hx-target="#post-tag-picker"
+				hx-swap="outerHTML"
+				hx-on::after-request="document.getElementById('quick-tag-name').value = ''"
+				class="mt-2 w-full rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90"
+			>
+				{ d.Tr("blog.post_quick_tag_add") }
+			</button>
+		</div>
+	</details>
+}
+
+templ postEditorAssets(d web.LayoutData) {
+	if d.UIMode == web.UIModeVendored {
+		<link rel="stylesheet" href={ d.Static("easymde.min.css") }/>
+		<script src={ d.Static("easymde.min.js") }></script>
+	} else {
+		<link rel="stylesheet" href={ "https://cdn.jsdelivr.net/npm/easymde@" + easyMDEVersion + "/dist/easymde.min.css" }/>
+		<script src={ "https://cdn.jsdelivr.net/npm/easymde@" + easyMDEVersion + "/dist/easymde.min.js" }></script>
+	}
+	<style>
+		/* NOTE: EasyMDE labels its toolbar with Font Awesome classes; that font is not vendored, so show the aria-label instead. */
+		.editor-toolbar button > i { display: none; }
+		.editor-toolbar button { width: auto; padding: 0 6px; }
+		.editor-toolbar button::after { content: attr(aria-label); font-size: 11px; }
+	</style>
+	<script>
+		(function() {
+			var ta = document.getElementById('post-body');
+			if (!ta || typeof EasyMDE === 'undefined') return;
+			var mde = new EasyMDE({
+				element: ta,
+				autoDownloadFontAwesome: false,
+				spellChecker: false,
+				status: false,
+				previewRender: null,
+				toolbar: ['bold', 'italic', 'heading', '|', 'quote', 'unordered-list', 'ordered-list', '|', 'link', 'code', '|', 'guide']
+			});
+			// Keep the plain textarea authoritative: it is what the form submits and what htmx serializes.
+			mde.codemirror.on('change', function() { ta.value = mde.value(); });
+			var form = ta.form;
+			if (form) form.addEventListener('submit', function() { ta.value = mde.value(); });
+			var btn = document.getElementById('post-preview-button');
+			if (!btn) return;
+			var timer = null;
+			mde.codemirror.on('change', function() {
+				if (timer) clearTimeout(timer);
+				timer = setTimeout(function() { btn.dispatchEvent(new Event('preview-refresh')); }, 600);
+			});
+		})();
+	</script>
+}
+
+templ PostPreviewFragment(d web.LayoutData, html string) {
+	<div id="post-preview" class="prose max-w-none text-sm text-foreground">
+		if html == "" {
+			<p class="text-sm text-muted-foreground">{ d.Tr("blog.post_preview_empty") }</p>
+		} else {
+			@templ.Raw(html)
+		}
+	</div>
+}
+
+templ PostFormPage(d web.LayoutData, v PostFormView) {
+	<section>
+		<header class="border-b border-border pb-4">
+			<h1 class="text-2xl font-semibold text-foreground">
+				if v.ID == "" {
+					{ d.Tr("blog.post_new_title") }
+				} else {
+					{ d.Tr("blog.post_edit_title") }
+				}
+			</h1>
+			<p class="mt-1 text-sm text-muted-foreground">{ d.Tr("blog.post_form_subtitle") }</p>
+		</header>
+		@postBanner(d, v.ErrorKind, v.ErrorCode)
+		if len(v.Categories) == 0 {
+			<p class="mt-6 rounded-md border border-border bg-muted/40 p-3 text-sm text-muted-foreground">
+				{ d.Tr("blog.post_needs_category") }
+				<a href={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/categories")) } class="ms-1 font-medium text-foreground underline">
+					{ d.Tr("blog.categories_title") }
+				</a>
+			</p>
+		}
+		<form method="post" action={ templ.SafeURL(postFormAction(d, v)) } class="mt-6 grid gap-6 lg:grid-cols-2">
+			<div class="flex flex-col gap-4">
+				<div>
+					<label for="post-title" class="block text-sm font-medium text-foreground">{ d.Tr("blog.post_title") }</label>
+					<input
+						id="post-title"
+						name="title"
+						type="text"
+						required
+						value={ v.Title }
+						class="mt-1 w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground shadow-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
+					/>
+				</div>
+				<div>
+					<label for="post-slug" class="block text-sm font-medium text-foreground">{ d.Tr("blog.post_slug") }</label>
+					<input
+						id="post-slug"
+						name="slug"
+						type="text"
+						value={ v.Slug }
+						class="mt-1 w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground shadow-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
+					/>
+				</div>
+				<div>
+					<label for="post-category" class="block text-sm font-medium text-foreground">{ d.Tr("blog.post_category") }</label>
+					<select
+						id="post-category"
+						name="category_id"
+						required
+						class="mt-1 w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground shadow-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
+					>
+						<option value="">{ d.Tr("blog.post_category_placeholder") }</option>
+						for _, c := range v.Categories {
+							if c.Selected {
+								<option value={ c.ID } selected>{ c.Name }</option>
+							} else {
+								<option value={ c.ID }>{ c.Name }</option>
+							}
+						}
+					</select>
+				</div>
+				<div>
+					<p class="block text-sm font-medium text-foreground">{ d.Tr("blog.post_tags") }</p>
+					<div class="mt-2">
+						@PostTagPicker(d, v.Tags)
+					</div>
+					@postQuickTag(d, v)
+				</div>
+				<div class="flex flex-wrap items-center gap-2">
+					<button type="submit" class="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2">
+						{ d.Tr("blog.post_save") }
+					</button>
+					<a href={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/posts")) } class="rounded-md border border-border px-4 py-2 text-sm font-medium text-foreground/90 hover:bg-muted">
+						{ d.Tr("blog.post_cancel") }
+					</a>
+				</div>
+			</div>
+			<div class="flex flex-col gap-4">
+				<div>
+					<label for="post-body" class="block text-sm font-medium text-foreground">{ d.Tr("blog.post_body") }</label>
+					<textarea
+						id="post-body"
+						name="body"
+						rows="18"
+						class="mt-1 w-full rounded-md border border-border bg-card px-3 py-2 font-mono text-sm text-foreground shadow-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
+					>{ v.Body }</textarea>
+				</div>
+				<div>
+					<button
+						id="post-preview-button"
+						type="button"
+						hx-post={ d.ProjectPath(v.ProjectSlug, "/posts/preview") }
+						hx-include="#post-body"
+						hx-target="#post-preview"
+						hx-swap="outerHTML"
+						hx-trigger="click, preview-refresh"
+						class="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-foreground/90 hover:bg-muted"
+					>
+						{ d.Tr("blog.post_preview") }
+					</button>
+					<div class="mt-2 rounded-lg border border-border bg-card p-4 shadow-sm">
+						@PostPreviewFragment(d, v.PreviewHTML)
+					</div>
+				</div>
+			</div>
+		</form>
+		@postEditorAssets(d)
+	</section>
+}
+
+templ PostFormLayout(d web.LayoutData, v PostFormView) {
+	@Layout(web.WithContent(d, PostFormPage(d, v)))
+}
+
+func postFormAction(d web.LayoutData, v PostFormView) string {
+	if v.ID == "" {
+		return d.ProjectPath(v.ProjectSlug, "/posts")
+	}
+	return d.ProjectPath(v.ProjectSlug, "/posts/"+v.ID)
+}

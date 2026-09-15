@@ -1,0 +1,110 @@
+syntax = "proto3";
+
+package blog.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "altalune.id/yasaku/gen/go/blog/v1;blogv1";
+
+service BlogService {
+  rpc CreatePost(CreatePostRequest) returns (CreatePostResponse);
+  rpc GetPost(GetPostRequest) returns (GetPostResponse);
+  rpc ListPosts(ListPostsRequest) returns (ListPostsResponse);
+  rpc UpdatePost(UpdatePostRequest) returns (UpdatePostResponse);
+  rpc DeletePost(DeletePostRequest) returns (DeletePostResponse);
+  rpc PublishPost(PublishPostRequest) returns (PublishPostResponse);
+  rpc UnpublishPost(UnpublishPostRequest) returns (UnpublishPostResponse);
+}
+
+message Category {
+  string id = 1;
+  string name = 2;
+  string slug = 3;
+}
+
+message Tag {
+  string id = 1;
+  string name = 2;
+  string slug = 3;
+}
+
+message Post {
+  string id = 1;
+  string project_id = 2;
+  string title = 3;
+  string slug = 4;
+  string body_markdown = 5;
+  string body_html = 6;
+  string status = 7;
+  Category category = 8;
+  repeated Tag tags = 9;
+  google.protobuf.Timestamp first_published_at = 10;
+  google.protobuf.Timestamp created_at = 11;
+  google.protobuf.Timestamp updated_at = 12;
+}
+
+message CreatePostRequest {
+  string project_id = 1;
+  string category_id = 2;
+  string title = 3;
+  string slug = 4;
+  string body_markdown = 5;
+  repeated string tag_ids = 6;
+}
+
+message CreatePostResponse {
+  Post post = 1;
+}
+
+message GetPostRequest {
+  string post_id = 1;
+}
+
+message GetPostResponse {
+  Post post = 1;
+}
+
+message ListPostsRequest {
+  string project_id = 1;
+  string status = 2;
+  string category_id = 3;
+}
+
+message ListPostsResponse {
+  repeated Post posts = 1;
+}
+
+message UpdatePostRequest {
+  string post_id = 1;
+  string category_id = 2;
+  string title = 3;
+  string slug = 4;
+  string body_markdown = 5;
+  repeated string tag_ids = 6;
+}
+
+message UpdatePostResponse {
+  Post post = 1;
+}
+
+message DeletePostRequest {
+  string post_id = 1;
+}
+
+message DeletePostResponse {}
+
+message PublishPostRequest {
+  string post_id = 1;
+}
+
+message PublishPostResponse {
+  Post post = 1;
+}
+
+message UnpublishPostRequest {
+  string post_id = 1;
+}
+
+message UnpublishPostResponse {
+  Post post = 1;
+}

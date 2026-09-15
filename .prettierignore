@@ -1,0 +1,5 @@
+CLAUDE.md
+.agents/
+node_modules/
+gen/
+pnpm-lock.yaml

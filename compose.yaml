@@ -1,0 +1,72 @@
+name: yasaku
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: yasaku
+      POSTGRES_PASSWORD: yasaku
+      POSTGRES_DB: yasaku
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./docker/data/pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U yasaku -d yasaku"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  mailpit:
+    image: axllent/mailpit:latest
+    restart: unless-stopped
+    environment:
+      MP_MAX_MESSAGES: "5000"
+      MP_SMTP_AUTH_ACCEPT_ANY: "true"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "true"
+    ports:
+      - "1025:1025"  # SMTP
+      - "8025:8025"  # web UI at http://localhost:8025
+
+  yasaku:
+    build:
+      context: .
+      args:
+        VERSION: dev
+        COMMIT: local
+        BUILD_TIME: unknown
+    image: yasaku:dev
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
+    ports:
+      - "5150:5150"
+    environment:
+      ALT_MODE: selfhosted
+      ALT_HTTP_ADDR: "0.0.0.0:5150"
+
+      ALT_DB_DRIVER: postgres
+      ALT_DB_DSN: "postgres://yasaku:yasaku@postgres:5432/yasaku?sslmode=disable"
+      ALT_DB_ALLOW_BYPASS_RLS: "true"
+      ALT_DB_AUTO_MIGRATE: "true"
+
+      ALT_MAIL_DRIVER: smtp
+      ALT_MAIL_FROM: "no-reply@yasaku.local"
+      ALT_MAIL_SMTP_HOST: mailpit
+      ALT_MAIL_SMTP_PORT: "1025"
+      ALT_MAIL_SMTP_USER: ""
+      ALT_MAIL_SMTP_PASS: ""
+      ALT_MAIL_SMTP_TLS: "false"
+
+      ALT_GENESIS_EMAIL: admin@yasaku.local
+      ALT_GENESIS_PASSWORD: change-me
+    healthcheck:
+      test: ["CMD", "/yasaku", "healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s

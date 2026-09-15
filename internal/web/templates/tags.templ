@@ -1,0 +1,131 @@
+package templates
+
+import (
+	"altalune.id/yasaku/internal/web"
+	"altalune.id/yasaku/internal/web/icons"
+)
+
+type TagRow struct {
+	ID    string
+	Name  string
+	Slug  string
+	Posts int
+}
+
+type TagsView struct {
+	OrgSlug     string
+	ProjectSlug string
+	ProjectName string
+	Items       []TagRow
+	ErrorKind   string
+	ErrorCount  int
+	ErrorCode   string
+}
+
+templ tagBanner(d web.LayoutData, v TagsView) {
+	if v.ErrorKind == BlogErrorTaken {
+		@ErrorBanner(d, d.Tr("blog.tag_error_taken"), v.ErrorCode)
+	} else if v.ErrorKind == BlogErrorInvalid {
+		@ErrorBanner(d, d.Tr("blog.tag_error_invalid"), v.ErrorCode)
+	} else if v.ErrorKind == BlogErrorInUse {
+		@ErrorBanner(d, d.TrN("blog.tag_error_in_use", v.ErrorCount), v.ErrorCode)
+	} else if v.ErrorKind == BlogErrorFailed {
+		@ErrorBanner(d, d.Tr("blog.tag_error_failed"), v.ErrorCode)
+	}
+}
+
+// TagList is the HTMX-swappable list section — every tag form targets #tag-list.
+templ TagList(d web.LayoutData, v TagsView) {
+	<div id="tag-list" class="mt-6">
+		@tagBanner(d, v)
+		<ul class="mt-4 divide-y divide-border/50 overflow-hidden rounded-lg border border-border bg-card shadow-sm">
+			if len(v.Items) == 0 {
+				<li class="px-4 py-8 text-center text-sm text-muted-foreground">{ d.Tr("blog.tags_empty") }</li>
+			}
+			for _, t := range v.Items {
+				<li class="flex flex-wrap items-center gap-3 px-4 py-3">
+					<form
+						method="post"
+						action={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/tags/" + t.ID + "/rename")) }
+						hx-post={ d.ProjectPath(v.ProjectSlug, "/tags/" + t.ID + "/rename") }
+						hx-target="#tag-list"
+						hx-swap="outerHTML"
+						class="flex min-w-0 flex-1 items-center gap-2"
+					>
+						<input
+							name="name"
+							type="text"
+							required
+							value={ t.Name }
+							aria-label={ d.Tr("blog.tag_name") }
+							class="min-w-0 flex-1 rounded-md border border-border bg-card px-3 py-1.5 text-sm text-foreground shadow-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
+						/>
+						<button type="submit" class="shrink-0 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-foreground/90 hover:bg-muted">
+							{ d.Tr("blog.tag_rename") }
+						</button>
+					</form>
+					<code class="shrink-0 font-mono text-xs text-muted-foreground">{ t.Slug }</code>
+					<span class="shrink-0 text-xs text-muted-foreground">{ d.TrN("blog.tag_posts", t.Posts) }</span>
+					<form
+						method="post"
+						action={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/tags/" + t.ID + "/delete")) }
+						hx-post={ d.ProjectPath(v.ProjectSlug, "/tags/" + t.ID + "/delete") }
+						hx-target="#tag-list"
+						hx-swap="outerHTML"
+						class="inline"
+					>
+						<button
+							type="submit"
+							aria-label={ d.Tr("blog.tag_delete") + ": " + t.Name }
+							class="rounded p-1.5 text-muted-foreground/70 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 dark:hover:text-red-400"
+						>
+							@icons.Icon("trash-2", "h-4 w-4")
+						</button>
+					</form>
+				</li>
+			}
+		</ul>
+	</div>
+}
+
+templ TagsPage(d web.LayoutData, v TagsView) {
+	<section>
+		<header class="border-b border-border pb-4">
+			<h1 class="text-2xl font-semibold text-foreground">{ d.Tr("blog.tags_title") }</h1>
+			<p class="mt-1 text-sm text-muted-foreground">{ d.Tr("blog.tags_subtitle") }</p>
+		</header>
+		<form
+			method="post"
+			action={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/tags")) }
+			hx-post={ d.ProjectPath(v.ProjectSlug, "/tags") }
+			hx-target="#tag-list"
+			hx-swap="outerHTML"
+			hx-on::after-request="if(event.detail.successful) this.reset()"
+			class="mt-6 flex flex-wrap gap-2"
+		>
+			<input
+				name="name"
+				type="text"
+				required
+				placeholder={ d.Tr("blog.tag_name") }
+				aria-label={ d.Tr("blog.tag_name") }
+				class="min-w-48 flex-1 rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/70 shadow-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
+			/>
+			<input
+				name="slug"
+				type="text"
+				placeholder={ d.Tr("blog.tag_slug") }
+				aria-label={ d.Tr("blog.tag_slug") }
+				class="min-w-48 flex-1 rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/70 shadow-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
+			/>
+			<button type="submit" class="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2">
+				{ d.Tr("blog.tag_add") }
+			</button>
+		</form>
+		@TagList(d, v)
+	</section>
+}
+
+templ TagsLayout(d web.LayoutData, v TagsView) {
+	@Layout(web.WithContent(d, TagsPage(d, v)))
+}

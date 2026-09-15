@@ -1,0 +1,139 @@
+package templates
+
+import (
+	"altalune.id/yasaku/internal/web"
+	"altalune.id/yasaku/internal/web/icons"
+)
+
+// Blog form error kinds the category and tag screens render as a banner.
+const (
+	BlogErrorTaken   = "taken"
+	BlogErrorInvalid = "invalid"
+	BlogErrorInUse   = "in_use"
+	BlogErrorFailed  = "failed"
+)
+
+type CategoryRow struct {
+	ID    string
+	Name  string
+	Slug  string
+	Posts int
+}
+
+type CategoriesView struct {
+	OrgSlug     string
+	ProjectSlug string
+	ProjectName string
+	Items       []CategoryRow
+	ErrorKind   string
+	ErrorCount  int
+	ErrorCode   string
+}
+
+templ categoryBanner(d web.LayoutData, v CategoriesView) {
+	if v.ErrorKind == BlogErrorTaken {
+		@ErrorBanner(d, d.Tr("blog.category_error_taken"), v.ErrorCode)
+	} else if v.ErrorKind == BlogErrorInvalid {
+		@ErrorBanner(d, d.Tr("blog.category_error_invalid"), v.ErrorCode)
+	} else if v.ErrorKind == BlogErrorInUse {
+		@ErrorBanner(d, d.TrN("blog.category_error_in_use", v.ErrorCount), v.ErrorCode)
+	} else if v.ErrorKind == BlogErrorFailed {
+		@ErrorBanner(d, d.Tr("blog.category_error_failed"), v.ErrorCode)
+	}
+}
+
+// CategoryList is the HTMX-swappable list section — every category form targets #category-list.
+templ CategoryList(d web.LayoutData, v CategoriesView) {
+	<div id="category-list" class="mt-6">
+		@categoryBanner(d, v)
+		<ul class="mt-4 divide-y divide-border/50 overflow-hidden rounded-lg border border-border bg-card shadow-sm">
+			if len(v.Items) == 0 {
+				<li class="px-4 py-8 text-center text-sm text-muted-foreground">{ d.Tr("blog.categories_empty") }</li>
+			}
+			for _, c := range v.Items {
+				<li class="flex flex-wrap items-center gap-3 px-4 py-3">
+					<form
+						method="post"
+						action={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/categories/"+c.ID+"/rename")) }
+						hx-post={ d.ProjectPath(v.ProjectSlug, "/categories/"+c.ID+"/rename") }
+						hx-target="#category-list"
+						hx-swap="outerHTML"
+						class="flex min-w-0 flex-1 items-center gap-2"
+					>
+						<input
+							name="name"
+							type="text"
+							required
+							value={ c.Name }
+							aria-label={ d.Tr("blog.category_name") }
+							class="min-w-0 flex-1 rounded-md border border-border bg-card px-3 py-1.5 text-sm text-foreground shadow-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
+						/>
+						<button type="submit" class="shrink-0 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-foreground/90 hover:bg-muted">
+							{ d.Tr("blog.category_rename") }
+						</button>
+					</form>
+					<code class="shrink-0 font-mono text-xs text-muted-foreground">{ c.Slug }</code>
+					<span class="shrink-0 text-xs text-muted-foreground">{ d.TrN("blog.category_posts", c.Posts) }</span>
+					<form
+						method="post"
+						action={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/categories/"+c.ID+"/delete")) }
+						hx-post={ d.ProjectPath(v.ProjectSlug, "/categories/"+c.ID+"/delete") }
+						hx-target="#category-list"
+						hx-swap="outerHTML"
+						class="inline"
+					>
+						<button
+							type="submit"
+							aria-label={ d.Tr("blog.category_delete") + ": " + c.Name }
+							class="rounded p-1.5 text-muted-foreground/70 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 dark:hover:text-red-400"
+						>
+							@icons.Icon("trash-2", "h-4 w-4")
+						</button>
+					</form>
+				</li>
+			}
+		</ul>
+	</div>
+}
+
+templ CategoriesPage(d web.LayoutData, v CategoriesView) {
+	<section>
+		<header class="border-b border-border pb-4">
+			<h1 class="text-2xl font-semibold text-foreground">{ d.Tr("blog.categories_title") }</h1>
+			<p class="mt-1 text-sm text-muted-foreground">{ d.Tr("blog.categories_subtitle") }</p>
+		</header>
+		<form
+			method="post"
+			action={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/categories")) }
+			hx-post={ d.ProjectPath(v.ProjectSlug, "/categories") }
+			hx-target="#category-list"
+			hx-swap="outerHTML"
+			hx-on::after-request="if(event.detail.successful) this.reset()"
+			class="mt-6 flex flex-wrap gap-2"
+		>
+			<input
+				name="name"
+				type="text"
+				required
+				placeholder={ d.Tr("blog.category_name") }
+				aria-label={ d.Tr("blog.category_name") }
+				class="min-w-48 flex-1 rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/70 shadow-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
+			/>
+			<input
+				name="slug"
+				type="text"
+				placeholder={ d.Tr("blog.category_slug") }
+				aria-label={ d.Tr("blog.category_slug") }
+				class="min-w-48 flex-1 rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/70 shadow-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
+			/>
+			<button type="submit" class="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2">
+				{ d.Tr("blog.category_add") }
+			</button>
+		</form>
+		@CategoryList(d, v)
+	</section>
+}
+
+templ CategoriesLayout(d web.LayoutData, v CategoriesView) {
+	@Layout(web.WithContent(d, CategoriesPage(d, v)))
+}
