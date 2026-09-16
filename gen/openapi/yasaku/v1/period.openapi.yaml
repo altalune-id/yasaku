@@ -1,0 +1,677 @@
+openapi: 3.1.0
+info:
+  title: yasaku.v1
+paths:
+  /yasaku.v1.PeriodService/ClosePeriod:
+    post:
+      tags:
+        - yasaku.v1.PeriodService
+      summary: ClosePeriod
+      operationId: yasaku.v1.PeriodService.ClosePeriod
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/yasaku.v1.ClosePeriodRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/yasaku.v1.ClosePeriodResponse'
+  /yasaku.v1.PeriodService/GetCurrentPeriod:
+    post:
+      tags:
+        - yasaku.v1.PeriodService
+      summary: GetCurrentPeriod
+      operationId: yasaku.v1.PeriodService.GetCurrentPeriod
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/yasaku.v1.GetCurrentPeriodRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/yasaku.v1.GetCurrentPeriodResponse'
+  /yasaku.v1.PeriodService/ListPeriods:
+    post:
+      tags:
+        - yasaku.v1.PeriodService
+      summary: ListPeriods
+      operationId: yasaku.v1.PeriodService.ListPeriods
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/yasaku.v1.ListPeriodsRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/yasaku.v1.ListPeriodsResponse'
+  /yasaku.v1.PeriodService/PreviewClose:
+    post:
+      tags:
+        - yasaku.v1.PeriodService
+      summary: PreviewClose
+      operationId: yasaku.v1.PeriodService.PreviewClose
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/yasaku.v1.PreviewCloseRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/yasaku.v1.PreviewCloseResponse'
+  /yasaku.v1.PeriodService/RenamePeriod:
+    post:
+      tags:
+        - yasaku.v1.PeriodService
+      summary: RenamePeriod
+      operationId: yasaku.v1.PeriodService.RenamePeriod
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/yasaku.v1.RenamePeriodRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/yasaku.v1.RenamePeriodResponse'
+  /yasaku.v1.PeriodService/ReopenPeriod:
+    post:
+      tags:
+        - yasaku.v1.PeriodService
+      summary: ReopenPeriod
+      operationId: yasaku.v1.PeriodService.ReopenPeriod
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/yasaku.v1.ReopenPeriodRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/yasaku.v1.ReopenPeriodResponse'
+components:
+  schemas:
+    connect-protocol-version:
+      type: number
+      title: Connect-Protocol-Version
+      enum:
+        - 1
+      description: Define the version of the Connect protocol
+      const: 1
+    connect-timeout-header:
+      type: number
+      title: Connect-Timeout-Ms
+      description: Define the timeout, in ms
+    connect.error:
+      type: object
+      properties:
+        code:
+          type: string
+          examples:
+            - not_found
+          enum:
+            - canceled
+            - unknown
+            - invalid_argument
+            - deadline_exceeded
+            - not_found
+            - already_exists
+            - permission_denied
+            - resource_exhausted
+            - failed_precondition
+            - aborted
+            - out_of_range
+            - unimplemented
+            - internal
+            - unavailable
+            - data_loss
+            - unauthenticated
+          description: The status code, which should be an enum value of [google.rpc.Code][google.rpc.Code].
+        message:
+          type: string
+          description: A developer-facing error message, which should be in English. Any user-facing error message should be localized and sent in the [google.rpc.Status.details][google.rpc.Status.details] field, or localized by the client.
+        details:
+          type: array
+          items:
+            $ref: '#/components/schemas/connect.error_details.Any'
+          description: A list of messages that carry the error details. There is no limit on the number of messages.
+      title: Connect Error
+      additionalProperties: true
+      description: 'Error type returned by Connect: https://connectrpc.com/docs/go/errors/#http-representation'
+    connect.error_details.Any:
+      type: object
+      properties:
+        type:
+          type: string
+          description: 'A URL that acts as a globally unique identifier for the type of the serialized message. For example: `type.googleapis.com/google.rpc.ErrorInfo`. This is used to determine the schema of the data in the `value` field and is the discriminator for the `debug` field.'
+        value:
+          type: string
+          format: binary
+          description: The Protobuf message, serialized as bytes and base64-encoded. The specific message type is identified by the `type` field.
+        debug:
+          oneOf:
+            - type: object
+              title: Any
+              additionalProperties: true
+              description: Detailed error information.
+          discriminator:
+            propertyName: type
+          title: Debug
+          description: Deserialized error detail payload. The 'type' field indicates the schema. This field is for easier debugging and should not be relied upon for application logic.
+      additionalProperties: true
+      description: Contains an arbitrary serialized message along with a @type that describes the type of the serialized message, with an additional debug field for ConnectRPC error details.
+    google.protobuf.Timestamp:
+      type: string
+      examples:
+        - "2023-01-15T01:30:15.01Z"
+        - "2024-12-25T12:00:00Z"
+      format: date-time
+      description: |-
+        A Timestamp represents a point in time independent of any time zone or local
+         calendar, encoded as a count of seconds and fractions of seconds at
+         nanosecond resolution. The count is relative to an epoch at UTC midnight on
+         January 1, 1970, in the proleptic Gregorian calendar which extends the
+         Gregorian calendar backwards to year one.
+
+         All minutes are 60 seconds long. Leap seconds are "smeared" so that no leap
+         second table is needed for interpretation, using a [24-hour linear
+         smear](https://developers.google.com/time/smear).
+
+         The range is from 0001-01-01T00:00:00Z to 9999-12-31T23:59:59.999999999Z. By
+         restricting to that range, we ensure that we can convert to and from [RFC
+         3339](https://www.ietf.org/rfc/rfc3339.txt) date strings.
+
+         # Examples
+
+         Example 1: Compute Timestamp from POSIX `time()`.
+
+             Timestamp timestamp;
+             timestamp.set_seconds(time(NULL));
+             timestamp.set_nanos(0);
+
+         Example 2: Compute Timestamp from POSIX `gettimeofday()`.
+
+             struct timeval tv;
+             gettimeofday(&tv, NULL);
+
+             Timestamp timestamp;
+             timestamp.set_seconds(tv.tv_sec);
+             timestamp.set_nanos(tv.tv_usec * 1000);
+
+         Example 3: Compute Timestamp from Win32 `GetSystemTimeAsFileTime()`.
+
+             FILETIME ft;
+             GetSystemTimeAsFileTime(&ft);
+             UINT64 ticks = (((UINT64)ft.dwHighDateTime) << 32) | ft.dwLowDateTime;
+
+             // A Windows tick is 100 nanoseconds. Windows epoch 1601-01-01T00:00:00Z
+             // is 11644473600 seconds before Unix epoch 1970-01-01T00:00:00Z.
+             Timestamp timestamp;
+             timestamp.set_seconds((INT64) ((ticks / 10000000) - 11644473600LL));
+             timestamp.set_nanos((INT32) ((ticks % 10000000) * 100));
+
+         Example 4: Compute Timestamp from Java `System.currentTimeMillis()`.
+
+             long millis = System.currentTimeMillis();
+
+             Timestamp timestamp = Timestamp.newBuilder().setSeconds(millis / 1000)
+                 .setNanos((int) ((millis % 1000) * 1000000)).build();
+
+         Example 5: Compute Timestamp from Java `Instant.now()`.
+
+             Instant now = Instant.now();
+
+             Timestamp timestamp =
+                 Timestamp.newBuilder().setSeconds(now.getEpochSecond())
+                     .setNanos(now.getNano()).build();
+
+         Example 6: Compute Timestamp from current time in Python.
+
+             timestamp = Timestamp()
+             timestamp.GetCurrentTime()
+
+         # JSON Mapping
+
+         In JSON format, the Timestamp type is encoded as a string in the
+         [RFC 3339](https://www.ietf.org/rfc/rfc3339.txt) format. That is, the
+         format is "{year}-{month}-{day}T{hour}:{min}:{sec}[.{frac_sec}]Z"
+         where {year} is always expressed using four digits while {month}, {day},
+         {hour}, {min}, and {sec} are zero-padded to two digits each. The fractional
+         seconds, which can go up to 9 digits (i.e. up to 1 nanosecond resolution),
+         are optional. The "Z" suffix indicates the timezone ("UTC"); the timezone
+         is required. A proto3 JSON serializer should always use UTC (as indicated by
+         "Z") when printing the Timestamp type and a proto3 JSON parser should be
+         able to accept both UTC and other timezones (as indicated by an offset).
+
+         For example, "2017-01-15T01:30:15.01Z" encodes 15.01 seconds past
+         01:30 UTC on January 15, 2017.
+
+         In JavaScript, one can convert a Date object to this format using the
+         standard
+         [toISOString()](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Date/toISOString)
+         method. In Python, a standard `datetime.datetime` object can be converted
+         to this format using
+         [`strftime`](https://docs.python.org/2/library/time.html#time.strftime) with
+         the time format spec '%Y-%m-%dT%H:%M:%S.%fZ'. Likewise, in Java, one can use
+         the Joda Time's [`ISODateTimeFormat.dateTime()`](
+         http://joda-time.sourceforge.net/apidocs/org/joda/time/format/ISODateTimeFormat.html#dateTime()
+         ) to obtain a formatter capable of generating timestamps in this format.
+    yasaku.v1.ClosePeriodRequest:
+      type: object
+      properties:
+        target:
+          title: target
+          $ref: '#/components/schemas/yasaku.v1.Target'
+        period:
+          type: string
+          title: period
+          description: Period ID from list_periods or current_period, never a period name. Empty means the current period.
+        endDate:
+          type: string
+          title: end_date
+          description: YYYY-MM-DD; must be today or earlier and not before the period start. On a reopened period it is fixed and must match the stored end date.
+        confirm:
+          type: boolean
+          title: confirm
+      title: ClosePeriodRequest
+      additionalProperties: false
+    yasaku.v1.ClosePeriodResponse:
+      type: object
+      properties:
+        needs:
+          title: needs
+          $ref: '#/components/schemas/yasaku.v1.Needs'
+        preview:
+          title: preview
+          description: The snapshot that would be frozen, computed live at preview time; its computed_at is the preview instant, not the close instant.
+          $ref: '#/components/schemas/yasaku.v1.Snapshot'
+        result:
+          title: result
+          $ref: '#/components/schemas/yasaku.v1.Period'
+        warning:
+          type: string
+          title: warning
+      title: ClosePeriodResponse
+      additionalProperties: false
+    yasaku.v1.GetCurrentPeriodRequest:
+      type: object
+      properties:
+        target:
+          title: target
+          $ref: '#/components/schemas/yasaku.v1.Target'
+      title: GetCurrentPeriodRequest
+      additionalProperties: false
+    yasaku.v1.GetCurrentPeriodResponse:
+      type: object
+      properties:
+        period:
+          title: period
+          $ref: '#/components/schemas/yasaku.v1.Period'
+        running:
+          title: running
+          $ref: '#/components/schemas/yasaku.v1.Snapshot'
+      title: GetCurrentPeriodResponse
+      additionalProperties: false
+    yasaku.v1.ListPeriodsRequest:
+      type: object
+      properties:
+        target:
+          title: target
+          $ref: '#/components/schemas/yasaku.v1.Target'
+        limit:
+          type: integer
+          title: limit
+          format: int32
+      title: ListPeriodsRequest
+      additionalProperties: false
+    yasaku.v1.ListPeriodsResponse:
+      type: object
+      properties:
+        periods:
+          type: array
+          items:
+            $ref: '#/components/schemas/yasaku.v1.Period'
+          title: periods
+      title: ListPeriodsResponse
+      additionalProperties: false
+    yasaku.v1.Money:
+      type: object
+      properties:
+        amount:
+          type: string
+          title: amount
+        currency:
+          type: string
+          title: currency
+      title: Money
+      additionalProperties: false
+      description: Money is a major-unit decimal string plus its ISO 4217 code, e.g. amount "40000" currency "IDR".
+    yasaku.v1.Need:
+      type: object
+      properties:
+        field:
+          type: string
+          title: field
+        reason:
+          type: string
+          title: reason
+        candidates:
+          type: array
+          items:
+            type: string
+          title: candidates
+      title: Need
+      additionalProperties: false
+      description: Need is one input a mutation could not resolve, with the choices that would resolve it.
+    yasaku.v1.Needs:
+      type: object
+      properties:
+        needs:
+          type: array
+          items:
+            $ref: '#/components/schemas/yasaku.v1.Need'
+          title: needs
+      title: Needs
+      additionalProperties: false
+      description: Needs is the set of unresolved inputs that stopped a mutation before it wrote anything.
+    yasaku.v1.Period:
+      type: object
+      properties:
+        id:
+          type: string
+          title: id
+        name:
+          type: string
+          title: name
+        startDate:
+          type: string
+          title: start_date
+        endDate:
+          type: string
+          title: end_date
+        status:
+          type: string
+          title: status
+          description: One of open or closed.
+        closedAt:
+          title: closed_at
+          $ref: '#/components/schemas/google.protobuf.Timestamp'
+        snapshot:
+          title: snapshot
+          $ref: '#/components/schemas/yasaku.v1.Snapshot'
+      title: Period
+      additionalProperties: false
+      description: Period is one budget cycle; the current period is the one with an empty end_date.
+    yasaku.v1.PreviewCloseRequest:
+      type: object
+      properties:
+        target:
+          title: target
+          $ref: '#/components/schemas/yasaku.v1.Target'
+        period:
+          type: string
+          title: period
+          description: Period ID from list_periods or current_period, never a period name. Empty means the current period.
+        endDate:
+          type: string
+          title: end_date
+          description: YYYY-MM-DD; must be today or earlier and not before the period start.
+      title: PreviewCloseRequest
+      additionalProperties: false
+    yasaku.v1.PreviewCloseResponse:
+      type: object
+      properties:
+        snapshot:
+          title: snapshot
+          $ref: '#/components/schemas/yasaku.v1.Snapshot'
+        period:
+          title: period
+          $ref: '#/components/schemas/yasaku.v1.Period'
+      title: PreviewCloseResponse
+      additionalProperties: false
+    yasaku.v1.RenamePeriodRequest:
+      type: object
+      properties:
+        target:
+          title: target
+          $ref: '#/components/schemas/yasaku.v1.Target'
+        period:
+          type: string
+          title: period
+          description: Period ID from list_periods or current_period, never a period name.
+        name:
+          type: string
+          title: name
+      title: RenamePeriodRequest
+      additionalProperties: false
+    yasaku.v1.RenamePeriodResponse:
+      type: object
+      properties:
+        period:
+          title: period
+          $ref: '#/components/schemas/yasaku.v1.Period'
+      title: RenamePeriodResponse
+      additionalProperties: false
+    yasaku.v1.ReopenPeriodRequest:
+      type: object
+      properties:
+        target:
+          title: target
+          $ref: '#/components/schemas/yasaku.v1.Target'
+        period:
+          type: string
+          title: period
+          description: Period ID from list_periods, never a period name.
+        confirm:
+          type: boolean
+          title: confirm
+      title: ReopenPeriodRequest
+      additionalProperties: false
+    yasaku.v1.ReopenPeriodResponse:
+      type: object
+      properties:
+        needs:
+          title: needs
+          $ref: '#/components/schemas/yasaku.v1.Needs'
+        preview:
+          title: preview
+          description: The stored period that would be reopened, read at preview time; its status is still closed and its snapshot goes stale once it is reopened.
+          $ref: '#/components/schemas/yasaku.v1.Period'
+        result:
+          title: result
+          $ref: '#/components/schemas/yasaku.v1.Period'
+        warning:
+          type: string
+          title: warning
+      title: ReopenPeriodResponse
+      additionalProperties: false
+    yasaku.v1.Snapshot:
+      type: object
+      properties:
+        income:
+          title: income
+          $ref: '#/components/schemas/yasaku.v1.Money'
+        expense:
+          title: expense
+          $ref: '#/components/schemas/yasaku.v1.Money'
+        net:
+          title: net
+          $ref: '#/components/schemas/yasaku.v1.Money'
+        txCount:
+          type: integer
+          title: tx_count
+          format: int32
+        wallets:
+          type: array
+          items:
+            $ref: '#/components/schemas/yasaku.v1.WalletClosing'
+          title: wallets
+        computedAt:
+          title: computed_at
+          $ref: '#/components/schemas/google.protobuf.Timestamp'
+      title: Snapshot
+      additionalProperties: false
+      description: Snapshot is a period's totals, frozen on close or computed live for the current period.
+    yasaku.v1.Target:
+      type: object
+      properties:
+        org:
+          type: string
+          title: org
+        project:
+          type: string
+          title: project
+      title: Target
+      additionalProperties: false
+      description: Target names the org and project a request acts on; both empty means the caller's only project.
+    yasaku.v1.WalletClosing:
+      type: object
+      properties:
+        wallet:
+          title: wallet
+          $ref: '#/components/schemas/yasaku.v1.WalletRef'
+        closing:
+          title: closing
+          $ref: '#/components/schemas/yasaku.v1.Money'
+      title: WalletClosing
+      additionalProperties: false
+      description: WalletClosing is one wallet's balance at the moment the snapshot was taken.
+    yasaku.v1.WalletRef:
+      type: object
+      properties:
+        id:
+          type: string
+          title: id
+        name:
+          type: string
+          title: name
+      title: WalletRef
+      additionalProperties: false
+      description: WalletRef names a wallet inside another record without repeating its row.
+security: []
+tags:
+  - name: yasaku.v1.PeriodService
+    description: PeriodService manages budget periods and the "tutup buku" close that freezes their totals.

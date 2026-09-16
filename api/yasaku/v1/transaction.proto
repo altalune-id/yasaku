@@ -1,0 +1,278 @@
+syntax = "proto3";
+
+package yasaku.v1;
+
+import "google/protobuf/timestamp.proto";
+import "yasaku/mcp/v1/annotations.proto";
+import "yasaku/v1/category.proto";
+import "yasaku/v1/common.proto";
+
+option go_package = "altalune.id/yasaku/gen/go/yasaku/v1;yasakuv1";
+
+// TransactionService records, revises and reads the movements of money between wallets.
+service TransactionService {
+  rpc RecordExpense(RecordExpenseRequest) returns (RecordExpenseResponse) {
+    option (yasaku.mcp.v1.tool) = {
+      name: "record_expense"
+      description: "Catat pengeluaran (uang keluar) dari sebuah dompet. Amount in major units of the wallet currency. Wallet and category accept a name or an id, but period must be a period ID from list_periods or current_period, never a period name. Call without confirm to preview; call again with confirm=true to save. The preview is the resolved intent, not the saved record: it carries no id and no timestamps, and a concurrent write landing in between can change what is actually saved."
+      access: ACCESS_WRITE
+      mutation: true
+    };
+  }
+  rpc RecordIncome(RecordIncomeRequest) returns (RecordIncomeResponse) {
+    option (yasaku.mcp.v1.tool) = {
+      name: "record_income"
+      description: "Catat pemasukan (uang masuk) ke sebuah dompet. Amount in major units of the wallet currency. Wallet and category accept a name or an id, but period must be a period ID from list_periods or current_period, never a period name. Call without confirm to preview; call again with confirm=true to save. The preview is the resolved intent, not the saved record: it carries no id and no timestamps, and a concurrent write landing in between can change what is actually saved."
+      access: ACCESS_WRITE
+      mutation: true
+    };
+  }
+  rpc RecordTransfer(RecordTransferRequest) returns (RecordTransferResponse) {
+    option (yasaku.mcp.v1.tool) = {
+      name: "record_transfer"
+      description: "Pindahkan uang antar dompet milik sendiri; ini bukan pengeluaran. Both wallets must hold the same currency and a transfer carries no category. Wallets accept a name or an id, but period must be a period ID from list_periods or current_period, never a period name. Call without confirm to preview; call again with confirm=true to save. The preview is the resolved intent, not the saved record: it carries no id and no timestamps, and a concurrent write landing in between can change what is actually saved."
+      access: ACCESS_WRITE
+      mutation: true
+    };
+  }
+  rpc RecordBatch(RecordBatchRequest) returns (RecordBatchResponse) {
+    option (yasaku.mcp.v1.tool) = {
+      name: "record_batch"
+      description: "Catat banyak transaksi sekaligus, misalnya dari satu cerita panjang. Each item is recorded independently, so one bad row does not undo the rest; read the per-item outcomes. Item kind is income, expense or transfer only. Each item's period must be a period ID from list_periods or current_period, never a period name. Call without confirm to preview; call again with confirm=true to save. Each previewed outcome is the resolved intent, not the saved record: it carries no id and no timestamps, and a concurrent write landing in between can change what is actually saved."
+      access: ACCESS_WRITE
+      mutation: true
+    };
+  }
+  rpc ReviseTransaction(ReviseTransactionRequest) returns (ReviseTransactionResponse) {
+    option (yasaku.mcp.v1.tool) = {
+      name: "revise_tx"
+      description: "Perbaiki transaksi yang sudah dicatat. Only the fields you send are changed; an empty category clears it. Period must be a period ID from list_periods or current_period, never a period name. A transaction inside a closed period is refused until the period is reopened. Call without confirm to preview; call again with confirm=true to save. The preview is the resolved intent, not the saved record: its id is real but its timestamps are not final, and a concurrent write landing in between can change what is actually saved."
+      access: ACCESS_WRITE
+      mutation: true
+    };
+  }
+  rpc DeleteTransaction(DeleteTransactionRequest) returns (DeleteTransactionResponse) {
+    option (yasaku.mcp.v1.tool) = {
+      name: "delete_tx"
+      description: "Hapus transaksi secara permanen. A transaction inside a closed period is refused until the period is reopened. Call without confirm to preview which row would go; call again with confirm=true to delete. The preview is the resolved intent read at preview time; a concurrent write landing in between can change what is actually deleted."
+      access: ACCESS_WRITE
+      mutation: true
+    };
+  }
+  rpc ListTransactions(ListTransactionsRequest) returns (ListTransactionsResponse) {
+    option (yasaku.mcp.v1.tool) = {
+      name: "list_recent_tx"
+      description: "Daftar transaksi terbaru, bisa disaring per dompet, kategori, periode atau jenis. Period must be a period ID from list_periods or current_period, never a period name. Limit defaults to 50 and is capped at 200. Pass the returned next_cursor back as cursor for the following page; an empty next_cursor means the last page. The returned total_in and total_out cover only the rows on this page, and are empty when those rows do not all share one currency."
+      access: ACCESS_READ
+    };
+  }
+  rpc SearchTransactions(SearchTransactionsRequest) returns (SearchTransactionsResponse) {
+    option (yasaku.mcp.v1.tool) = {
+      name: "search_tx"
+      description: "Cari transaksi berdasarkan catatannya, dengan rentang tanggal opsional. The query matches the note case-insensitively; from and to are YYYY-MM-DD and inclusive. Limit defaults to 50 and is capped at 200. Pass the returned next_cursor back as cursor for the following page. The returned total_in and total_out cover only the rows on this page, and are empty when those rows do not all share one currency."
+      access: ACCESS_READ
+    };
+  }
+  rpc SuggestCategory(SuggestCategoryRequest) returns (SuggestCategoryResponse);
+}
+
+// Transaction is one movement of money; amount is always positive and the direction comes from kind.
+message Transaction {
+  string id = 1;
+  // One of income, expense, transfer, opening, adjustment_in, adjustment_out. The last three are written by the system and never accepted on a write.
+  string kind = 2;
+  WalletRef wallet = 3;
+  WalletRef to_wallet = 4;
+  Money amount = 5;
+  Category category = 6;
+  string period_id = 7;
+  string period_name = 8;
+  string note = 9;
+  google.protobuf.Timestamp occurred_at = 10;
+  google.protobuf.Timestamp created_at = 11;
+}
+
+// BatchItem is one row of a RecordBatch.
+message BatchItem {
+  // One of income, expense or transfer. A batch may not write the system kinds opening, adjustment_in or adjustment_out.
+  string kind = 1;
+  string wallet = 2;
+  string to_wallet = 3;
+  Money amount = 4;
+  string category = 5;
+  string note = 6;
+  string occurred_at = 7;
+  // Period ID from list_periods or current_period, never a period name. Empty means the period containing occurred_at.
+  string period = 8;
+}
+
+// BatchOutcome is one row's result, keyed back to its index in the request.
+message BatchOutcome {
+  int32 index = 1;
+  Transaction transaction = 2;
+  string error_code = 3;
+  string error = 4;
+}
+
+// RecordExpenseRequest addresses wallet and category by name or id; occurred_at is RFC3339 or YYYY-MM-DD and defaults to now.
+message RecordExpenseRequest {
+  Target target = 1;
+  string wallet = 2;
+  Money amount = 3;
+  string category = 4;
+  string note = 5;
+  string occurred_at = 6;
+  // Period ID from list_periods or current_period, never a period name. Empty means the period containing occurred_at.
+  string period = 7;
+  bool confirm = 8;
+}
+
+message RecordExpenseResponse {
+  Needs needs = 1;
+  // The transaction as it would be saved: wallet, amount, category, period and occurred_at are resolved; id and created_at are empty.
+  Transaction preview = 2;
+  Transaction result = 3;
+  string warning = 4;
+}
+
+// RecordIncomeRequest addresses wallet and category by name or id; occurred_at is RFC3339 or YYYY-MM-DD and defaults to now.
+message RecordIncomeRequest {
+  Target target = 1;
+  string wallet = 2;
+  Money amount = 3;
+  string category = 4;
+  string note = 5;
+  string occurred_at = 6;
+  // Period ID from list_periods or current_period, never a period name. Empty means the period containing occurred_at.
+  string period = 7;
+  bool confirm = 8;
+}
+
+message RecordIncomeResponse {
+  Needs needs = 1;
+  // The transaction as it would be saved: wallet, amount, category, period and occurred_at are resolved; id and created_at are empty.
+  Transaction preview = 2;
+  Transaction result = 3;
+  string warning = 4;
+}
+
+// RecordTransferRequest addresses both wallets by name or id; occurred_at is RFC3339 or YYYY-MM-DD and defaults to now.
+message RecordTransferRequest {
+  Target target = 1;
+  string from_wallet = 2;
+  string to_wallet = 3;
+  Money amount = 4;
+  string note = 5;
+  string occurred_at = 6;
+  // Period ID from list_periods or current_period, never a period name. Empty means the period containing occurred_at.
+  string period = 7;
+  bool confirm = 8;
+}
+
+message RecordTransferResponse {
+  Needs needs = 1;
+  // The transfer as it would be saved: both wallets, amount, period and occurred_at are resolved; id and created_at are empty.
+  Transaction preview = 2;
+  Transaction result = 3;
+  string warning = 4;
+}
+
+message RecordBatchRequest {
+  Target target = 1;
+  repeated BatchItem items = 2;
+  bool confirm = 3;
+}
+
+message RecordBatchResponse {
+  Needs needs = 1;
+  // One outcome per item in request order: each transaction is the resolved intent with no id and no created_at, and error_code names an item that would be refused.
+  repeated BatchOutcome preview = 2;
+  repeated BatchOutcome results = 3;
+  string warning = 4;
+}
+
+// ReviseTransactionRequest leaves every absent field unchanged; an empty category clears it.
+message ReviseTransactionRequest {
+  Target target = 1;
+  string id = 2;
+  optional string wallet = 3;
+  optional string to_wallet = 4;
+  Money amount = 5;
+  optional string category = 6;
+  optional string note = 7;
+  optional string occurred_at = 8;
+  // Period ID from list_periods or current_period, never a period name. Absent leaves the period alone; it is re-derived when occurred_at moves.
+  optional string period = 9;
+  bool confirm = 10;
+}
+
+message ReviseTransactionResponse {
+  Needs needs = 1;
+  // The stored transaction with the requested changes applied: id and created_at are the stored ones, every other field is the resolved intent.
+  Transaction preview = 2;
+  Transaction result = 3;
+  string warning = 4;
+}
+
+message DeleteTransactionRequest {
+  Target target = 1;
+  string id = 2;
+  bool confirm = 3;
+}
+
+message DeleteTransactionResponse {
+  Needs needs = 1;
+  // The stored transaction that would be deleted, read at preview time; every field is the real row.
+  Transaction preview = 2;
+  Transaction result = 3;
+  string warning = 4;
+}
+
+message ListTransactionsRequest {
+  Target target = 1;
+  string wallet = 2;
+  // One of income, expense, transfer, opening, adjustment_in or adjustment_out. Empty means every kind.
+  string kind = 3;
+  string category = 4;
+  // Period ID from list_periods or current_period, never a period name. Empty means every period.
+  string period = 5;
+  // Defaults to 50, capped at 200.
+  int32 limit = 6;
+  string cursor = 7;
+}
+
+// ListTransactionsResponse totals only the rows on this page, and only when they share one currency.
+message ListTransactionsResponse {
+  repeated Transaction transactions = 1;
+  string next_cursor = 2;
+  Money total_in = 3;
+  Money total_out = 4;
+}
+
+message SearchTransactionsRequest {
+  Target target = 1;
+  string query = 2;
+  string from = 3;
+  string to = 4;
+  // Defaults to 50, capped at 200.
+  int32 limit = 5;
+  string cursor = 6;
+}
+
+// SearchTransactionsResponse totals only the rows on this page, and only when they share one currency.
+message SearchTransactionsResponse {
+  repeated Transaction transactions = 1;
+  string next_cursor = 2;
+  Money total_in = 3;
+  Money total_out = 4;
+}
+
+message SuggestCategoryRequest {
+  Target target = 1;
+  string note = 2;
+}
+
+message SuggestCategoryResponse {
+  Category category = 1;
+  bool found = 2;
+}

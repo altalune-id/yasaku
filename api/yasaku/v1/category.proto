@@ -1,0 +1,146 @@
+syntax = "proto3";
+
+package yasaku.v1;
+
+import "yasaku/mcp/v1/annotations.proto";
+import "yasaku/v1/common.proto";
+
+option go_package = "altalune.id/yasaku/gen/go/yasaku/v1;yasakuv1";
+
+// CategoryService manages the expense and income categories a transaction may carry.
+service CategoryService {
+  rpc ListCategories(ListCategoriesRequest) returns (ListCategoriesResponse) {
+    option (yasaku.mcp.v1.tool) = {
+      name: "list_categories"
+      description: "Daftar kategori pengeluaran dan pemasukan milik proyek. Filter by kind \"expense\" or \"income\", or leave kind empty for both. Archived categories are hidden unless include_archived is true."
+      access: ACCESS_READ
+    };
+  }
+  rpc CreateCategory(CreateCategoryRequest) returns (CreateCategoryResponse) {
+    option (yasaku.mcp.v1.tool) = {
+      name: "create_category"
+      description: "Buat kategori baru. Kind is expense or income and cannot be changed afterwards. Icon must come from a fixed allow-list and colour must be chart-1 through chart-5 or a #rrggbb hex value; an unaccepted icon or colour comes back in needs.candidates rather than being saved. Both may be left empty. Call without confirm to preview; call again with confirm=true to save. The preview is the resolved intent, not the saved record: it carries no id, and a concurrent write landing in between can change what is actually saved."
+      access: ACCESS_WRITE
+      mutation: true
+    };
+  }
+  rpc RenameCategory(RenameCategoryRequest) returns (RenameCategoryResponse);
+  rpc UpdateCategory(UpdateCategoryRequest) returns (UpdateCategoryResponse);
+  rpc ArchiveCategory(ArchiveCategoryRequest) returns (ArchiveCategoryResponse);
+  rpc UnarchiveCategory(UnarchiveCategoryRequest) returns (UnarchiveCategoryResponse);
+  rpc DeleteCategory(DeleteCategoryRequest) returns (DeleteCategoryResponse);
+  rpc SeedDefaultCategories(SeedDefaultCategoriesRequest) returns (SeedDefaultCategoriesResponse) {
+    option (yasaku.mcp.v1.tool) = {
+      name: "seed_default_categories"
+      description: "Isi proyek dengan kategori bawaan (13 pengeluaran, 7 pemasukan). Idempotent: a default whose name already exists is skipped, so nothing is duplicated. Call without confirm to preview how many would be added as preview_count; call again with confirm=true to insert them and read inserted. The preview count is the resolved intent, not the saved outcome: a concurrent seed landing in between can make fewer rows actually insert."
+      access: ACCESS_WRITE
+      mutation: true
+    };
+  }
+}
+
+// Category classifies one direction of money movement; kind is immutable.
+message Category {
+  string id = 1;
+  string name = 2;
+  // One of expense or income.
+  string kind = 3;
+  // One of utensils, bus, shopping-bag, receipt, smartphone, heart-pulse, house, clapperboard, graduation-cap, users, credit-card, hand-heart, circle-ellipsis, banknote, gift, briefcase, trending-up, laptop, wallet. May be empty.
+  string icon = 4;
+  // chart-1 through chart-5, or a #rrggbb hex value. May be empty.
+  string color = 5;
+  bool archived = 6;
+}
+
+message ListCategoriesRequest {
+  Target target = 1;
+  // One of expense or income. Empty means both.
+  string kind = 2;
+  bool include_archived = 3;
+}
+
+message ListCategoriesResponse {
+  repeated Category categories = 1;
+}
+
+message CreateCategoryRequest {
+  Target target = 1;
+  string name = 2;
+  // One of expense or income; it cannot be changed after creation.
+  string kind = 3;
+  // One of utensils, bus, shopping-bag, receipt, smartphone, heart-pulse, house, clapperboard, graduation-cap, users, credit-card, hand-heart, circle-ellipsis, banknote, gift, briefcase, trending-up, laptop, wallet. May be empty.
+  string icon = 4;
+  // chart-1 through chart-5, or a #rrggbb hex value. May be empty.
+  string color = 5;
+  bool confirm = 6;
+}
+
+message CreateCategoryResponse {
+  Needs needs = 1;
+  // The category as it would be created: name, kind, icon and color are resolved; id is empty and archived is false.
+  Category preview = 2;
+  Category result = 3;
+  string warning = 4;
+}
+
+message RenameCategoryRequest {
+  Target target = 1;
+  string category = 2;
+  string name = 3;
+}
+
+message RenameCategoryResponse {
+  Category category = 1;
+}
+
+// UpdateCategoryRequest replaces icon and color together; both are cleared when left empty.
+message UpdateCategoryRequest {
+  Target target = 1;
+  string category = 2;
+  // One of utensils, bus, shopping-bag, receipt, smartphone, heart-pulse, house, clapperboard, graduation-cap, users, credit-card, hand-heart, circle-ellipsis, banknote, gift, briefcase, trending-up, laptop, wallet. Empty clears it.
+  string icon = 3;
+  // chart-1 through chart-5, or a #rrggbb hex value. Empty clears it.
+  string color = 4;
+}
+
+message UpdateCategoryResponse {
+  Category category = 1;
+}
+
+message ArchiveCategoryRequest {
+  Target target = 1;
+  string category = 2;
+}
+
+message ArchiveCategoryResponse {
+  Category category = 1;
+}
+
+message UnarchiveCategoryRequest {
+  Target target = 1;
+  string category = 2;
+}
+
+message UnarchiveCategoryResponse {
+  Category category = 1;
+}
+
+message DeleteCategoryRequest {
+  Target target = 1;
+  string category = 2;
+}
+
+message DeleteCategoryResponse {}
+
+message SeedDefaultCategoriesRequest {
+  Target target = 1;
+  bool confirm = 2;
+}
+
+message SeedDefaultCategoriesResponse {
+  Needs needs = 1;
+  // How many defaults would be inserted, counted at preview time; zero when the project already has them all.
+  int32 preview_count = 2;
+  int32 inserted = 3;
+  string warning = 4;
+}

@@ -80,14 +80,15 @@ func newHarnessOpts(t *testing.T, p session.Principal, verr error) *harness {
 		Verifier: stubVerifier{principal: p, err: verr},
 	}
 
-	srv := api.New(
-		nil, // cfg — OpenAPI off by default in these tests
-		kernel,
-		nil, nil,
-		orgSvc, projectSvc, todoSvc, nil,
-		tds,
-		postSvc, catSvc, tagSvc,
-	)
+	srv := api.New(nil, kernel, api.Deps{
+		Orgs:      orgSvc,
+		Projects:  projectSvc,
+		Todos:     todoSvc,
+		TodoStore: tds,
+		Posts:     postSvc,
+		BlogCats:  catSvc,
+		Tags:      tagSvc,
+	})
 	ts := httptest.NewServer(srv.Handler(""))
 	t.Cleanup(ts.Close)
 	return &harness{t: t, server: ts, orgs: orgs, projs: projs, todos: tds, posts: posts, cats: cats, tags: tags}

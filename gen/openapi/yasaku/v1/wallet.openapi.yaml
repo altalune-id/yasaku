@@ -1,0 +1,1042 @@
+openapi: 3.1.0
+info:
+  title: yasaku.v1
+paths:
+  /yasaku.v1.WalletService/AdjustBalance:
+    post:
+      tags:
+        - yasaku.v1.WalletService
+      summary: AdjustBalance
+      operationId: yasaku.v1.WalletService.AdjustBalance
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/yasaku.v1.AdjustBalanceRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/yasaku.v1.AdjustBalanceResponse'
+  /yasaku.v1.WalletService/ArchiveWallet:
+    post:
+      tags:
+        - yasaku.v1.WalletService
+      summary: ArchiveWallet
+      operationId: yasaku.v1.WalletService.ArchiveWallet
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/yasaku.v1.ArchiveWalletRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/yasaku.v1.ArchiveWalletResponse'
+  /yasaku.v1.WalletService/CreateWallet:
+    post:
+      tags:
+        - yasaku.v1.WalletService
+      summary: CreateWallet
+      operationId: yasaku.v1.WalletService.CreateWallet
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/yasaku.v1.CreateWalletRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/yasaku.v1.CreateWalletResponse'
+  /yasaku.v1.WalletService/DeleteWallet:
+    post:
+      tags:
+        - yasaku.v1.WalletService
+      summary: DeleteWallet
+      operationId: yasaku.v1.WalletService.DeleteWallet
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/yasaku.v1.DeleteWalletRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/yasaku.v1.DeleteWalletResponse'
+  /yasaku.v1.WalletService/GetWallet:
+    post:
+      tags:
+        - yasaku.v1.WalletService
+      summary: GetWallet
+      operationId: yasaku.v1.WalletService.GetWallet
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/yasaku.v1.GetWalletRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/yasaku.v1.GetWalletResponse'
+  /yasaku.v1.WalletService/ListWallets:
+    post:
+      tags:
+        - yasaku.v1.WalletService
+      summary: ListWallets
+      operationId: yasaku.v1.WalletService.ListWallets
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/yasaku.v1.ListWalletsRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/yasaku.v1.ListWalletsResponse'
+  /yasaku.v1.WalletService/UnarchiveWallet:
+    post:
+      tags:
+        - yasaku.v1.WalletService
+      summary: UnarchiveWallet
+      operationId: yasaku.v1.WalletService.UnarchiveWallet
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/yasaku.v1.UnarchiveWalletRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/yasaku.v1.UnarchiveWalletResponse'
+  /yasaku.v1.WalletService/UpdateWallet:
+    post:
+      tags:
+        - yasaku.v1.WalletService
+      summary: UpdateWallet
+      operationId: yasaku.v1.WalletService.UpdateWallet
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/yasaku.v1.UpdateWalletRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/yasaku.v1.UpdateWalletResponse'
+  /yasaku.v1.WalletService/WalletTotals:
+    post:
+      tags:
+        - yasaku.v1.WalletService
+      summary: WalletTotals
+      operationId: yasaku.v1.WalletService.WalletTotals
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/yasaku.v1.WalletTotalsRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/yasaku.v1.WalletTotalsResponse'
+components:
+  schemas:
+    connect-protocol-version:
+      type: number
+      title: Connect-Protocol-Version
+      enum:
+        - 1
+      description: Define the version of the Connect protocol
+      const: 1
+    connect-timeout-header:
+      type: number
+      title: Connect-Timeout-Ms
+      description: Define the timeout, in ms
+    connect.error:
+      type: object
+      properties:
+        code:
+          type: string
+          examples:
+            - not_found
+          enum:
+            - canceled
+            - unknown
+            - invalid_argument
+            - deadline_exceeded
+            - not_found
+            - already_exists
+            - permission_denied
+            - resource_exhausted
+            - failed_precondition
+            - aborted
+            - out_of_range
+            - unimplemented
+            - internal
+            - unavailable
+            - data_loss
+            - unauthenticated
+          description: The status code, which should be an enum value of [google.rpc.Code][google.rpc.Code].
+        message:
+          type: string
+          description: A developer-facing error message, which should be in English. Any user-facing error message should be localized and sent in the [google.rpc.Status.details][google.rpc.Status.details] field, or localized by the client.
+        details:
+          type: array
+          items:
+            $ref: '#/components/schemas/connect.error_details.Any'
+          description: A list of messages that carry the error details. There is no limit on the number of messages.
+      title: Connect Error
+      additionalProperties: true
+      description: 'Error type returned by Connect: https://connectrpc.com/docs/go/errors/#http-representation'
+    connect.error_details.Any:
+      type: object
+      properties:
+        type:
+          type: string
+          description: 'A URL that acts as a globally unique identifier for the type of the serialized message. For example: `type.googleapis.com/google.rpc.ErrorInfo`. This is used to determine the schema of the data in the `value` field and is the discriminator for the `debug` field.'
+        value:
+          type: string
+          format: binary
+          description: The Protobuf message, serialized as bytes and base64-encoded. The specific message type is identified by the `type` field.
+        debug:
+          oneOf:
+            - type: object
+              title: Any
+              additionalProperties: true
+              description: Detailed error information.
+          discriminator:
+            propertyName: type
+          title: Debug
+          description: Deserialized error detail payload. The 'type' field indicates the schema. This field is for easier debugging and should not be relied upon for application logic.
+      additionalProperties: true
+      description: Contains an arbitrary serialized message along with a @type that describes the type of the serialized message, with an additional debug field for ConnectRPC error details.
+    google.protobuf.Timestamp:
+      type: string
+      examples:
+        - "2023-01-15T01:30:15.01Z"
+        - "2024-12-25T12:00:00Z"
+      format: date-time
+      description: |-
+        A Timestamp represents a point in time independent of any time zone or local
+         calendar, encoded as a count of seconds and fractions of seconds at
+         nanosecond resolution. The count is relative to an epoch at UTC midnight on
+         January 1, 1970, in the proleptic Gregorian calendar which extends the
+         Gregorian calendar backwards to year one.
+
+         All minutes are 60 seconds long. Leap seconds are "smeared" so that no leap
+         second table is needed for interpretation, using a [24-hour linear
+         smear](https://developers.google.com/time/smear).
+
+         The range is from 0001-01-01T00:00:00Z to 9999-12-31T23:59:59.999999999Z. By
+         restricting to that range, we ensure that we can convert to and from [RFC
+         3339](https://www.ietf.org/rfc/rfc3339.txt) date strings.
+
+         # Examples
+
+         Example 1: Compute Timestamp from POSIX `time()`.
+
+             Timestamp timestamp;
+             timestamp.set_seconds(time(NULL));
+             timestamp.set_nanos(0);
+
+         Example 2: Compute Timestamp from POSIX `gettimeofday()`.
+
+             struct timeval tv;
+             gettimeofday(&tv, NULL);
+
+             Timestamp timestamp;
+             timestamp.set_seconds(tv.tv_sec);
+             timestamp.set_nanos(tv.tv_usec * 1000);
+
+         Example 3: Compute Timestamp from Win32 `GetSystemTimeAsFileTime()`.
+
+             FILETIME ft;
+             GetSystemTimeAsFileTime(&ft);
+             UINT64 ticks = (((UINT64)ft.dwHighDateTime) << 32) | ft.dwLowDateTime;
+
+             // A Windows tick is 100 nanoseconds. Windows epoch 1601-01-01T00:00:00Z
+             // is 11644473600 seconds before Unix epoch 1970-01-01T00:00:00Z.
+             Timestamp timestamp;
+             timestamp.set_seconds((INT64) ((ticks / 10000000) - 11644473600LL));
+             timestamp.set_nanos((INT32) ((ticks % 10000000) * 100));
+
+         Example 4: Compute Timestamp from Java `System.currentTimeMillis()`.
+
+             long millis = System.currentTimeMillis();
+
+             Timestamp timestamp = Timestamp.newBuilder().setSeconds(millis / 1000)
+                 .setNanos((int) ((millis % 1000) * 1000000)).build();
+
+         Example 5: Compute Timestamp from Java `Instant.now()`.
+
+             Instant now = Instant.now();
+
+             Timestamp timestamp =
+                 Timestamp.newBuilder().setSeconds(now.getEpochSecond())
+                     .setNanos(now.getNano()).build();
+
+         Example 6: Compute Timestamp from current time in Python.
+
+             timestamp = Timestamp()
+             timestamp.GetCurrentTime()
+
+         # JSON Mapping
+
+         In JSON format, the Timestamp type is encoded as a string in the
+         [RFC 3339](https://www.ietf.org/rfc/rfc3339.txt) format. That is, the
+         format is "{year}-{month}-{day}T{hour}:{min}:{sec}[.{frac_sec}]Z"
+         where {year} is always expressed using four digits while {month}, {day},
+         {hour}, {min}, and {sec} are zero-padded to two digits each. The fractional
+         seconds, which can go up to 9 digits (i.e. up to 1 nanosecond resolution),
+         are optional. The "Z" suffix indicates the timezone ("UTC"); the timezone
+         is required. A proto3 JSON serializer should always use UTC (as indicated by
+         "Z") when printing the Timestamp type and a proto3 JSON parser should be
+         able to accept both UTC and other timezones (as indicated by an offset).
+
+         For example, "2017-01-15T01:30:15.01Z" encodes 15.01 seconds past
+         01:30 UTC on January 15, 2017.
+
+         In JavaScript, one can convert a Date object to this format using the
+         standard
+         [toISOString()](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Date/toISOString)
+         method. In Python, a standard `datetime.datetime` object can be converted
+         to this format using
+         [`strftime`](https://docs.python.org/2/library/time.html#time.strftime) with
+         the time format spec '%Y-%m-%dT%H:%M:%S.%fZ'. Likewise, in Java, one can use
+         the Joda Time's [`ISODateTimeFormat.dateTime()`](
+         http://joda-time.sourceforge.net/apidocs/org/joda/time/format/ISODateTimeFormat.html#dateTime()
+         ) to obtain a formatter capable of generating timestamps in this format.
+    yasaku.v1.AdjustBalanceRequest:
+      type: object
+      properties:
+        target:
+          title: target
+          $ref: '#/components/schemas/yasaku.v1.Target'
+        wallet:
+          type: string
+          title: wallet
+        targetBalance:
+          title: target_balance
+          $ref: '#/components/schemas/yasaku.v1.Money'
+        date:
+          type: string
+          title: date
+          description: YYYY-MM-DD; empty means today in the project timezone.
+        confirm:
+          type: boolean
+          title: confirm
+      title: AdjustBalanceRequest
+      additionalProperties: false
+      description: AdjustBalanceRequest names the balance the wallet should end up with, not the difference.
+    yasaku.v1.AdjustBalanceResponse:
+      type: object
+      properties:
+        needs:
+          title: needs
+          $ref: '#/components/schemas/yasaku.v1.Needs'
+        preview:
+          title: preview
+          description: 'The adjustment that would be written: kind, wallet and amount are resolved; id, period and created_at are empty. Empty when the balance already matches.'
+          $ref: '#/components/schemas/yasaku.v1.Transaction'
+        result:
+          title: result
+          $ref: '#/components/schemas/yasaku.v1.Transaction'
+        warning:
+          type: string
+          title: warning
+      title: AdjustBalanceResponse
+      additionalProperties: false
+      description: AdjustBalanceResponse leaves result empty when the wallet already holds the target balance.
+    yasaku.v1.ArchiveWalletRequest:
+      type: object
+      properties:
+        target:
+          title: target
+          $ref: '#/components/schemas/yasaku.v1.Target'
+        wallet:
+          type: string
+          title: wallet
+        confirm:
+          type: boolean
+          title: confirm
+      title: ArchiveWalletRequest
+      additionalProperties: false
+    yasaku.v1.ArchiveWalletResponse:
+      type: object
+      properties:
+        needs:
+          title: needs
+          $ref: '#/components/schemas/yasaku.v1.Needs'
+        preview:
+          title: preview
+          description: The stored wallet that would be archived, read at preview time; archived is still false on the preview.
+          $ref: '#/components/schemas/yasaku.v1.Wallet'
+        result:
+          title: result
+          $ref: '#/components/schemas/yasaku.v1.Wallet'
+        warning:
+          type: string
+          title: warning
+      title: ArchiveWalletResponse
+      additionalProperties: false
+    yasaku.v1.Category:
+      type: object
+      properties:
+        id:
+          type: string
+          title: id
+        name:
+          type: string
+          title: name
+        kind:
+          type: string
+          title: kind
+          description: One of expense or income.
+        icon:
+          type: string
+          title: icon
+          description: One of utensils, bus, shopping-bag, receipt, smartphone, heart-pulse, house, clapperboard, graduation-cap, users, credit-card, hand-heart, circle-ellipsis, banknote, gift, briefcase, trending-up, laptop, wallet. May be empty.
+        color:
+          type: string
+          title: color
+          description: 'chart-1 through chart-5, or a #rrggbb hex value. May be empty.'
+        archived:
+          type: boolean
+          title: archived
+      title: Category
+      additionalProperties: false
+      description: Category classifies one direction of money movement; kind is immutable.
+    yasaku.v1.CreateWalletRequest:
+      type: object
+      properties:
+        target:
+          title: target
+          $ref: '#/components/schemas/yasaku.v1.Target'
+        name:
+          type: string
+          title: name
+        kind:
+          type: string
+          title: kind
+          description: One of cash, bank, ewallet, savings, investment or other.
+        provider:
+          type: string
+          title: provider
+        currency:
+          type: string
+          title: currency
+        excludeFromTotal:
+          type:
+            - boolean
+            - "null"
+          title: exclude_from_total
+        openingBalance:
+          title: opening_balance
+          $ref: '#/components/schemas/yasaku.v1.Money'
+        confirm:
+          type: boolean
+          title: confirm
+      title: CreateWalletRequest
+      additionalProperties: false
+      description: CreateWalletRequest defaults exclude_from_total from the kind when it is absent.
+    yasaku.v1.CreateWalletResponse:
+      type: object
+      properties:
+        needs:
+          title: needs
+          $ref: '#/components/schemas/yasaku.v1.Needs'
+        preview:
+          title: preview
+          description: 'The wallet as it would be created: name, kind, provider, currency, exclude_from_total and the opening balance are resolved; id and created_at are empty.'
+          $ref: '#/components/schemas/yasaku.v1.Wallet'
+        result:
+          title: result
+          $ref: '#/components/schemas/yasaku.v1.Wallet'
+        warning:
+          type: string
+          title: warning
+      title: CreateWalletResponse
+      additionalProperties: false
+    yasaku.v1.DeleteWalletRequest:
+      type: object
+      properties:
+        target:
+          title: target
+          $ref: '#/components/schemas/yasaku.v1.Target'
+        wallet:
+          type: string
+          title: wallet
+      title: DeleteWalletRequest
+      additionalProperties: false
+    yasaku.v1.DeleteWalletResponse:
+      type: object
+      title: DeleteWalletResponse
+      additionalProperties: false
+    yasaku.v1.GetWalletRequest:
+      type: object
+      properties:
+        target:
+          title: target
+          $ref: '#/components/schemas/yasaku.v1.Target'
+        wallet:
+          type: string
+          title: wallet
+      title: GetWalletRequest
+      additionalProperties: false
+    yasaku.v1.GetWalletResponse:
+      type: object
+      properties:
+        wallet:
+          title: wallet
+          $ref: '#/components/schemas/yasaku.v1.Wallet'
+        recent:
+          type: array
+          items:
+            $ref: '#/components/schemas/yasaku.v1.Transaction'
+          title: recent
+      title: GetWalletResponse
+      additionalProperties: false
+    yasaku.v1.ListWalletsRequest:
+      type: object
+      properties:
+        target:
+          title: target
+          $ref: '#/components/schemas/yasaku.v1.Target'
+        includeArchived:
+          type: boolean
+          title: include_archived
+      title: ListWalletsRequest
+      additionalProperties: false
+    yasaku.v1.ListWalletsResponse:
+      type: object
+      properties:
+        wallets:
+          type: array
+          items:
+            $ref: '#/components/schemas/yasaku.v1.Wallet'
+          title: wallets
+      title: ListWalletsResponse
+      additionalProperties: false
+    yasaku.v1.Money:
+      type: object
+      properties:
+        amount:
+          type: string
+          title: amount
+        currency:
+          type: string
+          title: currency
+      title: Money
+      additionalProperties: false
+      description: Money is a major-unit decimal string plus its ISO 4217 code, e.g. amount "40000" currency "IDR".
+    yasaku.v1.Need:
+      type: object
+      properties:
+        field:
+          type: string
+          title: field
+        reason:
+          type: string
+          title: reason
+        candidates:
+          type: array
+          items:
+            type: string
+          title: candidates
+      title: Need
+      additionalProperties: false
+      description: Need is one input a mutation could not resolve, with the choices that would resolve it.
+    yasaku.v1.Needs:
+      type: object
+      properties:
+        needs:
+          type: array
+          items:
+            $ref: '#/components/schemas/yasaku.v1.Need'
+          title: needs
+      title: Needs
+      additionalProperties: false
+      description: Needs is the set of unresolved inputs that stopped a mutation before it wrote anything.
+    yasaku.v1.Period:
+      type: object
+      properties:
+        id:
+          type: string
+          title: id
+        name:
+          type: string
+          title: name
+        startDate:
+          type: string
+          title: start_date
+        endDate:
+          type: string
+          title: end_date
+        status:
+          type: string
+          title: status
+          description: One of open or closed.
+        closedAt:
+          title: closed_at
+          $ref: '#/components/schemas/google.protobuf.Timestamp'
+        snapshot:
+          title: snapshot
+          $ref: '#/components/schemas/yasaku.v1.Snapshot'
+      title: Period
+      additionalProperties: false
+      description: Period is one budget cycle; the current period is the one with an empty end_date.
+    yasaku.v1.Snapshot:
+      type: object
+      properties:
+        income:
+          title: income
+          $ref: '#/components/schemas/yasaku.v1.Money'
+        expense:
+          title: expense
+          $ref: '#/components/schemas/yasaku.v1.Money'
+        net:
+          title: net
+          $ref: '#/components/schemas/yasaku.v1.Money'
+        txCount:
+          type: integer
+          title: tx_count
+          format: int32
+        wallets:
+          type: array
+          items:
+            $ref: '#/components/schemas/yasaku.v1.WalletClosing'
+          title: wallets
+        computedAt:
+          title: computed_at
+          $ref: '#/components/schemas/google.protobuf.Timestamp'
+      title: Snapshot
+      additionalProperties: false
+      description: Snapshot is a period's totals, frozen on close or computed live for the current period.
+    yasaku.v1.Target:
+      type: object
+      properties:
+        org:
+          type: string
+          title: org
+        project:
+          type: string
+          title: project
+      title: Target
+      additionalProperties: false
+      description: Target names the org and project a request acts on; both empty means the caller's only project.
+    yasaku.v1.Transaction:
+      type: object
+      properties:
+        id:
+          type: string
+          title: id
+        kind:
+          type: string
+          title: kind
+          description: One of income, expense, transfer, opening, adjustment_in, adjustment_out. The last three are written by the system and never accepted on a write.
+        wallet:
+          title: wallet
+          $ref: '#/components/schemas/yasaku.v1.WalletRef'
+        toWallet:
+          title: to_wallet
+          $ref: '#/components/schemas/yasaku.v1.WalletRef'
+        amount:
+          title: amount
+          $ref: '#/components/schemas/yasaku.v1.Money'
+        category:
+          title: category
+          $ref: '#/components/schemas/yasaku.v1.Category'
+        periodId:
+          type: string
+          title: period_id
+        periodName:
+          type: string
+          title: period_name
+        note:
+          type: string
+          title: note
+        occurredAt:
+          title: occurred_at
+          $ref: '#/components/schemas/google.protobuf.Timestamp'
+        createdAt:
+          title: created_at
+          $ref: '#/components/schemas/google.protobuf.Timestamp'
+      title: Transaction
+      additionalProperties: false
+      description: Transaction is one movement of money; amount is always positive and the direction comes from kind.
+    yasaku.v1.UnarchiveWalletRequest:
+      type: object
+      properties:
+        target:
+          title: target
+          $ref: '#/components/schemas/yasaku.v1.Target'
+        wallet:
+          type: string
+          title: wallet
+      title: UnarchiveWalletRequest
+      additionalProperties: false
+    yasaku.v1.UnarchiveWalletResponse:
+      type: object
+      properties:
+        wallet:
+          title: wallet
+          $ref: '#/components/schemas/yasaku.v1.Wallet'
+      title: UnarchiveWalletResponse
+      additionalProperties: false
+    yasaku.v1.UpdateWalletRequest:
+      type: object
+      properties:
+        target:
+          title: target
+          $ref: '#/components/schemas/yasaku.v1.Target'
+        wallet:
+          type: string
+          title: wallet
+        name:
+          type:
+            - string
+            - "null"
+          title: name
+        kind:
+          type:
+            - string
+            - "null"
+          title: kind
+          description: One of cash, bank, ewallet, savings, investment or other.
+        provider:
+          type:
+            - string
+            - "null"
+          title: provider
+        excludeFromTotal:
+          type:
+            - boolean
+            - "null"
+          title: exclude_from_total
+        confirm:
+          type: boolean
+          title: confirm
+      title: UpdateWalletRequest
+      additionalProperties: false
+      description: UpdateWalletRequest leaves every absent field unchanged.
+    yasaku.v1.UpdateWalletResponse:
+      type: object
+      properties:
+        needs:
+          title: needs
+          $ref: '#/components/schemas/yasaku.v1.Needs'
+        preview:
+          title: preview
+          description: 'The stored wallet with the requested changes applied: id, currency, created_at and balance are the stored ones.'
+          $ref: '#/components/schemas/yasaku.v1.Wallet'
+        result:
+          title: result
+          $ref: '#/components/schemas/yasaku.v1.Wallet'
+        warning:
+          type: string
+          title: warning
+      title: UpdateWalletResponse
+      additionalProperties: false
+    yasaku.v1.Wallet:
+      type: object
+      properties:
+        id:
+          type: string
+          title: id
+        name:
+          type: string
+          title: name
+        kind:
+          type: string
+          title: kind
+          description: One of cash, bank, ewallet, savings, investment or other.
+        provider:
+          type: string
+          title: provider
+        currency:
+          type: string
+          title: currency
+        excludeFromTotal:
+          type: boolean
+          title: exclude_from_total
+        archived:
+          type: boolean
+          title: archived
+        balance:
+          title: balance
+          $ref: '#/components/schemas/yasaku.v1.Money'
+        createdAt:
+          title: created_at
+          $ref: '#/components/schemas/google.protobuf.Timestamp'
+      title: Wallet
+      additionalProperties: false
+      description: Wallet is a named holder of money in one currency; balance is derived from transactions.
+    yasaku.v1.WalletClosing:
+      type: object
+      properties:
+        wallet:
+          title: wallet
+          $ref: '#/components/schemas/yasaku.v1.WalletRef'
+        closing:
+          title: closing
+          $ref: '#/components/schemas/yasaku.v1.Money'
+      title: WalletClosing
+      additionalProperties: false
+      description: WalletClosing is one wallet's balance at the moment the snapshot was taken.
+    yasaku.v1.WalletLine:
+      type: object
+      properties:
+        wallet:
+          title: wallet
+          $ref: '#/components/schemas/yasaku.v1.WalletRef'
+        kind:
+          type: string
+          title: kind
+        excludeFromTotal:
+          type: boolean
+          title: exclude_from_total
+        opening:
+          title: opening
+          $ref: '#/components/schemas/yasaku.v1.Money'
+        in:
+          title: in
+          $ref: '#/components/schemas/yasaku.v1.Money'
+        out:
+          title: out
+          $ref: '#/components/schemas/yasaku.v1.Money'
+        closing:
+          title: closing
+          $ref: '#/components/schemas/yasaku.v1.Money'
+      title: WalletLine
+      additionalProperties: false
+      description: WalletLine is one wallet's movement across a period, or its live balance when the report is not period-keyed.
+    yasaku.v1.WalletRef:
+      type: object
+      properties:
+        id:
+          type: string
+          title: id
+        name:
+          type: string
+          title: name
+      title: WalletRef
+      additionalProperties: false
+      description: WalletRef names a wallet inside another record without repeating its row.
+    yasaku.v1.WalletTotalsRequest:
+      type: object
+      properties:
+        target:
+          title: target
+          $ref: '#/components/schemas/yasaku.v1.Target'
+      title: WalletTotalsRequest
+      additionalProperties: false
+    yasaku.v1.WalletTotalsResponse:
+      type: object
+      properties:
+        spendableTotal:
+          title: spendable_total
+          $ref: '#/components/schemas/yasaku.v1.Money'
+        total:
+          title: total
+          $ref: '#/components/schemas/yasaku.v1.Money'
+        income:
+          title: income
+          $ref: '#/components/schemas/yasaku.v1.Money'
+        expense:
+          title: expense
+          $ref: '#/components/schemas/yasaku.v1.Money'
+        net:
+          title: net
+          $ref: '#/components/schemas/yasaku.v1.Money'
+        period:
+          title: period
+          $ref: '#/components/schemas/yasaku.v1.Period'
+        wallets:
+          type: array
+          items:
+            $ref: '#/components/schemas/yasaku.v1.WalletLine'
+          title: wallets
+      title: WalletTotalsResponse
+      additionalProperties: false
+security: []
+tags:
+  - name: yasaku.v1.WalletService
+    description: WalletService manages the wallets a project holds money in and reports their balances.

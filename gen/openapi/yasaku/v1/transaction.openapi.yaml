@@ -1,0 +1,1073 @@
+openapi: 3.1.0
+info:
+  title: yasaku.v1
+paths:
+  /yasaku.v1.TransactionService/DeleteTransaction:
+    post:
+      tags:
+        - yasaku.v1.TransactionService
+      summary: DeleteTransaction
+      operationId: yasaku.v1.TransactionService.DeleteTransaction
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/yasaku.v1.DeleteTransactionRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/yasaku.v1.DeleteTransactionResponse'
+  /yasaku.v1.TransactionService/ListTransactions:
+    post:
+      tags:
+        - yasaku.v1.TransactionService
+      summary: ListTransactions
+      operationId: yasaku.v1.TransactionService.ListTransactions
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/yasaku.v1.ListTransactionsRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/yasaku.v1.ListTransactionsResponse'
+  /yasaku.v1.TransactionService/RecordBatch:
+    post:
+      tags:
+        - yasaku.v1.TransactionService
+      summary: RecordBatch
+      operationId: yasaku.v1.TransactionService.RecordBatch
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/yasaku.v1.RecordBatchRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/yasaku.v1.RecordBatchResponse'
+  /yasaku.v1.TransactionService/RecordExpense:
+    post:
+      tags:
+        - yasaku.v1.TransactionService
+      summary: RecordExpense
+      operationId: yasaku.v1.TransactionService.RecordExpense
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/yasaku.v1.RecordExpenseRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/yasaku.v1.RecordExpenseResponse'
+  /yasaku.v1.TransactionService/RecordIncome:
+    post:
+      tags:
+        - yasaku.v1.TransactionService
+      summary: RecordIncome
+      operationId: yasaku.v1.TransactionService.RecordIncome
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/yasaku.v1.RecordIncomeRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/yasaku.v1.RecordIncomeResponse'
+  /yasaku.v1.TransactionService/RecordTransfer:
+    post:
+      tags:
+        - yasaku.v1.TransactionService
+      summary: RecordTransfer
+      operationId: yasaku.v1.TransactionService.RecordTransfer
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/yasaku.v1.RecordTransferRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/yasaku.v1.RecordTransferResponse'
+  /yasaku.v1.TransactionService/ReviseTransaction:
+    post:
+      tags:
+        - yasaku.v1.TransactionService
+      summary: ReviseTransaction
+      operationId: yasaku.v1.TransactionService.ReviseTransaction
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/yasaku.v1.ReviseTransactionRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/yasaku.v1.ReviseTransactionResponse'
+  /yasaku.v1.TransactionService/SearchTransactions:
+    post:
+      tags:
+        - yasaku.v1.TransactionService
+      summary: SearchTransactions
+      operationId: yasaku.v1.TransactionService.SearchTransactions
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/yasaku.v1.SearchTransactionsRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/yasaku.v1.SearchTransactionsResponse'
+  /yasaku.v1.TransactionService/SuggestCategory:
+    post:
+      tags:
+        - yasaku.v1.TransactionService
+      summary: SuggestCategory
+      operationId: yasaku.v1.TransactionService.SuggestCategory
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/yasaku.v1.SuggestCategoryRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/yasaku.v1.SuggestCategoryResponse'
+components:
+  schemas:
+    connect-protocol-version:
+      type: number
+      title: Connect-Protocol-Version
+      enum:
+        - 1
+      description: Define the version of the Connect protocol
+      const: 1
+    connect-timeout-header:
+      type: number
+      title: Connect-Timeout-Ms
+      description: Define the timeout, in ms
+    connect.error:
+      type: object
+      properties:
+        code:
+          type: string
+          examples:
+            - not_found
+          enum:
+            - canceled
+            - unknown
+            - invalid_argument
+            - deadline_exceeded
+            - not_found
+            - already_exists
+            - permission_denied
+            - resource_exhausted
+            - failed_precondition
+            - aborted
+            - out_of_range
+            - unimplemented
+            - internal
+            - unavailable
+            - data_loss
+            - unauthenticated
+          description: The status code, which should be an enum value of [google.rpc.Code][google.rpc.Code].
+        message:
+          type: string
+          description: A developer-facing error message, which should be in English. Any user-facing error message should be localized and sent in the [google.rpc.Status.details][google.rpc.Status.details] field, or localized by the client.
+        details:
+          type: array
+          items:
+            $ref: '#/components/schemas/connect.error_details.Any'
+          description: A list of messages that carry the error details. There is no limit on the number of messages.
+      title: Connect Error
+      additionalProperties: true
+      description: 'Error type returned by Connect: https://connectrpc.com/docs/go/errors/#http-representation'
+    connect.error_details.Any:
+      type: object
+      properties:
+        type:
+          type: string
+          description: 'A URL that acts as a globally unique identifier for the type of the serialized message. For example: `type.googleapis.com/google.rpc.ErrorInfo`. This is used to determine the schema of the data in the `value` field and is the discriminator for the `debug` field.'
+        value:
+          type: string
+          format: binary
+          description: The Protobuf message, serialized as bytes and base64-encoded. The specific message type is identified by the `type` field.
+        debug:
+          oneOf:
+            - type: object
+              title: Any
+              additionalProperties: true
+              description: Detailed error information.
+          discriminator:
+            propertyName: type
+          title: Debug
+          description: Deserialized error detail payload. The 'type' field indicates the schema. This field is for easier debugging and should not be relied upon for application logic.
+      additionalProperties: true
+      description: Contains an arbitrary serialized message along with a @type that describes the type of the serialized message, with an additional debug field for ConnectRPC error details.
+    google.protobuf.Timestamp:
+      type: string
+      examples:
+        - "2023-01-15T01:30:15.01Z"
+        - "2024-12-25T12:00:00Z"
+      format: date-time
+      description: |-
+        A Timestamp represents a point in time independent of any time zone or local
+         calendar, encoded as a count of seconds and fractions of seconds at
+         nanosecond resolution. The count is relative to an epoch at UTC midnight on
+         January 1, 1970, in the proleptic Gregorian calendar which extends the
+         Gregorian calendar backwards to year one.
+
+         All minutes are 60 seconds long. Leap seconds are "smeared" so that no leap
+         second table is needed for interpretation, using a [24-hour linear
+         smear](https://developers.google.com/time/smear).
+
+         The range is from 0001-01-01T00:00:00Z to 9999-12-31T23:59:59.999999999Z. By
+         restricting to that range, we ensure that we can convert to and from [RFC
+         3339](https://www.ietf.org/rfc/rfc3339.txt) date strings.
+
+         # Examples
+
+         Example 1: Compute Timestamp from POSIX `time()`.
+
+             Timestamp timestamp;
+             timestamp.set_seconds(time(NULL));
+             timestamp.set_nanos(0);
+
+         Example 2: Compute Timestamp from POSIX `gettimeofday()`.
+
+             struct timeval tv;
+             gettimeofday(&tv, NULL);
+
+             Timestamp timestamp;
+             timestamp.set_seconds(tv.tv_sec);
+             timestamp.set_nanos(tv.tv_usec * 1000);
+
+         Example 3: Compute Timestamp from Win32 `GetSystemTimeAsFileTime()`.
+
+             FILETIME ft;
+             GetSystemTimeAsFileTime(&ft);
+             UINT64 ticks = (((UINT64)ft.dwHighDateTime) << 32) | ft.dwLowDateTime;
+
+             // A Windows tick is 100 nanoseconds. Windows epoch 1601-01-01T00:00:00Z
+             // is 11644473600 seconds before Unix epoch 1970-01-01T00:00:00Z.
+             Timestamp timestamp;
+             timestamp.set_seconds((INT64) ((ticks / 10000000) - 11644473600LL));
+             timestamp.set_nanos((INT32) ((ticks % 10000000) * 100));
+
+         Example 4: Compute Timestamp from Java `System.currentTimeMillis()`.
+
+             long millis = System.currentTimeMillis();
+
+             Timestamp timestamp = Timestamp.newBuilder().setSeconds(millis / 1000)
+                 .setNanos((int) ((millis % 1000) * 1000000)).build();
+
+         Example 5: Compute Timestamp from Java `Instant.now()`.
+
+             Instant now = Instant.now();
+
+             Timestamp timestamp =
+                 Timestamp.newBuilder().setSeconds(now.getEpochSecond())
+                     .setNanos(now.getNano()).build();
+
+         Example 6: Compute Timestamp from current time in Python.
+
+             timestamp = Timestamp()
+             timestamp.GetCurrentTime()
+
+         # JSON Mapping
+
+         In JSON format, the Timestamp type is encoded as a string in the
+         [RFC 3339](https://www.ietf.org/rfc/rfc3339.txt) format. That is, the
+         format is "{year}-{month}-{day}T{hour}:{min}:{sec}[.{frac_sec}]Z"
+         where {year} is always expressed using four digits while {month}, {day},
+         {hour}, {min}, and {sec} are zero-padded to two digits each. The fractional
+         seconds, which can go up to 9 digits (i.e. up to 1 nanosecond resolution),
+         are optional. The "Z" suffix indicates the timezone ("UTC"); the timezone
+         is required. A proto3 JSON serializer should always use UTC (as indicated by
+         "Z") when printing the Timestamp type and a proto3 JSON parser should be
+         able to accept both UTC and other timezones (as indicated by an offset).
+
+         For example, "2017-01-15T01:30:15.01Z" encodes 15.01 seconds past
+         01:30 UTC on January 15, 2017.
+
+         In JavaScript, one can convert a Date object to this format using the
+         standard
+         [toISOString()](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Date/toISOString)
+         method. In Python, a standard `datetime.datetime` object can be converted
+         to this format using
+         [`strftime`](https://docs.python.org/2/library/time.html#time.strftime) with
+         the time format spec '%Y-%m-%dT%H:%M:%S.%fZ'. Likewise, in Java, one can use
+         the Joda Time's [`ISODateTimeFormat.dateTime()`](
+         http://joda-time.sourceforge.net/apidocs/org/joda/time/format/ISODateTimeFormat.html#dateTime()
+         ) to obtain a formatter capable of generating timestamps in this format.
+    yasaku.v1.BatchItem:
+      type: object
+      properties:
+        kind:
+          type: string
+          title: kind
+          description: One of income, expense or transfer. A batch may not write the system kinds opening, adjustment_in or adjustment_out.
+        wallet:
+          type: string
+          title: wallet
+        toWallet:
+          type: string
+          title: to_wallet
+        amount:
+          title: amount
+          $ref: '#/components/schemas/yasaku.v1.Money'
+        category:
+          type: string
+          title: category
+        note:
+          type: string
+          title: note
+        occurredAt:
+          type: string
+          title: occurred_at
+        period:
+          type: string
+          title: period
+          description: Period ID from list_periods or current_period, never a period name. Empty means the period containing occurred_at.
+      title: BatchItem
+      additionalProperties: false
+      description: BatchItem is one row of a RecordBatch.
+    yasaku.v1.BatchOutcome:
+      type: object
+      properties:
+        index:
+          type: integer
+          title: index
+          format: int32
+        transaction:
+          title: transaction
+          $ref: '#/components/schemas/yasaku.v1.Transaction'
+        errorCode:
+          type: string
+          title: error_code
+        error:
+          type: string
+          title: error
+      title: BatchOutcome
+      additionalProperties: false
+      description: BatchOutcome is one row's result, keyed back to its index in the request.
+    yasaku.v1.Category:
+      type: object
+      properties:
+        id:
+          type: string
+          title: id
+        name:
+          type: string
+          title: name
+        kind:
+          type: string
+          title: kind
+          description: One of expense or income.
+        icon:
+          type: string
+          title: icon
+          description: One of utensils, bus, shopping-bag, receipt, smartphone, heart-pulse, house, clapperboard, graduation-cap, users, credit-card, hand-heart, circle-ellipsis, banknote, gift, briefcase, trending-up, laptop, wallet. May be empty.
+        color:
+          type: string
+          title: color
+          description: 'chart-1 through chart-5, or a #rrggbb hex value. May be empty.'
+        archived:
+          type: boolean
+          title: archived
+      title: Category
+      additionalProperties: false
+      description: Category classifies one direction of money movement; kind is immutable.
+    yasaku.v1.DeleteTransactionRequest:
+      type: object
+      properties:
+        target:
+          title: target
+          $ref: '#/components/schemas/yasaku.v1.Target'
+        id:
+          type: string
+          title: id
+        confirm:
+          type: boolean
+          title: confirm
+      title: DeleteTransactionRequest
+      additionalProperties: false
+    yasaku.v1.DeleteTransactionResponse:
+      type: object
+      properties:
+        needs:
+          title: needs
+          $ref: '#/components/schemas/yasaku.v1.Needs'
+        preview:
+          title: preview
+          description: The stored transaction that would be deleted, read at preview time; every field is the real row.
+          $ref: '#/components/schemas/yasaku.v1.Transaction'
+        result:
+          title: result
+          $ref: '#/components/schemas/yasaku.v1.Transaction'
+        warning:
+          type: string
+          title: warning
+      title: DeleteTransactionResponse
+      additionalProperties: false
+    yasaku.v1.ListTransactionsRequest:
+      type: object
+      properties:
+        target:
+          title: target
+          $ref: '#/components/schemas/yasaku.v1.Target'
+        wallet:
+          type: string
+          title: wallet
+        kind:
+          type: string
+          title: kind
+          description: One of income, expense, transfer, opening, adjustment_in or adjustment_out. Empty means every kind.
+        category:
+          type: string
+          title: category
+        period:
+          type: string
+          title: period
+          description: Period ID from list_periods or current_period, never a period name. Empty means every period.
+        limit:
+          type: integer
+          title: limit
+          format: int32
+          description: Defaults to 50, capped at 200.
+        cursor:
+          type: string
+          title: cursor
+      title: ListTransactionsRequest
+      additionalProperties: false
+    yasaku.v1.ListTransactionsResponse:
+      type: object
+      properties:
+        transactions:
+          type: array
+          items:
+            $ref: '#/components/schemas/yasaku.v1.Transaction'
+          title: transactions
+        nextCursor:
+          type: string
+          title: next_cursor
+        totalIn:
+          title: total_in
+          $ref: '#/components/schemas/yasaku.v1.Money'
+        totalOut:
+          title: total_out
+          $ref: '#/components/schemas/yasaku.v1.Money'
+      title: ListTransactionsResponse
+      additionalProperties: false
+      description: ListTransactionsResponse totals only the rows on this page, and only when they share one currency.
+    yasaku.v1.Money:
+      type: object
+      properties:
+        amount:
+          type: string
+          title: amount
+        currency:
+          type: string
+          title: currency
+      title: Money
+      additionalProperties: false
+      description: Money is a major-unit decimal string plus its ISO 4217 code, e.g. amount "40000" currency "IDR".
+    yasaku.v1.Need:
+      type: object
+      properties:
+        field:
+          type: string
+          title: field
+        reason:
+          type: string
+          title: reason
+        candidates:
+          type: array
+          items:
+            type: string
+          title: candidates
+      title: Need
+      additionalProperties: false
+      description: Need is one input a mutation could not resolve, with the choices that would resolve it.
+    yasaku.v1.Needs:
+      type: object
+      properties:
+        needs:
+          type: array
+          items:
+            $ref: '#/components/schemas/yasaku.v1.Need'
+          title: needs
+      title: Needs
+      additionalProperties: false
+      description: Needs is the set of unresolved inputs that stopped a mutation before it wrote anything.
+    yasaku.v1.RecordBatchRequest:
+      type: object
+      properties:
+        target:
+          title: target
+          $ref: '#/components/schemas/yasaku.v1.Target'
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/yasaku.v1.BatchItem'
+          title: items
+        confirm:
+          type: boolean
+          title: confirm
+      title: RecordBatchRequest
+      additionalProperties: false
+    yasaku.v1.RecordBatchResponse:
+      type: object
+      properties:
+        needs:
+          title: needs
+          $ref: '#/components/schemas/yasaku.v1.Needs'
+        preview:
+          type: array
+          items:
+            $ref: '#/components/schemas/yasaku.v1.BatchOutcome'
+          title: preview
+          description: 'One outcome per item in request order: each transaction is the resolved intent with no id and no created_at, and error_code names an item that would be refused.'
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/yasaku.v1.BatchOutcome'
+          title: results
+        warning:
+          type: string
+          title: warning
+      title: RecordBatchResponse
+      additionalProperties: false
+    yasaku.v1.RecordExpenseRequest:
+      type: object
+      properties:
+        target:
+          title: target
+          $ref: '#/components/schemas/yasaku.v1.Target'
+        wallet:
+          type: string
+          title: wallet
+        amount:
+          title: amount
+          $ref: '#/components/schemas/yasaku.v1.Money'
+        category:
+          type: string
+          title: category
+        note:
+          type: string
+          title: note
+        occurredAt:
+          type: string
+          title: occurred_at
+        period:
+          type: string
+          title: period
+          description: Period ID from list_periods or current_period, never a period name. Empty means the period containing occurred_at.
+        confirm:
+          type: boolean
+          title: confirm
+      title: RecordExpenseRequest
+      additionalProperties: false
+      description: RecordExpenseRequest addresses wallet and category by name or id; occurred_at is RFC3339 or YYYY-MM-DD and defaults to now.
+    yasaku.v1.RecordExpenseResponse:
+      type: object
+      properties:
+        needs:
+          title: needs
+          $ref: '#/components/schemas/yasaku.v1.Needs'
+        preview:
+          title: preview
+          description: 'The transaction as it would be saved: wallet, amount, category, period and occurred_at are resolved; id and created_at are empty.'
+          $ref: '#/components/schemas/yasaku.v1.Transaction'
+        result:
+          title: result
+          $ref: '#/components/schemas/yasaku.v1.Transaction'
+        warning:
+          type: string
+          title: warning
+      title: RecordExpenseResponse
+      additionalProperties: false
+    yasaku.v1.RecordIncomeRequest:
+      type: object
+      properties:
+        target:
+          title: target
+          $ref: '#/components/schemas/yasaku.v1.Target'
+        wallet:
+          type: string
+          title: wallet
+        amount:
+          title: amount
+          $ref: '#/components/schemas/yasaku.v1.Money'
+        category:
+          type: string
+          title: category
+        note:
+          type: string
+          title: note
+        occurredAt:
+          type: string
+          title: occurred_at
+        period:
+          type: string
+          title: period
+          description: Period ID from list_periods or current_period, never a period name. Empty means the period containing occurred_at.
+        confirm:
+          type: boolean
+          title: confirm
+      title: RecordIncomeRequest
+      additionalProperties: false
+      description: RecordIncomeRequest addresses wallet and category by name or id; occurred_at is RFC3339 or YYYY-MM-DD and defaults to now.
+    yasaku.v1.RecordIncomeResponse:
+      type: object
+      properties:
+        needs:
+          title: needs
+          $ref: '#/components/schemas/yasaku.v1.Needs'
+        preview:
+          title: preview
+          description: 'The transaction as it would be saved: wallet, amount, category, period and occurred_at are resolved; id and created_at are empty.'
+          $ref: '#/components/schemas/yasaku.v1.Transaction'
+        result:
+          title: result
+          $ref: '#/components/schemas/yasaku.v1.Transaction'
+        warning:
+          type: string
+          title: warning
+      title: RecordIncomeResponse
+      additionalProperties: false
+    yasaku.v1.RecordTransferRequest:
+      type: object
+      properties:
+        target:
+          title: target
+          $ref: '#/components/schemas/yasaku.v1.Target'
+        fromWallet:
+          type: string
+          title: from_wallet
+        toWallet:
+          type: string
+          title: to_wallet
+        amount:
+          title: amount
+          $ref: '#/components/schemas/yasaku.v1.Money'
+        note:
+          type: string
+          title: note
+        occurredAt:
+          type: string
+          title: occurred_at
+        period:
+          type: string
+          title: period
+          description: Period ID from list_periods or current_period, never a period name. Empty means the period containing occurred_at.
+        confirm:
+          type: boolean
+          title: confirm
+      title: RecordTransferRequest
+      additionalProperties: false
+      description: RecordTransferRequest addresses both wallets by name or id; occurred_at is RFC3339 or YYYY-MM-DD and defaults to now.
+    yasaku.v1.RecordTransferResponse:
+      type: object
+      properties:
+        needs:
+          title: needs
+          $ref: '#/components/schemas/yasaku.v1.Needs'
+        preview:
+          title: preview
+          description: 'The transfer as it would be saved: both wallets, amount, period and occurred_at are resolved; id and created_at are empty.'
+          $ref: '#/components/schemas/yasaku.v1.Transaction'
+        result:
+          title: result
+          $ref: '#/components/schemas/yasaku.v1.Transaction'
+        warning:
+          type: string
+          title: warning
+      title: RecordTransferResponse
+      additionalProperties: false
+    yasaku.v1.ReviseTransactionRequest:
+      type: object
+      properties:
+        target:
+          title: target
+          $ref: '#/components/schemas/yasaku.v1.Target'
+        id:
+          type: string
+          title: id
+        wallet:
+          type:
+            - string
+            - "null"
+          title: wallet
+        toWallet:
+          type:
+            - string
+            - "null"
+          title: to_wallet
+        amount:
+          title: amount
+          $ref: '#/components/schemas/yasaku.v1.Money'
+        category:
+          type:
+            - string
+            - "null"
+          title: category
+        note:
+          type:
+            - string
+            - "null"
+          title: note
+        occurredAt:
+          type:
+            - string
+            - "null"
+          title: occurred_at
+        period:
+          type:
+            - string
+            - "null"
+          title: period
+          description: Period ID from list_periods or current_period, never a period name. Absent leaves the period alone; it is re-derived when occurred_at moves.
+        confirm:
+          type: boolean
+          title: confirm
+      title: ReviseTransactionRequest
+      additionalProperties: false
+      description: ReviseTransactionRequest leaves every absent field unchanged; an empty category clears it.
+    yasaku.v1.ReviseTransactionResponse:
+      type: object
+      properties:
+        needs:
+          title: needs
+          $ref: '#/components/schemas/yasaku.v1.Needs'
+        preview:
+          title: preview
+          description: 'The stored transaction with the requested changes applied: id and created_at are the stored ones, every other field is the resolved intent.'
+          $ref: '#/components/schemas/yasaku.v1.Transaction'
+        result:
+          title: result
+          $ref: '#/components/schemas/yasaku.v1.Transaction'
+        warning:
+          type: string
+          title: warning
+      title: ReviseTransactionResponse
+      additionalProperties: false
+    yasaku.v1.SearchTransactionsRequest:
+      type: object
+      properties:
+        target:
+          title: target
+          $ref: '#/components/schemas/yasaku.v1.Target'
+        query:
+          type: string
+          title: query
+        from:
+          type: string
+          title: from
+        to:
+          type: string
+          title: to
+        limit:
+          type: integer
+          title: limit
+          format: int32
+          description: Defaults to 50, capped at 200.
+        cursor:
+          type: string
+          title: cursor
+      title: SearchTransactionsRequest
+      additionalProperties: false
+    yasaku.v1.SearchTransactionsResponse:
+      type: object
+      properties:
+        transactions:
+          type: array
+          items:
+            $ref: '#/components/schemas/yasaku.v1.Transaction'
+          title: transactions
+        nextCursor:
+          type: string
+          title: next_cursor
+        totalIn:
+          title: total_in
+          $ref: '#/components/schemas/yasaku.v1.Money'
+        totalOut:
+          title: total_out
+          $ref: '#/components/schemas/yasaku.v1.Money'
+      title: SearchTransactionsResponse
+      additionalProperties: false
+      description: SearchTransactionsResponse totals only the rows on this page, and only when they share one currency.
+    yasaku.v1.SuggestCategoryRequest:
+      type: object
+      properties:
+        target:
+          title: target
+          $ref: '#/components/schemas/yasaku.v1.Target'
+        note:
+          type: string
+          title: note
+      title: SuggestCategoryRequest
+      additionalProperties: false
+    yasaku.v1.SuggestCategoryResponse:
+      type: object
+      properties:
+        category:
+          title: category
+          $ref: '#/components/schemas/yasaku.v1.Category'
+        found:
+          type: boolean
+          title: found
+      title: SuggestCategoryResponse
+      additionalProperties: false
+    yasaku.v1.Target:
+      type: object
+      properties:
+        org:
+          type: string
+          title: org
+        project:
+          type: string
+          title: project
+      title: Target
+      additionalProperties: false
+      description: Target names the org and project a request acts on; both empty means the caller's only project.
+    yasaku.v1.Transaction:
+      type: object
+      properties:
+        id:
+          type: string
+          title: id
+        kind:
+          type: string
+          title: kind
+          description: One of income, expense, transfer, opening, adjustment_in, adjustment_out. The last three are written by the system and never accepted on a write.
+        wallet:
+          title: wallet
+          $ref: '#/components/schemas/yasaku.v1.WalletRef'
+        toWallet:
+          title: to_wallet
+          $ref: '#/components/schemas/yasaku.v1.WalletRef'
+        amount:
+          title: amount
+          $ref: '#/components/schemas/yasaku.v1.Money'
+        category:
+          title: category
+          $ref: '#/components/schemas/yasaku.v1.Category'
+        periodId:
+          type: string
+          title: period_id
+        periodName:
+          type: string
+          title: period_name
+        note:
+          type: string
+          title: note
+        occurredAt:
+          title: occurred_at
+          $ref: '#/components/schemas/google.protobuf.Timestamp'
+        createdAt:
+          title: created_at
+          $ref: '#/components/schemas/google.protobuf.Timestamp'
+      title: Transaction
+      additionalProperties: false
+      description: Transaction is one movement of money; amount is always positive and the direction comes from kind.
+    yasaku.v1.WalletRef:
+      type: object
+      properties:
+        id:
+          type: string
+          title: id
+        name:
+          type: string
+          title: name
+      title: WalletRef
+      additionalProperties: false
+      description: WalletRef names a wallet inside another record without repeating its row.
+security: []
+tags:
+  - name: yasaku.v1.TransactionService
+    description: TransactionService records, revises and reads the movements of money between wallets.

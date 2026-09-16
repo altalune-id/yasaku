@@ -1,0 +1,153 @@
+syntax = "proto3";
+
+package yasaku.v1;
+
+import "google/protobuf/timestamp.proto";
+import "yasaku/mcp/v1/annotations.proto";
+import "yasaku/v1/common.proto";
+
+option go_package = "altalune.id/yasaku/gen/go/yasaku/v1;yasakuv1";
+
+// PeriodService manages budget periods and the "tutup buku" close that freezes their totals.
+service PeriodService {
+  rpc GetCurrentPeriod(GetCurrentPeriodRequest) returns (GetCurrentPeriodResponse) {
+    option (yasaku.mcp.v1.tool) = {
+      name: "current_period"
+      description: "Periode berjalan beserta total sementaranya. The running snapshot is computed live and changes with every transaction until the period is closed."
+      access: ACCESS_READ
+    };
+  }
+  rpc ListPeriods(ListPeriodsRequest) returns (ListPeriodsResponse) {
+    option (yasaku.mcp.v1.tool) = {
+      name: "list_periods"
+      description: "Daftar periode, terbaru dulu. Use the returned id wherever another tool asks for a period. A closed period carries the snapshot frozen at its close; the current period has an empty end_date. Limit defaults to every period in the project."
+      access: ACCESS_READ
+    };
+  }
+  rpc PreviewClose(PreviewCloseRequest) returns (PreviewCloseResponse) {
+    option (yasaku.mcp.v1.tool) = {
+      name: "preview_close"
+      description: "Hitung apa yang akan dibekukan kalau periode ditutup pada tanggal tertentu, tanpa menyimpan apa pun. Period must be a period ID from list_periods or current_period, never a period name; leave it empty for the current period. The end date is YYYY-MM-DD and must be today or earlier."
+      access: ACCESS_READ
+    };
+  }
+  rpc ClosePeriod(ClosePeriodRequest) returns (ClosePeriodResponse) {
+    option (yasaku.mcp.v1.tool) = {
+      name: "close_period"
+      description: "Tutup buku: bekukan total periode dan buka periode berikutnya keesokan harinya. Period must be a period ID from list_periods or current_period, never a period name; leave it empty for the current period. The end date is YYYY-MM-DD and must be today or earlier. A closed period refuses new transactions until it is reopened. Call without confirm to preview the snapshot; call again with confirm=true to close. The preview is the resolved intent, not the frozen record: it is recomputed at close time, so a transaction landing in between changes the totals that are actually saved."
+      access: ACCESS_WRITE
+      mutation: true
+    };
+  }
+  rpc ReopenPeriod(ReopenPeriodRequest) returns (ReopenPeriodResponse) {
+    option (yasaku.mcp.v1.tool) = {
+      name: "reopen_period"
+      description: "Buka kembali periode yang paling terakhir ditutup supaya transaksinya bisa diperbaiki. Period must be a period ID from list_periods, never a period name. Only the latest closed period may be reopened, and its end date stays fixed. Call without confirm to preview; call again with confirm=true to reopen. The preview is the stored period read at preview time, so a concurrent close landing in between can change what is actually reopened."
+      access: ACCESS_WRITE
+      mutation: true
+    };
+  }
+  rpc RenamePeriod(RenamePeriodRequest) returns (RenamePeriodResponse);
+}
+
+// Period is one budget cycle; the current period is the one with an empty end_date.
+message Period {
+  string id = 1;
+  string name = 2;
+  string start_date = 3;
+  string end_date = 4;
+  // One of open or closed.
+  string status = 5;
+  google.protobuf.Timestamp closed_at = 6;
+  Snapshot snapshot = 7;
+}
+
+// Snapshot is a period's totals, frozen on close or computed live for the current period.
+message Snapshot {
+  Money income = 1;
+  Money expense = 2;
+  Money net = 3;
+  int32 tx_count = 4;
+  repeated WalletClosing wallets = 5;
+  google.protobuf.Timestamp computed_at = 6;
+}
+
+// WalletClosing is one wallet's balance at the moment the snapshot was taken.
+message WalletClosing {
+  WalletRef wallet = 1;
+  Money closing = 2;
+}
+
+message GetCurrentPeriodRequest {
+  Target target = 1;
+}
+
+message GetCurrentPeriodResponse {
+  Period period = 1;
+  Snapshot running = 2;
+}
+
+message ListPeriodsRequest {
+  Target target = 1;
+  int32 limit = 2;
+}
+
+message ListPeriodsResponse {
+  repeated Period periods = 1;
+}
+
+message PreviewCloseRequest {
+  Target target = 1;
+  // Period ID from list_periods or current_period, never a period name. Empty means the current period.
+  string period = 2;
+  // YYYY-MM-DD; must be today or earlier and not before the period start.
+  string end_date = 3;
+}
+
+message PreviewCloseResponse {
+  Snapshot snapshot = 1;
+  Period period = 2;
+}
+
+message ClosePeriodRequest {
+  Target target = 1;
+  // Period ID from list_periods or current_period, never a period name. Empty means the current period.
+  string period = 2;
+  // YYYY-MM-DD; must be today or earlier and not before the period start. On a reopened period it is fixed and must match the stored end date.
+  string end_date = 3;
+  bool confirm = 4;
+}
+
+message ClosePeriodResponse {
+  Needs needs = 1;
+  // The snapshot that would be frozen, computed live at preview time; its computed_at is the preview instant, not the close instant.
+  Snapshot preview = 2;
+  Period result = 3;
+  string warning = 4;
+}
+
+message ReopenPeriodRequest {
+  Target target = 1;
+  // Period ID from list_periods, never a period name.
+  string period = 2;
+  bool confirm = 3;
+}
+
+message ReopenPeriodResponse {
+  Needs needs = 1;
+  // The stored period that would be reopened, read at preview time; its status is still closed and its snapshot goes stale once it is reopened.
+  Period preview = 2;
+  Period result = 3;
+  string warning = 4;
+}
+
+message RenamePeriodRequest {
+  Target target = 1;
+  // Period ID from list_periods or current_period, never a period name.
+  string period = 2;
+  string name = 3;
+}
+
+message RenamePeriodResponse {
+  Period period = 1;
+}

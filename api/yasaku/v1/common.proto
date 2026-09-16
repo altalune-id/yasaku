@@ -1,0 +1,54 @@
+syntax = "proto3";
+
+package yasaku.v1;
+
+option go_package = "altalune.id/yasaku/gen/go/yasaku/v1;yasakuv1";
+
+// Target names the org and project a request acts on; both empty means the caller's only project.
+message Target {
+  string org = 1;
+  string project = 2;
+}
+
+// Money is a major-unit decimal string plus its ISO 4217 code, e.g. amount "40000" currency "IDR".
+message Money {
+  string amount = 1;
+  string currency = 2;
+}
+
+// Need is one input a mutation could not resolve, with the choices that would resolve it.
+message Need {
+  string field = 1;
+  string reason = 2;
+  repeated string candidates = 3;
+}
+
+// Needs is the set of unresolved inputs that stopped a mutation before it wrote anything.
+message Needs {
+  repeated Need needs = 1;
+}
+
+// WalletRef names a wallet inside another record without repeating its row.
+message WalletRef {
+  string id = 1;
+  string name = 2;
+}
+
+// CategoryRef names a category inside a report slice; an empty id is the uncategorized slice.
+message CategoryRef {
+  string id = 1;
+  string name = 2;
+  string icon = 3;
+  string color = 4;
+}
+
+// WalletLine is one wallet's movement across a period, or its live balance when the report is not period-keyed.
+message WalletLine {
+  WalletRef wallet = 1;
+  string kind = 2;
+  bool exclude_from_total = 3;
+  Money opening = 4;
+  Money in = 5;
+  Money out = 6;
+  Money closing = 7;
+}
