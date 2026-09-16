@@ -121,7 +121,9 @@ func TestPostgres_Wallet_RoundTrip(t *testing.T) {
 	archived, err := f.store.ByID(ctx, w.ID)
 	require.NoError(t, err)
 	require.NotNil(t, archived.ArchivedAt)
-	assert.True(t, archived.ArchivedAt.Equal(*w.ArchivedAt))
+	// NOTE: timestamptz is microsecond precision, and time.Now() carries nanoseconds on Linux.
+	assert.True(t, archived.ArchivedAt.Equal(w.ArchivedAt.Truncate(time.Microsecond)),
+		"ArchivedAt got=%v want=%v", archived.ArchivedAt, w.ArchivedAt.Truncate(time.Microsecond))
 
 	archived.Unarchive()
 	require.NoError(t, f.store.Save(ctx, archived))

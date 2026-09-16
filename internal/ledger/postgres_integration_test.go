@@ -124,7 +124,9 @@ func TestPostgres_Ledger_SaveAndByProject(t *testing.T) {
 	assert.Equal(t, "Asia/Tokyo", got.Timezone)
 	assert.Equal(t, money.Currency("USD"), got.Currency)
 	assert.Equal(t, 25, got.PeriodStartDay)
-	assert.True(t, got.UpdatedAt.Equal(want.UpdatedAt), "UpdatedAt got=%v want=%v", got.UpdatedAt, want.UpdatedAt)
+	// NOTE: timestamptz is microsecond precision, and time.Now() carries nanoseconds on Linux.
+	assert.True(t, got.UpdatedAt.Equal(want.UpdatedAt.Truncate(time.Microsecond)),
+		"UpdatedAt got=%v want=%v", got.UpdatedAt, want.UpdatedAt.Truncate(time.Microsecond))
 }
 
 func TestPostgres_Ledger_SaveIsUpsert(t *testing.T) {
@@ -196,8 +198,8 @@ func TestPostgres_Ledger_Save_CannotUpsertOntoAnotherOrgsRow(t *testing.T) {
 	assert.Equal(t, victim.Timezone, got.Timezone, "org A's row must be untouched")
 	assert.Equal(t, victim.Currency, got.Currency, "org A's row must be untouched")
 	assert.Equal(t, victim.PeriodStartDay, got.PeriodStartDay, "org A's row must be untouched")
-	assert.True(t, got.UpdatedAt.Equal(victim.UpdatedAt),
-		"org A's UpdatedAt must be untouched: got=%v want=%v", got.UpdatedAt, victim.UpdatedAt)
+	assert.True(t, got.UpdatedAt.Equal(victim.UpdatedAt.Truncate(time.Microsecond)),
+		"org A's UpdatedAt must be untouched: got=%v want=%v", got.UpdatedAt, victim.UpdatedAt.Truncate(time.Microsecond))
 
 	assert.Zero(t, pgRowCount(t, f, otherProj), "the refused upsert must not have inserted a row for org B either")
 }
