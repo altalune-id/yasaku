@@ -6,6 +6,8 @@ import (
 
 	"github.com/go-jet/jet/v2/postgres"
 	"github.com/google/uuid"
+
+	pgent "altalune.id/yasaku/internal/platform/db/entity/postgres"
 )
 
 func (s *postgresStore) Save(ctx context.Context, c *Category) error {
@@ -13,7 +15,7 @@ func (s *postgresStore) Save(ctx context.Context, c *Category) error {
 	if err != nil {
 		return err
 	}
-	archivedAt := postgres.TimestampzExp(postgres.NULL)
+	archivedAt := pgent.NullTimestampz()
 	if c.ArchivedAt != nil {
 		archivedAt = postgres.TimestampzT(c.ArchivedAt.UTC())
 	}

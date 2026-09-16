@@ -424,7 +424,7 @@ func sqliteNullableTimeArg(t *time.Time) any {
 
 func sqliteNullableTimeExpr(t *time.Time) sqlite.StringExpression {
 	if t == nil {
-		return sqlite.StringExp(sqlite.NULL)
+		return sqliteent.NullText()
 	}
 	return sqlite.String(sqliteent.SQLiteTime(*t))
 }

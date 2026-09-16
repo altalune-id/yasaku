@@ -8,6 +8,8 @@ import (
 
 	"github.com/go-jet/jet/v2/postgres"
 	"github.com/google/uuid"
+
+	pgent "altalune.id/yasaku/internal/platform/db/entity/postgres"
 )
 
 func (s *postgresStore) Save(ctx context.Context, u *User) error {
@@ -82,14 +84,14 @@ func (s *postgresStore) UpdateLocale(ctx context.Context, id uuid.UUID, locale s
 
 func nullableStringExpr(v string) postgres.StringExpression {
 	if v == "" {
-		return postgres.StringExp(postgres.NULL)
+		return pgent.NullText()
 	}
 	return postgres.String(v)
 }
 
 func nullableTimeExpr(t *time.Time) postgres.TimestampzExpression {
 	if t == nil {
-		return postgres.TimestampzExp(postgres.NULL)
+		return pgent.NullTimestampz()
 	}
 	return postgres.TimestampzT(t.UTC())
 }

@@ -108,14 +108,14 @@ func pgDate(d civil.Date) postgres.DateExpression { return postgres.Date(d.Year,
 
 func pgDatePtr(d *civil.Date) postgres.DateExpression {
 	if d == nil {
-		return postgres.DateExp(postgres.NULL)
+		return pgent.NullDate()
 	}
 	return pgDate(*d)
 }
 
 func pgTimePtr(t *time.Time) postgres.TimestampzExpression {
 	if t == nil {
-		return postgres.TimestampzExp(postgres.NULL)
+		return pgent.NullTimestampz()
 	}
 	return postgres.TimestampzT(t.UTC())
 }
@@ -123,7 +123,7 @@ func pgTimePtr(t *time.Time) postgres.TimestampzExpression {
 // NOTE: jet binds a string literal as text, which Postgres will not implicitly coerce into the JSONB column; the explicit cast is required.
 func pgJSON(js *string) postgres.StringExpression {
 	if js == nil {
-		return postgres.StringExp(postgres.CAST(postgres.NULL).AS("jsonb"))
+		return pgent.NullJSONB()
 	}
 	return postgres.StringExp(postgres.CAST(postgres.String(*js)).AS("jsonb"))
 }

@@ -151,7 +151,7 @@ func sqliteUUIDArg(id *uuid.UUID) any {
 
 func sqliteUUIDExpr(id *uuid.UUID) sqlite.StringExpression {
 	if id == nil {
-		return sqlite.StringExp(sqlite.NULL)
+		return sqliteent.NullText()
 	}
 	return sqlite.String(id.String())
 }

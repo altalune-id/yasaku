@@ -159,14 +159,14 @@ func parseSQLiteIDs(rawID, rawOrg, rawProject string) (id, orgID, projectID uuid
 
 func sqliteText(v *string) sqlite.StringExpression {
 	if v == nil {
-		return sqlite.StringExp(sqlite.NULL)
+		return sqliteent.NullText()
 	}
 	return sqlite.String(*v)
 }
 
 func sqliteDatePtr(d *civil.Date) sqlite.StringExpression {
 	if d == nil {
-		return sqlite.StringExp(sqlite.NULL)
+		return sqliteent.NullText()
 	}
 	s := d.String()
 	return sqlite.String(s)
@@ -174,7 +174,7 @@ func sqliteDatePtr(d *civil.Date) sqlite.StringExpression {
 
 func sqliteTimePtr(t *time.Time) sqlite.StringExpression {
 	if t == nil {
-		return sqlite.StringExp(sqlite.NULL)
+		return sqliteent.NullText()
 	}
 	return sqlite.String(sqliteent.SQLiteTime(*t))
 }

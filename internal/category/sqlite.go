@@ -118,7 +118,7 @@ func (s *sqliteStore) endTx(tx *sql.Tx, owned bool, err error) error {
 
 func (s *sqliteStore) archivedAtExpr(c *Category) sqlite.StringExpression {
 	if c.ArchivedAt == nil {
-		return sqlite.StringExp(sqlite.NULL)
+		return sqliteent.NullText()
 	}
 	return sqlite.String(sqliteent.SQLiteTime(*c.ArchivedAt))
 }
