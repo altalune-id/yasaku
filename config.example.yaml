@@ -143,6 +143,14 @@ mail:
     # env: ALT_MAIL_SMTP_USER
     user: ""
 
+mcp:
+  # [bootstrap] env: ALT_MCP_AUDIENCE
+  audience: ""
+  # env: ALT_MCP_AUDIENCE_OVERRIDE
+  audienceOverride: ""
+  # [bootstrap] env: ALT_MCP_ENABLED
+  enabled: false
+
 # [required, bootstrap] env: ALT_MODE
 mode: selfhosted
 

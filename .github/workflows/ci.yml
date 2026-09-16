@@ -157,6 +157,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+      # protoc-gen-yasaku-mcp is a local `go tool` plugin buf invokes during generate.
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
       - uses: pnpm/action-setup@v5
         with:
           version: 11.7.0

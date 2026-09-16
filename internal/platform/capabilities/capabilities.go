@@ -15,6 +15,7 @@ type Capabilities struct {
 	OrgCreation        bool
 	InvitesEnabled     bool
 	APIEnabled         bool
+	MCPEnabled         bool
 	TokenAuth          bool
 	MailEnabled        bool
 	OnboardingRequired bool
@@ -34,6 +35,7 @@ func From(c *config.Config) Capabilities {
 		OIDCButtonLabel:   c.OIDC.ButtonLabel,
 		OIDCButtonLogoURL: c.OIDC.ButtonLogoURL,
 		APIEnabled:        c.API.Enabled,
+		MCPEnabled:        c.MCP.Enabled,
 		TokenAuth:         c.Tokens.Issuer != "",
 		MailEnabled:       c.Mail.Driver != "" && (c.Mail.Driver != "console" || c.Mail.SMTP.Host != ""),
 		IsProduction:      c.Mode.IsProduction(),

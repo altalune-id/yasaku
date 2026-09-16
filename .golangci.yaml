@@ -114,6 +114,9 @@ linters:
             # internal/cli holds Cobra command files whose names collide with the
             # domain globs above (cli/todo.go, cli/auth.go, …); they are interfaces.
             - "!**/internal/cli/*.go"
+            # internal/mcp is the MCP transport surface, not a domain; its auth.go and
+            # errors.go collide with the domain globs above.
+            - "!**/internal/mcp/*.go"
             # TODO: auth.go imports platform/session for session.Principal. Define a
             # local principal type in the auth domain and drop the platform import,
             # then remove this exclusion.
@@ -176,6 +179,7 @@ linters:
           list-mode: strict
           files:
             - "**/mcp/*.go"
+            - "!**/internal/mcp/*.go"
             - "!**/mcp/*_test.go"
           allow:
             - $gostd
@@ -231,6 +235,7 @@ linters:
             - "**/civil/*.go"
             - "**/money/*.go"
             - "**/mcp/*.go"
+            - "!**/internal/mcp/*.go"
             - "**/opensheet/*.go"
           deny:
             - pkg: "altalune.id/yasaku/internal"

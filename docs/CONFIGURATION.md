@@ -156,6 +156,40 @@ Rotating the key does not corrupt anything: rows sealed with the old key stop
 opening, so their holders are signed out and the `session-sweep` job reaps the
 rows at expiry.
 
+## MCP
+
+| Key                    | Default         | Awareness   | Meaning                                                                                 |
+| ---------------------- | --------------- | ----------- | --------------------------------------------------------------------------------------- |
+| `mcp.enabled`          | `false`         | `bootstrap` | Mounts the MCP endpoint at `<basePath>/mcp` and its protected-resource metadata.        |
+| `mcp.audience`         | `MCPEndpoint()` | `bootstrap` | RFC 8707 resource identifier bearer tokens must name; defaults to the mounted endpoint. |
+| `mcp.audienceOverride` | `false`         | `-`         | Allows `mcp.audience` to differ from the mounted endpoint.                              |
+
+`mcp.enabled=true` requires `tokens.issuer` (`ALT_TOKENS_ISSUER`): MCP callers
+authenticate with a bearer token from that issuer, never with a session cookie.
+
+`mcp.audience` defaults to `strings.TrimRight(http.baseURL, "/") + http.basePath
+
+- "/mcp"`and must stay an absolute, fragment-free`http(s)`URL. MCP clients
+read it from the protected-resource metadata and request a token for exactly
+that resource, so an audience naming anything else silently breaks every client.
+Boot refuses the mismatch unless`mcp.audienceOverride=true`, which exists for
+the one real case: a proxy that terminates on a different public URL than
+`http.baseURL` describes.
+
+The MCP surface verifies tokens with its **own** verifier, built from
+`tokens.*` but with `mcp.audience` as the audience — the Connect API keeps
+`tokens.audience`. A token minted for the API is therefore refused by MCP, and
+the reverse. Discovery against `tokens.issuer` runs at boot, so an unreachable
+issuer fails startup while `mcp.enabled` is true.
+
+Metadata is served unauthenticated at both
+`/.well-known/oauth-protected-resource` and
+`/.well-known/oauth-protected-resource<basePath>/mcp` (RFC 9728 §3.1 inserts
+the resource path), on the outer mux alongside `/healthz`. A request with no
+usable bearer token gets `401` with
+`WWW-Authenticate: Bearer resource_metadata="<baseURL>/.well-known/oauth-protected-resource<basePath>/mcp"`,
+which is how a client discovers the authorization server.
+
 ## Validation
 
 `config.Validate()` runs on every boot with specific messages

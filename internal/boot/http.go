@@ -22,7 +22,28 @@ import (
 )
 
 func buildAPIHandler(cfg *config.Config, k *platform.Kernel, s *Services) (*api.Server, http.Handler) {
-	srv := api.New(cfg, k, s.Auth, s.Users, s.Orgs, s.Projects, s.Todos, s.Invites, s.TodoStore, s.Posts, s.Categories, s.Tags)
+	srv := api.New(cfg, k, api.Deps{
+		Auths:     s.Auth,
+		Users:     s.Users,
+		UserStore: s.UserStore,
+		Orgs:      s.Orgs,
+		Projects:  s.Projects,
+		Todos:     s.Todos,
+		TodoStore: s.TodoStore,
+		Invites:   s.Invites,
+
+		Posts:    s.Posts,
+		BlogCats: s.Categories,
+		Tags:     s.Tags,
+
+		Ledgers:      s.Ledgers,
+		Wallets:      s.Wallets,
+		WalletOpen:   s.WalletOpen,
+		TxCategories: s.TxCategories,
+		Periods:      s.Periods,
+		Transactions: s.Transactions,
+		Reports:      s.Reports,
+	})
 	if !cfg.API.Enabled {
 		return srv, nil
 	}
@@ -42,6 +63,7 @@ type webHandlerDeps struct {
 	SetupToken string
 	APIHandler http.Handler
 	MCPHandler http.Handler
+	WellKnown  map[string]http.Handler
 	Bundle     *i18npkg.Bundle
 	DefaultLoc i18npkg.Locale
 }
@@ -77,6 +99,7 @@ func buildWebHandler(d webHandlerDeps) http.Handler {
 		},
 		APIHandler: d.APIHandler,
 		MCPHandler: d.MCPHandler,
+		WellKnown:  d.WellKnown,
 		RobotsCfg:  &struct{ RobotsTxt string }{RobotsTxt: cfg.HTTP.RobotsTxt},
 		Middlewares: []web.Middleware{
 			webmw.RequestID,
