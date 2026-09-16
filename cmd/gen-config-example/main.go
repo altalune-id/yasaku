@@ -71,7 +71,7 @@ func main() {
 }
 
 func generate(format string) string {
-	keys := config.WalkEnvKeys("ALT")
+	keys := config.WalkEnvKeys(config.EnvPrefix)
 
 	var bootstrap, runtime []config.EnvKey
 	for _, k := range keys {
@@ -333,7 +333,7 @@ func yamlHeader() string {
 # DO NOT edit by hand. Run ` + "`go tool gen-config-example --format=yaml`" + ` to regenerate.
 #
 # Copy to config.yaml, uncomment what you need to set, and pass ` + "`-c config.yaml`" + `.
-# Every field maps to an env var (shown as ` + "`env: ALT_*`" + ` in the per-field comment).
+# Every field maps to an env var (shown as ` + "`env: YASAKU_*`" + ` in the per-field comment).
 # Env vars override YAML.
 #
 # Awareness markers (in [brackets] on the per-field comment):

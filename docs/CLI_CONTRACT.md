@@ -25,7 +25,7 @@ yasaku [global flags] <command> [subcommand] [args] [flags]
     - `--scheduler-only` — run only the periodic-job runner plus a
       health-endpoint listener. No web UI, no API.
   - The two are mutually exclusive; passing both is a usage error (`64`).
-  - Everything else comes from `-c`/`--config` and the `ALT_*` env vars.
+  - Everything else comes from `-c`/`--config` and the `YASAKU_*` env vars.
 
 - `yasaku scheduler list`
 
@@ -272,21 +272,21 @@ yasaku [global flags] <command> [subcommand] [args] [flags]
 
 ## Global flags (persistent on root)
 
-| Flag               | Env              | Default                          | Purpose                                            |
-| ------------------ | ---------------- | -------------------------------- | -------------------------------------------------- |
-| `-c, --config`     | `ALT_CONFIG`     | —                                | Config file (yaml).                                |
-| `--token`          | `ALT_TOKEN`      | —                                | Bearer token (opaque).                             |
-| `--token-file`     | `ALT_TOKEN_FILE` | —                                | Path to file containing bearer token (0600 mode).  |
-| `--output`         | `ALT_OUTPUT`     | auto (text on TTY, json off-TTY) | Output format: `text` \| `json` \| `ndjson`.       |
-| `--org`            | `ALT_ORG`        | —                                | Override active org (slug).                        |
-| `--project`        | `ALT_PROJECT`    | —                                | Override active project (slug).                    |
-| `--no-interactive` | —                | `false`                          | Never prompt; fail if a prompt would be needed.    |
-| `--log-level`      | `ALT_LOG_LEVEL`  | `info`                           | Log level: `debug` \| `info` \| `warn` \| `error`. |
-| `--log-format`     | `ALT_LOG_FORMAT` | `json`                           | Log format: `json` \| `text`.                      |
+| Flag               | Env                 | Default                          | Purpose                                            |
+| ------------------ | ------------------- | -------------------------------- | -------------------------------------------------- |
+| `-c, --config`     | `YASAKU_CONFIG`     | —                                | Config file (yaml).                                |
+| `--token`          | `YASAKU_TOKEN`      | —                                | Bearer token (opaque).                             |
+| `--token-file`     | `YASAKU_TOKEN_FILE` | —                                | Path to file containing bearer token (0600 mode).  |
+| `--output`         | `YASAKU_OUTPUT`     | auto (text on TTY, json off-TTY) | Output format: `text` \| `json` \| `ndjson`.       |
+| `--org`            | `YASAKU_ORG`        | —                                | Override active org (slug).                        |
+| `--project`        | `YASAKU_PROJECT`    | —                                | Override active project (slug).                    |
+| `--no-interactive` | —                   | `false`                          | Never prompt; fail if a prompt would be needed.    |
+| `--log-level`      | `YASAKU_LOG_LEVEL`  | `info`                           | Log level: `debug` \| `info` \| `warn` \| `error`. |
+| `--log-format`     | `YASAKU_LOG_FORMAT` | `json`                           | Log format: `json` \| `text`.                      |
 
 ## Token precedence
 
-`--token` > `ALT_TOKEN` > `--token-file` > `ALT_TOKEN_FILE` > `~/.yasaku/session.json` > interactive login.
+`--token` > `YASAKU_TOKEN` > `--token-file` > `YASAKU_TOKEN_FILE` > `~/.yasaku/session.json` > interactive login.
 
 An invalid `--token` errors out (exit `2`). It does NOT fall back to
 lower-precedence sources.

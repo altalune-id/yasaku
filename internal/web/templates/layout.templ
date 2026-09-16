@@ -22,7 +22,7 @@ templ Layout(d web.LayoutData) {
 				<script src={ d.Static("htmx.min.js") } defer></script>
 			} else {
 				@tailwindThemeBridge()
-				<!-- CDN mode is for local dev only; the Tailwind CDN prints a production warning. For prod deploys, vendor assets via `scripts/ui-vendor.sh` and set ALT_UI_MODE=vendored. -->
+				<!-- CDN mode is for local dev only; the Tailwind CDN prints a production warning. For prod deploys, vendor assets via `scripts/ui-vendor.sh` and set YASAKU_UI_MODE=vendored. -->
 				<script src="https://cdn.tailwindcss.com"></script>
 				<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/basecoat-css@latest/dist/basecoat.min.css"/>
 				<script src="https://unpkg.com/htmx.org@2" defer></script>

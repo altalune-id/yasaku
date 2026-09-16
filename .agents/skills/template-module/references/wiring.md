@@ -47,7 +47,7 @@ A new config key is a field on the relevant struct in `internal/platform/config/
 `required`, `secret`, `bootstrap`, `mode:<x>`.
 
 Env binding is reflective over the `mapstructure` tags, so a new field is picked up
-automatically as `ALT_<SECTION>_<FIELD>`. Verify the generated name rather than assuming.
+automatically as `YASAKU_<SECTION>_<FIELD>`. Verify the generated name rather than assuming.
 
 Cross-field rules go in `validateInvariants` as a small named function each, with an actionable
 message naming the env var. **Add new validators last** in their chain — putting one first

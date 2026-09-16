@@ -2,16 +2,16 @@
 
 ## Precedence
 
-`defaults <- config.yaml <- ALT_* env`. Env always wins. Nested keys map
+`defaults <- config.yaml <- YASAKU_* env`. Env always wins. Nested keys map
 by dot notation with dots → underscores:
 
-| YAML                              | Env var                              |
-| --------------------------------- | ------------------------------------ |
-| `mode: cloud`                     | `ALT_MODE=cloud`                     |
-| `db.driver: postgres`             | `ALT_DB_DRIVER=postgres`             |
-| `http.basePath: /yasaku`          | `ALT_HTTP_BASE_PATH=/yasaku`         |
-| `tokens.audience: urn:yasaku:api` | `ALT_TOKENS_AUDIENCE=urn:yasaku:api` |
-| `tenant.singletonOrg.slug: main`  | `ALT_TENANT_SINGLETON_ORG_SLUG=main` |
+| YAML                              | Env var                                 |
+| --------------------------------- | --------------------------------------- |
+| `mode: cloud`                     | `YASAKU_MODE=cloud`                     |
+| `db.driver: postgres`             | `YASAKU_DB_DRIVER=postgres`             |
+| `http.basePath: /yasaku`          | `YASAKU_HTTP_BASE_PATH=/yasaku`         |
+| `tokens.audience: urn:yasaku:api` | `YASAKU_TOKENS_AUDIENCE=urn:yasaku:api` |
+| `tenant.singletonOrg.slug: main`  | `YASAKU_TENANT_SINGLETON_ORG_SLUG=main` |
 
 `config.example.yaml` and `.env.example` are generated from struct tags
 in `internal/platform/config`. After editing those, run `make config-examples`.
@@ -29,13 +29,13 @@ Every `.env.example` field carries a marker in `[brackets]`:
 
 ## Modes
 
-| Property             | `selfhosted`           | `cloud`                                              |
-| -------------------- | ---------------------- | ---------------------------------------------------- |
-| DB driver            | `sqlite` or `postgres` | `postgres` only                                      |
-| OIDC identity        | optional               | required (`issuer` + `clientID` + `clientSecret`)    |
-| Local password login | on by default          | off; set `ALT_GENESIS_BREAK_GLASS=true` to re-enable |
-| Org creation from UI | disabled               | enabled                                              |
-| Public signup        | disabled               | enabled                                              |
+| Property             | `selfhosted`           | `cloud`                                                 |
+| -------------------- | ---------------------- | ------------------------------------------------------- |
+| DB driver            | `sqlite` or `postgres` | `postgres` only                                         |
+| OIDC identity        | optional               | required (`issuer` + `clientID` + `clientSecret`)       |
+| Local password login | on by default          | off; set `YASAKU_GENESIS_BREAK_GLASS=true` to re-enable |
+| Org creation from UI | disabled               | enabled                                                 |
+| Public signup        | disabled               | enabled                                                 |
 
 Onboarding and admin bootstrap differ by _identity mechanism_, not by mode.
 Mode only decides which mechanisms are enabled.
@@ -61,9 +61,9 @@ genesis.email empty?                → nothing to reconcile
 The first org, its owner membership and the bootstrap row are created on
 first login or through `/onboard` — not at boot. `orgs.created_by` is
 `NOT NULL REFERENCES users(id)`, so there is no org to create until a user
-exists. Seeds use `ALT_TENANT_SINGLETON_ORG_SLUG` (default `default`),
-`ALT_TENANT_SINGLETON_ORG_NAME` (default `Default Organization`), and
-`ALT_TENANT_PERSONAL_PROJECT_SLUG` (default `default`).
+exists. Seeds use `YASAKU_TENANT_SINGLETON_ORG_SLUG` (default `default`),
+`YASAKU_TENANT_SINGLETON_ORG_NAME` (default `Default Organization`), and
+`YASAKU_TENANT_PERSONAL_PROJECT_SLUG` (default `default`).
 
 **Changing `genesis.email` after boot** takes effect on the next boot: the
 claim is re-evaluated every time, so a typo is corrected by fixing the env
@@ -77,14 +77,14 @@ app. This is why `genesis.email` is not a `bootstrap` value.
 boot: setup required — open this one-time onboarding URL url=https://host/onboard?token=<token>
 ```
 
-Pin it with `ALT_ONBOARD_SETUP_TOKEN` for automated installs; a pinned token
+Pin it with `YASAKU_ONBOARD_SETUP_TOKEN` for automated installs; a pinned token
 is never echoed to the logs. Local path (email + password + org + project →
 dashboard) is available when `caps.LocalIdentity` is on; OIDC path when
 `caps.ExternalIdentity` is on. Cloud shows only OIDC by default; selfhosted
 shows both.
 
-**Cloud + genesis + break-glass** — setting `ALT_GENESIS_EMAIL` +
-`ALT_GENESIS_PASSWORD` in cloud requires `ALT_GENESIS_BREAK_GLASS=true`.
+**Cloud + genesis + break-glass** — setting `YASAKU_GENESIS_EMAIL` +
+`YASAKU_GENESIS_PASSWORD` in cloud requires `YASAKU_GENESIS_BREAK_GLASS=true`.
 Without it, boot fails loud: the local login form is hidden in cloud, so
 the genesis user would be unreachable via the UI.
 
@@ -149,7 +149,7 @@ the process but not across a restart, and boot says so:
 
 ```
 security.encryptionKey is empty — using an ephemeral key; sessions will not
-survive a restart; set ALT_SECURITY_ENCRYPTION_KEY to persist them
+survive a restart; set YASAKU_SECURITY_ENCRYPTION_KEY to persist them
 ```
 
 Rotating the key does not corrupt anything: rows sealed with the old key stop
@@ -164,7 +164,7 @@ rows at expiry.
 | `mcp.audience`         | `MCPEndpoint()` | `bootstrap` | RFC 8707 resource identifier bearer tokens must name; defaults to the mounted endpoint. |
 | `mcp.audienceOverride` | `false`         | `-`         | Allows `mcp.audience` to differ from the mounted endpoint.                              |
 
-`mcp.enabled=true` requires `tokens.issuer` (`ALT_TOKENS_ISSUER`): MCP callers
+`mcp.enabled=true` requires `tokens.issuer` (`YASAKU_TOKENS_ISSUER`): MCP callers
 authenticate with a bearer token from that issuer, never with a session cookie.
 
 `mcp.audience` defaults to `strings.TrimRight(http.baseURL, "/") + http.basePath

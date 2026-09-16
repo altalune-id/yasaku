@@ -14,17 +14,17 @@ func TestEnvVarName(t *testing.T) {
 	tests := []struct {
 		key, want string
 	}{
-		{"http.addr", "ALT_HTTP_ADDR"},
-		{"http.baseURL", "ALT_HTTP_BASE_URL"},
-		{"telemetry.otlp.endpoint", "ALT_TELEMETRY_OTLP_ENDPOINT"},
-		{"tokens.jwksURL", "ALT_TOKENS_JWKS_URL"},
-		{"db.autoMigrate", "ALT_DB_AUTO_MIGRATE"},
-		{"db.AutoMigrate", "ALT_DB_AUTO_MIGRATE"},
-		{"api.openapi.requireBasicAuth", "ALT_API_OPENAPI_REQUIRE_BASIC_AUTH"},
-		{"observability.reporter.minSeverity", "ALT_OBSERVABILITY_REPORTER_MIN_SEVERITY"},
+		{"http.addr", "YASAKU_HTTP_ADDR"},
+		{"http.baseURL", "YASAKU_HTTP_BASE_URL"},
+		{"telemetry.otlp.endpoint", "YASAKU_TELEMETRY_OTLP_ENDPOINT"},
+		{"tokens.jwksURL", "YASAKU_TOKENS_JWKS_URL"},
+		{"db.autoMigrate", "YASAKU_DB_AUTO_MIGRATE"},
+		{"db.AutoMigrate", "YASAKU_DB_AUTO_MIGRATE"},
+		{"api.openapi.requireBasicAuth", "YASAKU_API_OPENAPI_REQUIRE_BASIC_AUTH"},
+		{"observability.reporter.minSeverity", "YASAKU_OBSERVABILITY_REPORTER_MIN_SEVERITY"},
 	}
 	for _, tc := range tests {
-		got := envVarName("ALT", tc.key)
+		got := envVarName(EnvPrefix, tc.key)
 		if got != tc.want {
 			t.Errorf("envVarName(%q): want %q, got %q", tc.key, tc.want, got)
 		}
@@ -33,9 +33,9 @@ func TestEnvVarName(t *testing.T) {
 
 func TestLoad_NestedEnvOverride_OTLPEndpoint(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
-	t.Setenv("ALT_TELEMETRY_OTLP_ENDPOINT", "http://collector:4318")
-	t.Setenv("ALT_GENESIS_EMAIL", "root@example.com")
-	t.Setenv("ALT_GENESIS_PASSWORD", "x")
+	t.Setenv("YASAKU_TELEMETRY_OTLP_ENDPOINT", "http://collector:4318")
+	t.Setenv("YASAKU_GENESIS_EMAIL", "root@example.com")
+	t.Setenv("YASAKU_GENESIS_PASSWORD", "x")
 
 	dir := t.TempDir()
 	old, _ := os.Getwd()
@@ -55,11 +55,11 @@ func TestLoad_NestedEnvOverride_OTLPEndpoint(t *testing.T) {
 
 func TestLoad_TypedEnvConversions(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
-	t.Setenv("ALT_GENESIS_EMAIL", "root@example.com")
-	t.Setenv("ALT_GENESIS_PASSWORD", "x")
-	t.Setenv("ALT_DB_AUTO_MIGRATE", "false")
-	t.Setenv("ALT_OIDC_REDIRECT_PORT", "8123")
-	t.Setenv("ALT_TOKENS_CLOCK_SKEW", "45s")
+	t.Setenv("YASAKU_GENESIS_EMAIL", "root@example.com")
+	t.Setenv("YASAKU_GENESIS_PASSWORD", "x")
+	t.Setenv("YASAKU_DB_AUTO_MIGRATE", "false")
+	t.Setenv("YASAKU_OIDC_REDIRECT_PORT", "8123")
+	t.Setenv("YASAKU_TOKENS_CLOCK_SKEW", "45s")
 
 	dir := t.TempDir()
 	old, _ := os.Getwd()
@@ -84,7 +84,7 @@ func TestLoad_TypedEnvConversions(t *testing.T) {
 }
 
 func TestWalkEnvKeys_IncludesKnownLeaves(t *testing.T) {
-	keys := WalkEnvKeys("ALT")
+	keys := WalkEnvKeys(EnvPrefix)
 
 	byEnv := map[string]EnvKey{}
 	for _, k := range keys {
@@ -94,14 +94,14 @@ func TestWalkEnvKeys_IncludesKnownLeaves(t *testing.T) {
 	expect := []struct {
 		env, yaml, kind string
 	}{
-		{"ALT_MODE", "mode", "string"},
-		{"ALT_HTTP_ADDR", "http.addr", "string"},
-		{"ALT_HTTP_BASE_URL", "http.baseURL", "string"},
-		{"ALT_HTTP_STATE_SECRET", "http.stateSecret", "string"},
-		{"ALT_TELEMETRY_OTLP_ENDPOINT", "telemetry.otlp.endpoint", "string"},
-		{"ALT_TOKENS_CLOCK_SKEW", "tokens.clockSkew", "duration"},
-		{"ALT_TOKENS_SUPPORTED_ALGS", "tokens.supportedAlgs", "[]string"},
-		{"ALT_OIDC_REDIRECT_PORT", "oidc.redirectPort", "int"},
+		{"YASAKU_MODE", "mode", "string"},
+		{"YASAKU_HTTP_ADDR", "http.addr", "string"},
+		{"YASAKU_HTTP_BASE_URL", "http.baseURL", "string"},
+		{"YASAKU_HTTP_STATE_SECRET", "http.stateSecret", "string"},
+		{"YASAKU_TELEMETRY_OTLP_ENDPOINT", "telemetry.otlp.endpoint", "string"},
+		{"YASAKU_TOKENS_CLOCK_SKEW", "tokens.clockSkew", "duration"},
+		{"YASAKU_TOKENS_SUPPORTED_ALGS", "tokens.supportedAlgs", "[]string"},
+		{"YASAKU_OIDC_REDIRECT_PORT", "oidc.redirectPort", "int"},
 	}
 	for _, want := range expect {
 		got, ok := byEnv[want.env]
@@ -119,7 +119,7 @@ func TestWalkEnvKeys_IncludesKnownLeaves(t *testing.T) {
 }
 
 func TestWalkEnvKeys_Defaults(t *testing.T) {
-	keys := WalkEnvKeys("ALT")
+	keys := WalkEnvKeys(EnvPrefix)
 	byEnv := map[string]EnvKey{}
 	for _, k := range keys {
 		byEnv[k.Key] = k
@@ -128,10 +128,10 @@ func TestWalkEnvKeys_Defaults(t *testing.T) {
 	withDefaults := []struct {
 		env, want string
 	}{
-		{"ALT_HTTP_ADDR", ":5150"},
-		{"ALT_DB_DRIVER", "sqlite"},
-		{"ALT_LOG_LEVEL", "info"},
-		{"ALT_TOKENS_AUDIENCE", "urn:yasaku:api"},
+		{"YASAKU_HTTP_ADDR", ":5150"},
+		{"YASAKU_DB_DRIVER", "sqlite"},
+		{"YASAKU_LOG_LEVEL", "info"},
+		{"YASAKU_TOKENS_AUDIENCE", "urn:yasaku:api"},
 	}
 	for _, tc := range withDefaults {
 		got, ok := byEnv[tc.env]
@@ -149,10 +149,10 @@ func TestWalkEnvKeys_Defaults(t *testing.T) {
 	}
 
 	withoutDefaults := []string{
-		"ALT_HTTP_STATE_SECRET",
-		"ALT_TELEMETRY_OTLP_ENDPOINT",
-		"ALT_OIDC_ISSUER",
-		"ALT_MAIL_SMTP_PASS",
+		"YASAKU_HTTP_STATE_SECRET",
+		"YASAKU_TELEMETRY_OTLP_ENDPOINT",
+		"YASAKU_OIDC_ISSUER",
+		"YASAKU_MAIL_SMTP_PASS",
 	}
 	for _, env := range withoutDefaults {
 		got, ok := byEnv[env]
@@ -196,7 +196,7 @@ func TestEnvKey_FormatDefault_TypeCoverage(t *testing.T) {
 }
 
 func TestWalkEnvKeys_Awareness(t *testing.T) {
-	keys := WalkEnvKeys("ALT")
+	keys := WalkEnvKeys(EnvPrefix)
 	byEnv := map[string]EnvKey{}
 	for _, k := range keys {
 		byEnv[k.Key] = k
@@ -207,13 +207,13 @@ func TestWalkEnvKeys_Awareness(t *testing.T) {
 		mustHave  []string
 		mustMatch []string
 	}{
-		{env: "ALT_HTTP_STATE_SECRET", mustHave: []string{"required", "secret", "bootstrap"}},
-		{env: "ALT_DB_DSN", mustHave: []string{"required", "secret"}},
-		{env: "ALT_DB_DRIVER", mustHave: []string{"required", "bootstrap"}},
-		{env: "ALT_OIDC_CLIENT_SECRET", mustHave: []string{"required", "mode:cloud", "secret"}},
-		{env: "ALT_ONBOARD_SETUP_TOKEN", mustHave: []string{"secret"}},
-		{env: "ALT_GENESIS_PASSWORD", mustHave: []string{"bootstrap", "secret"}},
-		{env: "ALT_MAIL_SMTP_PASS", mustHave: []string{"secret"}},
+		{env: "YASAKU_HTTP_STATE_SECRET", mustHave: []string{"required", "secret", "bootstrap"}},
+		{env: "YASAKU_DB_DSN", mustHave: []string{"required", "secret"}},
+		{env: "YASAKU_DB_DRIVER", mustHave: []string{"required", "bootstrap"}},
+		{env: "YASAKU_OIDC_CLIENT_SECRET", mustHave: []string{"required", "mode:cloud", "secret"}},
+		{env: "YASAKU_ONBOARD_SETUP_TOKEN", mustHave: []string{"secret"}},
+		{env: "YASAKU_GENESIS_PASSWORD", mustHave: []string{"bootstrap", "secret"}},
+		{env: "YASAKU_MAIL_SMTP_PASS", mustHave: []string{"secret"}},
 	}
 	for _, tc := range tests {
 		got, ok := byEnv[tc.env]
@@ -241,14 +241,14 @@ func TestLoad_RequireFile_PathProvided(t *testing.T) {
 
 func TestWalkEnvKeys_SkipsStructValuedMapsOnly(t *testing.T) {
 	byEnv := map[string]struct{}{}
-	for _, k := range WalkEnvKeys("ALT") {
+	for _, k := range WalkEnvKeys(EnvPrefix) {
 		byEnv[k.Key] = struct{}{}
 	}
-	_, hasSchedulerJobs := byEnv["ALT_SCHEDULER_JOBS"]
+	_, hasSchedulerJobs := byEnv["YASAKU_SCHEDULER_JOBS"]
 	require.False(t, hasSchedulerJobs,
 		"struct-valued map config is not env-addressable and must not appear in .env.example")
 
-	_, hasTelemetryHeaders := byEnv["ALT_TELEMETRY_OTLP_HEADERS"]
+	_, hasTelemetryHeaders := byEnv["YASAKU_TELEMETRY_OTLP_HEADERS"]
 	require.True(t, hasTelemetryHeaders,
 		"scalar-valued map config is env-addressable and must still appear in .env.example")
 }
@@ -277,7 +277,7 @@ func TestLoad_SchemaDefaultAndOptOut(t *testing.T) {
 		t.Errorf("default schema = %q, want public", cfg.DB.Schema)
 	}
 
-	t.Setenv("ALT_DB_SCHEMA", "")
+	t.Setenv("YASAKU_DB_SCHEMA", "")
 	envCfg, err := Load("")
 	if err != nil {
 		t.Fatal(err)

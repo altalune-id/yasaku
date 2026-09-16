@@ -49,9 +49,9 @@ const (
 	UIModeVendored UIMode = "vendored"
 )
 
-// ResolveUIMode reads ALT_UI_MODE; "vendored" flips to vendored, otherwise CDN.
+// ResolveUIMode reads YASAKU_UI_MODE; "vendored" flips to vendored, otherwise CDN.
 func ResolveUIMode() UIMode {
-	if os.Getenv("ALT_UI_MODE") == string(UIModeVendored) {
+	if os.Getenv("YASAKU_UI_MODE") == string(UIModeVendored) {
 		return UIModeVendored
 	}
 	return UIModeCDN

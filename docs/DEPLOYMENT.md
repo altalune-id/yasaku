@@ -7,8 +7,8 @@ Single container (SQLite in the image):
 ```bash
 make docker
 docker run --rm -p 5150:5150 \
-  -e ALT_DB_DRIVER=sqlite -e ALT_DB_DSN=/data/yasaku.db \
-  -e ALT_GENESIS_EMAIL=admin@local -e ALT_GENESIS_PASSWORD=change-me \
+  -e YASAKU_DB_DRIVER=sqlite -e YASAKU_DB_DSN=/data/yasaku.db \
+  -e YASAKU_GENESIS_EMAIL=admin@local -e YASAKU_GENESIS_PASSWORD=change-me \
   -v yasaku-data:/data yasaku:dev
 ```
 
@@ -44,14 +44,14 @@ make compose-nuke        # stop + wipe docker/data/pg
 ```
 
 Postgres data lives at `./docker/data/pg` (bind-mounted, `.gitignore`d).
-The stack runs `selfhosted` with `ALT_DB_ALLOW_BYPASS_RLS=true` (RLS off)
+The stack runs `selfhosted` with `YASAKU_DB_ALLOW_BYPASS_RLS=true` (RLS off)
 and Mailpit's open SMTP — production settings go under `mail.smtp.*` (or
 `mail.resend.*` with `mail.driver=resend`) and the three-role split below.
 
 ## Postgres roles
 
-**Dev**: point `ALT_DB_DSN` at any role (superuser is fine) and set
-`ALT_DB_ALLOW_BYPASS_RLS=true`. RLS is off.
+**Dev**: point `YASAKU_DB_DSN` at any role (superuser is fine) and set
+`YASAKU_DB_ALLOW_BYPASS_RLS=true`. RLS is off.
 
 **Production** — role graph provisioned via `scripts/db/provision.sh`:
 
@@ -68,10 +68,10 @@ APP=yasaku DB_NAME=yasaku scripts/db/provision.sh
 Then set:
 
 ```
-ALT_DB_DSN=postgres://yasaku_service:<svc-pw>@host:5432/yasaku?sslmode=require
-ALT_DB_MIGRATOR_DSN=postgres://yasaku_migrator:<mig-pw>@host:5432/yasaku?sslmode=require
-ALT_DB_MIGRATOR_ROLE=yasaku_owner
-ALT_DB_ALLOW_BYPASS_RLS=false
+YASAKU_DB_DSN=postgres://yasaku_service:<svc-pw>@host:5432/yasaku?sslmode=require
+YASAKU_DB_MIGRATOR_DSN=postgres://yasaku_migrator:<mig-pw>@host:5432/yasaku?sslmode=require
+YASAKU_DB_MIGRATOR_ROLE=yasaku_owner
+YASAKU_DB_ALLOW_BYPASS_RLS=false
 ```
 
 `db.migrator.role` is the sole source of the migration role; `db.role` applies only to runtime
@@ -102,7 +102,7 @@ names the `ALTER ROLE` that fixes it.
 ## Reader replica
 
 `db.Pool{W, R}` wraps writer + reader. SQLite always aliases `R` to `W`.
-For Postgres, `ALT_DB_READER_DSN` routes non-tenant reads (`users`,
+For Postgres, `YASAKU_DB_READER_DSN` routes non-tenant reads (`users`,
 `onboard`) to a replica; empty aliases to `W`. Tenant-scoped reads run
 on `W` — `BeginTenanted` requires a tx on the primary for `set_config`.
 
@@ -204,7 +204,7 @@ job, so `/readyz` stays DB-aware in both shapes.
 
 ## Observability
 
-- **Traces** — `ALT_OBSERVABILITY_OTEL_ENDPOINT` → OTLP collector.
+- **Traces** — `YASAKU_OBSERVABILITY_OTEL_ENDPOINT` → OTLP collector.
   HTTP, Connect, workers, DB spans all propagate via `context.Context`.
 - **Metrics** — Prometheus at `basePath + /metrics`; gate with
   `api.metrics.requireBasicAuth` when the scrape target isn't private.

@@ -169,7 +169,7 @@ func Layout(d web.LayoutData) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, " <!-- CDN mode is for local dev only; the Tailwind CDN prints a production warning. For prod deploys, vendor assets via `scripts/ui-vendor.sh` and set ALT_UI_MODE=vendored. --> <script src=\"https://cdn.tailwindcss.com\"></script> <link rel=\"stylesheet\" href=\"https://cdn.jsdelivr.net/npm/basecoat-css@latest/dist/basecoat.min.css\"><script src=\"https://unpkg.com/htmx.org@2\" defer></script>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, " <!-- CDN mode is for local dev only; the Tailwind CDN prints a production warning. For prod deploys, vendor assets via `scripts/ui-vendor.sh` and set YASAKU_UI_MODE=vendored. --> <script src=\"https://cdn.tailwindcss.com\"></script> <link rel=\"stylesheet\" href=\"https://cdn.jsdelivr.net/npm/basecoat-css@latest/dist/basecoat.min.css\"><script src=\"https://unpkg.com/htmx.org@2\" defer></script>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

@@ -41,14 +41,14 @@ PORT=$(pick_port) || { echo "no free port"; exit 1; }
 ADDR="127.0.0.1:${PORT}"
 
 # Fresh SQLite file + isolated session path so we never touch ~/.yasaku.
-export ALT_DB_DRIVER=sqlite
-export ALT_DB_DSN="${tmpdir}/yasaku.db"
-export ALT_DB_AUTO_MIGRATE=true
-export ALT_HTTP_ADDR="$ADDR"
-export ALT_SESSION_PATH="${tmpdir}/session.json"
-export ALT_MAIL_DRIVER=console
-export ALT_GENESIS_EMAIL="admin@yasaku.local"
-export ALT_GENESIS_PASSWORD="change-me"
+export YASAKU_DB_DRIVER=sqlite
+export YASAKU_DB_DSN="${tmpdir}/yasaku.db"
+export YASAKU_DB_AUTO_MIGRATE=true
+export YASAKU_HTTP_ADDR="$ADDR"
+export YASAKU_SESSION_PATH="${tmpdir}/session.json"
+export YASAKU_MAIL_DRIVER=console
+export YASAKU_GENESIS_EMAIL="admin@yasaku.local"
+export YASAKU_GENESIS_PASSWORD="change-me"
 
 logfile="${tmpdir}/serve.log"
 

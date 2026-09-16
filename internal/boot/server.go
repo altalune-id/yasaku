@@ -402,7 +402,7 @@ func resolveStateSecret(cfg *config.Config, log *slog.Logger) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("mint ephemeral state secret: %w", err)
 	}
-	log.Warn("http.stateSecret is empty — using an ephemeral secret; set ALT_HTTP_STATE_SECRET to persist")
+	log.Warn("http.stateSecret is empty — using an ephemeral secret; set YASAKU_HTTP_STATE_SECRET to persist")
 	return ephemeral, nil
 }
 

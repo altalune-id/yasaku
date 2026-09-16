@@ -47,7 +47,7 @@ func (s *Service) Send(ctx context.Context, req SendRequest) (*Invite, error) {
 	ctx, span := tracer.Start(ctx, "invite.Send")
 	defer span.End()
 	if !s.enabled {
-		return nil, &InvitesDisabledError{Reason: "invites require OIDC in selfhosted mode; set ALT_OIDC_ISSUER to enable"}
+		return nil, &InvitesDisabledError{Reason: "invites require OIDC in selfhosted mode; set YASAKU_OIDC_ISSUER to enable"}
 	}
 	return s.send.Execute(ctx, req)
 }

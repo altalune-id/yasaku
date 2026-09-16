@@ -16,7 +16,7 @@ Local binary (SQLite, single genesis admin):
 
 ```bash
 make build
-ALT_GENESIS_EMAIL=admin@local ALT_GENESIS_PASSWORD=change-me ./bin/yasaku serve
+YASAKU_GENESIS_EMAIL=admin@local YASAKU_GENESIS_PASSWORD=change-me ./bin/yasaku serve
 # open http://127.0.0.1:5150/login
 ```
 
