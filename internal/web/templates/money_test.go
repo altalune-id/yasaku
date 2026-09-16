@@ -3,6 +3,8 @@ package templates
 import (
 	"testing"
 
+	"golang.org/x/text/language"
+
 	"altalune.id/yasaku/internal/i18n"
 	"altalune.id/yasaku/internal/web"
 	"altalune.id/yasaku/money"
@@ -19,13 +21,35 @@ func TestMoney(t *testing.T) {
 		{"idr id-ID", "id-ID", money.New(4000000, money.IDR), "Rp40.000"},
 		{"usd id-ID", "id-ID", money.New(123456, "USD"), "$1.234,56"},
 		{"empty locale falls back", "", money.New(4000000, money.IDR), "Rp40,000"},
-		{"unparseable locale falls back", "not-a-locale", money.New(4000000, money.IDR), "Rp40,000"},
+		{"unknown but well-formed locale", "not-a-locale", money.New(4000000, money.IDR), "Rp40,000"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			d := web.LayoutData{Locale: i18n.Locale(tt.locale)}
 			if got := Money(d, tt.amount); got != tt.want {
 				t.Fatalf("Money() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// NOTE: the root locale formats these amounts identically to en-US, so only the tag is falsifiable.
+func TestLocaleTag_FallsBackToAmericanEnglish(t *testing.T) {
+	tests := []struct {
+		name   string
+		locale string
+		want   language.Tag
+	}{
+		{"empty", "", language.AmericanEnglish},
+		{"malformed", "!!", language.AmericanEnglish},
+		{"unassigned region", "zz", language.AmericanEnglish},
+		{"known locale is kept", "id-ID", language.MustParse("id-ID")},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := localeTag(web.LayoutData{Locale: i18n.Locale(tt.locale)})
+			if got != tt.want {
+				t.Fatalf("localeTag(%q) = %s, want %s", tt.locale, got, tt.want)
 			}
 		})
 	}

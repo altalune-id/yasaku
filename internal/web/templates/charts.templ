@@ -15,6 +15,6 @@ templ chartAssets(d web.LayoutData) {
 
 // Chart renders a container plus its JSON payload; charts.js draws it.
 templ Chart(id, kind, payload, class string) {
-	<div id={ id } data-chart={ kind } class={ "min-h-64 w-full " + class }></div>
+	<div id={ id } data-chart={ kind } class={ "min-h-[16rem] w-full " + class }></div>
 	@chartPayloadScript(id, payload)
 }

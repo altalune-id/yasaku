@@ -57,7 +57,7 @@ mkdir -p "$ROOT/bin"
 fetch "https://github.com/tailwindlabs/tailwindcss/releases/download/${TAILWIND_VERSION}/tailwindcss-${OSNAME}-${ARCH}" "$TW_BIN"
 chmod +x "$TW_BIN"
 
-# Minimal source with @tailwind directives — content sniffing scans .templ files.
+# Minimal source with @tailwind directives — content sniffing scans .templ and static .js files.
 SRC="$STATIC/app.tailwind.css"
 if [ ! -f "$SRC" ]; then
 	cat > "$SRC" <<'EOF'
@@ -71,7 +71,7 @@ fi
 "$TW_BIN" \
 	-i "$SRC" \
 	-o "$STATIC/app.css" \
-	--content "$ROOT/internal/web/templates/*.templ" \
+	--content "$ROOT/internal/web/templates/*.templ" --content "$ROOT/internal/web/static/*.js" \
 	--minify
 
 echo "==> done — vendored assets in $STATIC"

@@ -52,7 +52,7 @@ func TestChart(t *testing.T) {
 	for _, want := range []string{
 		`id="spend-by-category"`,
 		`data-chart="donut"`,
-		`class="min-h-64 w-full h-72"`,
+		`class="min-h-[16rem] w-full h-72"`,
 		`<script type="application/json" data-chart-for="spend-by-category">`,
 		`"name":"Food"`,
 		`"value":4000000`,

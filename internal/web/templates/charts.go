@@ -10,7 +10,7 @@ import (
 	"github.com/a-h/templ"
 )
 
-// jsonScriptEscaper keeps a payload from closing its own <script> element; the sequences stay valid JSON.
+// SECURITY: keeps a payload from closing its own <script> element; the sequences stay valid JSON.
 var jsonScriptEscaper = strings.NewReplacer( //nolint:gochecknoglobals // immutable replacer
 	"<", `\u003c`,
 	">", `\u003e`,

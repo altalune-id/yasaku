@@ -113,7 +113,7 @@ func Chart(id, kind, payload, class string) templ.Component {
 			templ_7745c5c3_Var5 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		var templ_7745c5c3_Var6 = []any{"min-h-64 w-full " + class}
+		var templ_7745c5c3_Var6 = []any{"min-h-[16rem] w-full " + class}
 		templ_7745c5c3_Err = templ.RenderCSSItems(ctx, templ_7745c5c3_Buffer, templ_7745c5c3_Var6...)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err

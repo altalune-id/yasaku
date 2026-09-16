@@ -1,12 +1,22 @@
-/* charts.js — draws each <div data-chart="donut|bars|sankey"> from the
-   <script type="application/json" data-chart-for="<id>"> that follows it. */
 (function () {
 	'use strict';
 
+	if (window.__yasakuCharts) return;
+	window.__yasakuCharts = 1;
+
 	var DONUT_SLOTS = ['--chart-1', '--chart-4', '--chart-2', '--chart-5', '--chart-3'];
 	var FALLBACK_SLOT = '--muted-foreground';
+	var ENTITIES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 	var instances = [];
 	var resizeQueued = false;
+
+	// SECURITY: echarts assigns a string tooltip formatter's return value to innerHTML, so every
+	// payload-derived value (category, wallet and period names are user input) must be escaped here.
+	function esc(v) {
+		return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) {
+			return ENTITIES[c];
+		});
+	}
 
 	function token(name) {
 		var raw = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -33,6 +43,10 @@
 		return i < t.series.length ? t.series[i] : t.fallback;
 	}
 
+	function nodeColor(t, i) {
+		return t.series.length ? t.series[i % t.series.length] : t.fallback;
+	}
+
 	function reducedMotion() {
 		return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 	}
@@ -46,7 +60,8 @@
 		var symbol = (unit && unit.symbol) || '';
 		var nf = new Intl.NumberFormat(lang(), { notation: 'compact', maximumFractionDigits: 1 });
 		return function (v) {
-			return symbol + nf.format(v / divisor);
+			var sign = v < 0 ? '\u2212' : '';
+			return sign + symbol + nf.format(Math.abs(v) / divisor);
 		};
 	}
 
@@ -79,7 +94,7 @@
 	function emptyState(el, message) {
 		el.textContent = '';
 		var p = document.createElement('p');
-		p.className = 'flex h-full min-h-64 items-center justify-center text-sm text-muted-foreground';
+		p.className = 'flex h-full min-h-[16rem] items-center justify-center text-sm text-muted-foreground';
 		p.textContent = message || '';
 		el.appendChild(p);
 	}
@@ -110,7 +125,7 @@
 			tooltip: Object.assign(baseTooltip(t), {
 				formatter: function (params) {
 					var v = params.data.formatted || params.value;
-					return params.name + '<br/><b>' + v + '</b> (' + params.percent + '%)';
+					return esc(params.name) + '<br/><b>' + esc(v) + '</b> (' + esc(params.percent) + '%)';
 				},
 			}),
 			legend: {
@@ -165,11 +180,10 @@
 				axisPointer: { type: 'shadow' },
 				formatter: function (params) {
 					var keys = ['income', 'expense', 'net'];
-					var out = params.length ? params[0].axisValue : '';
-					params.forEach(function (s, i) {
-						var series = fmt[keys[s.seriesIndex]] || fmt[keys[i]];
-						var v = at(series, s.dataIndex);
-						out += '<br/>' + s.marker + s.seriesName + ' <b>' + (v === null ? s.value : v) + '</b>';
+					var out = params.length ? esc(params[0].axisValue) : '';
+					params.forEach(function (s) {
+						var v = at(fmt[keys[s.seriesIndex]], s.dataIndex);
+						out += '<br/>' + s.marker + esc(s.seriesName) + ' <b>' + esc(v === null ? s.value : v) + '</b>';
 					});
 					return out;
 				},
@@ -211,7 +225,7 @@
 
 	function sankeyOption(p, t) {
 		var nodes = (p.nodes || p.data || []).map(function (n, i) {
-			return { name: n.name, itemStyle: { color: n.color || seriesColor(t, i) } };
+			return { name: n.name, itemStyle: { color: n.color || nodeColor(t, i) } };
 		});
 		var links = (p.links || []).map(function (l) {
 			return {
@@ -228,9 +242,9 @@
 				formatter: function (params) {
 					if (params.dataType === 'edge') {
 						var v = params.data.formatted || params.value;
-						return params.data.source + ' → ' + params.data.target + '<br/><b>' + v + '</b>';
+						return esc(params.data.source) + ' → ' + esc(params.data.target) + '<br/><b>' + esc(v) + '</b>';
 					}
-					return params.name;
+					return esc(params.name);
 				},
 			}),
 			series: [
@@ -296,6 +310,14 @@
 			return true;
 		});
 		document.querySelectorAll('[data-chart]').forEach(render);
+		instances = instances.filter(function (c) {
+			if (c.isDisposed()) return false;
+			if (!c.getDom().isConnected) {
+				c.dispose();
+				return false;
+			}
+			return true;
+		});
 	}
 
 	function resizeAll() {
