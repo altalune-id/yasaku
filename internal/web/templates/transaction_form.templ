@@ -1,0 +1,291 @@
+package templates
+
+import (
+	"altalune.id/yasaku/internal/web"
+	"altalune.id/yasaku/internal/web/icons"
+	"altalune.id/yasaku/money"
+)
+
+// TxWalletOption is one wallet in the quick-add wallet picker.
+type TxWalletOption struct {
+	ID       string
+	Name     string
+	Balance  money.Amount
+	Selected bool
+}
+
+// TxCategoryOption is one category chip in the quick-add form.
+type TxCategoryOption struct {
+	ID        string
+	Name      string
+	Icon      string
+	Kind      string
+	Selected  bool
+	Suggested bool
+}
+
+// TxPeriodOption is one selectable budget period on the quick-add form.
+type TxPeriodOption struct {
+	ID       string
+	Label    string
+	Selected bool
+}
+
+// TxFormView is the quick-add and edit form: one amount, one kind, one wallet, one date, one note.
+type TxFormView struct {
+	ProjectSlug string
+	ID          string
+	Kind        string
+	Amount      string
+	WalletID    string
+	ToWalletID  string
+	CategoryID  string
+	PeriodID    string
+	Date        string
+	Yesterday   string
+	Note        string
+	Wallets     []TxWalletOption
+	Categories  []TxCategoryOption
+	Periods     []TxPeriodOption
+	Symbol      string
+	Group       bool
+	Recent      bool
+	Error       string
+	ErrorCode   string
+}
+
+// TransactionForm is the single-submit quick-add card, shared by the overview and the transactions pages.
+templ TransactionForm(d web.LayoutData, v TxFormView) {
+	<form
+		id="tx-quick-add"
+		method="post"
+		action={ templ.SafeURL(txFormAction(d, v)) }
+		hx-post={ txFormAction(d, v) }
+		hx-target="#tx-list"
+		hx-swap="outerHTML"
+		hx-on::after-request="if(event.detail.successful && !event.detail.xhr.responseText.includes('data-tx-error')) { this.querySelector('[name=amount]').value=''; this.querySelector('[name=note]').value=''; this.querySelector('[name=amount]').focus(); }"
+		class="rounded-xl border border-border bg-card p-4 shadow-sm"
+	>
+		if v.Error != "" {
+			<div data-tx-error="1">
+				@ErrorBanner(d, v.Error, v.ErrorCode)
+			</div>
+		}
+		if v.Recent {
+			<input type="hidden" name="list" value="recent"/>
+		}
+		<label for="tx-amount" class="block text-xs font-medium text-muted-foreground">{ d.Tr("tx.amount") }</label>
+		<div class="mt-1 flex items-baseline gap-2">
+			<span class="text-xl font-medium text-muted-foreground">{ v.Symbol }</span>
+			<input
+				id="tx-amount"
+				name="amount"
+				type="text"
+				inputmode="numeric"
+				autocomplete="off"
+				autofocus
+				required
+				pattern="[0-9.,]*"
+				value={ v.Amount }
+				placeholder="0"
+				data-tx-group={ txBoolAttr(v.Group) }
+				class="w-full min-w-0 border-0 bg-transparent p-0 text-3xl font-semibold tabular-nums text-foreground tracking-tight placeholder:text-muted-foreground/40 focus:outline-none focus:ring-0"
+			/>
+		</div>
+		<fieldset class="mt-4">
+			<legend class="sr-only">{ d.Tr("tx.kind") }</legend>
+			<div class="grid grid-cols-3 gap-1 rounded-lg bg-muted p-1" role="group">
+				@txKindPill(d, v, "expense", "tx.kind_expense")
+				@txKindPill(d, v, "income", "tx.kind_income")
+				@txKindPill(d, v, "transfer", "tx.kind_transfer")
+			</div>
+		</fieldset>
+		<div class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+			<div>
+				<label for="tx-wallet" class="block text-xs font-medium text-muted-foreground">{ txWalletLabel(d, v) }</label>
+				<select id="tx-wallet" name="wallet_id" required class={ txControlClass }>
+					for _, w := range v.Wallets {
+						<option value={ w.ID } selected?={ w.Selected }>{ txWalletLabelFor(d, w) }</option>
+					}
+				</select>
+			</div>
+			<div data-tx-to-wallet class={ "transition", templ.KV("hidden", v.Kind != "transfer") }>
+				<label for="tx-to-wallet" class="block text-xs font-medium text-muted-foreground">{ d.Tr("tx.to_wallet") }</label>
+				<select id="tx-to-wallet" name="to_wallet_id" class={ txControlClass }>
+					<option value="">—</option>
+					for _, w := range v.Wallets {
+						<option value={ w.ID } selected?={ w.ID == v.ToWalletID }>{ w.Name }</option>
+					}
+				</select>
+			</div>
+		</div>
+		<div class="mt-3">
+			<label for="tx-date" class="block text-xs font-medium text-muted-foreground">{ d.Tr("tx.date") }</label>
+			<div class="mt-1 flex items-center gap-2">
+				<input id="tx-date" name="date" type="date" value={ v.Date } required class={ txControlClass, "mt-0 flex-1" }/>
+				<button
+					type="button"
+					data-tx-yesterday={ v.Yesterday }
+					class="shrink-0 rounded-md border border-border px-3 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+				>
+					{ d.Tr("tx.yesterday") }
+				</button>
+			</div>
+		</div>
+		<div class="mt-3">
+			<label for="tx-note" class="block text-xs font-medium text-muted-foreground">{ d.Tr("tx.note") }</label>
+			<input
+				id="tx-note"
+				name="note"
+				type="text"
+				autocomplete="off"
+				value={ v.Note }
+				maxlength="500"
+				hx-post={ d.ProjectPath(v.ProjectSlug, "/transactions/suggest") }
+				hx-trigger="blur changed"
+				hx-target="#tx-category"
+				hx-swap="outerHTML"
+				hx-include="[name='kind'],[name='category_id']"
+				class={ txControlClass }
+			/>
+		</div>
+		@TxCategoryChips(d, v)
+		if len(v.Periods) > 1 {
+			<div class="mt-3">
+				<label for="tx-period" class="block text-xs font-medium text-muted-foreground">{ d.Tr("tx.period") }</label>
+				<select id="tx-period" name="period_id" class={ txControlClass }>
+					<option value="">{ d.Tr("tx.period_auto") }</option>
+					for _, p := range v.Periods {
+						<option value={ p.ID } selected?={ p.Selected }>{ p.Label }</option>
+					}
+				</select>
+			</div>
+		}
+		<button
+			type="submit"
+			class="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+		>
+			@icons.Icon("circle-plus", "h-4 w-4")
+			{ d.Tr("tx.save") }
+		</button>
+		@txFormAssets()
+	</form>
+}
+
+// TxCategoryChips is the swap target the note field's suggestion request replaces.
+templ TxCategoryChips(d web.LayoutData, v TxFormView) {
+	<div id="tx-category" class={ "mt-3", templ.KV("hidden", v.Kind == "transfer") }>
+		<span class="block text-xs font-medium text-muted-foreground">{ d.Tr("tx.category") }</span>
+		<div class="mt-1.5 flex flex-wrap gap-1.5">
+			<label class="cursor-pointer">
+				<input type="radio" name="category_id" value="" checked?={ v.CategoryID == "" } class="peer sr-only"/>
+				<span class={ txChipClass }>{ d.Tr("tx.category_none") }</span>
+			</label>
+			for _, c := range v.Categories {
+				if c.Kind == v.Kind {
+					<label class="cursor-pointer">
+						<input type="radio" name="category_id" value={ c.ID } checked?={ c.Selected } class="peer sr-only"/>
+						<span class={ txChipClass }>
+							if c.Icon != "" {
+								@icons.Icon(c.Icon, "h-3.5 w-3.5")
+							}
+							{ c.Name }
+							if c.Suggested {
+								<span class="ms-1 text-[10px] uppercase tracking-wide opacity-70">{ d.Tr("tx.category_suggested") }</span>
+							}
+						</span>
+					</label>
+				}
+			}
+		</div>
+	</div>
+}
+
+templ txKindPill(d web.LayoutData, v TxFormView, kind, key string) {
+	<label class="cursor-pointer">
+		<input
+			type="radio"
+			name="kind"
+			value={ kind }
+			checked?={ v.Kind == kind }
+			class="peer sr-only"
+			data-tx-kind={ kind }
+		/>
+		<span class="flex items-center justify-center rounded-md px-3 py-2 text-sm font-medium text-muted-foreground peer-checked:bg-card peer-checked:text-foreground peer-checked:shadow-sm">
+			{ d.Tr(key) }
+		</span>
+	</label>
+}
+
+// txFormAssets groups the amount input's thousands separator, the transfer toggle and the "Kemarin" shortcut.
+templ txFormAssets() {
+	<script>
+	(function () {
+		const form = document.currentScript && document.currentScript.closest("form");
+		if (!form || form.dataset.txWired === "1") return;
+		form.dataset.txWired = "1";
+
+		const amount = form.querySelector("[name=amount]");
+		if (amount && amount.dataset.txGroup === "1") {
+			const group = () => {
+				const digits = amount.value.replace(/\D/g, "");
+				amount.value = digits === "" ? "" : digits.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+			};
+			amount.addEventListener("input", group);
+			group();
+		}
+
+		const to = form.querySelector("[data-tx-to-wallet]");
+		const chips = form.querySelector("#tx-category");
+		const sync = () => {
+			const kind = form.querySelector("[name=kind]:checked");
+			const transfer = kind && kind.value === "transfer";
+			if (to) to.classList.toggle("hidden", !transfer);
+			if (chips) chips.classList.toggle("hidden", transfer);
+		};
+		form.querySelectorAll("[data-tx-kind]").forEach((el) => el.addEventListener("change", sync));
+		sync();
+
+		const yesterday = form.querySelector("[data-tx-yesterday]");
+		const date = form.querySelector("[name=date]");
+		if (yesterday && date) {
+			yesterday.addEventListener("click", () => {
+				date.value = yesterday.dataset.txYesterday;
+				date.dispatchEvent(new Event("change", { bubbles: true }));
+			});
+		}
+	})();
+	</script>
+}
+
+const txControlClass = "mt-1 w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground shadow-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring"
+
+const txChipClass = "inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-xs text-muted-foreground peer-checked:border-primary peer-checked:bg-primary/10 peer-checked:text-foreground peer-focus-visible:ring-2 peer-focus-visible:ring-ring"
+
+func txFormAction(d web.LayoutData, v TxFormView) string {
+	if v.ID == "" {
+		return d.ProjectPath(v.ProjectSlug, "/transactions")
+	}
+	return d.ProjectPath(v.ProjectSlug, "/transactions/"+v.ID)
+}
+
+func txWalletLabel(d web.LayoutData, v TxFormView) string {
+	if v.Kind == "transfer" {
+		return d.Tr("tx.from_wallet")
+	}
+	return d.Tr("tx.wallet")
+}
+
+func txWalletLabelFor(d web.LayoutData, w TxWalletOption) string {
+	if w.Balance.Currency == "" {
+		return w.Name
+	}
+	return w.Name + " · " + Money(d, w.Balance)
+}
+
+func txBoolAttr(b bool) string {
+	if b {
+		return "1"
+	}
+	return "0"
+}

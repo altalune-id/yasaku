@@ -81,13 +81,19 @@ func buildWebHandler(d webHandlerDeps) http.Handler {
 	homeHandler := webhandlers.NewHomeHandler(deps, svcs.Orgs, svcs.Projects)
 	orgHandler := webhandlers.NewOrgHandler(deps, svcs.Orgs)
 	projectHandler := webhandlers.NewProjectHandler(deps, svcs.Projects)
-	todoHandler := webhandlers.NewTodoHandler(deps, svcs.Projects, svcs.Todos)
-	blogHandler := webhandlers.NewBlogHandler(deps, svcs.Projects, svcs.Posts, svcs.Categories, svcs.Tags)
 	inviteHandler := webhandlers.NewInviteHandler(deps, svcs.Orgs, svcs.Invites)
 	localeHandler := webhandlers.NewLocaleHandler(deps, svcs.Users)
 	welcomeHandler := webhandlers.NewWelcomeHandler(deps, svcs.Users)
 	signupHandler := webhandlers.NewSignupHandler(deps, svcs.Users, svcs.Orgs, svcs.Projects)
 	legalHandler := webhandlers.NewLegalHandler(deps)
+
+	overviewHandler := webhandlers.NewOverviewHandler(deps, svcs.Projects, svcs.Wallets, svcs.Transactions, svcs.Periods, svcs.Reports, svcs.TxCategories, svcs.Ledgers)
+	walletHandler := webhandlers.NewWalletHandler(deps, svcs.Projects, svcs.Wallets, svcs.WalletOpen, svcs.Transactions, svcs.Ledgers)
+	txCategoryHandler := webhandlers.NewTxCategoryHandler(deps, svcs.Projects, svcs.TxCategories)
+	transactionHandler := webhandlers.NewTransactionHandler(deps, svcs.Projects, svcs.Wallets, svcs.Transactions, svcs.Periods, svcs.TxCategories, svcs.Ledgers)
+	periodHandler := webhandlers.NewPeriodHandler(deps, svcs.Projects, svcs.Periods, svcs.Reports, svcs.Ledgers)
+	reportHandler := webhandlers.NewReportHandler(deps, svcs.Projects, svcs.Reports, svcs.Periods)
+	settingsHandler := webhandlers.NewSettingsHandler(deps, svcs.Projects, svcs.Ledgers)
 
 	errTmpl := webmw.LogError{Log: slogger}
 
@@ -95,7 +101,8 @@ func buildWebHandler(d webHandlerDeps) http.Handler {
 		BasePath: cfg.HTTP.BasePath,
 		HealthOK: d.HealthOK,
 		AppHandlers: []web.Register{
-			authHandler, onboardingHandler, onboardHandler, homeHandler, orgHandler, projectHandler, todoHandler, blogHandler, inviteHandler, localeHandler, welcomeHandler, signupHandler, legalHandler,
+			authHandler, onboardingHandler, onboardHandler, homeHandler, orgHandler, projectHandler, inviteHandler, localeHandler, welcomeHandler, signupHandler, legalHandler,
+			overviewHandler, walletHandler, txCategoryHandler, transactionHandler, periodHandler, reportHandler, settingsHandler,
 		},
 		APIHandler: d.APIHandler,
 		MCPHandler: d.MCPHandler,

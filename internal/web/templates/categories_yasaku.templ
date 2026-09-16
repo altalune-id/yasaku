@@ -1,0 +1,211 @@
+package templates
+
+import (
+	"strconv"
+
+	"altalune.id/yasaku/internal/web"
+	"altalune.id/yasaku/internal/web/icons"
+)
+
+// TxCategoryRow is one transaction category as the categories page renders it.
+type TxCategoryRow struct {
+	ID       string
+	Name     string
+	KindKey  string
+	Archived bool
+}
+
+// TxCategoriesView is the transaction-categories page: one column per kind, archived rows collapsed.
+type TxCategoriesView struct {
+	OrgSlug     string
+	ProjectSlug string
+	ProjectName string
+	Expense     []TxCategoryRow
+	Income      []TxCategoryRow
+	Archived    []TxCategoryRow
+	Seeded      int
+	ShowSeeded  bool
+	ErrorKey    string
+	ErrorMsg    string
+	ErrorCode   string
+}
+
+// IsEmpty reports whether the project has no categories at all, archived ones included.
+func (v TxCategoriesView) IsEmpty() bool {
+	return len(v.Expense) == 0 && len(v.Income) == 0 && len(v.Archived) == 0
+}
+
+templ txCategoryRowItem(d web.LayoutData, v TxCategoriesView, c TxCategoryRow) {
+	<li class="flex flex-wrap items-center gap-2 px-3 py-2">
+		<form
+			method="post"
+			action={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/categories/"+c.ID+"/rename")) }
+			hx-post={ d.ProjectPath(v.ProjectSlug, "/categories/"+c.ID+"/rename") }
+			hx-target="#tx-category-list"
+			hx-swap="outerHTML"
+			class="flex min-w-0 flex-1 items-center gap-2"
+		>
+			<input
+				name="name"
+				type="text"
+				required
+				value={ c.Name }
+				aria-label={ d.Tr("category.name") }
+				class="min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-2 py-1.5 text-sm text-foreground hover:border-border focus:border-ring focus:bg-card focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
+			/>
+			<button type="submit" class="shrink-0 rounded-md border border-border px-2.5 py-1.5 text-xs font-medium text-foreground/90 hover:bg-muted">
+				{ d.Tr("category.rename") }
+			</button>
+		</form>
+		if c.Archived {
+			<span class="shrink-0 text-xs text-muted-foreground">{ d.Tr(c.KindKey) }</span>
+			<form
+				method="post"
+				action={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/categories/"+c.ID+"/unarchive")) }
+				hx-post={ d.ProjectPath(v.ProjectSlug, "/categories/"+c.ID+"/unarchive") }
+				hx-target="#tx-category-list"
+				hx-swap="outerHTML"
+				class="inline"
+			>
+				<button type="submit" aria-label={ d.Tr("category.unarchive") + ": " + c.Name } class="rounded p-1.5 text-muted-foreground/80 hover:bg-muted hover:text-foreground">
+					@icons.Icon("rotate-ccw", "h-4 w-4")
+				</button>
+			</form>
+		} else {
+			<form
+				method="post"
+				action={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/categories/"+c.ID+"/archive")) }
+				hx-post={ d.ProjectPath(v.ProjectSlug, "/categories/"+c.ID+"/archive") }
+				hx-target="#tx-category-list"
+				hx-swap="outerHTML"
+				class="inline"
+			>
+				<button type="submit" aria-label={ d.Tr("category.archive") + ": " + c.Name } class="rounded p-1.5 text-muted-foreground/80 hover:bg-muted hover:text-foreground">
+					@icons.Icon("lock", "h-4 w-4")
+				</button>
+			</form>
+		}
+		<form
+			method="post"
+			action={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/categories/"+c.ID+"/delete")) }
+			hx-post={ d.ProjectPath(v.ProjectSlug, "/categories/"+c.ID+"/delete") }
+			hx-target="#tx-category-list"
+			hx-swap="outerHTML"
+			class="inline"
+		>
+			<button type="submit" aria-label={ d.Tr("category.delete") + ": " + c.Name } class="rounded p-1.5 text-muted-foreground/70 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 dark:hover:text-red-400">
+				@icons.Icon("trash-2", "h-4 w-4")
+			</button>
+		</form>
+	</li>
+}
+
+templ txCategoryColumn(d web.LayoutData, v TxCategoriesView, id, titleKey string, rows []TxCategoryRow) {
+	<section id={ id } class="overflow-hidden rounded-lg border border-border bg-card shadow-sm">
+		<h2 class="border-b border-border px-4 py-3 text-sm font-medium text-foreground">{ d.Tr(titleKey) }</h2>
+		<ul class="divide-y divide-border/50">
+			if len(rows) == 0 {
+				<li class="px-4 py-6 text-center text-sm text-muted-foreground">{ d.Tr("category.empty") }</li>
+			}
+			for _, c := range rows {
+				@txCategoryRowItem(d, v, c)
+			}
+		</ul>
+	</section>
+}
+
+templ txCategorySeedCard(d web.LayoutData, v TxCategoriesView) {
+	<div class="rounded-lg border border-dashed border-border bg-card px-4 py-10 text-center">
+		<p class="text-sm text-muted-foreground">{ d.Tr("category.seed_hint") }</p>
+		<form
+			method="post"
+			action={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/categories/seed")) }
+			hx-post={ d.ProjectPath(v.ProjectSlug, "/categories/seed") }
+			hx-target="#tx-category-list"
+			hx-swap="outerHTML"
+			class="mt-4"
+		>
+			<button type="submit" class="inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2">
+				@icons.Icon("circle-plus", "h-4 w-4")
+				<span>{ d.Tr("category.seed") }</span>
+			</button>
+		</form>
+	</div>
+}
+
+// TxCategoryList is the HTMX-swappable section: every category action targets #tx-category-list.
+templ TxCategoryList(d web.LayoutData, v TxCategoriesView) {
+	<div id="tx-category-list" class="mt-6 space-y-4">
+		@walletBanner(d, v.ErrorKey, v.ErrorMsg, v.ErrorCode)
+		if v.ShowSeeded {
+			<p
+				data-seeded={ strconv.Itoa(v.Seeded) }
+				role="status"
+				class="rounded-md border border-border bg-muted px-3 py-2 text-sm text-foreground"
+			>
+				{ strconv.Itoa(v.Seeded) + " " + d.Tr("category.title") }
+			</p>
+		}
+		if v.IsEmpty() {
+			@txCategorySeedCard(d, v)
+		} else {
+			<div class="grid gap-4 md:grid-cols-2">
+				@txCategoryColumn(d, v, "tx-category-expense", "category.expense", v.Expense)
+				@txCategoryColumn(d, v, "tx-category-income", "category.income", v.Income)
+			</div>
+		}
+		if len(v.Archived) > 0 {
+			<details id="tx-category-archived" class="overflow-hidden rounded-lg border border-border bg-card shadow-sm">
+				<summary class="cursor-pointer px-4 py-3 text-sm text-muted-foreground">{ d.Tr("wallet.archived") }</summary>
+				<ul class="divide-y divide-border/50 border-t border-border opacity-75">
+					for _, c := range v.Archived {
+						@txCategoryRowItem(d, v, c)
+					}
+				</ul>
+			</details>
+		}
+	</div>
+}
+
+templ TxCategoriesPage(d web.LayoutData, v TxCategoriesView) {
+	<section>
+		<header class="border-b border-border pb-4">
+			<h1 class="text-2xl font-semibold text-foreground">{ d.Tr("category.title") }</h1>
+			<p class="mt-1 truncate text-sm text-muted-foreground">{ v.ProjectName }</p>
+		</header>
+		<form
+			method="post"
+			action={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/categories")) }
+			hx-post={ d.ProjectPath(v.ProjectSlug, "/categories") }
+			hx-target="#tx-category-list"
+			hx-swap="outerHTML"
+			hx-on::after-request="if(event.detail.successful) this.reset()"
+			class="mt-6 flex flex-wrap gap-2"
+		>
+			<input
+				name="name"
+				type="text"
+				required
+				placeholder={ d.Tr("category.name") }
+				aria-label={ d.Tr("category.name") }
+				class="min-w-48 flex-1 rounded-md border border-border bg-card px-3 py-2 text-base text-foreground placeholder:text-muted-foreground/70 shadow-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
+			/>
+			<select
+				name="kind"
+				aria-label={ d.Tr("tx.kind") }
+				class="rounded-md border border-border bg-card px-3 py-2 text-base text-foreground shadow-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
+			>
+				<option value="expense">{ d.Tr("tx.kind_expense") }</option>
+				<option value="income">{ d.Tr("tx.kind_income") }</option>
+			</select>
+			<button type="submit" class="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2">
+				{ d.Tr("category.new") }
+			</button>
+		</form>
+		@TxCategoryList(d, v)
+	</section>
+}
+
+templ TxCategoriesLayout(d web.LayoutData, v TxCategoriesView) {
+	@Layout(web.WithContent(d, TxCategoriesPage(d, v)))
+}

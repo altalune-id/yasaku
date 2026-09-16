@@ -49,3 +49,12 @@ node_modules/
 # Track the dir via .gitkeep, ignore every child (pg, future subdirs).
 /docker/data/*
 !/docker/data/.gitkeep
+
+# Vendored UI assets fetched by scripts/ui-vendor.sh (charts.js is hand-written and tracked)
+/internal/web/static/htmx.min.js
+/internal/web/static/easymde.min.js
+/internal/web/static/easymde.min.css
+/internal/web/static/echarts.min.js
+/internal/web/static/basecoat.css
+/internal/web/static/app.css
+/internal/web/static/app.tailwind.css

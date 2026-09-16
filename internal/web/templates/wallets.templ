@@ -1,0 +1,175 @@
+package templates
+
+import (
+	"altalune.id/yasaku/internal/web"
+	"altalune.id/yasaku/internal/web/icons"
+	"altalune.id/yasaku/money"
+)
+
+// WalletRow is one wallet as the wallets index renders it; Balance is derived, never stored.
+type WalletRow struct {
+	ID       string
+	Name     string
+	KindKey  string
+	Provider string
+	Balance  money.Amount
+	Excluded bool
+	Archived bool
+}
+
+// WalletsView is the wallets index: the spendable total, the active wallets and the archived ones.
+type WalletsView struct {
+	OrgSlug     string
+	ProjectSlug string
+	ProjectName string
+	Active      []WalletRow
+	Archived    []WalletRow
+	Total       money.Amount
+	ErrorKey    string
+	ErrorMsg    string
+	ErrorCode   string
+}
+
+templ walletBanner(d web.LayoutData, key, msg, code string) {
+	if key != "" {
+		@ErrorBanner(d, d.Tr(key), code)
+	} else if msg != "" {
+		@ErrorBanner(d, msg, code)
+	}
+}
+
+templ walletRowActions(d web.LayoutData, v WalletsView, r WalletRow) {
+	<div class="flex shrink-0 items-center gap-0.5">
+		<a
+			href={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/wallets/"+r.ID+"/edit")) }
+			aria-label={ d.Tr("wallet.edit") + ": " + r.Name }
+			class="rounded p-2 text-muted-foreground/80 hover:bg-muted hover:text-foreground"
+		>
+			@icons.Icon("pencil", "h-4 w-4")
+		</a>
+		if r.Archived {
+			<form
+				method="post"
+				action={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/wallets/"+r.ID+"/unarchive")) }
+				hx-post={ d.ProjectPath(v.ProjectSlug, "/wallets/"+r.ID+"/unarchive") }
+				hx-target="#wallet-list"
+				hx-swap="outerHTML"
+				class="inline"
+			>
+				<button type="submit" aria-label={ d.Tr("wallet.unarchive") + ": " + r.Name } class="rounded p-2 text-muted-foreground/80 hover:bg-muted hover:text-foreground">
+					@icons.Icon("rotate-ccw", "h-4 w-4")
+				</button>
+			</form>
+		} else {
+			<form
+				method="post"
+				action={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/wallets/"+r.ID+"/archive")) }
+				hx-post={ d.ProjectPath(v.ProjectSlug, "/wallets/"+r.ID+"/archive") }
+				hx-target="#wallet-list"
+				hx-swap="outerHTML"
+				class="inline"
+			>
+				<button type="submit" aria-label={ d.Tr("wallet.archive") + ": " + r.Name } class="rounded p-2 text-muted-foreground/80 hover:bg-muted hover:text-foreground">
+					@icons.Icon("lock", "h-4 w-4")
+				</button>
+			</form>
+		}
+		<form
+			method="post"
+			action={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/wallets/"+r.ID+"/delete")) }
+			hx-post={ d.ProjectPath(v.ProjectSlug, "/wallets/"+r.ID+"/delete") }
+			hx-target="#wallet-list"
+			hx-swap="outerHTML"
+			class="inline"
+		>
+			<button type="submit" aria-label={ d.Tr("wallet.delete") + ": " + r.Name } class="rounded p-2 text-muted-foreground/70 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 dark:hover:text-red-400">
+				@icons.Icon("trash-2", "h-4 w-4")
+			</button>
+		</form>
+	</div>
+}
+
+templ walletListRow(d web.LayoutData, v WalletsView, r WalletRow) {
+	<li class="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3">
+		<a href={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/wallets/"+r.ID)) } class="min-w-0 flex-1 basis-40 rounded-sm focus:outline-none focus:ring-2 focus:ring-ring">
+			<span class="block truncate text-sm font-medium text-foreground">{ r.Name }</span>
+			<span class="mt-0.5 block truncate text-xs text-muted-foreground">
+				{ d.Tr(r.KindKey) }
+				if r.Provider != "" {
+					{ " — " + r.Provider }
+				}
+			</span>
+		</a>
+		<span class="shrink-0 text-right text-base font-medium tabular-nums text-foreground">
+			{ Money(d, r.Balance) }
+			if r.Excluded {
+				<span class="mt-0.5 block text-xs font-normal text-muted-foreground">{ d.Tr("wallet.exclude_from_total") }</span>
+			}
+		</span>
+		@walletRowActions(d, v, r)
+	</li>
+}
+
+// WalletList is the HTMX-swappable section: every wallet action targets #wallet-list.
+templ WalletList(d web.LayoutData, v WalletsView) {
+	<div id="wallet-list" class="mt-6 space-y-4">
+		@walletBanner(d, v.ErrorKey, v.ErrorMsg, v.ErrorCode)
+		<div class="rounded-lg border border-border bg-card px-4 py-4 shadow-sm">
+			<p class="text-sm text-muted-foreground">{ d.Tr("overview.total") }</p>
+			<p class="mt-1 text-3xl font-semibold tabular-nums tracking-tight text-foreground">{ Money(d, v.Total) }</p>
+		</div>
+		if len(v.Active) == 0 && len(v.Archived) == 0 {
+			<div class="rounded-lg border border-dashed border-border bg-card px-4 py-10 text-center">
+				<p class="text-sm text-muted-foreground">{ d.Tr("wallet.empty") }</p>
+				<a
+					href={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/wallets/new")) }
+					class="mt-4 inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+				>
+					@icons.Icon("circle-plus", "h-4 w-4")
+					<span>{ d.Tr("wallet.new") }</span>
+				</a>
+			</div>
+		} else if len(v.Active) > 0 {
+			<ul class="divide-y divide-border/50 overflow-hidden rounded-lg border border-border bg-card shadow-sm">
+				for _, r := range v.Active {
+					@walletListRow(d, v, r)
+				}
+			</ul>
+		}
+		if len(v.Archived) > 0 {
+			<details id="wallet-archived" class="overflow-hidden rounded-lg border border-border bg-card shadow-sm">
+				<summary class="cursor-pointer px-4 py-3 text-sm text-muted-foreground">
+					{ d.Tr("wallet.archived") }
+				</summary>
+				<ul class="divide-y divide-border/50 border-t border-border opacity-75">
+					for _, r := range v.Archived {
+						@walletListRow(d, v, r)
+					}
+				</ul>
+			</details>
+		}
+	</div>
+}
+
+templ WalletsPage(d web.LayoutData, v WalletsView) {
+	<section>
+		<header class="flex flex-wrap items-baseline justify-between gap-3 border-b border-border pb-4">
+			<div class="min-w-0">
+				<h1 class="text-2xl font-semibold text-foreground">{ d.Tr("wallet.title") }</h1>
+				<p class="mt-1 truncate text-sm text-muted-foreground">{ v.ProjectName }</p>
+			</div>
+			<a
+				href={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/wallets/new")) }
+				class="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+			>
+				@icons.Icon("circle-plus", "h-4 w-4")
+				<span>{ d.Tr("wallet.new") }</span>
+			</a>
+		</header>
+		@WalletList(d, v)
+	</section>
+}
+
+templ WalletsLayout(d web.LayoutData, v WalletsView) {
+	@Layout(web.WithContent(d, WalletsPage(d, v)))
+}
