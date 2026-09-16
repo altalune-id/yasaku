@@ -1,0 +1,70 @@
+syntax = "proto3";
+
+package yasaku.v1;
+
+import "yasaku/mcp/v1/annotations.proto";
+import "yasaku/v1/common.proto";
+import "yasaku/v1/period.proto";
+
+option go_package = "altalune.id/yasaku/gen/go/yasaku/v1;yasakuv1";
+
+// ReportService is the read-only reporting surface over a project's transactions.
+service ReportService {
+  rpc PeriodReport(PeriodReportRequest) returns (PeriodReportResponse) {
+    option (yasaku.mcp.v1.tool) = {
+      name: "period_report"
+      description: "Laporan satu periode: pemasukan, pengeluaran, selisih, rincian per kategori dan per dompet. Period must be a period ID from list_periods or current_period, never a period name; leave it empty for the current period. Category slices are largest first and share is a fraction of that direction's total."
+      access: ACCESS_READ
+    };
+  }
+  rpc CashflowReport(CashflowReportRequest) returns (CashflowReportResponse) {
+    option (yasaku.mcp.v1.tool) = {
+      name: "cashflow_report"
+      description: "Tren arus kas beberapa periode terakhir, satu titik per periode. Periods defaults to the last 6 and is capped at 24. Points run oldest to newest so a trend reads left to right."
+      access: ACCESS_READ
+    };
+  }
+}
+
+// CategorySlice is one category's share of a period's spend or income; an empty category id is the uncategorized slice.
+message CategorySlice {
+  CategoryRef category = 1;
+  Money amount = 2;
+  double share = 3;
+  int32 count = 4;
+}
+
+// CashflowPoint is one period's income, expense and net.
+message CashflowPoint {
+  Period period = 1;
+  Money income = 2;
+  Money expense = 3;
+  Money net = 4;
+}
+
+message PeriodReportRequest {
+  Target target = 1;
+  // Period ID from list_periods or current_period, never a period name. Empty means the current period.
+  string period = 2;
+}
+
+message PeriodReportResponse {
+  Period period = 1;
+  Money income = 2;
+  Money expense = 3;
+  Money net = 4;
+  int32 tx_count = 5;
+  repeated CategorySlice spend_by_category = 6;
+  repeated CategorySlice income_by_category = 7;
+  repeated WalletLine wallets = 8;
+}
+
+message CashflowReportRequest {
+  Target target = 1;
+  // How many of the most recent periods to plot. Defaults to 6, capped at 24.
+  int32 periods = 2;
+}
+
+message CashflowReportResponse {
+  repeated CashflowPoint points = 1;
+}

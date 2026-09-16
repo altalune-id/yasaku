@@ -1,0 +1,629 @@
+openapi: 3.1.0
+info:
+  title: yasaku.v1
+paths:
+  /yasaku.v1.CategoryService/ArchiveCategory:
+    post:
+      tags:
+        - yasaku.v1.CategoryService
+      summary: ArchiveCategory
+      operationId: yasaku.v1.CategoryService.ArchiveCategory
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/yasaku.v1.ArchiveCategoryRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/yasaku.v1.ArchiveCategoryResponse'
+  /yasaku.v1.CategoryService/CreateCategory:
+    post:
+      tags:
+        - yasaku.v1.CategoryService
+      summary: CreateCategory
+      operationId: yasaku.v1.CategoryService.CreateCategory
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/yasaku.v1.CreateCategoryRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/yasaku.v1.CreateCategoryResponse'
+  /yasaku.v1.CategoryService/DeleteCategory:
+    post:
+      tags:
+        - yasaku.v1.CategoryService
+      summary: DeleteCategory
+      operationId: yasaku.v1.CategoryService.DeleteCategory
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/yasaku.v1.DeleteCategoryRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/yasaku.v1.DeleteCategoryResponse'
+  /yasaku.v1.CategoryService/ListCategories:
+    post:
+      tags:
+        - yasaku.v1.CategoryService
+      summary: ListCategories
+      operationId: yasaku.v1.CategoryService.ListCategories
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/yasaku.v1.ListCategoriesRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/yasaku.v1.ListCategoriesResponse'
+  /yasaku.v1.CategoryService/RenameCategory:
+    post:
+      tags:
+        - yasaku.v1.CategoryService
+      summary: RenameCategory
+      operationId: yasaku.v1.CategoryService.RenameCategory
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/yasaku.v1.RenameCategoryRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/yasaku.v1.RenameCategoryResponse'
+  /yasaku.v1.CategoryService/SeedDefaultCategories:
+    post:
+      tags:
+        - yasaku.v1.CategoryService
+      summary: SeedDefaultCategories
+      operationId: yasaku.v1.CategoryService.SeedDefaultCategories
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/yasaku.v1.SeedDefaultCategoriesRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/yasaku.v1.SeedDefaultCategoriesResponse'
+  /yasaku.v1.CategoryService/UnarchiveCategory:
+    post:
+      tags:
+        - yasaku.v1.CategoryService
+      summary: UnarchiveCategory
+      operationId: yasaku.v1.CategoryService.UnarchiveCategory
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/yasaku.v1.UnarchiveCategoryRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/yasaku.v1.UnarchiveCategoryResponse'
+  /yasaku.v1.CategoryService/UpdateCategory:
+    post:
+      tags:
+        - yasaku.v1.CategoryService
+      summary: UpdateCategory
+      operationId: yasaku.v1.CategoryService.UpdateCategory
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/yasaku.v1.UpdateCategoryRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/yasaku.v1.UpdateCategoryResponse'
+components:
+  schemas:
+    connect-protocol-version:
+      type: number
+      title: Connect-Protocol-Version
+      enum:
+        - 1
+      description: Define the version of the Connect protocol
+      const: 1
+    connect-timeout-header:
+      type: number
+      title: Connect-Timeout-Ms
+      description: Define the timeout, in ms
+    connect.error:
+      type: object
+      properties:
+        code:
+          type: string
+          examples:
+            - not_found
+          enum:
+            - canceled
+            - unknown
+            - invalid_argument
+            - deadline_exceeded
+            - not_found
+            - already_exists
+            - permission_denied
+            - resource_exhausted
+            - failed_precondition
+            - aborted
+            - out_of_range
+            - unimplemented
+            - internal
+            - unavailable
+            - data_loss
+            - unauthenticated
+          description: The status code, which should be an enum value of [google.rpc.Code][google.rpc.Code].
+        message:
+          type: string
+          description: A developer-facing error message, which should be in English. Any user-facing error message should be localized and sent in the [google.rpc.Status.details][google.rpc.Status.details] field, or localized by the client.
+        details:
+          type: array
+          items:
+            $ref: '#/components/schemas/connect.error_details.Any'
+          description: A list of messages that carry the error details. There is no limit on the number of messages.
+      title: Connect Error
+      additionalProperties: true
+      description: 'Error type returned by Connect: https://connectrpc.com/docs/go/errors/#http-representation'
+    connect.error_details.Any:
+      type: object
+      properties:
+        type:
+          type: string
+          description: 'A URL that acts as a globally unique identifier for the type of the serialized message. For example: `type.googleapis.com/google.rpc.ErrorInfo`. This is used to determine the schema of the data in the `value` field and is the discriminator for the `debug` field.'
+        value:
+          type: string
+          format: binary
+          description: The Protobuf message, serialized as bytes and base64-encoded. The specific message type is identified by the `type` field.
+        debug:
+          oneOf:
+            - type: object
+              title: Any
+              additionalProperties: true
+              description: Detailed error information.
+          discriminator:
+            propertyName: type
+          title: Debug
+          description: Deserialized error detail payload. The 'type' field indicates the schema. This field is for easier debugging and should not be relied upon for application logic.
+      additionalProperties: true
+      description: Contains an arbitrary serialized message along with a @type that describes the type of the serialized message, with an additional debug field for ConnectRPC error details.
+    yasaku.v1.ArchiveCategoryRequest:
+      type: object
+      properties:
+        target:
+          title: target
+          $ref: '#/components/schemas/yasaku.v1.Target'
+        category:
+          type: string
+          title: category
+      title: ArchiveCategoryRequest
+      additionalProperties: false
+    yasaku.v1.ArchiveCategoryResponse:
+      type: object
+      properties:
+        category:
+          title: category
+          $ref: '#/components/schemas/yasaku.v1.Category'
+      title: ArchiveCategoryResponse
+      additionalProperties: false
+    yasaku.v1.Category:
+      type: object
+      properties:
+        id:
+          type: string
+          title: id
+        name:
+          type: string
+          title: name
+        kind:
+          type: string
+          title: kind
+          description: One of expense or income.
+        icon:
+          type: string
+          title: icon
+          description: One of utensils, bus, shopping-bag, receipt, smartphone, heart-pulse, house, clapperboard, graduation-cap, users, credit-card, hand-heart, circle-ellipsis, banknote, gift, briefcase, trending-up, laptop, wallet. May be empty.
+        color:
+          type: string
+          title: color
+          description: 'chart-1 through chart-5, or a #rrggbb hex value. May be empty.'
+        archived:
+          type: boolean
+          title: archived
+      title: Category
+      additionalProperties: false
+      description: Category classifies one direction of money movement; kind is immutable.
+    yasaku.v1.CreateCategoryRequest:
+      type: object
+      properties:
+        target:
+          title: target
+          $ref: '#/components/schemas/yasaku.v1.Target'
+        name:
+          type: string
+          title: name
+        kind:
+          type: string
+          title: kind
+          description: One of expense or income; it cannot be changed after creation.
+        icon:
+          type: string
+          title: icon
+          description: One of utensils, bus, shopping-bag, receipt, smartphone, heart-pulse, house, clapperboard, graduation-cap, users, credit-card, hand-heart, circle-ellipsis, banknote, gift, briefcase, trending-up, laptop, wallet. May be empty.
+        color:
+          type: string
+          title: color
+          description: 'chart-1 through chart-5, or a #rrggbb hex value. May be empty.'
+        confirm:
+          type: boolean
+          title: confirm
+      title: CreateCategoryRequest
+      additionalProperties: false
+    yasaku.v1.CreateCategoryResponse:
+      type: object
+      properties:
+        needs:
+          title: needs
+          $ref: '#/components/schemas/yasaku.v1.Needs'
+        preview:
+          title: preview
+          description: 'The category as it would be created: name, kind, icon and color are resolved; id is empty and archived is false.'
+          $ref: '#/components/schemas/yasaku.v1.Category'
+        result:
+          title: result
+          $ref: '#/components/schemas/yasaku.v1.Category'
+        warning:
+          type: string
+          title: warning
+      title: CreateCategoryResponse
+      additionalProperties: false
+    yasaku.v1.DeleteCategoryRequest:
+      type: object
+      properties:
+        target:
+          title: target
+          $ref: '#/components/schemas/yasaku.v1.Target'
+        category:
+          type: string
+          title: category
+      title: DeleteCategoryRequest
+      additionalProperties: false
+    yasaku.v1.DeleteCategoryResponse:
+      type: object
+      title: DeleteCategoryResponse
+      additionalProperties: false
+    yasaku.v1.ListCategoriesRequest:
+      type: object
+      properties:
+        target:
+          title: target
+          $ref: '#/components/schemas/yasaku.v1.Target'
+        kind:
+          type: string
+          title: kind
+          description: One of expense or income. Empty means both.
+        includeArchived:
+          type: boolean
+          title: include_archived
+      title: ListCategoriesRequest
+      additionalProperties: false
+    yasaku.v1.ListCategoriesResponse:
+      type: object
+      properties:
+        categories:
+          type: array
+          items:
+            $ref: '#/components/schemas/yasaku.v1.Category'
+          title: categories
+      title: ListCategoriesResponse
+      additionalProperties: false
+    yasaku.v1.Need:
+      type: object
+      properties:
+        field:
+          type: string
+          title: field
+        reason:
+          type: string
+          title: reason
+        candidates:
+          type: array
+          items:
+            type: string
+          title: candidates
+      title: Need
+      additionalProperties: false
+      description: Need is one input a mutation could not resolve, with the choices that would resolve it.
+    yasaku.v1.Needs:
+      type: object
+      properties:
+        needs:
+          type: array
+          items:
+            $ref: '#/components/schemas/yasaku.v1.Need'
+          title: needs
+      title: Needs
+      additionalProperties: false
+      description: Needs is the set of unresolved inputs that stopped a mutation before it wrote anything.
+    yasaku.v1.RenameCategoryRequest:
+      type: object
+      properties:
+        target:
+          title: target
+          $ref: '#/components/schemas/yasaku.v1.Target'
+        category:
+          type: string
+          title: category
+        name:
+          type: string
+          title: name
+      title: RenameCategoryRequest
+      additionalProperties: false
+    yasaku.v1.RenameCategoryResponse:
+      type: object
+      properties:
+        category:
+          title: category
+          $ref: '#/components/schemas/yasaku.v1.Category'
+      title: RenameCategoryResponse
+      additionalProperties: false
+    yasaku.v1.SeedDefaultCategoriesRequest:
+      type: object
+      properties:
+        target:
+          title: target
+          $ref: '#/components/schemas/yasaku.v1.Target'
+        confirm:
+          type: boolean
+          title: confirm
+      title: SeedDefaultCategoriesRequest
+      additionalProperties: false
+    yasaku.v1.SeedDefaultCategoriesResponse:
+      type: object
+      properties:
+        needs:
+          title: needs
+          $ref: '#/components/schemas/yasaku.v1.Needs'
+        previewCount:
+          type: integer
+          title: preview_count
+          format: int32
+          description: How many defaults would be inserted, counted at preview time; zero when the project already has them all.
+        inserted:
+          type: integer
+          title: inserted
+          format: int32
+        warning:
+          type: string
+          title: warning
+      title: SeedDefaultCategoriesResponse
+      additionalProperties: false
+    yasaku.v1.Target:
+      type: object
+      properties:
+        org:
+          type: string
+          title: org
+        project:
+          type: string
+          title: project
+      title: Target
+      additionalProperties: false
+      description: Target names the org and project a request acts on; both empty means the caller's only project.
+    yasaku.v1.UnarchiveCategoryRequest:
+      type: object
+      properties:
+        target:
+          title: target
+          $ref: '#/components/schemas/yasaku.v1.Target'
+        category:
+          type: string
+          title: category
+      title: UnarchiveCategoryRequest
+      additionalProperties: false
+    yasaku.v1.UnarchiveCategoryResponse:
+      type: object
+      properties:
+        category:
+          title: category
+          $ref: '#/components/schemas/yasaku.v1.Category'
+      title: UnarchiveCategoryResponse
+      additionalProperties: false
+    yasaku.v1.UpdateCategoryRequest:
+      type: object
+      properties:
+        target:
+          title: target
+          $ref: '#/components/schemas/yasaku.v1.Target'
+        category:
+          type: string
+          title: category
+        icon:
+          type: string
+          title: icon
+          description: One of utensils, bus, shopping-bag, receipt, smartphone, heart-pulse, house, clapperboard, graduation-cap, users, credit-card, hand-heart, circle-ellipsis, banknote, gift, briefcase, trending-up, laptop, wallet. Empty clears it.
+        color:
+          type: string
+          title: color
+          description: 'chart-1 through chart-5, or a #rrggbb hex value. Empty clears it.'
+      title: UpdateCategoryRequest
+      additionalProperties: false
+      description: UpdateCategoryRequest replaces icon and color together; both are cleared when left empty.
+    yasaku.v1.UpdateCategoryResponse:
+      type: object
+      properties:
+        category:
+          title: category
+          $ref: '#/components/schemas/yasaku.v1.Category'
+      title: UpdateCategoryResponse
+      additionalProperties: false
+security: []
+tags:
+  - name: yasaku.v1.CategoryService
+    description: CategoryService manages the expense and income categories a transaction may carry.

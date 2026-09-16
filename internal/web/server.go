@@ -14,6 +14,8 @@ import (
 //go:embed all:static
 var staticFS embed.FS
 
+const staticCacheControl = "public, max-age=3600"
+
 // StaticFS returns the fs.FS rooted at the static/ subdirectory.
 func StaticFS() fs.FS {
 	sub, err := fs.Sub(staticFS, "static")
@@ -33,6 +35,8 @@ type Middleware = func(http.Handler) http.Handler
 type ServerOpts struct {
 	AppHandlers  []Register
 	APIHandler   http.Handler
+	MCPHandler   http.Handler
+	WellKnown    map[string]http.Handler
 	RobotsCfg    *robotsConfig
 	BasePath     string
 	HealthOK     func() bool
@@ -51,7 +55,11 @@ func NewServer(o ServerOpts) http.Handler {
 	for _, h := range o.AppHandlers {
 		h.Register(app)
 	}
-	app.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(StaticFS()))))
+	static := http.StripPrefix("/static/", http.FileServer(http.FS(StaticFS())))
+	app.Handle("GET /static/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", staticCacheControl)
+		static.ServeHTTP(w, r)
+	}))
 
 	outer := http.NewServeMux()
 
@@ -69,6 +77,14 @@ func NewServer(o ServerOpts) http.Handler {
 
 	if o.APIHandler != nil {
 		outer.Handle(Path(o.BasePath, "/api")+"/", o.APIHandler)
+	}
+
+	if o.MCPHandler != nil {
+		outer.Handle(Path(o.BasePath, "/mcp"), o.MCPHandler)
+	}
+
+	for pattern, h := range o.WellKnown {
+		outer.Handle(pattern, h)
 	}
 
 	base := strings.TrimRight(o.BasePath, "/")

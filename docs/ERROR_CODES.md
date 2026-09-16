@@ -135,3 +135,71 @@ them from screenshots. `NNN` in the range `900`-`999` is reserved for unexpected
 | `TAG002` | `apperror.CodeTagAlreadyExists` | Tag Already Exists |
 | `TAG003` | `apperror.CodeTagInvalidName`   | Tag Invalid Name   |
 | `TAG004` | `apperror.CodeTagInUse`         | Tag In Use         |
+
+## LDG — Ledger settings
+
+| Code     | Constant                             | Meaning                  |
+| -------- | ------------------------------------ | ------------------------ |
+| `LDG001` | `apperror.CodeLedgerInvalidTimezone` | Ledger Invalid Timezone  |
+| `LDG002` | `apperror.CodeLedgerInvalidStartDay` | Ledger Invalid Start Day |
+| `LDG003` | `apperror.CodeLedgerUnknownCurrency` | Ledger Unknown Currency  |
+
+## WLT — Wallets
+
+| Code     | Constant                           | Meaning               |
+| -------- | ---------------------------------- | --------------------- |
+| `WLT001` | `apperror.CodeWalletNotFound`      | Wallet Not Found      |
+| `WLT002` | `apperror.CodeWalletInvalidName`   | Wallet Invalid Name   |
+| `WLT003` | `apperror.CodeWalletAlreadyExists` | Wallet Already Exists |
+| `WLT004` | `apperror.CodeWalletInvalidKind`   | Wallet Invalid Kind   |
+| `WLT005` | `apperror.CodeWalletInUse`         | Wallet In Use         |
+| `WLT006` | `apperror.CodeWalletAmbiguousName` | Wallet Ambiguous Name |
+| `WLT007` | `apperror.CodeWalletArchived`      | Wallet Archived       |
+
+## CTG — Transaction categories
+
+| Code     | Constant                               | Meaning                    |
+| -------- | -------------------------------------- | -------------------------- |
+| `CTG001` | `apperror.CodeTxCategoryNotFound`      | Tx Category Not Found      |
+| `CTG002` | `apperror.CodeTxCategoryInvalidName`   | Tx Category Invalid Name   |
+| `CTG003` | `apperror.CodeTxCategoryAlreadyExists` | Tx Category Already Exists |
+| `CTG004` | `apperror.CodeTxCategoryInvalidKind`   | Tx Category Invalid Kind   |
+| `CTG005` | `apperror.CodeTxCategoryInUse`         | Tx Category In Use         |
+| `CTG006` | `apperror.CodeTxCategoryAmbiguousName` | Tx Category Ambiguous Name |
+
+## TXN — Transactions
+
+| Code     | Constant                                       | Meaning                            |
+| -------- | ---------------------------------------------- | ---------------------------------- |
+| `TXN001` | `apperror.CodeTransactionNotFound`             | Transaction Not Found              |
+| `TXN002` | `apperror.CodeTransactionInvalidAmount`        | Transaction Invalid Amount         |
+| `TXN003` | `apperror.CodeTransactionCurrencyMismatch`     | Transaction Currency Mismatch      |
+| `TXN004` | `apperror.CodeTransactionInvalidKind`          | Transaction Invalid Kind           |
+| `TXN005` | `apperror.CodeTransactionSameWallet`           | Transaction Same Wallet            |
+| `TXN006` | `apperror.CodeTransactionCategoryKindMismatch` | Transaction Category Kind Mismatch |
+| `TXN007` | `apperror.CodeTransactionWalletArchived`       | Transaction Wallet Archived        |
+| `TXN008` | `apperror.CodeTransactionPeriodLocked`         | Transaction Period Locked          |
+| `TXN009` | `apperror.CodeTransactionPeriodNotAdjacent`    | Transaction Period Not Adjacent    |
+| `TXN010` | `apperror.CodeTransactionInvalidNote`          | Transaction Invalid Note           |
+| `TXN011` | `apperror.CodeTransactionSystemRecorded`       | Transaction System Recorded        |
+
+## PRD — Periods
+
+| Code     | Constant                             | Meaning                  |
+| -------- | ------------------------------------ | ------------------------ |
+| `PRD001` | `apperror.CodePeriodNotFound`        | Period Not Found         |
+| `PRD002` | `apperror.CodePeriodInvalidName`     | Period Invalid Name      |
+| `PRD003` | `apperror.CodePeriodInvalidRange`    | Period Invalid Range     |
+| `PRD004` | `apperror.CodePeriodOverlap`         | Period Overlap           |
+| `PRD005` | `apperror.CodePeriodAlreadyClosed`   | Period Already Closed    |
+| `PRD006` | `apperror.CodePeriodNotClosed`       | Period Not Closed        |
+| `PRD007` | `apperror.CodePeriodNotLatestClosed` | Period Not Latest Closed |
+
+## MCP — MCP surface
+
+| Code     | Constant                          | Meaning             |
+| -------- | --------------------------------- | ------------------- |
+| `MCP001` | `apperror.CodeMCPUnauthenticated` | MCP Unauthenticated |
+| `MCP002` | `apperror.CodeMCPForbiddenScope`  | MCP Forbidden Scope |
+| `MCP003` | `apperror.CodeMCPUnknownUser`     | MCP Unknown User    |
+| `MCP004` | `apperror.CodeMCPNotMember`       | MCP Not Member      |

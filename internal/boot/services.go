@@ -4,21 +4,28 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"altalune.id/yasaku/internal/auth"
 	"altalune.id/yasaku/internal/blog"
-	"altalune.id/yasaku/internal/blog/category"
+	blogcategory "altalune.id/yasaku/internal/blog/category"
 	"altalune.id/yasaku/internal/blog/tag"
+	"altalune.id/yasaku/internal/category"
 	"altalune.id/yasaku/internal/invite"
+	"altalune.id/yasaku/internal/ledger"
 	"altalune.id/yasaku/internal/onboard"
 	"altalune.id/yasaku/internal/org"
 	"altalune.id/yasaku/internal/password"
+	"altalune.id/yasaku/internal/period"
 	"altalune.id/yasaku/internal/platform"
 	"altalune.id/yasaku/internal/platform/capabilities"
 	"altalune.id/yasaku/internal/platform/config"
 	"altalune.id/yasaku/internal/project"
+	"altalune.id/yasaku/internal/report"
 	"altalune.id/yasaku/internal/todo"
+	"altalune.id/yasaku/internal/transaction"
 	"altalune.id/yasaku/internal/user"
+	"altalune.id/yasaku/internal/wallet"
 )
 
 // Services is every domain store, service and workflow the composition root wires.
@@ -30,6 +37,12 @@ type Services struct {
 	InviteStore  invite.Store
 	OnboardStore onboard.Store
 
+	LedgerStore      ledger.Store
+	WalletStore      wallet.Store
+	TxCategoryStore  category.Store
+	PeriodStore      period.Store
+	TransactionStore transaction.Store
+
 	Auth       *auth.Service
 	Users      *user.Service
 	Orgs       *org.Service
@@ -38,10 +51,18 @@ type Services struct {
 	Invites    *invite.Service
 	Onboards   *onboard.Service
 	Posts      *blog.Service
-	Categories *category.Service
+	Categories *blogcategory.Service
 	Tags       *tag.Service
 
-	Onboard *user.OnboardWorkflow
+	Ledgers      *ledger.Service
+	Wallets      *wallet.Service
+	TxCategories *category.Service
+	Periods      *period.Service
+	Transactions *transaction.Service
+	Reports      *report.Service
+
+	Onboard    *user.OnboardWorkflow
+	WalletOpen *wallet.OpenWorkflow
 }
 
 func buildServices(cfg *config.Config, k *platform.Kernel, caps capabilities.Capabilities) (*Services, error) {
@@ -63,8 +84,27 @@ func buildServices(cfg *config.Config, k *platform.Kernel, caps capabilities.Cap
 	todos := todo.NewService(todoStore, log, reporter.Unexpected)
 	onboards := onboard.NewService(onboardStore, log, reporter.Unexpected)
 	posts := blog.NewService(blog.NewStore(cfg.DB, pool, pgConn), log, reporter.Unexpected)
-	categories := category.NewService(category.NewStore(cfg.DB, pool, pgConn), log, reporter.Unexpected)
+	categories := blogcategory.NewService(blogcategory.NewStore(cfg.DB, pool, pgConn), log, reporter.Unexpected)
 	tags := tag.NewService(tag.NewStore(cfg.DB, pool, pgConn), log, reporter.Unexpected)
+
+	ledgerStore := ledger.NewStore(cfg.DB, pool, pgConn)
+	walletStore := wallet.NewStore(cfg.DB, pool, pgConn)
+	txCategoryStore := category.NewStore(cfg.DB, pool, pgConn)
+	periodStore := period.NewStore(cfg.DB, pool, pgConn)
+	transactionStore := transaction.NewStore(cfg.DB, pool, pgConn)
+
+	uow := unitOfWork(cfg.DB, pool, pgConn)
+
+	ledgers := ledger.NewService(ledgerStore, log, reporter.Unexpected)
+	wallets := wallet.NewService(walletStore, log, reporter.Unexpected)
+	txCategories := category.NewService(txCategoryStore, log, reporter.Unexpected, namerAdapter{})
+	reports := report.NewService(report.NewReader(cfg.DB, pool, pgConn), log, reporter.Unexpected, ledgers)
+	periods := period.NewService(periodStore, log, reporter.Unexpected,
+		ledgers, snapshotterAdapter{reports: reports, now: time.Now}, period.UnitOfWork(uow), time.Now)
+	transactions := transaction.NewService(transactionStore, log, reporter.Unexpected,
+		walletReaderFor(wallets), categoryReaderFor(txCategories),
+		periodResolverAdapter{periods: periods}, transaction.UnitOfWork(uow))
+	walletOpen := wallet.NewOpenWorkflow(wallets, transactions, wallet.UnitOfWork(uow), log, reporter.Unexpected)
 
 	invitesEnabled := cfg.Mode == config.ModeCloud || cfg.OIDC.Issuer != ""
 
@@ -158,17 +198,33 @@ func buildServices(cfg *config.Config, k *platform.Kernel, caps capabilities.Cap
 		TodoStore:    todoStore,
 		InviteStore:  inviteStore,
 		OnboardStore: onboardStore,
-		Auth:         auths,
-		Users:        users,
-		Orgs:         orgs,
-		Projects:     projects,
-		Todos:        todos,
-		Invites:      invites,
-		Onboards:     onboards,
-		Posts:        posts,
-		Categories:   categories,
-		Tags:         tags,
-		Onboard:      onboardWorkflow,
+
+		LedgerStore:      ledgerStore,
+		WalletStore:      walletStore,
+		TxCategoryStore:  txCategoryStore,
+		PeriodStore:      periodStore,
+		TransactionStore: transactionStore,
+
+		Auth:       auths,
+		Users:      users,
+		Orgs:       orgs,
+		Projects:   projects,
+		Todos:      todos,
+		Invites:    invites,
+		Onboards:   onboards,
+		Posts:      posts,
+		Categories: categories,
+		Tags:       tags,
+
+		Ledgers:      ledgers,
+		Wallets:      wallets,
+		TxCategories: txCategories,
+		Periods:      periods,
+		Transactions: transactions,
+		Reports:      reports,
+
+		Onboard:    onboardWorkflow,
+		WalletOpen: walletOpen,
 	}, nil
 }
 

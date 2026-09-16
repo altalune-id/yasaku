@@ -98,6 +98,8 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("scheduler.timezone", "UTC")
 	v.SetDefault("scheduler.shutdownGrace", "30s")
 
+	v.SetDefault("mcp.enabled", false)
+
 	v.SetDefault("api.enabled", true)
 	v.SetDefault("api.openapi.enabled", true)
 	v.SetDefault("api.openapi.requireBasicAuth", true)

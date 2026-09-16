@@ -6,6 +6,7 @@
 # Pinned versions (bump here + re-run):
 #   htmx        v2.0.4  (Aug 2025)
 #   easymde     v2.21.0 (MIT; CodeMirror bundled)
+#   echarts     v6.1.0
 #   basecoat    latest tagged release
 #   tailwind    v3 CLI standalone binary
 set -euo pipefail
@@ -16,6 +17,7 @@ mkdir -p "$STATIC"
 
 HTMX_VERSION="${HTMX_VERSION:-2.0.4}"
 EASYMDE_VERSION="${EASYMDE_VERSION:-2.21.0}"
+ECHARTS_VERSION="${ECHARTS_VERSION:-6.1.0}"
 BASECOAT_VERSION="${BASECOAT_VERSION:-latest}"
 TAILWIND_VERSION="${TAILWIND_VERSION:-v3.4.15}"
 
@@ -31,6 +33,9 @@ fetch "https://unpkg.com/htmx.org@${HTMX_VERSION}/dist/htmx.min.js" "$STATIC/htm
 echo "==> easymde $EASYMDE_VERSION"
 fetch "https://cdn.jsdelivr.net/npm/easymde@${EASYMDE_VERSION}/dist/easymde.min.js" "$STATIC/easymde.min.js"
 fetch "https://cdn.jsdelivr.net/npm/easymde@${EASYMDE_VERSION}/dist/easymde.min.css" "$STATIC/easymde.min.css"
+
+echo "==> echarts $ECHARTS_VERSION"
+fetch "https://cdn.jsdelivr.net/npm/echarts@${ECHARTS_VERSION}/dist/echarts.min.js" "$STATIC/echarts.min.js"
 
 echo "==> basecoat ${BASECOAT_VERSION}"
 fetch "https://cdn.jsdelivr.net/npm/basecoat-css@${BASECOAT_VERSION}/dist/basecoat.min.css" "$STATIC/basecoat.css"
@@ -52,7 +57,7 @@ mkdir -p "$ROOT/bin"
 fetch "https://github.com/tailwindlabs/tailwindcss/releases/download/${TAILWIND_VERSION}/tailwindcss-${OSNAME}-${ARCH}" "$TW_BIN"
 chmod +x "$TW_BIN"
 
-# Minimal source with @tailwind directives — content sniffing scans .templ files.
+# Minimal source with @tailwind directives — content sniffing scans .templ and static .js files.
 SRC="$STATIC/app.tailwind.css"
 if [ ! -f "$SRC" ]; then
 	cat > "$SRC" <<'EOF'
@@ -66,7 +71,7 @@ fi
 "$TW_BIN" \
 	-i "$SRC" \
 	-o "$STATIC/app.css" \
-	--content "$ROOT/internal/web/templates/*.templ" \
+	--content "$ROOT/internal/web/templates/*.templ" --content "$ROOT/internal/web/static/*.js" \
 	--minify
 
 echo "==> done — vendored assets in $STATIC"

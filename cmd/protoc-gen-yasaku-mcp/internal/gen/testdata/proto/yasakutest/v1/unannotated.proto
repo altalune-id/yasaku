@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package yasakutest.v1;
+
+option go_package = "altalune.id/yasaku/cmd/protoc-gen-yasaku-mcp/internal/gen/testdata/gen/yasakutest/v1;yasakutestv1";
+
+service PlainService {
+  rpc Plain(PlainRequest) returns (PlainResponse);
+}
+
+message PlainRequest {}
+
+message PlainResponse {}

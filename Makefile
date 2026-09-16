@@ -1,4 +1,4 @@
-.PHONY: help build test test-race test-cover vet fmt check generate ui-vendor buf migrate docker clean install-tools lint dev test-integration test-all
+.PHONY: help build test test-race test-cover vet fmt check generate ui-vendor buf migrate docker clean install-tools lint dev test-integration test-all gen-plugin-fixture
 
 GO      ?= go
 BIN     := bin/yasaku
@@ -55,6 +55,12 @@ generate: ## Regenerate templ + buf outputs (pnpm-managed buf, go-tool templ)
 		echo "WARN: pnpm not on PATH — falling back to \`go tool buf generate\`. Install pnpm for reproducible plugin versions."; \
 		$(GO) tool buf generate; \
 	fi
+
+FIXTURE_DIR := cmd/protoc-gen-yasaku-mcp/internal/gen/testdata
+
+gen-plugin-fixture: ## Rebuild protoc-gen-yasaku-mcp's golden-test descriptor set from testdata/proto
+	pnpm exec buf build $(FIXTURE_DIR)/proto -o $(FIXTURE_DIR)/fixture.binpb
+	@echo "→ rebuilt $(FIXTURE_DIR)/fixture.binpb; review the diff, then \`go test ./cmd/protoc-gen-yasaku-mcp/... -update\` if the goldens should move"
 
 ui-vendor: ## Download pinned static assets into internal/web/static
 	@if [ -x scripts/ui-vendor.sh ]; then bash scripts/ui-vendor.sh; else echo "(scripts/ui-vendor.sh missing — skipping)"; fi

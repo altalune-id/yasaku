@@ -374,7 +374,7 @@ func pgNullableTime(t *time.Time) any {
 
 func pgNullableTimeExpr(t *time.Time) postgres.TimestampzExpression {
 	if t == nil {
-		return postgres.TimestampzExp(postgres.NULL)
+		return pgent.NullTimestampz()
 	}
 	return postgres.TimestampzT(t.UTC())
 }

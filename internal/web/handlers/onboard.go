@@ -455,8 +455,10 @@ func OnboardingGate(basePath string, required *atomic.Bool) func(http.Handler) h
 		web.Path(basePath, "/static"),
 		web.Path(basePath, "/oauth/callback"),
 		web.Path(basePath, "/login/oidc"),
+		web.Path(basePath, "/mcp"),
 	}
 	unprefixed := []string{"/healthz", "/readyz", "/robots.txt"}
+	unprefixedPrefixes := []string{"/.well-known"}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if required == nil || !required.Load() {
@@ -466,6 +468,12 @@ func OnboardingGate(basePath string, required *atomic.Bool) func(http.Handler) h
 			p := r.URL.Path
 			for _, allowed := range unprefixed {
 				if p == allowed {
+					next.ServeHTTP(w, r)
+					return
+				}
+			}
+			for _, prefix := range unprefixedPrefixes {
+				if p == prefix || strings.HasPrefix(p, prefix+"/") {
 					next.ServeHTTP(w, r)
 					return
 				}

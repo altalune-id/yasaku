@@ -82,3 +82,14 @@ func TestFrom_APIEnabled(t *testing.T) {
 		t.Error("APIEnabled should reflect config")
 	}
 }
+
+func TestFrom_MCPEnabled(t *testing.T) {
+	c := config.Defaults()
+	if From(c).MCPEnabled {
+		t.Error("MCP should be disabled by default")
+	}
+	c.MCP.Enabled = true
+	if !From(c).MCPEnabled {
+		t.Error("MCPEnabled should reflect config")
+	}
+}

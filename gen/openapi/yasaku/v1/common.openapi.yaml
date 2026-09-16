@@ -1,0 +1,116 @@
+openapi: 3.1.0
+info:
+  title: yasaku.v1
+paths: {}
+components:
+  schemas:
+    yasaku.v1.CategoryRef:
+      type: object
+      properties:
+        id:
+          type: string
+          title: id
+        name:
+          type: string
+          title: name
+        icon:
+          type: string
+          title: icon
+        color:
+          type: string
+          title: color
+      title: CategoryRef
+      additionalProperties: false
+      description: CategoryRef names a category inside a report slice; an empty id is the uncategorized slice.
+    yasaku.v1.Money:
+      type: object
+      properties:
+        amount:
+          type: string
+          title: amount
+        currency:
+          type: string
+          title: currency
+      title: Money
+      additionalProperties: false
+      description: Money is a major-unit decimal string plus its ISO 4217 code, e.g. amount "40000" currency "IDR".
+    yasaku.v1.Need:
+      type: object
+      properties:
+        field:
+          type: string
+          title: field
+        reason:
+          type: string
+          title: reason
+        candidates:
+          type: array
+          items:
+            type: string
+          title: candidates
+      title: Need
+      additionalProperties: false
+      description: Need is one input a mutation could not resolve, with the choices that would resolve it.
+    yasaku.v1.Needs:
+      type: object
+      properties:
+        needs:
+          type: array
+          items:
+            $ref: '#/components/schemas/yasaku.v1.Need'
+          title: needs
+      title: Needs
+      additionalProperties: false
+      description: Needs is the set of unresolved inputs that stopped a mutation before it wrote anything.
+    yasaku.v1.Target:
+      type: object
+      properties:
+        org:
+          type: string
+          title: org
+        project:
+          type: string
+          title: project
+      title: Target
+      additionalProperties: false
+      description: Target names the org and project a request acts on; both empty means the caller's only project.
+    yasaku.v1.WalletLine:
+      type: object
+      properties:
+        wallet:
+          title: wallet
+          $ref: '#/components/schemas/yasaku.v1.WalletRef'
+        kind:
+          type: string
+          title: kind
+        excludeFromTotal:
+          type: boolean
+          title: exclude_from_total
+        opening:
+          title: opening
+          $ref: '#/components/schemas/yasaku.v1.Money'
+        in:
+          title: in
+          $ref: '#/components/schemas/yasaku.v1.Money'
+        out:
+          title: out
+          $ref: '#/components/schemas/yasaku.v1.Money'
+        closing:
+          title: closing
+          $ref: '#/components/schemas/yasaku.v1.Money'
+      title: WalletLine
+      additionalProperties: false
+      description: WalletLine is one wallet's movement across a period, or its live balance when the report is not period-keyed.
+    yasaku.v1.WalletRef:
+      type: object
+      properties:
+        id:
+          type: string
+          title: id
+        name:
+          type: string
+          title: name
+      title: WalletRef
+      additionalProperties: false
+      description: WalletRef names a wallet inside another record without repeating its row.
+security: []

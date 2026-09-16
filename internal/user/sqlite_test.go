@@ -3,6 +3,7 @@ package user_test
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"testing"
 
 	_ "modernc.org/sqlite"
@@ -121,5 +122,141 @@ func TestSQLiteStore_UniqueEmailViolation(t *testing.T) {
 	}
 	if !user.IsAlreadyExistsError(err) {
 		t.Errorf("want IsAlreadyExistsError, got %T: %v", err, err)
+	}
+}
+
+func TestSQLiteStore_ByIDP(t *testing.T) {
+	t.Parallel()
+	db, dbcfg := openMemSQLite(t)
+	store := user.NewStore(dbcfg, pdb.Pool{W: db, R: db})
+	ctx := context.Background()
+
+	u, err := user.New("oidc@example.com", "OIDC", user.SourceOIDC)
+	if err != nil {
+		t.Fatal(err)
+	}
+	u.IDPIssuer = "https://idp.example"
+	u.IDPSubject = "sub-42"
+	if err := store.Save(ctx, u); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	got, err := store.ByIDP(ctx, "https://idp.example", "sub-42")
+	if err != nil {
+		t.Fatalf("ByIDP: %v", err)
+	}
+	if got.ID != u.ID {
+		t.Errorf("ID = %v, want %v", got.ID, u.ID)
+	}
+	if got.IDPIssuer != "https://idp.example" || got.IDPSubject != "sub-42" {
+		t.Errorf("idp = %q/%q", got.IDPIssuer, got.IDPSubject)
+	}
+
+	if _, err := store.ByIDP(ctx, "https://idp.example", "nope"); !user.IsNotFoundError(err) {
+		t.Errorf("ByIDP(missing) err = %v, want NotFoundError", err)
+	}
+}
+
+func TestSQLiteStore_PasswordUsersWriteNullIDP(t *testing.T) {
+	t.Parallel()
+	db, dbcfg := openMemSQLite(t)
+	store := user.NewStore(dbcfg, pdb.Pool{W: db, R: db})
+	ctx := context.Background()
+
+	for _, email := range []string{"local1@example.com", "local2@example.com"} {
+		u, err := user.New(email, "Local", user.SourceLocal)
+		if err != nil {
+			t.Fatal(err)
+		}
+		u.PasswordHash = "$argon2id$stub"
+		if err := store.Save(ctx, u); err != nil {
+			t.Fatalf("Save(%s): %v", email, err)
+		}
+	}
+
+	var nulls int
+	countQ := "SELECT COUNT(*) FROM " + dbcfg.TablePrefix + "users WHERE idp_issuer IS NULL AND idp_subject IS NULL"
+	if err := db.QueryRowContext(ctx, countQ).Scan(&nulls); err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if nulls != 2 {
+		t.Errorf("rows with NULL idp columns = %d, want 2", nulls)
+	}
+}
+
+func TestSQLiteStore_DuplicateIDPReportsIDPField(t *testing.T) {
+	t.Parallel()
+	db, dbcfg := openMemSQLite(t)
+	store := user.NewStore(dbcfg, pdb.Pool{W: db, R: db})
+	ctx := context.Background()
+
+	first, err := user.New("first@example.com", "First", user.SourceOIDC)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first.IDPIssuer = "https://idp.example"
+	first.IDPSubject = "sub-1"
+	if err := store.Save(ctx, first); err != nil {
+		t.Fatalf("Save first: %v", err)
+	}
+
+	second, err := user.New("second@example.com", "Second", user.SourceOIDC)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second.IDPIssuer = "https://idp.example"
+	second.IDPSubject = "sub-1"
+
+	err = store.Save(ctx, second)
+	var dup *user.AlreadyExistsError
+	if !errors.As(err, &dup) {
+		t.Fatalf("Save second err = %v, want *AlreadyExistsError", err)
+	}
+	if dup.Field != "idp_subject" {
+		t.Errorf("Field = %q, want %q", dup.Field, "idp_subject")
+	}
+	if dup.Value != "sub-1" {
+		t.Errorf("Value = %q, want %q", dup.Value, "sub-1")
+	}
+}
+
+func TestSQLite_EnsureFromOIDC_EmailChangedAtIDP(t *testing.T) {
+	t.Parallel()
+	db, dbcfg := openMemSQLite(t)
+	store := user.NewStore(dbcfg, pdb.Pool{W: db, R: db})
+	svc := user.NewService(store, user.GenesisConfig{}, newTestLogger(), noopUnexpected())
+	ctx := context.Background()
+
+	first, err := svc.EnsureFromOIDC(ctx, user.Claims{Issuer: "https://idp", Subject: "sub-1", Email: "old@x.id", Name: "A"})
+	if err != nil {
+		t.Fatalf("first EnsureFromOIDC: %v", err)
+	}
+
+	second, err := svc.EnsureFromOIDC(ctx, user.Claims{Issuer: "https://idp", Subject: "sub-1", Email: "new@x.id", Name: "A"})
+	if err != nil {
+		t.Fatalf("second EnsureFromOIDC: %v", err)
+	}
+	if second.ID != first.ID {
+		t.Errorf("ID = %v, want %v", second.ID, first.ID)
+	}
+	if second.Email != "new@x.id" {
+		t.Errorf("Email = %q, want %q", second.Email, "new@x.id")
+	}
+
+	var rows int
+	countQ := "SELECT COUNT(*) FROM " + dbcfg.TablePrefix + "users"
+	if err := db.QueryRowContext(ctx, countQ).Scan(&rows); err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if rows != 1 {
+		t.Errorf("user rows = %d, want 1", rows)
+	}
+
+	byIDP, err := store.ByIDP(ctx, "https://idp", "sub-1")
+	if err != nil {
+		t.Fatalf("ByIDP: %v", err)
+	}
+	if byIDP.Email != "new@x.id" {
+		t.Errorf("stored email = %q, want %q", byIDP.Email, "new@x.id")
 	}
 }

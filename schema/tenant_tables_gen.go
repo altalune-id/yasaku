@@ -8,11 +8,17 @@ var TenantTableSuffixes = []string{
 	"blog_post_tags",
 	"blog_posts",
 	"blog_tags",
+	"categories",
 	"invites",
+	"ledger_settings",
 	"memberships",
 	"orgs",
+	"period_closings",
+	"periods",
 	"projects",
 	"todos",
+	"transactions",
+	"wallets",
 }
 
 // TenantTableNames returns TenantTableSuffixes prefixed with the given TablePrefix.

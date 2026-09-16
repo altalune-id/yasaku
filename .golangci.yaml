@@ -101,12 +101,22 @@ linters:
             - "**/internal/*/auth.go"
             - "**/internal/onboard/onboard.go"
             - "**/internal/*/blog.go"
+            - "**/internal/*/ledger.go"
+            - "**/internal/*/wallet.go"
+            - "**/internal/*/category.go"
+            - "**/internal/*/transaction.go"
+            - "**/internal/*/period.go"
+            - "**/internal/report/reader.go"
+            - "**/internal/*/report.go"
             - "**/internal/blog/*/{category,tag,store,errors}.go"
             - "**/internal/*/store.go"
             - "**/internal/*/errors.go"
             # internal/cli holds Cobra command files whose names collide with the
             # domain globs above (cli/todo.go, cli/auth.go, …); they are interfaces.
             - "!**/internal/cli/*.go"
+            # internal/mcp is the MCP transport surface, not a domain; its auth.go and
+            # errors.go collide with the domain globs above.
+            - "!**/internal/mcp/*.go"
             # TODO: auth.go imports platform/session for session.Principal. Define a
             # local principal type in the auth domain and drop the platform import,
             # then remove this exclusion.
@@ -118,6 +128,8 @@ linters:
             - altalune.id/yasaku/internal/apperror
             - altalune.id/yasaku/gen/go/apperror/v1
             - altalune.id/yasaku/reqid
+            - altalune.id/yasaku/money
+            - altalune.id/yasaku/civil
             - google.golang.org/grpc/codes
         scheduler-purity:
           list-mode: strict
@@ -138,6 +150,40 @@ linters:
             - $gostd
             - github.com/go-resty/resty/v2
             - go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp
+        civil-purity:
+          list-mode: strict
+          files:
+            - "**/civil/*.go"
+            - "!**/civil/*_test.go"
+          allow:
+            - $gostd
+        money-purity:
+          list-mode: strict
+          files:
+            - "**/money/*.go"
+            - "!**/money/*_test.go"
+          allow:
+            - $gostd
+            - golang.org/x/text
+        opensheet-purity:
+          list-mode: strict
+          files:
+            - "**/opensheet/*.go"
+            - "!**/opensheet/*_test.go"
+          allow:
+            - $gostd
+            - altalune.id/yasaku/httpclient
+            - github.com/go-resty/resty/v2
+            - go.opentelemetry.io/otel
+        mcp-purity:
+          list-mode: strict
+          files:
+            - "**/mcp/*.go"
+            - "!**/internal/mcp/*.go"
+            - "!**/mcp/*_test.go"
+          allow:
+            - $gostd
+            - github.com/modelcontextprotocol/go-sdk
         application-purity:
           list-mode: lax
           files:
@@ -186,6 +232,11 @@ linters:
             - "**/telemetry/**"
             - "**/mailer/**"
             - "**/httpclient/**"
+            - "**/civil/*.go"
+            - "**/money/*.go"
+            - "**/mcp/*.go"
+            - "!**/internal/mcp/*.go"
+            - "**/opensheet/*.go"
           deny:
             - pkg: "altalune.id/yasaku/internal"
               desc: "root-level shared packages must NOT depend on any internal/ package (import inversion)"

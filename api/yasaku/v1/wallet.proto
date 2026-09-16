@@ -1,0 +1,207 @@
+syntax = "proto3";
+
+package yasaku.v1;
+
+import "google/protobuf/timestamp.proto";
+import "yasaku/mcp/v1/annotations.proto";
+import "yasaku/v1/common.proto";
+import "yasaku/v1/period.proto";
+import "yasaku/v1/transaction.proto";
+
+option go_package = "altalune.id/yasaku/gen/go/yasaku/v1;yasakuv1";
+
+// WalletService manages the wallets a project holds money in and reports their balances.
+service WalletService {
+  rpc ListWallets(ListWalletsRequest) returns (ListWalletsResponse) {
+    option (yasaku.mcp.v1.tool) = {
+      name: "list_wallets"
+      description: "Daftar dompet beserta saldo terkininya. Balances are derived from transactions, never stored. Archived wallets are hidden unless include_archived is true."
+      access: ACCESS_READ
+    };
+  }
+  rpc GetWallet(GetWalletRequest) returns (GetWalletResponse) {
+    option (yasaku.mcp.v1.tool) = {
+      name: "get_wallet"
+      description: "Detail satu dompet beserta transaksi terakhirnya. The wallet is addressed by name or id; a name that matches more than one wallet is refused with the candidates."
+      access: ACCESS_READ
+    };
+  }
+  rpc CreateWallet(CreateWalletRequest) returns (CreateWalletResponse) {
+    option (yasaku.mcp.v1.tool) = {
+      name: "create_wallet"
+      description: "Buat dompet baru, boleh sekalian dengan saldo awal. Kind is one of cash, bank, ewallet, savings, investment or other; currency is immutable once set. Savings and investment wallets default to being excluded from the spendable total. Call without confirm to preview; call again with confirm=true to save. The preview is the resolved intent, not the saved record: it carries no id and no timestamps, and a concurrent write landing in between can change what is actually saved."
+      access: ACCESS_WRITE
+      mutation: true
+    };
+  }
+  rpc UpdateWallet(UpdateWalletRequest) returns (UpdateWalletResponse) {
+    option (yasaku.mcp.v1.tool) = {
+      name: "update_wallet"
+      description: "Ubah nama, jenis, penyedia atau flag exclude_from_total sebuah dompet. Only the fields you send are changed; kind is one of cash, bank, ewallet, savings, investment or other. Currency cannot be changed and an archived wallet must be unarchived first. Call without confirm to preview; call again with confirm=true to save. The preview is the resolved intent, not the saved record: it is the stored row with your changes applied, and a concurrent write landing in between can change what is actually saved."
+      access: ACCESS_WRITE
+      mutation: true
+    };
+  }
+  rpc ArchiveWallet(ArchiveWalletRequest) returns (ArchiveWalletResponse) {
+    option (yasaku.mcp.v1.tool) = {
+      name: "archive_wallet"
+      description: "Arsipkan dompet yang sudah tidak dipakai; riwayat transaksinya tetap utuh dan namanya bebas dipakai ulang. An archived wallet refuses new transactions. Call without confirm to preview; call again with confirm=true to archive. The preview is the wallet as it stands now, read at preview time, so a concurrent write landing in between can change what is actually archived."
+      access: ACCESS_WRITE
+      mutation: true
+    };
+  }
+  rpc UnarchiveWallet(UnarchiveWalletRequest) returns (UnarchiveWalletResponse);
+  rpc DeleteWallet(DeleteWalletRequest) returns (DeleteWalletResponse);
+  rpc AdjustBalance(AdjustBalanceRequest) returns (AdjustBalanceResponse) {
+    option (yasaku.mcp.v1.tool) = {
+      name: "adjust_balance"
+      description: "Samakan saldo dompet dengan hitungan sebenarnya dengan menulis satu transaksi penyesuaian. Give the balance the wallet should end up with, in major units of its currency, not the difference. The date is YYYY-MM-DD and empty means today. When the wallet already holds that balance nothing is written and both preview and result come back empty. Call without confirm to preview; call again with confirm=true to save. The preview is the resolved intent, not the saved record: it carries no id and no timestamps, and a concurrent write landing in between can change both the adjustment and the balance it lands on."
+      access: ACCESS_WRITE
+      mutation: true
+    };
+  }
+  rpc WalletTotals(WalletTotalsRequest) returns (WalletTotalsResponse) {
+    option (yasaku.mcp.v1.tool) = {
+      name: "wallet_totals"
+      description: "Ringkasan uang: total bisa dipakai, total semua dompet, dan pemasukan, pengeluaran serta selisih periode berjalan. The spendable total leaves out wallets flagged exclude_from_total."
+      access: ACCESS_READ
+    };
+  }
+}
+
+// Wallet is a named holder of money in one currency; balance is derived from transactions.
+message Wallet {
+  string id = 1;
+  string name = 2;
+  // One of cash, bank, ewallet, savings, investment or other.
+  string kind = 3;
+  string provider = 4;
+  string currency = 5;
+  bool exclude_from_total = 6;
+  bool archived = 7;
+  Money balance = 8;
+  google.protobuf.Timestamp created_at = 9;
+}
+
+message ListWalletsRequest {
+  Target target = 1;
+  bool include_archived = 2;
+}
+
+message ListWalletsResponse {
+  repeated Wallet wallets = 1;
+}
+
+message GetWalletRequest {
+  Target target = 1;
+  string wallet = 2;
+}
+
+message GetWalletResponse {
+  Wallet wallet = 1;
+  repeated Transaction recent = 2;
+}
+
+// CreateWalletRequest defaults exclude_from_total from the kind when it is absent.
+message CreateWalletRequest {
+  Target target = 1;
+  string name = 2;
+  // One of cash, bank, ewallet, savings, investment or other.
+  string kind = 3;
+  string provider = 4;
+  string currency = 5;
+  optional bool exclude_from_total = 6;
+  Money opening_balance = 7;
+  bool confirm = 8;
+}
+
+message CreateWalletResponse {
+  Needs needs = 1;
+  // The wallet as it would be created: name, kind, provider, currency, exclude_from_total and the opening balance are resolved; id and created_at are empty.
+  Wallet preview = 2;
+  Wallet result = 3;
+  string warning = 4;
+}
+
+// UpdateWalletRequest leaves every absent field unchanged.
+message UpdateWalletRequest {
+  Target target = 1;
+  string wallet = 2;
+  optional string name = 3;
+  // One of cash, bank, ewallet, savings, investment or other.
+  optional string kind = 4;
+  optional string provider = 5;
+  optional bool exclude_from_total = 6;
+  bool confirm = 7;
+}
+
+message UpdateWalletResponse {
+  Needs needs = 1;
+  // The stored wallet with the requested changes applied: id, currency, created_at and balance are the stored ones.
+  Wallet preview = 2;
+  Wallet result = 3;
+  string warning = 4;
+}
+
+message ArchiveWalletRequest {
+  Target target = 1;
+  string wallet = 2;
+  bool confirm = 3;
+}
+
+message ArchiveWalletResponse {
+  Needs needs = 1;
+  // The stored wallet that would be archived, read at preview time; archived is still false on the preview.
+  Wallet preview = 2;
+  Wallet result = 3;
+  string warning = 4;
+}
+
+message UnarchiveWalletRequest {
+  Target target = 1;
+  string wallet = 2;
+}
+
+message UnarchiveWalletResponse {
+  Wallet wallet = 1;
+}
+
+message DeleteWalletRequest {
+  Target target = 1;
+  string wallet = 2;
+}
+
+message DeleteWalletResponse {}
+
+// AdjustBalanceRequest names the balance the wallet should end up with, not the difference.
+message AdjustBalanceRequest {
+  Target target = 1;
+  string wallet = 2;
+  Money target_balance = 3;
+  // YYYY-MM-DD; empty means today in the project timezone.
+  string date = 4;
+  bool confirm = 5;
+}
+
+// AdjustBalanceResponse leaves result empty when the wallet already holds the target balance.
+message AdjustBalanceResponse {
+  Needs needs = 1;
+  // The adjustment that would be written: kind, wallet and amount are resolved; id, period and created_at are empty. Empty when the balance already matches.
+  Transaction preview = 2;
+  Transaction result = 3;
+  string warning = 4;
+}
+
+message WalletTotalsRequest {
+  Target target = 1;
+}
+
+message WalletTotalsResponse {
+  Money spendable_total = 1;
+  Money total = 2;
+  Money income = 3;
+  Money expense = 4;
+  Money net = 5;
+  Period period = 6;
+  repeated WalletLine wallets = 7;
+}

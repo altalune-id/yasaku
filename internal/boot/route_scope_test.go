@@ -66,6 +66,18 @@ func probeRoutes() []probeRoute {
 		{http.MethodGet, pbase + "/posts/" + id + "/edit", nil},
 		{http.MethodGet, pbase + "/categories", nil},
 		{http.MethodGet, pbase + "/tags", nil},
+		{http.MethodGet, pbase + "/wallets", nil},
+		{http.MethodGet, pbase + "/wallets/new", nil},
+		{http.MethodGet, pbase + "/wallets/" + id, nil},
+		{http.MethodGet, pbase + "/wallets/" + id + "/edit", nil},
+		{http.MethodGet, pbase + "/wallets/" + id + "/adjust", nil},
+		{http.MethodGet, pbase + "/transactions", nil},
+		{http.MethodGet, pbase + "/transactions/new", nil},
+		{http.MethodGet, pbase + "/transactions/" + id + "/edit", nil},
+		{http.MethodGet, pbase + "/periods", nil},
+		{http.MethodGet, pbase + "/periods/" + id + "/close", nil},
+		{http.MethodGet, pbase + "/reports", nil},
+		{http.MethodGet, pbase + "/settings", nil},
 		{http.MethodGet, "/signup/complete", nil},
 		{http.MethodGet, "/onboard", nil},
 		{http.MethodGet, "/onboard/oidc", nil},
@@ -96,9 +108,34 @@ func probeRoutes() []probeRoute {
 		{http.MethodPost, pbase + "/posts/" + id + "/publish", url.Values{}},
 		{http.MethodPost, pbase + "/posts/" + id + "/unpublish", url.Values{}},
 		{http.MethodPost, pbase + "/posts/" + id + "/delete", url.Values{}},
-		{http.MethodPost, pbase + "/categories", url.Values{"name": {"Probe Category"}, "slug": {"probe-category"}}},
+		{http.MethodPost, pbase + "/categories", url.Values{"name": {"Probe Category"}, "kind": {"expense"}}},
+		{http.MethodPost, pbase + "/categories/seed", url.Values{}},
 		{http.MethodPost, pbase + "/categories/" + id + "/rename", url.Values{"name": {"Renamed"}}},
+		{http.MethodPost, pbase + "/categories/" + id + "/archive", url.Values{}},
+		{http.MethodPost, pbase + "/categories/" + id + "/unarchive", url.Values{}},
 		{http.MethodPost, pbase + "/categories/" + id + "/delete", url.Values{}},
+		{http.MethodPost, pbase + "/wallets", url.Values{
+			"kind": {"cash"}, "name": {"Probe Wallet"}, "opening_balance": {"100000"},
+		}},
+		{http.MethodPost, pbase + "/wallets/" + id, url.Values{"kind": {"cash"}, "name": {"Renamed Wallet"}}},
+		{http.MethodPost, pbase + "/wallets/" + id + "/archive", url.Values{}},
+		{http.MethodPost, pbase + "/wallets/" + id + "/unarchive", url.Values{}},
+		{http.MethodPost, pbase + "/wallets/" + id + "/delete", url.Values{}},
+		{http.MethodPost, pbase + "/wallets/" + id + "/adjust", url.Values{"target": {"150000"}}},
+		{http.MethodPost, pbase + "/transactions", url.Values{
+			"kind": {"expense"}, "amount": {"25000"}, "wallet_id": {id}, "note": {"probe"},
+		}},
+		{http.MethodPost, pbase + "/transactions/suggest", url.Values{"kind": {"expense"}, "note": {"probe"}}},
+		{http.MethodPost, pbase + "/transactions/" + id, url.Values{
+			"kind": {"expense"}, "amount": {"25000"}, "wallet_id": {id}, "note": {"probe"},
+		}},
+		{http.MethodPost, pbase + "/transactions/" + id + "/delete", url.Values{}},
+		{http.MethodPost, pbase + "/periods/" + id + "/close", url.Values{"end_date": {"2026-09-30"}}},
+		{http.MethodPost, pbase + "/periods/" + id + "/reopen", url.Values{}},
+		{http.MethodPost, pbase + "/periods/" + id + "/rename", url.Values{"name": {"Renamed Period"}}},
+		{http.MethodPost, pbase + "/settings", url.Values{
+			"timezone": {"Asia/Jakarta"}, "currency": {"IDR"}, "period_start_day": {"25"},
+		}},
 		{http.MethodPost, pbase + "/tags", url.Values{"name": {"Probe Tag"}, "slug": {"probe-tag"}}},
 		{http.MethodPost, pbase + "/tags/quick", url.Values{"name": {"Probe Quick Tag"}}},
 		{http.MethodPost, pbase + "/tags/" + id + "/rename", url.Values{"name": {"Renamed"}}},
@@ -168,6 +205,30 @@ func probeCookie(t *testing.T, srv *boot.Server, p session.Principal) *http.Cook
 	}
 }
 
+// muxNotFound is what http.ServeMux answers when no pattern matches, as opposed to a handler's own 404 page.
+const muxNotFound = "404 page not found"
+
+// isUnwired reports whether path belongs to a template demo handler kept in the tree but dropped from AppHandlers.
+func isUnwired(path string) bool {
+	unwiredPrefixes := []string{"/todos", "/posts", "/tags"}
+
+	_, rest, found := strings.Cut(path, "/projects/")
+	if !found {
+		return false
+	}
+	i := strings.Index(rest, "/")
+	if i < 0 {
+		return false
+	}
+	rest = rest[i:]
+	for _, p := range unwiredPrefixes {
+		if rest == p || strings.HasPrefix(rest, p+"/") {
+			return true
+		}
+	}
+	return false
+}
+
 // walkRoutes drives every route as p and fails on any 5xx or any tenant-scope error.
 func walkRoutes(t *testing.T, srv *boot.Server, logBuf *bytes.Buffer, p session.Principal, label string) {
 	t.Helper()
@@ -194,6 +255,16 @@ func walkRoutes(t *testing.T, srv *boot.Server, logBuf *bytes.Buffer, p session.
 				"%s %s reached a tenant-scoped store with a scope naming no org", rt.method, rt.path)
 			require.Less(t, rec.Code, 500,
 				"%s %s returned %d\nbody=%s\nlog=%s", rt.method, rt.path, rec.Code, rec.Body.String(), logged)
+
+			// NOTE: the bare mux 404 means no pattern matched, so the probe proved nothing about the handler.
+			bare := strings.Contains(rec.Body.String(), muxNotFound)
+			if isUnwired(rt.path) {
+				require.True(t, bare,
+					"%s %s is a template demo route and must stay unregistered, got %d", rt.method, rt.path, rec.Code)
+				return
+			}
+			require.False(t, bare,
+				"%s %s reached no registered pattern — the handler is not in AppHandlers", rt.method, rt.path)
 		})
 	}
 }
@@ -220,6 +291,12 @@ func TestRoutes_UserWithAnActiveOrgNeverHitsATenantScopeError(t *testing.T) {
 		Slug: "probe-org", Name: "Probe Org", OwnerID: owner.ID,
 	})
 	require.NoError(t, err, "org.Create must work with no ambient tenant scope — the signup case")
+
+	// NOTE: without the project every project-scoped probe short-circuits on a 404 and exercises no handler.
+	orgCtx := tenant.Into(context.Background(), tenant.Context{OrgID: o.ID, UserID: owner.ID})
+	_, err = srv.Projects.Create(orgCtx, o.ID, "probe-project", "Probe Project")
+	require.NoError(t, err)
+
 	walkRoutes(t, srv, logBuf, session.Principal{UserID: owner.ID, ActiveOrgID: o.ID}, "cloud with-org")
 }
 

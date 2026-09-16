@@ -24,7 +24,7 @@ func newSQLiteStore(db *sql.DB, tablePrefix string) *sqliteStore {
 
 func (s *sqliteStore) table() string { return s.tablePrefix + "users" }
 
-const sqliteUserSelectCols = "id, email, name, is_admin, idp_issuer, password_hash, locale, terms_accepted_at, created_at"
+const sqliteUserSelectCols = "id, email, name, is_admin, idp_issuer, idp_subject, password_hash, locale, terms_accepted_at, created_at"
 
 func (s *sqliteStore) ByID(ctx context.Context, id uuid.UUID) (*User, error) {
 	//nolint:gosec // G201: table identifier is fixed by config, never user input.
@@ -38,20 +38,27 @@ func (s *sqliteStore) ByEmail(ctx context.Context, email string) (*User, error) 
 	return s.queryOne(ctx, q, &NotFoundError{Email: email}, strings.ToLower(email))
 }
 
-func (s *sqliteStore) queryOne(ctx context.Context, q string, notFound error, arg any) (*User, error) {
+func (s *sqliteStore) ByIDP(ctx context.Context, issuer, subject string) (*User, error) {
+	//nolint:gosec // G201: table identifier is fixed by config, never user input.
+	q := fmt.Sprintf("SELECT %s FROM %s WHERE idp_issuer = ? AND idp_subject = ?", sqliteUserSelectCols, s.table())
+	return s.queryOne(ctx, q, &NotFoundError{Subject: subject}, issuer, subject)
+}
+
+func (s *sqliteStore) queryOne(ctx context.Context, q string, notFound error, args ...any) (*User, error) {
 	var (
 		idStr        string
 		email        string
 		name         string
 		isAdmin      int64
 		idpIssuer    sql.NullString
+		idpSubject   sql.NullString
 		passwordHash string
 		locale       string
 		terms        sql.NullString
 		createdAt    string
 	)
-	err := s.db.QueryRowContext(ctx, q, arg).Scan(
-		&idStr, &email, &name, &isAdmin, &idpIssuer, &passwordHash, &locale, &terms, &createdAt,
+	err := s.db.QueryRowContext(ctx, q, args...).Scan(
+		&idStr, &email, &name, &isAdmin, &idpIssuer, &idpSubject, &passwordHash, &locale, &terms, &createdAt,
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -71,7 +78,9 @@ func (s *sqliteStore) queryOne(ctx context.Context, q string, notFound error, ar
 		ID:           id,
 		Email:        email,
 		Name:         name,
-		Source:       sourceFrom(isAdmin == 1, idpIssuer.Valid, passwordHash != ""),
+		Source:       sourceFrom(isAdmin == 1, idpIssuer.Valid && idpIssuer.String != "", passwordHash != ""),
+		IDPIssuer:    idpIssuer.String,
+		IDPSubject:   idpSubject.String,
 		PasswordHash: passwordHash,
 		IsAdmin:      isAdmin == 1,
 		Locale:       locale,
@@ -94,11 +103,13 @@ func (s *sqliteStore) Save(ctx context.Context, u *User) error {
 	}
 	//nolint:gosec // G201: table identifier is fixed by config, never user input.
 	q := fmt.Sprintf(`
-INSERT INTO %s (id, email, name, avatar_url, is_admin, password_hash, locale, terms_accepted_at, created_at, updated_at)
-VALUES (?, ?, ?, '', ?, ?, ?, ?, ?, ?)
+INSERT INTO %s (id, email, name, idp_issuer, idp_subject, avatar_url, is_admin, password_hash, locale, terms_accepted_at, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, '', ?, ?, ?, ?, ?, ?)
 ON CONFLICT(id) DO UPDATE SET
 	email = excluded.email,
 	name = excluded.name,
+	idp_issuer = excluded.idp_issuer,
+	idp_subject = excluded.idp_subject,
 	is_admin = excluded.is_admin,
 	password_hash = excluded.password_hash,
 	locale = excluded.locale,
@@ -111,10 +122,15 @@ ON CONFLICT(id) DO UPDATE SET
 		termsArg = sqliteent.SQLiteTime(*u.TermsAcceptedAt)
 	}
 	if _, err := s.db.ExecContext(ctx, q,
-		u.ID.String(), u.Email, u.Name, isAdmin, u.PasswordHash, u.Locale, termsArg, sqliteent.SQLiteTime(u.CreatedAt), now,
+		u.ID.String(), u.Email, u.Name, nullableString(u.IDPIssuer), nullableString(u.IDPSubject),
+		isAdmin, u.PasswordHash, u.Locale, termsArg, sqliteent.SQLiteTime(u.CreatedAt), now,
 	); err != nil {
 		if isSQLiteUnique(err) {
-			return &AlreadyExistsError{Field: "email", Value: u.Email}
+			// NOTE: modernc.org/sqlite exposes no constraint name, so the column is sniffed from the message.
+			if strings.Contains(err.Error(), "idp_subject") {
+				return idpConflict(u)
+			}
+			return emailConflict(u)
 		}
 		return fmt.Errorf("user.Save: %w", err)
 	}
@@ -143,6 +159,13 @@ func (s *sqliteStore) UpdateLocale(ctx context.Context, id uuid.UUID, locale str
 		return &NotFoundError{ID: id.String()}
 	}
 	return nil
+}
+
+func nullableString(v string) any {
+	if v == "" {
+		return nil
+	}
+	return v
 }
 
 func isSQLiteUnique(err error) bool {

@@ -3,7 +3,7 @@ name: template-module
 description: Add or review a domain module (bounded context) in this Go multitenant template (yasaku) or a downstream fork of it — the DDD package shape, tenant scoping and RLS, guarded upserts, typed errors and error codes, migrations, boot wiring, and the web/RPC surfaces. Use this whenever adding a new domain, aggregate, subdomain, Store, migration or error code to a codebase built on this template, or when reviewing such a change. Also use it when the task mentions tenant isolation, org scoping, row level security, ON CONFLICT, or "how do I add a module here".
 license: Proprietary
 metadata:
-  reference-impl: internal/blog (relations), internal/todo (flat)
+  reference-impl: internal/transaction (relations, ports), internal/wallet (flat); internal/blog and internal/todo remain as template references
 ---
 
 # Adding a domain module

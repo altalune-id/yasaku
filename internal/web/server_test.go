@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"altalune.id/yasaku/internal/web"
+	webhandlers "altalune.id/yasaku/internal/web/handlers"
 )
 
 // stubRegister is a minimal Register that answers a fixed route.
@@ -164,4 +165,60 @@ func TestHealthz_IgnoresDBHealth(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, resp.Body.Close())
 	require.Equal(t, http.StatusOK, resp.StatusCode, "liveness must not depend on the database")
+}
+
+func TestServer_StaticCarriesCacheControl(t *testing.T) {
+	t.Parallel()
+	ts := httptest.NewServer(web.NewServer(web.ServerOpts{}))
+	t.Cleanup(ts.Close)
+
+	resp, err := http.Get(ts.URL + "/static/themes.css")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = resp.Body.Close() })
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.Equal(t, "public, max-age=3600", resp.Header.Get("Cache-Control"))
+}
+
+func TestServer_MountsMCPHandler(t *testing.T) {
+	t.Parallel()
+	mcp := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("mcp-ok")) })
+	required := &atomic.Bool{}
+	required.Store(true)
+	ts := httptest.NewServer(web.NewServer(web.ServerOpts{
+		BasePath:    "/app",
+		MCPHandler:  mcp,
+		Middlewares: []web.Middleware{webhandlers.OnboardingGate("/app", required)},
+	}))
+	t.Cleanup(ts.Close)
+
+	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	resp, err := client.Get(ts.URL + "/app/mcp")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = resp.Body.Close() })
+	require.Equal(t, http.StatusOK, resp.StatusCode, "a bearer request to /mcp must not be redirected to /onboard")
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "mcp-ok", string(body))
+}
+
+func TestServer_MountsWellKnownOnOuterMux(t *testing.T) {
+	t.Parallel()
+	prm := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("prm")) })
+	required := &atomic.Bool{}
+	required.Store(true)
+	ts := httptest.NewServer(web.NewServer(web.ServerOpts{
+		BasePath:    "/app",
+		WellKnown:   map[string]http.Handler{"/.well-known/oauth-protected-resource": prm},
+		Middlewares: []web.Middleware{webhandlers.OnboardingGate("/app", required)},
+	}))
+	t.Cleanup(ts.Close)
+
+	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	resp, err := client.Get(ts.URL + "/.well-known/oauth-protected-resource")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = resp.Body.Close() })
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "prm", string(body))
 }

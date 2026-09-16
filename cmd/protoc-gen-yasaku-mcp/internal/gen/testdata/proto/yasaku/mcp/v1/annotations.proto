@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package yasaku.mcp.v1;
+
+import "google/protobuf/descriptor.proto";
+
+option go_package = "altalune.id/yasaku/gen/go/yasaku/mcp/v1;yasakumcpv1";
+
+extend google.protobuf.MethodOptions {
+  Tool tool = 51001;
+}
+
+// Access is how much of the ledger a tool may reach.
+enum Access {
+  ACCESS_UNSPECIFIED = 0;
+  ACCESS_READ = 1;
+  ACCESS_WRITE = 2;
+}
+
+// Tool marks an RPC as an MCP tool. A method with mutation true must carry a bool confirm field in its request.
+message Tool {
+  string name = 1;
+  string description = 2;
+  Access access = 3;
+  bool mutation = 4;
+}

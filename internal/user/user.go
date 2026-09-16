@@ -21,6 +21,8 @@ type User struct {
 	Email           string
 	Name            string
 	Source          string
+	IDPIssuer       string
+	IDPSubject      string
 	PasswordHash    string
 	IsAdmin         bool
 	Locale          string
@@ -58,6 +60,16 @@ func (u *User) Rename(name string) error {
 		return err
 	}
 	u.Name = n
+	return nil
+}
+
+// ChangeEmail updates the address; empty/malformed rejected, stored lowercased.
+func (u *User) ChangeEmail(email string) error {
+	e, err := normalizeEmail(email)
+	if err != nil {
+		return err
+	}
+	u.Email = e
 	return nil
 }
 

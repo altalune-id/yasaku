@@ -30,8 +30,9 @@ func IsSingletonOrgMissingError(err error) bool {
 
 // NotFoundError signals no user matched the lookup.
 type NotFoundError struct {
-	ID    string
-	Email string
+	ID      string
+	Email   string
+	Subject string
 }
 
 func (e *NotFoundError) Error() string {
@@ -40,6 +41,8 @@ func (e *NotFoundError) Error() string {
 		return "user: not found: id=" + e.ID
 	case e.Email != "":
 		return "user: not found: email=" + e.Email
+	case e.Subject != "":
+		return "user: not found: idp_subject=" + e.Subject
 	default:
 		return "user: not found"
 	}
@@ -53,6 +56,14 @@ func (e *NotFoundError) ToAppError() *apperror.AppError {
 		codes.NotFound,
 		&apperrorv1.ErrorDetail{Code: apperror.CodeUserNotFound},
 	)
+}
+
+func emailConflict(u *User) error {
+	return &AlreadyExistsError{Field: "email", Value: u.Email}
+}
+
+func idpConflict(u *User) error {
+	return &AlreadyExistsError{Field: "idp_subject", Value: u.IDPSubject}
 }
 
 // IsNotFoundError reports whether err's tree contains a *NotFoundError.

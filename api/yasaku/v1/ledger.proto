@@ -1,0 +1,39 @@
+syntax = "proto3";
+
+package yasaku.v1;
+
+import "yasaku/v1/common.proto";
+
+option go_package = "altalune.id/yasaku/gen/go/yasaku/v1;yasakuv1";
+
+// LedgerService reads and writes one project's ledger settings.
+service LedgerService {
+  rpc GetSettings(GetSettingsRequest) returns (GetSettingsResponse);
+  rpc UpdateSettings(UpdateSettingsRequest) returns (UpdateSettingsResponse);
+}
+
+// Settings is a project's ledger configuration; a project that was never configured reads back the defaults.
+message Settings {
+  string timezone = 1;
+  string currency = 2;
+  int32 period_start_day = 3;
+}
+
+message GetSettingsRequest {
+  Target target = 1;
+}
+
+message GetSettingsResponse {
+  Settings settings = 1;
+}
+
+message UpdateSettingsRequest {
+  Target target = 1;
+  optional string timezone = 2;
+  optional string currency = 3;
+  optional int32 period_start_day = 4;
+}
+
+message UpdateSettingsResponse {
+  Settings settings = 1;
+}

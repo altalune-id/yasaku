@@ -1,0 +1,270 @@
+package templates
+
+import (
+	"strconv"
+
+	"altalune.id/yasaku/internal/web"
+	"altalune.id/yasaku/internal/web/icons"
+)
+
+// Chart element ids on the reports page; each must be unique within the page.
+const (
+	ReportDonutID  = "report-spend-donut"
+	ReportBarsID   = "report-cashflow-bars"
+	ReportSankeyID = "report-flows-sankey"
+)
+
+// ReportPeriodOption is one entry in the period selector.
+type ReportPeriodOption struct {
+	ID       string
+	Name     string
+	Selected bool
+}
+
+// ReportWalletRow is one wallet's movement across the selected period, pre-formatted.
+type ReportWalletRow struct {
+	Name     string
+	Opening  string
+	In       string
+	Out      string
+	Closing  string
+	Excluded bool
+}
+
+// ReportWalletTotal is one footer row of the wallet movement table: a closing balance, never a movement.
+type ReportWalletTotal struct {
+	Kind    string
+	Label   string
+	Closing string
+}
+
+// ReportCategoryRow is one line of a top-categories list.
+type ReportCategoryRow struct {
+	Name   string
+	Amount string
+	Share  string
+}
+
+// ReportsView is everything the reports page renders; an empty chart field means that section draws nothing.
+type ReportsView struct {
+	ProjectSlug string
+	ProjectName string
+
+	NoPeriod   bool
+	Periods    []ReportPeriodOption
+	PeriodName string
+
+	Income  string
+	Expense string
+	Net     string
+	TxCount int
+
+	Wallets []ReportWalletRow
+	Totals  []ReportWalletTotal
+
+	TopSpend  []ReportCategoryRow
+	TopIncome []ReportCategoryRow
+
+	Donut  string
+	Bars   string
+	Sankey string
+}
+
+// HasCharts reports whether any section draws a chart, so ECharts loads only when it is used.
+func (v ReportsView) HasCharts() bool {
+	return v.Donut != "" || v.Bars != "" || v.Sankey != ""
+}
+
+// TxCountText renders the period's transaction count for the summary tile.
+func (v ReportsView) TxCountText() string { return strconv.Itoa(v.TxCount) }
+
+templ reportEmpty(message string) {
+	<p data-report-empty="1" class="mt-4 rounded-md border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">{ message }</p>
+}
+
+templ reportNote(kind, text string) {
+	<p data-report-note={ kind } class="mt-2 text-xs text-muted-foreground">{ text }</p>
+}
+
+templ reportSectionTitle(icon, title string) {
+	<h2 class="flex items-center gap-2 text-base font-semibold text-foreground">
+		@icons.Icon(icon, "h-4 w-4 shrink-0 text-muted-foreground")
+		{ title }
+	</h2>
+}
+
+templ reportPeriodPicker(d web.LayoutData, v ReportsView) {
+	<form
+		method="get"
+		action={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/reports")) }
+		class="flex items-center gap-2"
+	>
+		<label for="report-period" class="shrink-0 text-sm text-muted-foreground">{ d.Tr("report.period") }</label>
+		<select
+			id="report-period"
+			name="period"
+			onchange="this.form.submit()"
+			class="min-w-[10rem] rounded-md border border-border bg-card px-3 py-1.5 text-sm text-foreground shadow-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
+		>
+			for _, o := range v.Periods {
+				if o.Selected {
+					<option value={ o.ID } selected>{ o.Name }</option>
+				} else {
+					<option value={ o.ID }>{ o.Name }</option>
+				}
+			}
+		</select>
+	</form>
+}
+
+templ reportStat(key, label, value string) {
+	<div class="rounded-md border border-border/60 bg-muted/30 px-3 py-2">
+		<dt data-report-stat={ key } class="text-xs font-medium text-muted-foreground">{ label }</dt>
+		<dd class="mt-0.5 text-lg font-semibold tabular-nums text-foreground">{ value }</dd>
+	</div>
+}
+
+templ reportSummarySection(d web.LayoutData, v ReportsView) {
+	<section class="rounded-lg border border-border bg-card p-4 shadow-sm">
+		@reportSectionTitle("wallet", d.Tr("report.summary"))
+		<dl class="mt-3 grid grid-cols-2 gap-2 lg:grid-cols-4">
+			@reportStat("in", d.Tr("report.money_in"), v.Income)
+			@reportStat("out", d.Tr("report.money_out"), v.Expense)
+			@reportStat("net", d.Tr("overview.net"), v.Net)
+			@reportStat("tx", d.Tr("period.tx_count"), v.TxCountText())
+		</dl>
+		if len(v.Wallets) == 0 {
+			@reportEmpty(d.Tr("report.no_data"))
+		} else {
+			<div class="mt-4 overflow-x-auto">
+				<table class="w-full min-w-[32rem] border-collapse text-sm">
+					<thead>
+						<tr class="border-b border-border text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
+							<th scope="col" class="py-2 pr-3">{ d.Tr("report.wallet") }</th>
+							<th scope="col" class="py-2 px-3 text-right">{ d.Tr("report.opening") }</th>
+							<th scope="col" data-report-col="in" class="py-2 px-3 text-right">{ d.Tr("report.wallet_in") }</th>
+							<th scope="col" data-report-col="out" class="py-2 px-3 text-right">{ d.Tr("report.wallet_out") }</th>
+							<th scope="col" class="py-2 pl-3 text-right">{ d.Tr("report.closing") }</th>
+						</tr>
+					</thead>
+					<tbody class="divide-y divide-border/50">
+						for _, wal := range v.Wallets {
+							<tr>
+								<th scope="row" class="py-2 pr-3 text-left font-normal text-foreground">
+									{ wal.Name }
+									if wal.Excluded {
+										<span class="ml-1 text-xs text-muted-foreground">({ d.Tr("wallet.exclude_from_total") })</span>
+									}
+								</th>
+								<td class="py-2 px-3 text-right tabular-nums text-muted-foreground">{ wal.Opening }</td>
+								<td class="py-2 px-3 text-right tabular-nums text-foreground">{ wal.In }</td>
+								<td class="py-2 px-3 text-right tabular-nums text-foreground">{ wal.Out }</td>
+								<td class="py-2 pl-3 text-right tabular-nums font-medium text-foreground">{ wal.Closing }</td>
+							</tr>
+						}
+					</tbody>
+					<tfoot>
+						for _, tot := range v.Totals {
+							<tr data-report-total={ tot.Kind } class="border-t border-border font-medium">
+								<th scope="row" colspan="4" class="py-2 pr-3 text-left text-foreground">{ tot.Label }</th>
+								<td class="py-2 pl-3 text-right tabular-nums text-foreground">{ tot.Closing }</td>
+							</tr>
+						}
+					</tfoot>
+				</table>
+			</div>
+			@reportNote("wallet-movement", d.Tr("report.wallet_movement_note"))
+		}
+	</section>
+}
+
+templ reportCategoryList(rows []ReportCategoryRow) {
+	<ul class="mt-3 divide-y divide-border/50">
+		for _, c := range rows {
+			<li class="flex items-baseline justify-between gap-3 py-2 text-sm">
+				<span class="min-w-0 flex-1 truncate text-foreground">{ c.Name }</span>
+				<span class="shrink-0 tabular-nums text-foreground">{ c.Amount }</span>
+				<span data-report-share="1" class="w-10 shrink-0 text-right text-xs tabular-nums text-muted-foreground">{ c.Share }</span>
+			</li>
+		}
+	</ul>
+}
+
+templ reportCategorySection(d web.LayoutData, v ReportsView) {
+	<section class="rounded-lg border border-border bg-card p-4 shadow-sm">
+		@reportSectionTitle("chart-pie", d.Tr("report.by_category"))
+		if v.Donut == "" {
+			@reportEmpty(d.Tr("report.no_data"))
+		} else {
+			<div class="mt-3 grid grid-cols-1 gap-4 lg:grid-cols-2">
+				@Chart(ReportDonutID, "donut", v.Donut, "h-80")
+				<div>
+					<h3 class="text-sm font-medium text-muted-foreground">{ d.Tr("report.top_categories") }</h3>
+					@reportCategoryList(v.TopSpend)
+					@reportNote("expense-only", d.Tr("report.expense_only_note"))
+				</div>
+			</div>
+		}
+		if len(v.TopIncome) > 0 {
+			<div class="mt-6 border-t border-border pt-4">
+				<h3 class="text-sm font-medium text-muted-foreground">{ d.Tr("report.income_by_category") }</h3>
+				@reportCategoryList(v.TopIncome)
+				@reportNote("income-only", d.Tr("report.income_only_note"))
+			</div>
+		}
+	</section>
+}
+
+templ reportCashflowSection(d web.LayoutData, v ReportsView) {
+	<section class="rounded-lg border border-border bg-card p-4 shadow-sm">
+		@reportSectionTitle("banknote", d.Tr("report.cashflow"))
+		if v.Bars == "" {
+			@reportEmpty(d.Tr("report.no_data"))
+		} else {
+			@Chart(ReportBarsID, "bars", v.Bars, "mt-3 h-72")
+		}
+	</section>
+}
+
+templ reportFlowsSection(d web.LayoutData, v ReportsView) {
+	<section class="rounded-lg border border-border bg-card p-4 shadow-sm">
+		@reportSectionTitle("arrow-left-right", d.Tr("report.flows"))
+		if v.Sankey == "" {
+			@reportEmpty(d.Tr("report.no_data"))
+		} else {
+			@Chart(ReportSankeyID, "sankey", v.Sankey, "mt-3 h-96")
+			@reportNote("expense-only", d.Tr("report.expense_only_note"))
+		}
+	</section>
+}
+
+templ ReportsPage(d web.LayoutData, v ReportsView) {
+	<section class="space-y-4">
+		<header class="flex flex-col gap-3 border-b border-border pb-4 sm:flex-row sm:items-end sm:justify-between">
+			<div>
+				<h1 class="text-2xl font-semibold text-foreground">{ d.Tr("report.title") }</h1>
+				if v.PeriodName != "" {
+					<p class="mt-1 text-sm text-muted-foreground">{ v.PeriodName }</p>
+				}
+			</div>
+			if len(v.Periods) > 0 {
+				@reportPeriodPicker(d, v)
+			}
+		</header>
+		if v.NoPeriod {
+			@reportEmpty(d.Tr("period.no_period"))
+		} else {
+			@reportSummarySection(d, v)
+			@reportCategorySection(d, v)
+			@reportCashflowSection(d, v)
+			@reportFlowsSection(d, v)
+			if v.HasCharts() {
+				@chartAssets(d)
+			}
+		}
+	</section>
+}
+
+templ ReportsLayout(d web.LayoutData, v ReportsView) {
+	@Layout(web.WithContent(d, ReportsPage(d, v)))
+}

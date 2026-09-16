@@ -3,10 +3,13 @@ package user
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/go-jet/jet/v2/postgres"
 	"github.com/google/uuid"
+
+	pgent "altalune.id/yasaku/internal/platform/db/entity/postgres"
 )
 
 func (s *postgresStore) Save(ctx context.Context, u *User) error {
@@ -16,6 +19,8 @@ func (s *postgresStore) Save(ctx context.Context, u *User) error {
 		s.table.ID,
 		s.table.Email,
 		s.table.Name,
+		s.table.IDPIssuer,
+		s.table.IDPSubject,
 		s.table.AvatarURL,
 		s.table.PasswordHash,
 		s.table.IsAdmin,
@@ -28,6 +33,8 @@ func (s *postgresStore) Save(ctx context.Context, u *User) error {
 			u.ID,
 			u.Email,
 			u.Name,
+			nullableStringExpr(u.IDPIssuer),
+			nullableStringExpr(u.IDPSubject),
 			"",
 			u.PasswordHash,
 			isAdmin,
@@ -40,6 +47,8 @@ func (s *postgresStore) Save(ctx context.Context, u *User) error {
 		DO_UPDATE(postgres.SET(
 			s.table.Email.SET(postgres.String(u.Email)),
 			s.table.Name.SET(postgres.String(u.Name)),
+			s.table.IDPIssuer.SET(nullableStringExpr(u.IDPIssuer)),
+			s.table.IDPSubject.SET(nullableStringExpr(u.IDPSubject)),
 			s.table.IsAdmin.SET(postgres.Bool(isAdmin)),
 			s.table.PasswordHash.SET(postgres.String(u.PasswordHash)),
 			s.table.Locale.SET(postgres.String(u.Locale)),
@@ -47,8 +56,11 @@ func (s *postgresStore) Save(ctx context.Context, u *User) error {
 			s.table.UpdatedAt.SET(postgres.TimestampzT(now)),
 		))
 	if _, err := stmt.ExecContext(ctx, s.writer(ctx)); err != nil {
-		if isPGUniqueViolation(err) {
-			return &AlreadyExistsError{Field: "email", Value: u.Email}
+		if constraint, ok := isPGUniqueViolation(err); ok {
+			if strings.HasSuffix(constraint, "users_idp_idx") {
+				return idpConflict(u)
+			}
+			return emailConflict(u)
 		}
 		return fmt.Errorf("user.postgres.Save: %w", err)
 	}
@@ -70,9 +82,16 @@ func (s *postgresStore) UpdateLocale(ctx context.Context, id uuid.UUID, locale s
 	return nil
 }
 
+func nullableStringExpr(v string) postgres.StringExpression {
+	if v == "" {
+		return pgent.NullText()
+	}
+	return postgres.String(v)
+}
+
 func nullableTimeExpr(t *time.Time) postgres.TimestampzExpression {
 	if t == nil {
-		return postgres.TimestampzExp(postgres.NULL)
+		return pgent.NullTimestampz()
 	}
 	return postgres.TimestampzT(t.UTC())
 }

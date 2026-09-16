@@ -215,3 +215,115 @@ func TestAcceptTerms_RoutesUnexpected(t *testing.T) {
 	require.Error(t, err)
 	assert.True(t, routed, "unexpected func was not invoked for driver failure")
 }
+
+func TestEnsureFromOIDC_StoresAndBackfillsIDP(t *testing.T) {
+	t.Parallel()
+	st := fakes.NewUser()
+	svc := user.NewService(st, user.GenesisConfig{}, newTestLogger(), noopUnexpected())
+	ctx := context.Background()
+
+	u, err := svc.EnsureFromOIDC(ctx, user.Claims{Issuer: "https://idp", Subject: "sub-1", Email: "a@x.id", Name: "A"})
+	require.NoError(t, err)
+	require.Equal(t, "https://idp", u.IDPIssuer)
+	require.Equal(t, "sub-1", u.IDPSubject)
+	got, err := st.ByIDP(ctx, "https://idp", "sub-1")
+	require.NoError(t, err)
+	require.Equal(t, u.ID, got.ID)
+
+	legacy, err := user.New("b@x.id", "B", user.SourceOIDC)
+	require.NoError(t, err)
+	require.NoError(t, st.Save(ctx, legacy))
+	u2, err := svc.EnsureFromOIDC(ctx, user.Claims{Issuer: "https://idp", Subject: "sub-2", Email: "b@x.id", Name: "B"})
+	require.NoError(t, err)
+	require.Equal(t, legacy.ID, u2.ID)
+	require.Equal(t, "sub-2", u2.IDPSubject)
+	require.Equal(t, "https://idp", u2.IDPIssuer)
+
+	backfilled, err := st.ByIDP(ctx, "https://idp", "sub-2")
+	require.NoError(t, err)
+	require.Equal(t, legacy.ID, backfilled.ID)
+}
+
+func TestEnsureFromOIDC_ByIDPNotFoundForUnknownSubject(t *testing.T) {
+	t.Parallel()
+	st := fakes.NewUser()
+	_, err := st.ByIDP(context.Background(), "https://idp", "missing")
+	require.True(t, user.IsNotFoundError(err), "want NotFoundError, got %v", err)
+}
+
+func TestEnsureFromOIDC_EmailChangedAtIDPResolvesBySubject(t *testing.T) {
+	t.Parallel()
+	st := fakes.NewUser()
+	svc := user.NewService(st, user.GenesisConfig{}, newTestLogger(), noopUnexpected())
+	ctx := context.Background()
+
+	first, err := svc.EnsureFromOIDC(ctx, user.Claims{Issuer: "https://idp", Subject: "sub-1", Email: "old@x.id", Name: "A"})
+	require.NoError(t, err)
+
+	second, err := svc.EnsureFromOIDC(ctx, user.Claims{Issuer: "https://idp", Subject: "sub-1", Email: "new@x.id", Name: "A"})
+	require.NoError(t, err)
+	require.Equal(t, first.ID, second.ID, "same subject must resolve to the same user")
+	require.Equal(t, "new@x.id", second.Email)
+
+	stored, err := st.ByIDP(ctx, "https://idp", "sub-1")
+	require.NoError(t, err)
+	require.Equal(t, first.ID, stored.ID)
+	require.Equal(t, "new@x.id", stored.Email)
+	require.Equal(t, 1, st.Len(), "must not create a second user row")
+
+	// Old email should no longer be found in the store
+	_, err = st.ByEmail(ctx, "old@x.id")
+	require.True(t, user.IsNotFoundError(err), "old email should not be found, got %T: %v", err, err)
+}
+
+func TestEnsureFromOIDC_SubjectMatchRefreshesName(t *testing.T) {
+	t.Parallel()
+	st := fakes.NewUser()
+	svc := user.NewService(st, user.GenesisConfig{}, newTestLogger(), noopUnexpected())
+	ctx := context.Background()
+
+	first, err := svc.EnsureFromOIDC(ctx, user.Claims{Issuer: "https://idp", Subject: "sub-1", Email: "a@x.id", Name: "Old Name"})
+	require.NoError(t, err)
+
+	second, err := svc.EnsureFromOIDC(ctx, user.Claims{Issuer: "https://idp", Subject: "sub-1", Email: "a@x.id", Name: "New Name"})
+	require.NoError(t, err)
+	require.Equal(t, first.ID, second.ID)
+	require.Equal(t, "New Name", second.Name)
+}
+
+func TestEnsureFromOIDC_DifferentSubjectSameIssuerStaysDistinct(t *testing.T) {
+	t.Parallel()
+	st := fakes.NewUser()
+	svc := user.NewService(st, user.GenesisConfig{}, newTestLogger(), noopUnexpected())
+	ctx := context.Background()
+
+	a, err := svc.EnsureFromOIDC(ctx, user.Claims{Issuer: "https://idp", Subject: "sub-a", Email: "a@x.id", Name: "A"})
+	require.NoError(t, err)
+	b, err := svc.EnsureFromOIDC(ctx, user.Claims{Issuer: "https://idp", Subject: "sub-b", Email: "b@x.id", Name: "B"})
+	require.NoError(t, err)
+	require.NotEqual(t, a.ID, b.ID)
+	require.Equal(t, 2, st.Len())
+}
+
+func TestEnsureFromOIDC_RejectsEmailConflictOnRefresh(t *testing.T) {
+	t.Parallel()
+	st := fakes.NewUser()
+	svc := user.NewService(st, user.GenesisConfig{}, newTestLogger(), noopUnexpected())
+	ctx := context.Background()
+
+	// Seed user A with email a@x.id (local, no IDP)
+	a := &user.User{
+		ID:    uuid.New(),
+		Email: "a@x.id",
+		Name:  "A",
+	}
+	require.NoError(t, st.Save(ctx, a))
+
+	// Seed OIDC user B with email b@x.id
+	_, err := svc.EnsureFromOIDC(ctx, user.Claims{Issuer: "https://idp", Subject: "sub-b", Email: "b@x.id", Name: "B"})
+	require.NoError(t, err)
+
+	// Try to refresh B's email to a@x.id (already taken by A) - should fail
+	_, err = svc.EnsureFromOIDC(ctx, user.Claims{Issuer: "https://idp", Subject: "sub-b", Email: "a@x.id", Name: "B Updated"})
+	require.True(t, user.IsAlreadyExistsError(err), "expected AlreadyExistsError, got %T: %v", err, err)
+}

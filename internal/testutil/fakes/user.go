@@ -15,10 +15,13 @@ type User struct {
 	mu    sync.Mutex
 	byID  map[uuid.UUID]*user.User
 	byMap map[string]uuid.UUID
+	// NOTE: deliberately permissive — byIDP enforces no uniqueness, unlike the real users_idp_idx.
+	byIDP map[string]uuid.UUID
 	// SaveErr, if non-nil, is returned from Save (once, unless StickyError is true).
 	SaveErr     error
 	ByIDErr     error
 	ByEmailErr  error
+	ByIDPErr    error
 	StickyError bool
 }
 
@@ -29,6 +32,7 @@ func NewUser() *User {
 	return &User{
 		byID:  map[uuid.UUID]*user.User{},
 		byMap: map[string]uuid.UUID{},
+		byIDP: map[string]uuid.UUID{},
 	}
 }
 
@@ -50,9 +54,26 @@ func (f *User) Save(_ context.Context, u *user.User) error {
 	if existing, ok := f.byMap[email]; ok && existing != u.ID {
 		return &user.AlreadyExistsError{Field: "email", Value: u.Email}
 	}
+	// Clean up old email and IDP indices if user exists and they've changed
+	if oldUser, ok := f.byID[u.ID]; ok {
+		oldEmail := strings.ToLower(strings.TrimSpace(oldUser.Email))
+		if oldEmail != email {
+			delete(f.byMap, oldEmail)
+		}
+		if oldUser.IDPIssuer != "" && oldUser.IDPSubject != "" {
+			oldKey := idpKey(oldUser.IDPIssuer, oldUser.IDPSubject)
+			newKey := idpKey(u.IDPIssuer, u.IDPSubject)
+			if oldKey != newKey {
+				delete(f.byIDP, oldKey)
+			}
+		}
+	}
 	cp := *u
 	f.byID[u.ID] = &cp
 	f.byMap[email] = u.ID
+	if u.IDPIssuer != "" && u.IDPSubject != "" {
+		f.byIDP[idpKey(u.IDPIssuer, u.IDPSubject)] = u.ID
+	}
 	return nil
 }
 
@@ -93,6 +114,27 @@ func (f *User) ByEmail(_ context.Context, email string) (*user.User, error) {
 	cp := *f.byID[id]
 	return &cp, nil
 }
+
+// ByIDP returns a copy of the user linked to the given issuer and subject.
+func (f *User) ByIDP(_ context.Context, issuer, subject string) (*user.User, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.ByIDPErr != nil {
+		err := f.ByIDPErr
+		if !f.StickyError {
+			f.ByIDPErr = nil
+		}
+		return nil, err
+	}
+	id, ok := f.byIDP[idpKey(issuer, subject)]
+	if !ok {
+		return nil, &user.NotFoundError{Subject: subject}
+	}
+	cp := *f.byID[id]
+	return &cp, nil
+}
+
+func idpKey(issuer, subject string) string { return issuer + "\x00" + subject }
 
 // Len returns the number of stored users (test helper).
 func (f *User) Len() int {

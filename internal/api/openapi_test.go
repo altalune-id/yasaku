@@ -39,18 +39,15 @@ func openAPIServer(t *testing.T, enabled bool, auth *api.BasicAuth) *httptest.Se
 		Reporter: reporter,
 		Verifier: stubVerifier{principal: session.Principal{}},
 	}
-	srv := api.New(
-		nil, kernel,
-		nil, nil,
-		org.NewService(orgs, capabilities.Capabilities{OrgCreation: true}, log, reporter.Unexpected),
-		project.NewService(projs, log, reporter.Unexpected),
-		todo.NewService(tds, log, reporter.Unexpected),
-		nil,
-		tds,
-		blog.NewService(posts, log, reporter.Unexpected),
-		category.NewService(cats, log, reporter.Unexpected),
-		tag.NewService(tags, log, reporter.Unexpected),
-	)
+	srv := api.New(nil, kernel, api.Deps{
+		Orgs:      org.NewService(orgs, capabilities.Capabilities{OrgCreation: true}, log, reporter.Unexpected),
+		Projects:  project.NewService(projs, log, reporter.Unexpected),
+		Todos:     todo.NewService(tds, log, reporter.Unexpected),
+		TodoStore: tds,
+		Posts:     blog.NewService(posts, log, reporter.Unexpected),
+		BlogCats:  category.NewService(cats, log, reporter.Unexpected),
+		Tags:      tag.NewService(tags, log, reporter.Unexpected),
+	})
 	srv.OpenAPIEnabled = enabled
 	srv.OpenAPIBasicAuth = auth
 

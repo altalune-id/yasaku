@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+package yasakutest.v1;
+
+import "yasaku/mcp/v1/annotations.proto";
+
+option go_package = "altalune.id/yasaku/cmd/protoc-gen-yasaku-mcp/internal/gen/testdata/gen/yasakutest/v1;yasakutestv1";
+
+service BadNameService {
+  rpc ShoutLoudly(BadNameRequest) returns (BadNameResponse) {
+    option (yasaku.mcp.v1.tool) = {
+      name: "Shout-Loudly"
+      access: ACCESS_READ
+    };
+  }
+}
+
+message BadNameRequest {}
+
+message BadNameResponse {}

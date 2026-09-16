@@ -1,0 +1,33 @@
+openapi: 3.1.0
+info:
+  title: yasaku.mcp.v1
+paths: {}
+components:
+  schemas:
+    yasaku.mcp.v1.Access:
+      type: string
+      title: Access
+      enum:
+        - ACCESS_UNSPECIFIED
+        - ACCESS_READ
+        - ACCESS_WRITE
+      description: Access is how much of the ledger a tool may reach.
+    yasaku.mcp.v1.Tool:
+      type: object
+      properties:
+        name:
+          type: string
+          title: name
+        description:
+          type: string
+          title: description
+        access:
+          title: access
+          $ref: '#/components/schemas/yasaku.mcp.v1.Access'
+        mutation:
+          type: boolean
+          title: mutation
+      title: Tool
+      additionalProperties: false
+      description: Tool marks an RPC as an MCP tool. A method with mutation true must carry a bool confirm field in its request.
+security: []

@@ -4,6 +4,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
@@ -39,6 +40,7 @@ type Config struct {
 	OIDC          OIDCConfig          `yaml:"oidc"          mapstructure:"oidc"          awareness:"required,mode:cloud"`
 	Tokens        tokens.Config       `yaml:"tokens"        mapstructure:"tokens"`
 	API           APIConfig           `yaml:"api"           mapstructure:"api"`
+	MCP           MCPConfig           `yaml:"mcp"           mapstructure:"mcp"`
 	Session       SessionConfig       `yaml:"session"       mapstructure:"session"`
 	Log           logger.Config       `yaml:"log"           mapstructure:"log"`
 	Telemetry     telemetry.Config    `yaml:"telemetry"     mapstructure:"telemetry"`
@@ -122,6 +124,19 @@ type OIDCConfig struct {
 type APIConfig struct {
 	Enabled bool          `yaml:"enabled" mapstructure:"enabled"`
 	OpenAPI OpenAPIConfig `yaml:"openapi" mapstructure:"openapi"`
+}
+
+// MCPConfig configures the Model Context Protocol surface mounted at basePath+"/mcp".
+type MCPConfig struct {
+	Enabled bool `yaml:"enabled" mapstructure:"enabled" awareness:"bootstrap"`
+	// Audience is the RFC 8707 resource identifier bearer tokens must carry; it defaults to MCPEndpoint.
+	Audience         string `yaml:"audience"         mapstructure:"audience"         awareness:"bootstrap"`
+	AudienceOverride bool   `yaml:"audienceOverride" mapstructure:"audienceOverride" awareness:"-"`
+}
+
+// MCPEndpoint returns the absolute URL the MCP surface is mounted at.
+func (c *Config) MCPEndpoint() string {
+	return strings.TrimRight(c.HTTP.BaseURL, "/") + c.HTTP.BasePath + "/mcp"
 }
 
 // OpenAPIConfig configures the OpenAPI documentation endpoint.
@@ -256,7 +271,49 @@ func validateInvariants(c *Config) error {
 			return err
 		}
 	}
-	return validatePostgresNeedsEncryptionKey(c)
+	if err := validatePostgresNeedsEncryptionKey(c); err != nil {
+		return err
+	}
+	// NOTE: the MCP rules stay last so adding them cannot change which error an
+	// existing misconfiguration reports.
+	if err := validateMCPNeedsTokensIssuer(c); err != nil {
+		return err
+	}
+	return validateMCPAudience(c)
+}
+
+func validateMCPNeedsTokensIssuer(c *Config) error {
+	if c.MCP.Enabled && c.Tokens.Issuer == "" {
+		return errors.New("config: mcp.enabled requires tokens.issuer (set ALT_TOKENS_ISSUER)")
+	}
+	return nil
+}
+
+// validateMCPAudience defaults the audience to MCPEndpoint and enforces that it stays an absolute,
+// fragment-free http(s) URL that names this deployment's own MCP endpoint.
+func validateMCPAudience(c *Config) error {
+	if !c.MCP.Enabled {
+		return nil
+	}
+	if c.MCP.Audience == "" {
+		c.MCP.Audience = c.MCPEndpoint()
+	}
+	u, err := url.Parse(c.MCP.Audience)
+	if err != nil {
+		return fmt.Errorf("config: mcp.audience %q is not a URL: %w (set ALT_MCP_AUDIENCE)", c.MCP.Audience, err)
+	}
+	if (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return fmt.Errorf("config: mcp.audience %q must be an absolute http(s) URL (set ALT_MCP_AUDIENCE)", c.MCP.Audience)
+	}
+	if u.Fragment != "" || strings.Contains(c.MCP.Audience, "#") {
+		return fmt.Errorf("config: mcp.audience %q must carry no fragment (set ALT_MCP_AUDIENCE)", c.MCP.Audience)
+	}
+	if c.MCP.Audience != c.MCPEndpoint() && !c.MCP.AudienceOverride {
+		return fmt.Errorf(
+			"config: mcp.audience %q must equal the mounted endpoint %q (set ALT_MCP_AUDIENCE, or ALT_MCP_AUDIENCE_OVERRIDE=true when a proxy rewrites it)",
+			c.MCP.Audience, c.MCPEndpoint())
+	}
+	return nil
 }
 
 func validateSelfhosted(_ *Config) error { return nil }

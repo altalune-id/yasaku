@@ -1,0 +1,297 @@
+package templates
+
+import (
+	"altalune.id/yasaku/internal/web"
+	"altalune.id/yasaku/internal/web/icons"
+	"altalune.id/yasaku/money"
+)
+
+// TxRow is one transaction line in the list.
+type TxRow struct {
+	ID           string
+	Kind         string
+	KindLabel    string
+	Amount       money.Amount
+	Inflow       bool
+	Note         string
+	CategoryName string
+	CategoryIcon string
+	WalletName   string
+	ToWalletName string
+	DateLabel    string
+	Editable     bool
+}
+
+// TxFilter is one option in a filter select on the transactions page.
+type TxFilter struct {
+	Value    string
+	Label    string
+	Selected bool
+}
+
+// TxListView is the swappable transactions region: rows plus the cursor that loads the next page.
+type TxListView struct {
+	ProjectSlug string
+	Rows        []TxRow
+	NextQuery   string
+	Error       string
+	ErrorCode   string
+	Compact     bool
+}
+
+// TransactionsView is the full transactions page: the quick-add form, the filter bar and the list.
+type TransactionsView struct {
+	ProjectSlug string
+	ProjectName string
+	Form        TxFormView
+	List        TxListView
+	Search      string
+	Wallets     []TxFilter
+	Kinds       []TxFilter
+	Categories  []TxFilter
+	Periods     []TxFilter
+}
+
+// TransactionList is the HTMX swap target every quick-add and filter request replaces.
+templ TransactionList(d web.LayoutData, v TxListView) {
+	<div id="tx-list" class="mt-4 overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+		if v.Error != "" {
+			<div data-tx-error="1" class="px-4 pb-1 pt-3">
+				@ErrorBanner(d, v.Error, v.ErrorCode)
+			</div>
+		}
+		if len(v.Rows) == 0 {
+			<p class="px-4 py-10 text-center text-sm text-muted-foreground">{ d.Tr("tx.empty") }</p>
+		}
+		@TxRowsPage(d, v)
+	</div>
+}
+
+// TxRowsPage is one page of rows plus its load-more button; the button swaps itself for the next page.
+templ TxRowsPage(d web.LayoutData, v TxListView) {
+	for _, row := range v.Rows {
+		@txRow(d, v.ProjectSlug, row)
+	}
+	if v.NextQuery != "" {
+		<button
+			type="button"
+			hx-get={ d.ProjectPath(v.ProjectSlug, "/transactions") + v.NextQuery }
+			hx-target="this"
+			hx-swap="outerHTML"
+			class="w-full border-t border-border/60 px-4 py-3 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+		>
+			{ d.Tr("tx.load_more") }
+		</button>
+	}
+}
+
+templ txRow(d web.LayoutData, projectSlug string, row TxRow) {
+	if row.Editable {
+		<a
+			href={ templ.SafeURL(d.ProjectPath(projectSlug, "/transactions/"+row.ID+"/edit")) }
+			class="flex items-center gap-3 border-t border-border/60 px-4 py-3 first:border-t-0 hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:outline-none"
+		>
+			@txRowBody(d, row)
+		</a>
+	} else {
+		<div class="flex items-center gap-3 border-t border-border/60 px-4 py-3 first:border-t-0">
+			@txRowBody(d, row)
+		</div>
+	}
+}
+
+templ txRowBody(d web.LayoutData, row TxRow) {
+	<span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
+		@icons.Icon(txRowIcon(row), "h-4 w-4")
+	</span>
+	<span class="min-w-0 flex-1">
+		<span class="block truncate text-sm font-medium text-foreground">{ txRowTitle(d, row) }</span>
+		<span class="block truncate text-xs text-muted-foreground">{ txRowMeta(row) }</span>
+	</span>
+	<span class={ "shrink-0 text-sm font-semibold tabular-nums", txAmountClass(row) }>
+		{ SignedMoney(d, txSignedAmount(row)) }
+	</span>
+}
+
+// Toast is the out-of-band confirmation swapped in beside a successful quick-add.
+templ Toast(d web.LayoutData, msg string) {
+	<div id="toast" hx-swap-oob="true" class="pointer-events-none fixed inset-x-0 bottom-4 z-50 flex justify-center px-4">
+		if msg != "" {
+			<p
+				role="status"
+				class="pointer-events-auto rounded-full bg-foreground px-4 py-2 text-sm font-medium text-background shadow-lg"
+				data-tx-toast="1"
+			>
+				{ msg }
+			</p>
+		}
+	</div>
+}
+
+// ToastSlot is the empty landing zone every page carrying a quick-add must render once.
+templ ToastSlot() {
+	<div id="toast" class="pointer-events-none fixed inset-x-0 bottom-4 z-50 flex justify-center px-4"></div>
+}
+
+templ TransactionsPage(d web.LayoutData, v TransactionsView) {
+	<section class="flex flex-col gap-4">
+		<header class="flex items-baseline justify-between">
+			<h1 class="text-2xl font-semibold tracking-tight text-foreground">{ d.Tr("tx.title") }</h1>
+			<span class="text-sm text-muted-foreground">{ v.ProjectName }</span>
+		</header>
+		@TransactionForm(d, v.Form)
+		<form
+			id="tx-filters"
+			method="get"
+			action={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/transactions")) }
+			hx-get={ d.ProjectPath(v.ProjectSlug, "/transactions") }
+			hx-target="#tx-list"
+			hx-swap="outerHTML"
+			hx-trigger="change, search, submit"
+			class="grid grid-cols-2 gap-2 sm:grid-cols-5"
+		>
+			<input
+				type="search"
+				name="q"
+				value={ v.Search }
+				placeholder={ d.Tr("tx.search") }
+				class={ txControlClass, "col-span-2 mt-0 sm:col-span-1" }
+			/>
+			@txFilterSelect(d, "period", d.Tr("tx.period"), v.Periods)
+			@txFilterSelect(d, "wallet", d.Tr("tx.wallet"), v.Wallets)
+			@txFilterSelect(d, "kind", d.Tr("tx.kind"), v.Kinds)
+			@txFilterSelect(d, "category", d.Tr("tx.category"), v.Categories)
+		</form>
+		@TransactionList(d, v.List)
+		@ToastSlot()
+	</section>
+}
+
+templ txFilterSelect(d web.LayoutData, name, label string, opts []TxFilter) {
+	<select name={ name } aria-label={ label } class={ txControlClass, "mt-0" }>
+		<option value="">{ label + " · " + d.Tr("tx.filter_all") }</option>
+		for _, o := range opts {
+			<option value={ o.Value } selected?={ o.Selected }>{ o.Label }</option>
+		}
+	</select>
+}
+
+templ TransactionsLayout(d web.LayoutData, v TransactionsView) {
+	@Layout(web.WithContent(d, TransactionsPage(d, v)))
+}
+
+templ TransactionFormPage(d web.LayoutData, v TxFormView, title string) {
+	<section class="flex flex-col gap-4">
+		<h1 class="text-2xl font-semibold tracking-tight text-foreground">{ title }</h1>
+		@TransactionForm(d, txStandalone(v))
+		if v.ID != "" {
+			<form
+				method="post"
+				action={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/transactions/"+v.ID+"/delete")) }
+				data-tx-confirm={ d.Tr("tx.confirm_delete") }
+			>
+				<button type="submit" class="w-full rounded-lg border border-border px-4 py-2.5 text-sm font-medium text-destructive hover:bg-destructive/10">
+					{ d.Tr("tx.delete") }
+				</button>
+			</form>
+			@txConfirmAssets()
+		}
+		<a
+			href={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/transactions")) }
+			class="text-center text-sm text-muted-foreground hover:text-foreground"
+		>
+			{ d.Tr("tx.title") }
+		</a>
+		@ToastSlot()
+	</section>
+}
+
+templ txConfirmAssets() {
+	<script>
+	document.querySelectorAll("form[data-tx-confirm]").forEach(function (f) {
+		if (f.dataset.txConfirmWired === "1") return;
+		f.dataset.txConfirmWired = "1";
+		f.addEventListener("submit", function (e) {
+			if (!window.confirm(f.dataset.txConfirm)) e.preventDefault();
+		});
+	});
+	</script>
+}
+
+templ TransactionFormLayout(d web.LayoutData, v TxFormView, title string) {
+	@Layout(web.WithContent(d, TransactionFormPage(d, v, title)))
+}
+
+func txStandalone(v TxFormView) TxFormView {
+	v.FullPage = true
+	return v
+}
+
+func txSignedAmount(row TxRow) money.Amount {
+	if row.Inflow {
+		return row.Amount
+	}
+	return row.Amount.Neg()
+}
+
+func txAmountClass(row TxRow) string {
+	if row.Inflow {
+		return "text-emerald-600 dark:text-emerald-400"
+	}
+	return "text-foreground"
+}
+
+func txRowIcon(row TxRow) string {
+	switch row.Kind {
+	case "transfer":
+		return "arrow-left-right"
+	case "income":
+		return "banknote"
+	case "opening", "adjustment_in", "adjustment_out":
+		return "wallet"
+	}
+	if row.CategoryIcon != "" {
+		return row.CategoryIcon
+	}
+	return "receipt"
+}
+
+func txRowTitle(d web.LayoutData, row TxRow) string {
+	if row.Note != "" {
+		return row.Note
+	}
+	if row.CategoryName != "" {
+		return row.CategoryName
+	}
+	return row.KindLabel
+}
+
+func txRowMeta(row TxRow) string {
+	parts := make([]string, 0, 4)
+	parts = append(parts, row.DateLabel)
+	if row.WalletName != "" {
+		if row.ToWalletName != "" {
+			parts = append(parts, row.WalletName+" → "+row.ToWalletName)
+		} else {
+			parts = append(parts, row.WalletName)
+		}
+	}
+	if row.CategoryName != "" && row.CategoryName != row.Note {
+		parts = append(parts, row.CategoryName)
+	}
+	return txJoinMeta(parts)
+}
+
+func txJoinMeta(parts []string) string {
+	out := ""
+	for _, p := range parts {
+		if p == "" {
+			continue
+		}
+		if out != "" {
+			out += " · "
+		}
+		out += p
+	}
+	return out
+}

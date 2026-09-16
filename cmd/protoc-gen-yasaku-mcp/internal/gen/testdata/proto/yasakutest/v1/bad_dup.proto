@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package yasakutest.v1;
+
+import "yasaku/mcp/v1/annotations.proto";
+
+option go_package = "altalune.id/yasaku/cmd/protoc-gen-yasaku-mcp/internal/gen/testdata/gen/yasakutest/v1;yasakutestv1";
+
+service BadDupService {
+  rpc FirstTwin(BadDupRequest) returns (BadDupResponse) {
+    option (yasaku.mcp.v1.tool) = {
+      name: "twin_tool"
+      access: ACCESS_READ
+    };
+  }
+  rpc SecondTwin(BadDupRequest) returns (BadDupResponse) {
+    option (yasaku.mcp.v1.tool) = {
+      name: "twin_tool"
+      access: ACCESS_READ
+    };
+  }
+}
+
+message BadDupRequest {}
+
+message BadDupResponse {}
