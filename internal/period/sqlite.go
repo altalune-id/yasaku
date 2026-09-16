@@ -318,6 +318,8 @@ func (s *sqliteStore) ByID(ctx context.Context, id uuid.UUID) (*Period, error) {
 	return s.queryOne(ctx, tx, where, id.String())
 }
 
+var _ LockingStore = (*sqliteStore)(nil)
+
 // ByIDLocked reads the row inside the caller's unit of work. NOTE: SQLite has no row lock; WAL aborts the losing writer with SQLITE_BUSY_SNAPSHOT instead.
 func (s *sqliteStore) ByIDLocked(ctx context.Context, id uuid.UUID) (*Period, error) {
 	return s.ByID(ctx, id)

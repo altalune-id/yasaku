@@ -811,3 +811,105 @@ func TestOverviewHandler_Get_SingleForeignCurrencyStillTotals(t *testing.T) {
 	assert.Contains(t, head, "$1.200,00")
 	assert.NotContains(t, head, `data-mixed-currency="1"`)
 }
+
+// seedOpening writes a system-recorded opening row and returns its id.
+func (f *txFixture) seedOpening(t *testing.T) uuid.UUID {
+	t.Helper()
+	ctx := f.projectCtx(t)
+	require.NoError(t, f.Transactions.RecordOpening(
+		ctx, f.Cash, money.New(1_000_000_00, money.IDR), time.Now(), f.Principal.UserID))
+	items, _, err := f.Transactions.List(ctx, transaction.ListOpts{})
+	require.NoError(t, err)
+	for _, it := range items {
+		if it.Kind == transaction.KindOpening {
+			return it.ID
+		}
+	}
+	t.Fatal("no opening row was written")
+	return uuid.Nil
+}
+
+func TestTransactionHandler_SystemRecordedRowsAreNotEditable(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		call func(f *txFixture, mux *http.ServeMux, id uuid.UUID) *httptest.ResponseRecorder
+	}{
+		{"edit", func(f *txFixture, mux *http.ServeMux, id uuid.UUID) *httptest.ResponseRecorder {
+			rec := httptest.NewRecorder()
+			mux.ServeHTTP(rec, f.request(t, http.MethodGet, f.path("/transactions/"+id.String()+"/edit"), nil, false))
+			return rec
+		}},
+		{"update", func(f *txFixture, mux *http.ServeMux, id uuid.UUID) *httptest.ResponseRecorder {
+			form := url.Values{
+				"kind": {"opening"}, "amount": {"9999999"},
+				"wallet_id": {f.Cash.String()},
+				"date":      {civil.DateOf(time.Now(), time.UTC).String()},
+			}
+			rec := httptest.NewRecorder()
+			mux.ServeHTTP(rec, f.request(t, http.MethodPost, f.path("/transactions/"+id.String()), form, true))
+			return rec
+		}},
+		{"delete", func(f *txFixture, mux *http.ServeMux, id uuid.UUID) *httptest.ResponseRecorder {
+			rec := httptest.NewRecorder()
+			mux.ServeHTTP(rec, f.request(t, http.MethodPost, f.path("/transactions/"+id.String()+"/delete"), url.Values{}, true))
+			return rec
+		}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			f := newTxFixture(t)
+			mux := http.NewServeMux()
+			f.txHandler().Register(mux)
+			id := f.seedOpening(t)
+
+			rec := tt.call(f, mux, id)
+			assert.Equal(t, http.StatusNotFound, rec.Code, "body=%s", rec.Body.String())
+
+			got, err := f.Transactions.ByID(f.projectCtx(t), id)
+			require.NoError(t, err, "the opening row must survive")
+			assert.Equal(t, int64(1_000_000_00), got.Amount.Minor, "the opening amount must be untouched")
+		})
+	}
+}
+
+func TestTransactionHandler_SystemRecordedRowsDoNotLinkToTheEditForm(t *testing.T) {
+	t.Parallel()
+	f := newTxFixture(t)
+	mux := http.NewServeMux()
+	f.txHandler().Register(mux)
+	id := f.seedOpening(t)
+
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, f.request(t, http.MethodGet, f.path("/transactions"), nil, false))
+	require.Equal(t, http.StatusOK, rec.Code)
+	assert.NotContains(t, rec.Body.String(), "/transactions/"+id.String()+"/edit",
+		"a system-recorded row must not offer an edit link the handler will refuse")
+}
+
+func TestTransactionHandler_RefusedUpdateKeepsTheUsersInputOnTheEditForm(t *testing.T) {
+	t.Parallel()
+	f := newTxFixture(t)
+	mux := http.NewServeMux()
+	f.txHandler().Register(mux)
+	id := f.closedPeriodTx(t)
+
+	form := url.Values{
+		"kind": {"expense"}, "amount": {"123456"},
+		"wallet_id": {f.Cash.String()},
+		"note":      {"Nasi Padang"},
+		"date":      {civil.DateOf(time.Now(), time.UTC).String()},
+	}
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, f.request(t, http.MethodPost, f.path("/transactions/"+id.String()), form, false))
+
+	body := rec.Body.String()
+	require.Less(t, rec.Code, 500, "a domain refusal must not 500")
+	assert.Contains(t, body, "<html", "a non-HTMX refusal must render a full page")
+	assert.Contains(t, body, "Nasi Padang", "the note the user typed must survive the refusal")
+	assert.Contains(t, body, f.path("/transactions/"+id.String()),
+		"the form must still post back to the transaction being edited, not to create")
+}

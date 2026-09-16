@@ -170,6 +170,9 @@ func (s *Service) Revise(ctx context.Context, id uuid.UUID, p RevisePatch) (*Tra
 	if err != nil {
 		return nil, err
 	}
+	if !t.Kind.IsUserRecorded() {
+		return nil, &SystemRecordedError{Kind: string(t.Kind)}
+	}
 
 	if err := s.refusePeriodLocked(ctx, tc, t.PeriodID); err != nil {
 		return nil, err
@@ -254,6 +257,9 @@ func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
 	t, err := s.load(ctx, tc, id, "transaction.Delete")
 	if err != nil {
 		return err
+	}
+	if !t.Kind.IsUserRecorded() {
+		return &SystemRecordedError{Kind: string(t.Kind)}
 	}
 	if err := s.refusePeriodLocked(ctx, tc, t.PeriodID); err != nil {
 		return err

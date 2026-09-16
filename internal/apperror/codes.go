@@ -104,6 +104,7 @@ const (
 	CodeTransactionPeriodLocked         = "TXN008"
 	CodeTransactionPeriodNotAdjacent    = "TXN009"
 	CodeTransactionInvalidNote          = "TXN010"
+	CodeTransactionSystemRecorded       = "TXN011"
 
 	CodePeriodNotFound        = "PRD001"
 	CodePeriodInvalidName     = "PRD002"

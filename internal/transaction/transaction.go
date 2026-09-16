@@ -64,6 +64,11 @@ func (k Kind) IsInflow() bool {
 // AllowsCategory reports whether the kind may name a category.
 func (k Kind) AllowsCategory() bool { return k == KindIncome || k == KindExpense }
 
+// IsUserRecorded reports whether a person records this kind directly; the rest are written by the system.
+func (k Kind) IsUserRecorded() bool {
+	return k == KindIncome || k == KindExpense || k == KindTransfer
+}
+
 // Transaction is the aggregate root: one movement of money.
 // NOTE: Amount is always positive; the direction comes from Kind, never from the sign.
 type Transaction struct {

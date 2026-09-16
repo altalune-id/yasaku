@@ -13,6 +13,8 @@ import (
 // <span data-missing-icon> for an unknown name, so an un-vendored icon otherwise ships as a gap.
 var (
 	reTemplIcon   = regexp.MustCompile(`icons\.Icon\(\s*"([a-z0-9-]+)"`)
+	reIconFunc    = regexp.MustCompile(`(?s)func \w*[Ii]con\([^)]*\) string \{(.*?)\n\}`)
+	reIconReturn  = regexp.MustCompile(`return "([a-z0-9-]+)"`)
 	reAllowedList = regexp.MustCompile(`(?s)var AllowedIcons = \[\]string\{(.*?)\}`)
 	reQuoted      = regexp.MustCompile(`"([a-z0-9-]+)"`)
 )
@@ -45,6 +47,28 @@ func referencedIcons(t *testing.T) map[string]string {
 		for _, m := range reTemplIcon.FindAllStringSubmatch(string(b), -1) {
 			out[m[1]] = filepath.Base(f)
 		}
+	}
+
+	// NOTE: handlers pick icons in Go, so template literals alone miss them (txRowIcon and friends).
+	helpers, err := filepath.Glob(filepath.Join(root, "internal/web/templates/*.templ"))
+	if err != nil {
+		t.Fatalf("glob template helpers: %v", err)
+	}
+	sawIconFunc := false
+	for _, f := range helpers {
+		b, rErr := os.ReadFile(f)
+		if rErr != nil {
+			t.Fatalf("read %s: %v", f, rErr)
+		}
+		for _, fn := range reIconFunc.FindAllStringSubmatch(string(b), -1) {
+			sawIconFunc = true
+			for _, m := range reIconReturn.FindAllStringSubmatch(fn[1], -1) {
+				out[m[1]] = filepath.Base(f)
+			}
+		}
+	}
+	if !sawIconFunc {
+		t.Fatal("found no icon-returning helper — the scraper pattern has gone stale")
 	}
 
 	categoryFile := filepath.Join(root, "internal/category/category.go")

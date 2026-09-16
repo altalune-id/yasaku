@@ -195,7 +195,7 @@ func (h *TransactionHandler) PostCreate(w http.ResponseWriter, r *http.Request) 
 	if !ok {
 		return
 	}
-	in, amount, ok := h.readForm(w, sc, "")
+	in, amount, ok := h.readForm(w, sc, "", "")
 	if !ok {
 		return
 	}
@@ -211,7 +211,7 @@ func (h *TransactionHandler) PostCreate(w http.ResponseWriter, r *http.Request) 
 	})
 	if err != nil {
 		h.LogErr("web transaction: record", err)
-		h.refuse(w, sc, err)
+		h.refuse(w, sc, err, txDraft{in: in, filled: true})
 		return
 	}
 	h.rememberWallet(w, t.WalletID)
@@ -224,7 +224,7 @@ func (h *TransactionHandler) PostUpdate(w http.ResponseWriter, r *http.Request) 
 	if !ok {
 		return
 	}
-	in, amount, ok := h.readForm(w, sc, t.Kind)
+	in, amount, ok := h.readForm(w, sc, t.Kind, t.ID.String())
 	if !ok {
 		return
 	}
@@ -240,7 +240,7 @@ func (h *TransactionHandler) PostUpdate(w http.ResponseWriter, r *http.Request) 
 	})
 	if err != nil {
 		h.LogErr("web transaction: revise", err)
-		h.refuse(w, sc, err)
+		h.refuse(w, sc, err, txDraft{in: in, id: t.ID.String(), filled: true})
 		return
 	}
 	h.rememberWallet(w, updated.WalletID)
@@ -255,7 +255,7 @@ func (h *TransactionHandler) PostDelete(w http.ResponseWriter, r *http.Request) 
 	}
 	if err := h.Transactions.Delete(sc.req.Context(), t.ID); err != nil {
 		h.LogErr("web transaction: delete", err)
-		h.refuse(w, sc, err)
+		h.refuse(w, sc, err, txDraft{})
 		return
 	}
 	h.succeed(w, sc, nil)
@@ -310,19 +310,26 @@ type txInput struct {
 	Note       string
 }
 
-func (h *TransactionHandler) readForm(w http.ResponseWriter, sc projectScope, want transaction.Kind) (txInput, money.Amount, bool) {
+// txDraft carries what the user submitted so a refusal re-renders their own form, not a blank one.
+type txDraft struct {
+	in     txInput
+	id     string
+	filled bool
+}
+
+func (h *TransactionHandler) readForm(w http.ResponseWriter, sc projectScope, want transaction.Kind, id string) (txInput, money.Amount, bool) {
 	in, err := h.parseForm(sc, want)
 	if err != nil {
 		if errors.Is(err, errBadForm) {
 			h.ErrorPage(w, sc.req, http.StatusBadRequest, "Bad request", "Could not read that form.")
 			return txInput{}, money.Amount{}, false
 		}
-		h.refuse(w, sc, err)
+		h.refuse(w, sc, err, txDraft{id: id})
 		return txInput{}, money.Amount{}, false
 	}
 	amount, err := h.amountFor(sc, in)
 	if err != nil {
-		h.refuse(w, sc, err)
+		h.refuse(w, sc, err, txDraft{in: in, id: id, filled: true})
 		return txInput{}, money.Amount{}, false
 	}
 	return in, amount, true
@@ -429,7 +436,7 @@ func (h *TransactionHandler) succeed(w http.ResponseWriter, sc projectScope, t *
 	Render(w, sc.req, templates.Toast(d, msg))
 }
 
-func (h *TransactionHandler) refuse(w http.ResponseWriter, sc projectScope, cause error) {
+func (h *TransactionHandler) refuse(w http.ResponseWriter, sc projectScope, cause error, draft txDraft) {
 	ae, ok := apperror.AsAppError(cause)
 	if !ok {
 		h.ErrorPage(w, sc.req, http.StatusInternalServerError, "Save failed", "Could not record that transaction.", cause)
@@ -450,11 +457,15 @@ func (h *TransactionHandler) refuse(w http.ResponseWriter, sc projectScope, caus
 		Render(w, sc.req, templates.TransactionList(d, list))
 		return
 	}
-	h.refusePage(w, sc, d, list)
+	h.refusePage(w, sc, d, list, draft)
 }
 
-func (h *TransactionHandler) refusePage(w http.ResponseWriter, sc projectScope, d web.LayoutData, list templates.TxListView) {
-	form, err := h.formView(sc, d, txInput{Kind: transaction.KindExpense}, "")
+func (h *TransactionHandler) refusePage(w http.ResponseWriter, sc projectScope, d web.LayoutData, list templates.TxListView, draft txDraft) {
+	in := draft.in
+	if !draft.filled {
+		in = txInput{Kind: transaction.KindExpense}
+	}
+	form, err := h.formView(sc, d, in, draft.id)
 	if err != nil {
 		h.LogErr("web transaction: form", err)
 		h.ErrorPage(w, sc.req, http.StatusInternalServerError, "Save failed", "Could not record that transaction.", err)
@@ -492,6 +503,12 @@ func (h *TransactionHandler) requireTransaction(w http.ResponseWriter, r *http.R
 		}
 		h.LogErr("web transaction: byID", err)
 		h.ErrorPage(w, sc.req, http.StatusInternalServerError, "Lookup failed", "Could not load that transaction.", err)
+		return projectScope{}, nil, false
+	}
+	// SECURITY: opening and adjustment rows are system-written; editing one rewrites a derived wallet balance.
+	if !t.Kind.IsUserRecorded() {
+		h.ErrorPage(w, sc.req, http.StatusNotFound, "Not editable",
+			"That entry was recorded by yasaku, so it cannot be edited here.")
 		return projectScope{}, nil, false
 	}
 	return sc, t, true
@@ -594,6 +611,7 @@ func (h *TransactionHandler) rows(sc projectScope, d web.LayoutData, items []*tr
 			Note:       t.Note,
 			WalletName: wallets[t.WalletID],
 			DateLabel:  t.OccurredAt.In(loc).Format("02 Jan"),
+			Editable:   t.Kind.IsUserRecorded(),
 		}
 		if t.ToWalletID != nil {
 			row.ToWalletName = wallets[*t.ToWalletID]
@@ -819,7 +837,7 @@ func (h *TransactionHandler) title(sc projectScope, key string) string {
 func (h *TransactionHandler) isHTMX(r *http.Request) bool { return r.Header.Get("HX-Request") != "" }
 
 func txCurrencySymbol(d web.LayoutData, c money.Currency) string {
-	return strings.TrimRight(templates.Money(d, money.Zero(c)), "0123456789.,\u00a0 ")
+	return strings.TrimRight(templates.Money(d, money.Zero(c)), "0123456789.,\u00a0\u202f ")
 }
 
 func parseUserKind(s string) (transaction.Kind, error) {

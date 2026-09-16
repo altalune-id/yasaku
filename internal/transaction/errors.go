@@ -201,6 +201,32 @@ func IsWalletArchivedError(err error) bool {
 	return ok
 }
 
+// SystemRecordedError reports an attempt to edit or delete a row the system wrote, not a person.
+type SystemRecordedError struct{ Kind string }
+
+func (e *SystemRecordedError) Error() string {
+	return "transaction: kind " + e.Kind + ": system recorded"
+}
+
+// IsSystemRecordedError reports whether err is a *SystemRecordedError.
+func IsSystemRecordedError(err error) bool {
+	_, ok := errors.AsType[*SystemRecordedError](err)
+	return ok
+}
+
+// ToAppError converts the typed error into the wire envelope.
+func (e *SystemRecordedError) ToAppError() *apperror.AppError {
+	return apperror.New(
+		apperror.CodeTransactionSystemRecorded,
+		"That entry was recorded by yasaku, so it cannot be edited directly",
+		codes.FailedPrecondition,
+		&apperrorv1.ErrorDetail{
+			Code: apperror.CodeTransactionSystemRecorded,
+			Meta: map[string]string{"kind": e.Kind},
+		},
+	)
+}
+
 // PeriodLockedError reports a write against a closed budget period.
 type PeriodLockedError struct{ PeriodID string }
 

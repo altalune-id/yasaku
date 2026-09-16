@@ -17,6 +17,10 @@ import (
 	"altalune.id/yasaku/internal/platform/tenant"
 )
 
+// NOTE: the assertion is load-bearing — Service.scopedLocked type-asserts LockingStore and silently
+// falls back to the non-locking read, so a renamed method would drop the FOR UPDATE with a green build.
+var _ LockingStore = (*postgresStore)(nil)
+
 type postgresStore struct {
 	pool     pdb.Pool
 	pc       *tenant.PgConn

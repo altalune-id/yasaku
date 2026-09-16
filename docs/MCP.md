@@ -25,13 +25,13 @@ for `mcp.audience` and `mcp.audienceOverride`.
 MCP callers authenticate with a bearer JWT from
 [authl](https://github.com/altalune-id/authl), never with a session cookie.
 
-| Piece        | Value                                                                            |
-| ------------ | -------------------------------------------------------------------------------- |
-| Issuer       | `tokens.issuer`                                                                  |
-| Audience     | `mcp.audience`, default `<baseURL><basePath>/mcp` (RFC 8707 resource)            |
-| Signing keys | discovered from the issuer's JWKS at boot                                        |
-| Scopes       | `yasaku:read` for read tools, `yasaku:write` for mutations                       |
-| Metadata     | `/.well-known/oauth-protected-resource` and the RFC 9728 §3.1 path-suffixed form |
+| Piece        | Value                                                                                   |
+| ------------ | --------------------------------------------------------------------------------------- |
+| Issuer       | `tokens.issuer`                                                                         |
+| Audience     | `mcp.audience`, default `<baseURL><basePath>/mcp` (RFC 8707 resource)                   |
+| Signing keys | discovered from the issuer's JWKS at boot                                               |
+| Scopes       | `yasaku:read` for read tools, `yasaku:write` for mutations                              |
+| Metadata     | `/.well-known/oauth-protected-resource` and the RFC 9728 Section 3.1 path-suffixed form |
 
 The MCP surface builds its **own** verifier from `tokens.*` but with
 `mcp.audience` as the audience. A token minted for the Connect API is refused

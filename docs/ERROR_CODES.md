@@ -181,6 +181,7 @@ them from screenshots. `NNN` in the range `900`-`999` is reserved for unexpected
 | `TXN008` | `apperror.CodeTransactionPeriodLocked`         | Transaction Period Locked          |
 | `TXN009` | `apperror.CodeTransactionPeriodNotAdjacent`    | Transaction Period Not Adjacent    |
 | `TXN010` | `apperror.CodeTransactionInvalidNote`          | Transaction Invalid Note           |
+| `TXN011` | `apperror.CodeTransactionSystemRecorded`       | Transaction System Recorded        |
 
 ## PRD — Periods
 

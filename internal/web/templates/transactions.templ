@@ -19,6 +19,7 @@ type TxRow struct {
 	WalletName   string
 	ToWalletName string
 	DateLabel    string
+	Editable     bool
 }
 
 // TxFilter is one option in a filter select on the transactions page.
@@ -85,21 +86,31 @@ templ TxRowsPage(d web.LayoutData, v TxListView) {
 }
 
 templ txRow(d web.LayoutData, projectSlug string, row TxRow) {
-	<a
-		href={ templ.SafeURL(d.ProjectPath(projectSlug, "/transactions/"+row.ID+"/edit")) }
-		class="flex items-center gap-3 border-t border-border/60 px-4 py-3 first:border-t-0 hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:outline-none"
-	>
-		<span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
-			@icons.Icon(txRowIcon(row), "h-4 w-4")
-		</span>
-		<span class="min-w-0 flex-1">
-			<span class="block truncate text-sm font-medium text-foreground">{ txRowTitle(d, row) }</span>
-			<span class="block truncate text-xs text-muted-foreground">{ txRowMeta(row) }</span>
-		</span>
-		<span class={ "shrink-0 text-sm font-semibold tabular-nums", txAmountClass(row) }>
-			{ SignedMoney(d, txSignedAmount(row)) }
-		</span>
-	</a>
+	if row.Editable {
+		<a
+			href={ templ.SafeURL(d.ProjectPath(projectSlug, "/transactions/"+row.ID+"/edit")) }
+			class="flex items-center gap-3 border-t border-border/60 px-4 py-3 first:border-t-0 hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:outline-none"
+		>
+			@txRowBody(d, row)
+		</a>
+	} else {
+		<div class="flex items-center gap-3 border-t border-border/60 px-4 py-3 first:border-t-0">
+			@txRowBody(d, row)
+		</div>
+	}
+}
+
+templ txRowBody(d web.LayoutData, row TxRow) {
+	<span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
+		@icons.Icon(txRowIcon(row), "h-4 w-4")
+	</span>
+	<span class="min-w-0 flex-1">
+		<span class="block truncate text-sm font-medium text-foreground">{ txRowTitle(d, row) }</span>
+		<span class="block truncate text-xs text-muted-foreground">{ txRowMeta(row) }</span>
+	</span>
+	<span class={ "shrink-0 text-sm font-semibold tabular-nums", txAmountClass(row) }>
+		{ SignedMoney(d, txSignedAmount(row)) }
+	</span>
 }
 
 // Toast is the out-of-band confirmation swapped in beside a successful quick-add.
