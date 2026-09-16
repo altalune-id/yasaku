@@ -60,7 +60,7 @@ func sealerKey(cfg *config.Config, log *slog.Logger) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("boot: %w", err)
 	}
-	log.Warn("security.encryptionKey is empty — using an ephemeral key; sessions will not survive a restart; set ALT_SECURITY_ENCRYPTION_KEY to persist them")
+	log.Warn("security.encryptionKey is empty — using an ephemeral key; sessions will not survive a restart; set YASAKU_SECURITY_ENCRYPTION_KEY to persist them")
 	return key, nil
 }
 

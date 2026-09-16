@@ -54,7 +54,7 @@ func TestValidate_MCPInvariants(t *testing.T) {
 		{
 			name:    "enabled without a tokens issuer fails naming the env var",
 			mutate:  func(c *Config) { c.MCP.Enabled = true },
-			wantSub: "ALT_TOKENS_ISSUER",
+			wantSub: "YASAKU_TOKENS_ISSUER",
 		},
 		{
 			name: "enabled defaults the audience to the mcp endpoint",
@@ -93,7 +93,7 @@ func TestValidate_MCPInvariants(t *testing.T) {
 				c.Tokens.Issuer = "https://idp.example"
 				c.MCP.Audience = "https://other.example/mcp"
 			},
-			wantSub: "ALT_MCP_AUDIENCE_OVERRIDE",
+			wantSub: "YASAKU_MCP_AUDIENCE_OVERRIDE",
 		},
 		{
 			name: "audience that disagrees is allowed with the override",

@@ -137,7 +137,8 @@ templ TransactionForm(d web.LayoutData, v TxFormView) {
 				<button
 					type="button"
 					data-tx-yesterday={ v.Yesterday }
-					class="shrink-0 rounded-md border border-border px-3 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+					aria-pressed={ txAriaBool(v.Date == v.Yesterday) }
+					class="shrink-0 rounded-md border border-border px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground aria-pressed:border-primary aria-pressed:bg-primary aria-pressed:font-medium aria-pressed:text-primary-foreground"
 				>
 					{ d.Tr("tx.yesterday") }
 				</button>
@@ -223,7 +224,7 @@ templ txKindPill(d web.LayoutData, v TxFormView, kind, key string) {
 			class="peer sr-only"
 			data-tx-kind={ kind }
 		/>
-		<span class="flex items-center justify-center rounded-md px-3 py-2 text-sm font-medium text-muted-foreground peer-checked:bg-card peer-checked:text-foreground peer-checked:shadow-sm peer-disabled:opacity-60">
+		<span class="flex items-center justify-center rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground peer-checked:bg-primary peer-checked:font-semibold peer-checked:text-primary-foreground peer-checked:shadow-sm peer-focus-visible:ring-2 peer-focus-visible:ring-ring peer-focus-visible:ring-offset-1 peer-disabled:opacity-60">
 			{ d.Tr(key) }
 		</span>
 	</label>
@@ -275,10 +276,16 @@ templ txFormAssets() {
 		const yesterday = form.querySelector("[data-tx-yesterday]");
 		const date = form.querySelector("[name=date]");
 		if (yesterday && date) {
+			const syncYesterday = () => {
+				yesterday.setAttribute("aria-pressed", date.value === yesterday.dataset.txYesterday ? "true" : "false");
+			};
 			yesterday.addEventListener("click", () => {
 				date.value = yesterday.dataset.txYesterday;
 				date.dispatchEvent(new Event("change", { bubbles: true }));
 			});
+			date.addEventListener("input", syncYesterday);
+			date.addEventListener("change", syncYesterday);
+			syncYesterday();
 		}
 	})();
 	</script>
@@ -322,6 +329,14 @@ func txWalletLabelFor(d web.LayoutData, w TxWalletOption) string {
 		return w.Name
 	}
 	return w.Name + " · " + Money(d, w.Balance)
+}
+
+// txAriaBool renders the literal aria-pressed values the CSS selector matches on.
+func txAriaBool(b bool) string {
+	if b {
+		return "true"
+	}
+	return "false"
 }
 
 func txBoolAttr(b bool) string {

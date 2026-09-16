@@ -75,7 +75,7 @@ Stateful workflows may live in their own file (see Section 3).
 ### Unit of Work
 
 `db.Pool{W, R}` wraps writer + reader `*sql.DB`. SQLite aliases `R` to `W`.
-For Postgres, `ALT_DB_READER_DSN` routes non-tenant reads (`users`,
+For Postgres, `YASAKU_DB_READER_DSN` routes non-tenant reads (`users`,
 `onboard`) to a replica; when empty, `R` aliases `W`.
 
 Two helpers compose:

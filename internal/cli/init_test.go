@@ -13,8 +13,8 @@ import (
 
 func TestInit_SucceedsAndSecondCallReportsAlreadyOnboarded(t *testing.T) {
 	setSelfhostedEnv(t)
-	t.Setenv("ALT_GENESIS_EMAIL", "")
-	t.Setenv("ALT_GENESIS_PASSWORD", "")
+	t.Setenv("YASAKU_GENESIS_EMAIL", "")
+	t.Setenv("YASAKU_GENESIS_PASSWORD", "")
 
 	bootFn := func(ctx context.Context, cfg *config.Config, _ ...boot.Option) (*boot.Server, error) {
 		return boot.BootServer(ctx, cfg)

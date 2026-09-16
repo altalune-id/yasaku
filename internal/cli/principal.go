@@ -100,13 +100,13 @@ func readToken(cmd *cobra.Command) (string, Source, error) {
 	if f := cmd.Root().PersistentFlags().Lookup("token"); f != nil && f.Changed {
 		return strings.TrimSpace(f.Value.String()), SourceFlag, nil
 	}
-	if v := strings.TrimSpace(os.Getenv("ALT_TOKEN")); v != "" {
+	if v := strings.TrimSpace(os.Getenv("YASAKU_TOKEN")); v != "" {
 		return v, SourceEnv, nil
 	}
 	if f := cmd.Root().PersistentFlags().Lookup("token-file"); f != nil && f.Changed {
 		return readTokenFile(f.Value.String(), SourceFlag)
 	}
-	if v := strings.TrimSpace(os.Getenv("ALT_TOKEN_FILE")); v != "" {
+	if v := strings.TrimSpace(os.Getenv("YASAKU_TOKEN_FILE")); v != "" {
 		return readTokenFile(v, SourceEnv)
 	}
 	return "", "", nil

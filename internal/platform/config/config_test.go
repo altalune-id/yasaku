@@ -50,7 +50,7 @@ genesis:
 `
 	path := writeTempYAML(t, "cfg.yaml", yaml)
 
-	t.Setenv("ALT_HTTP_ADDR", ":8080")
+	t.Setenv("YASAKU_HTTP_ADDR", ":8080")
 
 	cfg, err := Load(path)
 	if err != nil {
@@ -399,8 +399,8 @@ func withCwdOverride(t *testing.T, dir string) Option {
 
 func withGenesisFallback(t *testing.T) Option {
 	t.Helper()
-	t.Setenv("ALT_GENESIS_EMAIL", "root@example.com")
-	t.Setenv("ALT_GENESIS_PASSWORD", "x")
+	t.Setenv("YASAKU_GENESIS_EMAIL", "root@example.com")
+	t.Setenv("YASAKU_GENESIS_PASSWORD", "x")
 	return func(*loadOptions) {}
 }
 

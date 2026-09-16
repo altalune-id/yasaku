@@ -461,3 +461,44 @@ button[data-color-mode][aria-current="true"] [data-check] {
 	--chart-5: 260 55% 68%;
 	color-scheme: dark;
 }
+
+/* NOTE: the Tailwind play CDN generates peer-checked: variants of layout utilities but not of
+   theme colours, so a checked radio showed no selected state at all. Defining them here keeps
+   the selected state visible in cdn mode; the vendored build emits identical rules. */
+.peer:checked ~ .peer-checked\:bg-primary {
+	background-color: hsl(var(--primary));
+}
+
+.peer:checked ~ .peer-checked\:text-primary-foreground {
+	color: hsl(var(--primary-foreground));
+}
+
+.peer:checked ~ .peer-checked\:bg-primary\/10 {
+	background-color: hsl(var(--primary) / 0.1);
+}
+
+.peer:checked ~ .peer-checked\:border-primary {
+	border-color: hsl(var(--primary));
+}
+
+.peer:checked ~ .peer-checked\:text-foreground {
+	color: hsl(var(--foreground));
+}
+
+/* NOTE: same play-CDN gap as the peer-checked rules above — aria-pressed: variants of theme
+   colours are not generated, so the pressed state of the date shortcut is defined here. */
+[aria-pressed='true'].aria-pressed\:bg-primary {
+	background-color: hsl(var(--primary));
+}
+
+[aria-pressed='true'].aria-pressed\:text-primary-foreground {
+	color: hsl(var(--primary-foreground));
+}
+
+[aria-pressed='true'].aria-pressed\:border-primary {
+	border-color: hsl(var(--primary));
+}
+
+[aria-pressed='true'].aria-pressed\:font-medium {
+	font-weight: 500;
+}

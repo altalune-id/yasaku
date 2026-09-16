@@ -62,7 +62,7 @@ func TestResolve_NoSessionNoToken(t *testing.T) {
 }
 
 func TestResolve_TokenFlagWins(t *testing.T) {
-	t.Setenv("ALT_TOKEN", "env-token")
+	t.Setenv("YASAKU_TOKEN", "env-token")
 	cfg := &config.Config{}
 
 	root := NewRootCmd(stubServerBoot, stubClientBoot)
@@ -83,7 +83,7 @@ func TestResolve_TokenFlagWins(t *testing.T) {
 }
 
 func TestResolve_TokenEnv(t *testing.T) {
-	t.Setenv("ALT_TOKEN", "env-token")
+	t.Setenv("YASAKU_TOKEN", "env-token")
 	cfg := &config.Config{}
 
 	root := NewRootCmd(stubServerBoot, stubClientBoot)
@@ -104,7 +104,7 @@ func TestResolve_TokenFileEnv(t *testing.T) {
 	if err := os.WriteFile(tokFile, []byte("file-token\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("ALT_TOKEN_FILE", tokFile)
+	t.Setenv("YASAKU_TOKEN_FILE", tokFile)
 	cfg := &config.Config{}
 
 	root := NewRootCmd(stubServerBoot, stubClientBoot)

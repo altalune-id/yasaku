@@ -4,14 +4,14 @@ How yasaku isolates tenants and routes sign-ins. Read in five minutes.
 
 ## Modes
 
-|                         | `selfhosted`            | `cloud`                                          |
-| ----------------------- | ----------------------- | ------------------------------------------------ |
-| DB driver               | `sqlite` or `postgres`  | `postgres` only (enforced)                       |
-| OIDC                    | optional                | required (enforced)                              |
-| Local `/login` password | on by default           | off; `ALT_GENESIS_BREAK_GLASS=true` to re-enable |
-| Org creation from UI    | disabled                | enabled                                          |
-| Public OIDC signup      | disabled (invite-only)  | enabled                                          |
-| Invites                 | require OIDC configured | always available                                 |
+|                         | `selfhosted`            | `cloud`                                             |
+| ----------------------- | ----------------------- | --------------------------------------------------- |
+| DB driver               | `sqlite` or `postgres`  | `postgres` only (enforced)                          |
+| OIDC                    | optional                | required (enforced)                                 |
+| Local `/login` password | on by default           | off; `YASAKU_GENESIS_BREAK_GLASS=true` to re-enable |
+| Org creation from UI    | disabled                | enabled                                             |
+| Public OIDC signup      | disabled (invite-only)  | enabled                                             |
+| Invites                 | require OIDC configured | always available                                    |
 
 ## Data isolation — how tenants stay separated
 
@@ -29,7 +29,7 @@ How yasaku isolates tenants and routes sign-ins. Read in five minutes.
 | `yasaku_migrator` | Runs migrations under `SET ROLE yasaku_owner` | no        |
 | `yasaku_service`  | Runtime connection                            | no        |
 
-Provision via `scripts/db/provision.sh` (`APP=yasaku DB_NAME=yasaku`). Point `ALT_DB_MIGRATOR_DSN` at `yasaku_migrator` (`ALT_DB_MIGRATOR_ROLE=yasaku_owner`) and `ALT_DB_DSN` at `yasaku_service`. Boot uses migrator briefly for migrations, closes it, then serves from service.
+Provision via `scripts/db/provision.sh` (`APP=yasaku DB_NAME=yasaku`). Point `YASAKU_DB_MIGRATOR_DSN` at `yasaku_migrator` (`YASAKU_DB_MIGRATOR_ROLE=yasaku_owner`) and `YASAKU_DB_DSN` at `yasaku_service`. Boot uses migrator briefly for migrations, closes it, then serves from service.
 
 ## Reader / writer
 
@@ -90,8 +90,8 @@ flowchart TD
 
 ## Terms of Service gate
 
-- Enabled via `ALT_COMPLIANCE_REQUIRE_ACCEPTANCE=true`.
-- Links: `ALT_COMPLIANCE_TERMS_URL`, `ALT_COMPLIANCE_PRIVACY_URL`.
+- Enabled via `YASAKU_COMPLIANCE_REQUIRE_ACCEPTANCE=true`.
+- Links: `YASAKU_COMPLIANCE_TERMS_URL`, `YASAKU_COMPLIANCE_PRIVACY_URL`.
 - Middleware `WelcomeGate` redirects any authenticated user with `TermsAcceptedAt=zero` to `/welcome`.
 - `/welcome` renders the T&C checkbox + optional display-name fixup → stamps `users.terms_accepted_at` → back to `return_to`.
 - Genesis admins auto-accept at bootstrap (they set the env, they consented).

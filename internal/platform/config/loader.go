@@ -22,7 +22,7 @@ type loadOptions struct {
 // WithRequireFile makes Load fail when the config file is missing.
 func WithRequireFile() Option { return func(o *loadOptions) { o.requireFile = true } }
 
-// Load resolves defaults <- yaml file <- ALT_* env vars (last wins) into a typed Config.
+// Load resolves defaults <- yaml file <- YASAKU_* env vars (last wins) into a typed Config.
 func Load(path string, opts ...Option) (*Config, error) {
 	o := loadOptions{}
 	for _, opt := range opts {
@@ -36,7 +36,7 @@ func Load(path string, opts ...Option) (*Config, error) {
 	var cfg Config
 	bindEnv(v, "", reflect.TypeOf(cfg))
 
-	v.SetEnvPrefix("ALT")
+	v.SetEnvPrefix(EnvPrefix)
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_", "-", "_"))
 	v.AutomaticEnv()
 

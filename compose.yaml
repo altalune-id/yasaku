@@ -46,24 +46,24 @@ services:
     ports:
       - "5150:5150"
     environment:
-      ALT_MODE: selfhosted
-      ALT_HTTP_ADDR: "0.0.0.0:5150"
+      YASAKU_MODE: selfhosted
+      YASAKU_HTTP_ADDR: "0.0.0.0:5150"
 
-      ALT_DB_DRIVER: postgres
-      ALT_DB_DSN: "postgres://yasaku:yasaku@postgres:5432/yasaku?sslmode=disable"
-      ALT_DB_ALLOW_BYPASS_RLS: "true"
-      ALT_DB_AUTO_MIGRATE: "true"
+      YASAKU_DB_DRIVER: postgres
+      YASAKU_DB_DSN: "postgres://yasaku:yasaku@postgres:5432/yasaku?sslmode=disable"
+      YASAKU_DB_ALLOW_BYPASS_RLS: "true"
+      YASAKU_DB_AUTO_MIGRATE: "true"
 
-      ALT_MAIL_DRIVER: smtp
-      ALT_MAIL_FROM: "no-reply@yasaku.local"
-      ALT_MAIL_SMTP_HOST: mailpit
-      ALT_MAIL_SMTP_PORT: "1025"
-      ALT_MAIL_SMTP_USER: ""
-      ALT_MAIL_SMTP_PASS: ""
-      ALT_MAIL_SMTP_TLS: "false"
+      YASAKU_MAIL_DRIVER: smtp
+      YASAKU_MAIL_FROM: "no-reply@yasaku.local"
+      YASAKU_MAIL_SMTP_HOST: mailpit
+      YASAKU_MAIL_SMTP_PORT: "1025"
+      YASAKU_MAIL_SMTP_USER: ""
+      YASAKU_MAIL_SMTP_PASS: ""
+      YASAKU_MAIL_SMTP_TLS: "false"
 
-      ALT_GENESIS_EMAIL: admin@yasaku.local
-      ALT_GENESIS_PASSWORD: change-me
+      YASAKU_GENESIS_EMAIL: admin@yasaku.local
+      YASAKU_GENESIS_PASSWORD: change-me
     healthcheck:
       test: ["CMD", "/yasaku", "healthz"]
       interval: 10s

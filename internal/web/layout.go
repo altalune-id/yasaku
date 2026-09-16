@@ -1,8 +1,12 @@
 package web
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"io/fs"
 	"os"
 	"strings"
+	"sync"
 
 	"altalune.id/yasaku/internal/i18n"
 	"altalune.id/yasaku/internal/platform/capabilities"
@@ -10,6 +14,30 @@ import (
 
 	"github.com/a-h/templ"
 )
+
+// NOTE: hashing the embedded assets, not the build stamp — a commit hash does not change while an
+// asset is edited, which serves a stale stylesheet from the one-hour static cache.
+var staticFingerprint = sync.OnceValue(computeStaticFingerprint) //nolint:gochecknoglobals // memoized once, not runtime state.
+
+func computeStaticFingerprint() string {
+	sum := sha256.New()
+	err := fs.WalkDir(StaticFS(), ".", func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		b, rErr := fs.ReadFile(StaticFS(), path)
+		if rErr != nil {
+			return rErr
+		}
+		_, _ = sum.Write([]byte(path))
+		_, _ = sum.Write(b)
+		return nil
+	})
+	if err != nil {
+		return "dev"
+	}
+	return hex.EncodeToString(sum.Sum(nil))[:12]
+}
 
 // UIMode names the asset delivery strategy.
 type UIMode string
@@ -21,9 +49,9 @@ const (
 	UIModeVendored UIMode = "vendored"
 )
 
-// ResolveUIMode reads ALT_UI_MODE; "vendored" flips to vendored, otherwise CDN.
+// ResolveUIMode reads YASAKU_UI_MODE; "vendored" flips to vendored, otherwise CDN.
 func ResolveUIMode() UIMode {
-	if os.Getenv("ALT_UI_MODE") == string(UIModeVendored) {
+	if os.Getenv("YASAKU_UI_MODE") == string(UIModeVendored) {
 		return UIModeVendored
 	}
 	return UIModeCDN
@@ -141,7 +169,11 @@ type FlashMessage struct {
 }
 
 // Static returns a basePath-aware URL for a vendored asset (e.g. static/htmx.min.js).
-func (d LayoutData) Static(sub string) string { return Path(d.BasePath, "static/"+sub) }
+// NOTE: the build fingerprint busts the one-hour static cache, so a changed asset reaches
+// returning browsers on the next deploy instead of up to an hour later.
+func (d LayoutData) Static(sub string) string {
+	return Path(d.BasePath, "static/"+sub) + "?v=" + staticFingerprint()
+}
 
 // Href joins BasePath with a subpath. Templates use this so mounts under /app work.
 func (d LayoutData) Href(sub string) string { return Path(d.BasePath, sub) }

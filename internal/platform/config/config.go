@@ -284,7 +284,7 @@ func validateInvariants(c *Config) error {
 
 func validateMCPNeedsTokensIssuer(c *Config) error {
 	if c.MCP.Enabled && c.Tokens.Issuer == "" {
-		return errors.New("config: mcp.enabled requires tokens.issuer (set ALT_TOKENS_ISSUER)")
+		return errors.New("config: mcp.enabled requires tokens.issuer (set YASAKU_TOKENS_ISSUER)")
 	}
 	return nil
 }
@@ -300,17 +300,17 @@ func validateMCPAudience(c *Config) error {
 	}
 	u, err := url.Parse(c.MCP.Audience)
 	if err != nil {
-		return fmt.Errorf("config: mcp.audience %q is not a URL: %w (set ALT_MCP_AUDIENCE)", c.MCP.Audience, err)
+		return fmt.Errorf("config: mcp.audience %q is not a URL: %w (set YASAKU_MCP_AUDIENCE)", c.MCP.Audience, err)
 	}
 	if (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-		return fmt.Errorf("config: mcp.audience %q must be an absolute http(s) URL (set ALT_MCP_AUDIENCE)", c.MCP.Audience)
+		return fmt.Errorf("config: mcp.audience %q must be an absolute http(s) URL (set YASAKU_MCP_AUDIENCE)", c.MCP.Audience)
 	}
 	if u.Fragment != "" || strings.Contains(c.MCP.Audience, "#") {
-		return fmt.Errorf("config: mcp.audience %q must carry no fragment (set ALT_MCP_AUDIENCE)", c.MCP.Audience)
+		return fmt.Errorf("config: mcp.audience %q must carry no fragment (set YASAKU_MCP_AUDIENCE)", c.MCP.Audience)
 	}
 	if c.MCP.Audience != c.MCPEndpoint() && !c.MCP.AudienceOverride {
 		return fmt.Errorf(
-			"config: mcp.audience %q must equal the mounted endpoint %q (set ALT_MCP_AUDIENCE, or ALT_MCP_AUDIENCE_OVERRIDE=true when a proxy rewrites it)",
+			"config: mcp.audience %q must equal the mounted endpoint %q (set YASAKU_MCP_AUDIENCE, or YASAKU_MCP_AUDIENCE_OVERRIDE=true when a proxy rewrites it)",
 			c.MCP.Audience, c.MCPEndpoint())
 	}
 	return nil
@@ -342,72 +342,72 @@ func validateCloud(c *Config) error {
 
 func validateCloudOIDC(c *Config) error {
 	if c.OIDC.Issuer == "" {
-		return errors.New("config: mode=cloud requires oidc.issuer (set ALT_OIDC_ISSUER)")
+		return errors.New("config: mode=cloud requires oidc.issuer (set YASAKU_OIDC_ISSUER)")
 	}
 	if c.OIDC.ClientID == "" {
-		return errors.New("config: mode=cloud requires oidc.clientID (set ALT_OIDC_CLIENT_ID)")
+		return errors.New("config: mode=cloud requires oidc.clientID (set YASAKU_OIDC_CLIENT_ID)")
 	}
 	if c.OIDC.ClientSecret == "" {
-		return errors.New("config: mode=cloud requires oidc.clientSecret (set ALT_OIDC_CLIENT_SECRET)")
+		return errors.New("config: mode=cloud requires oidc.clientSecret (set YASAKU_OIDC_CLIENT_SECRET)")
 	}
 	return nil
 }
 
 func validateCloudDBDriver(c *Config) error {
 	if c.DB.Driver != "" && c.DB.Driver != "postgres" {
-		return fmt.Errorf("config: mode=cloud requires db.driver=postgres, got %q (set ALT_DB_DRIVER=postgres)", c.DB.Driver)
+		return fmt.Errorf("config: mode=cloud requires db.driver=postgres, got %q (set YASAKU_DB_DRIVER=postgres)", c.DB.Driver)
 	}
 	return nil
 }
 
 func validateCloudGenesisEmail(c *Config) error {
 	if c.Genesis.Email == "" {
-		return errors.New("config: mode=cloud requires genesis.email — first-boot admin identity, matched against OIDC subject email (set ALT_GENESIS_EMAIL)")
+		return errors.New("config: mode=cloud requires genesis.email — first-boot admin identity, matched against OIDC subject email (set YASAKU_GENESIS_EMAIL)")
 	}
 	return nil
 }
 
 func validatePostgresNeedsEncryptionKey(c *Config) error {
 	if c.DB.Driver == db.DriverPostgres && c.Security.EncryptionKey == "" {
-		return errors.New("config: db.driver=postgres requires security.encryptionKey — 32 bytes hex or base64; without it persisted sessions cannot be sealed and every login fails (set ALT_SECURITY_ENCRYPTION_KEY)")
+		return errors.New("config: db.driver=postgres requires security.encryptionKey — 32 bytes hex or base64; without it persisted sessions cannot be sealed and every login fails (set YASAKU_SECURITY_ENCRYPTION_KEY)")
 	}
 	return nil
 }
 
 func validateCloudEncryptionKey(c *Config) error {
 	if c.Security.EncryptionKey == "" {
-		return errors.New("config: mode=cloud requires security.encryptionKey — 32 bytes hex or base64; without it persisted sessions cannot be sealed and every login fails (set ALT_SECURITY_ENCRYPTION_KEY)")
+		return errors.New("config: mode=cloud requires security.encryptionKey — 32 bytes hex or base64; without it persisted sessions cannot be sealed and every login fails (set YASAKU_SECURITY_ENCRYPTION_KEY)")
 	}
 	return nil
 }
 
 func validateGenesisPasswordNeedsEmail(c *Config) error {
 	if c.Genesis.Password != "" && c.Genesis.Email == "" {
-		return errors.New("config: genesis.password without genesis.email — no account is created, so the password is silently ignored (set ALT_GENESIS_EMAIL, or unset ALT_GENESIS_PASSWORD)")
+		return errors.New("config: genesis.password without genesis.email — no account is created, so the password is silently ignored (set YASAKU_GENESIS_EMAIL, or unset YASAKU_GENESIS_PASSWORD)")
 	}
 	return nil
 }
 
 func validateCloudGenesisPasswordBreakGlass(c *Config) error {
 	if c.Genesis.Password != "" && !c.Genesis.BreakGlass {
-		return errors.New("config: mode=cloud with genesis.password requires genesis.breakGlass=true — the /login local form is hidden in cloud otherwise (set ALT_GENESIS_BREAK_GLASS=true, or unset ALT_GENESIS_PASSWORD)")
+		return errors.New("config: mode=cloud with genesis.password requires genesis.breakGlass=true — the /login local form is hidden in cloud otherwise (set YASAKU_GENESIS_BREAK_GLASS=true, or unset YASAKU_GENESIS_PASSWORD)")
 	}
 	return nil
 }
 
 func validateCloudSingletonOrg(c *Config) error {
 	if c.Tenant.SingletonOrg.Slug == "" {
-		return errors.New("config: mode=cloud requires tenant.singletonOrg.slug — the first organization created at bootstrap (set ALT_TENANT_SINGLETON_ORG_SLUG)")
+		return errors.New("config: mode=cloud requires tenant.singletonOrg.slug — the first organization created at bootstrap (set YASAKU_TENANT_SINGLETON_ORG_SLUG)")
 	}
 	if c.Tenant.SingletonOrg.Name == "" {
-		return errors.New("config: mode=cloud requires tenant.singletonOrg.name — the display name of the first organization (set ALT_TENANT_SINGLETON_ORG_NAME)")
+		return errors.New("config: mode=cloud requires tenant.singletonOrg.name — the display name of the first organization (set YASAKU_TENANT_SINGLETON_ORG_NAME)")
 	}
 	return nil
 }
 
 func validateAutoMigrateNeedsMigrator(c *Config) error {
 	if !c.DB.AllowBypassRLS && c.DB.AutoMigrate && c.DB.Migrator.DSN == "" {
-		return errors.New("config: mode=cloud with autoMigrate and RLS enforced requires db.migrator.dsn — run scripts/db/provision.sh (APP=yasaku DB_NAME=yasaku) and set ALT_DB_MIGRATOR_DSN to the yasaku_migrator credential, or disable autoMigrate and run migrations out-of-band")
+		return errors.New("config: mode=cloud with autoMigrate and RLS enforced requires db.migrator.dsn — run scripts/db/provision.sh (APP=yasaku DB_NAME=yasaku) and set YASAKU_DB_MIGRATOR_DSN to the yasaku_migrator credential, or disable autoMigrate and run migrations out-of-band")
 	}
 	return nil
 }

@@ -103,7 +103,7 @@ knobs. Required inputs are positional constructor args.
   }
   ```
 - Env-var mapping is automatic via the `BindEnv` walker in
-  `internal/platform/config/`. `ALT_CACHE_URL` binds to `cfg.Cache.URL`.
+  `internal/platform/config/`. `YASAKU_CACHE_URL` binds to `cfg.Cache.URL`.
 - Provide `func (c *Config) Validate() error` when constraints are non-trivial.
 
 ### Errors
@@ -346,7 +346,7 @@ goroutines, no dropped requests.
    construction block, one `sup.Register(...)` if it's a Worker.
 
 Add the config schema to `config.example.yaml` (auto-generated) and
-`.env.example` with `ALT_*` env-var mapping.
+`.env.example` with `YASAKU_*` env-var mapping.
 
 ## 9. Review checklist
 

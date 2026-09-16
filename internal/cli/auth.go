@@ -73,7 +73,7 @@ type loginOpts struct {
 func runLogin(cmd *cobra.Command, s *boot.Server, o loginOpts) error {
 	if o.admin || !s.Caps.ExternalIdentity {
 		if !s.Auth.LocalConfigured() {
-			return errors.New("login: local admin login not configured; set ALT_GENESIS_EMAIL / ALT_GENESIS_PASSWORD")
+			return errors.New("login: local admin login not configured; set YASAKU_GENESIS_EMAIL / YASAKU_GENESIS_PASSWORD")
 		}
 		if o.admin && s.Caps.ExternalIdentity {
 			_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "warn: --admin break-glass login (OIDC bypassed for this session)")
