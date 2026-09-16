@@ -205,6 +205,30 @@ func probeCookie(t *testing.T, srv *boot.Server, p session.Principal) *http.Cook
 	}
 }
 
+// muxNotFound is what http.ServeMux answers when no pattern matches, as opposed to a handler's own 404 page.
+const muxNotFound = "404 page not found"
+
+// isUnwired reports whether path belongs to a template demo handler kept in the tree but dropped from AppHandlers.
+func isUnwired(path string) bool {
+	unwiredPrefixes := []string{"/todos", "/posts", "/tags"}
+
+	_, rest, found := strings.Cut(path, "/projects/")
+	if !found {
+		return false
+	}
+	i := strings.Index(rest, "/")
+	if i < 0 {
+		return false
+	}
+	rest = rest[i:]
+	for _, p := range unwiredPrefixes {
+		if rest == p || strings.HasPrefix(rest, p+"/") {
+			return true
+		}
+	}
+	return false
+}
+
 // walkRoutes drives every route as p and fails on any 5xx or any tenant-scope error.
 func walkRoutes(t *testing.T, srv *boot.Server, logBuf *bytes.Buffer, p session.Principal, label string) {
 	t.Helper()
@@ -231,6 +255,16 @@ func walkRoutes(t *testing.T, srv *boot.Server, logBuf *bytes.Buffer, p session.
 				"%s %s reached a tenant-scoped store with a scope naming no org", rt.method, rt.path)
 			require.Less(t, rec.Code, 500,
 				"%s %s returned %d\nbody=%s\nlog=%s", rt.method, rt.path, rec.Code, rec.Body.String(), logged)
+
+			// NOTE: the bare mux 404 means no pattern matched, so the probe proved nothing about the handler.
+			bare := strings.Contains(rec.Body.String(), muxNotFound)
+			if isUnwired(rt.path) {
+				require.True(t, bare,
+					"%s %s is a template demo route and must stay unregistered, got %d", rt.method, rt.path, rec.Code)
+				return
+			}
+			require.False(t, bare,
+				"%s %s reached no registered pattern — the handler is not in AppHandlers", rt.method, rt.path)
 		})
 	}
 }
@@ -257,6 +291,12 @@ func TestRoutes_UserWithAnActiveOrgNeverHitsATenantScopeError(t *testing.T) {
 		Slug: "probe-org", Name: "Probe Org", OwnerID: owner.ID,
 	})
 	require.NoError(t, err, "org.Create must work with no ambient tenant scope — the signup case")
+
+	// NOTE: without the project every project-scoped probe short-circuits on a 404 and exercises no handler.
+	orgCtx := tenant.Into(context.Background(), tenant.Context{OrgID: o.ID, UserID: owner.ID})
+	_, err = srv.Projects.Create(orgCtx, o.ID, "probe-project", "Probe Project")
+	require.NoError(t, err)
+
 	walkRoutes(t, srv, logBuf, session.Principal{UserID: owner.ID, ActiveOrgID: o.ID}, "cloud with-org")
 }
 
