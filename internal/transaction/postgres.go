@@ -124,7 +124,7 @@ func pgUUIDArg(id *uuid.UUID) any {
 
 func pgUUIDExpr(id *uuid.UUID) postgres.StringExpression {
 	if id == nil {
-		return pgent.NullText()
+		return pgent.NullUUID()
 	}
 	return postgres.UUID(*id)
 }
