@@ -123,4 +123,20 @@ structurally, with no adapter and no import of `worker`.
 
 ## Business terms
 
-<!-- TODO: nothing in this repo establishes product or company brand names. Fill in. -->
+| Term             | Where                        | What it is                                                                                                                                              |
+| ---------------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| yasaku           | product                      | The cashflow ledger this repo builds. One ledger lives inside one project; an account may hold several.                                                 |
+| wallet (dompet)  | `internal/wallet`            | A place money sits: cash, bank, ewallet, savings, investment or other. Its currency is fixed at creation. Its balance is derived, never stored.         |
+| spendable total  | `report.WalletTotals`        | Sum of wallet balances excluding wallets flagged `exclude_from_total`. Savings and investment wallets default to excluded. Shown to the user as "sisa". |
+| transaction kind | `transaction.Kind`           | `income`, `expense`, `transfer`, `opening`, `adjustment_in`, `adjustment_out`. Only income and expense carry a category.                                |
+| opening          | `wallet.OpenWorkflow`        | The single transaction written when a wallet is created with a starting balance. It is not income.                                                      |
+| adjustment       | `transaction.Service.Adjust` | One transaction written to make a wallet match a counted balance. Signed by direction: `adjustment_in` or `adjustment_out`.                             |
+| category         | `internal/category`          | A label on income or expense. Its kind is fixed at creation. Archiving frees the name for reuse.                                                        |
+| period           | `internal/period`            | One cycle of the ledger. Exactly one per project is current (`end_date IS NULL`, partial unique index). Reports are read per period.                    |
+| tutup buku       | `period.Service.Close`       | Closing the books: freeze the period's totals into an immutable `period_closings` row and open the next period the following day.                       |
+| payday carry     | `ledger.Settings.StartDay`   | Why periods exist: Indonesian salaries land on a date, not on the 1st, so a period runs payday to payday and a transaction may move to an adjacent one. |
+| snapshot         | `period_closings`            | The frozen totals a close wrote. Immutable; recomputed only if the period is reopened and re-closed.                                                    |
+| reopen           | `period.Service.Reopen`      | Unfreeze the latest closed period so its transactions can be fixed. Only the latest one qualifies, and its end date stays fixed.                        |
+| `Target`         | `api/yasaku/v1`              | The `{org, project}` pair every RPC and MCP tool is scoped by. Auto-selected when the caller has exactly one candidate.                                 |
+| resource server  | `internal/mcp`               | yasaku as an OAuth protected resource. Its identifier is `mcp.audience`; bearer tokens must name it (RFC 8707).                                         |
+| tool             | `mcp.ToolSpec`               | One MCP-callable operation. Carries a scope (`yasaku:read` / `yasaku:write`) and a mutation flag that forces the two-phase `confirm` contract.          |

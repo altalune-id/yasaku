@@ -6,7 +6,10 @@ It lets any engineer land in any module and know where things live.
 For infrastructure primitives (adapters, workers, kits), see
 [`PLATFORM_TEMPLATE.md`](PLATFORM_TEMPLATE.md).
 
-Reference implementation: `internal/todo/`. When in doubt, copy from there.
+Reference implementations: `internal/todo/` (the flat template original),
+`internal/wallet/` (flat, with a multi-write workflow) and
+`internal/transaction/` (relations and cross-module ports). When in doubt, copy
+from there.
 
 ## 1. Required files
 

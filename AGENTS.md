@@ -15,7 +15,10 @@ forks — signature changes cost every fork of churn, so land tests first.
 
 - [`README.md`](README.md) — layout, config, modes, docker, releasing.
 - [`docs/MODULE_TEMPLATE.md`](docs/MODULE_TEMPLATE.md) — the 7-file shape
-  every domain module follows. Reference impl: `internal/todo/`.
+  every domain module follows. Reference impls: `internal/transaction/`
+  (relations and ports), `internal/wallet/` (flat), `internal/todo/` (template).
+- [`docs/MCP.md`](docs/MCP.md) — the MCP surface: endpoint, bearer auth,
+  tool catalogue, and how to add a tool.
 - [`docs/PLATFORM_TEMPLATE.md`](docs/PLATFORM_TEMPLATE.md) — how to add
   cross-cutting primitives. Reference impls: `internal/platform/session/`,
   `internal/platform/tokens/`, `worker/`.
@@ -66,7 +69,7 @@ When invoked (Claude Code loads them automatically on task match):
 make check              # fmt + vet + test — pre-commit gate
 make test               # unit (fast)
 make test-integration   # requires TEST_PG_DSN or docker/podman socket
-make generate           # regenerate templ + buf outputs
+make generate           # regenerate templ + buf outputs (runs cmd/protoc-gen-yasaku-mcp)
 make config-examples    # regenerate .env.example + config.example.yaml
 make tenant-tables      # regenerate schema/tenant_tables_gen.go
 make lint               # golangci-lint (or go vet fallback)

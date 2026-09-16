@@ -1,7 +1,14 @@
 # yasaku
 
-Reference multitenant Go template — Templ + HTMX SSR + Connect-RPC on one HTTP
-listener. Module path: `altalune.id/yasaku`. Binary: `yasaku`.
+Personal cashflow tracking, multitenant. You keep wallets, log what goes in and
+out, and close the books ("tutup buku") on your own payday cycle rather than on
+the calendar month — then read the period back as a report. Everything lives
+inside a project, so one account can keep several separate ledgers. Four
+presentation layers sit on the same services: Templ + HTMX SSR, Connect-RPC,
+MCP, and the scheduler, all on one HTTP listener.
+
+Built on the altalune multitenant Go template. Module path:
+`altalune.id/yasaku`. Binary: `yasaku`.
 
 ## Quick start
 
@@ -35,17 +42,24 @@ make build
 yasaku/
 ├── api/                # buf-managed proto sources
 ├── authl/              # RFC 8252 OIDC PKCE loopback (exported)
-├── cmd/yasaku/        # main package
-├── docs/               # configuration, deployment, CLI contract, module & platform templates
+├── civil/              # timezone-free calendar date (exported)
+├── cmd/yasaku/         # main package
+├── cmd/protoc-gen-yasaku-mcp/   # local buf plugin: MCP tools from proto annotations
+├── docs/               # configuration, deployment, CLI contract, MCP, module & platform templates
 ├── gen/                # generated proto (do not edit)
 ├── internal/
 │   ├── apperror/       # stable error codes + Reporter fan-out
 │   ├── auth/           # local + OIDC login orchestration
 │   ├── boot/           # composition root
 │   ├── cli/            # cobra command tree
-│   ├── invite/, org/, project/, todo/, user/    # domain modules
+│   ├── ledger/, wallet/, category/, transaction/, period/, report/   # yasaku domain modules
+│   ├── invite/, org/, project/, todo/, user/    # platform domain modules
+│   ├── mcp/            # MCP transport: bearer auth, RFC 9728 metadata
 │   ├── platform/       # capabilities, config, db, notify, session, tenant, tokens
 │   └── web/            # templ + htmx handlers, icons, i18n
+├── mcp/                # MCP tool runtime over the go-sdk (exported)
+├── money/              # int64 minor-unit amounts (exported)
+├── opensheet/          # standalone opensheet API client (exported)
 ├── logger/, mailer/, nanoid/, reqid/, scheduler/, telemetry/, worker/   # exported roots
 ├── schema/             # embedded goose migrations + RLS guard
 └── version/            # build-time version info
@@ -65,6 +79,10 @@ Safe for external Go projects to import:
 | `logger`    | `slog.Handler` — auto-attaches request_id/trace_id, key redaction       |
 | `telemetry` | OTel tracer + meter + Prometheus reader                                 |
 | `mailer`    | Transactional mail — `console`, `smtp`, `resend` drivers                |
+| `money`     | `int64` minor-unit amounts; arithmetic panics on currency mismatch      |
+| `civil`     | Timezone-free calendar date with `driver.Valuer` / `sql.Scanner`        |
+| `mcp`       | MCP tool registry and error envelope over the official go-sdk           |
+| `opensheet` | Client for the opensheet API — paginated `iter.Seq2`, typed errors      |
 
 Pre-1.0.0: minor releases may break; pin exact versions. Post-1.0.0:
 exported surface is frozen, additive changes only. Everything under
@@ -90,6 +108,7 @@ Invite issuance requires `mode=cloud` or `oidc.issuer` set. `/signup/complete` r
 | [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md)         | precedence, awareness tags, modes, first-boot       |
 | [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)               | docker, DB roles, RLS, replica, observability, OIDC |
 | [`docs/CLI_CONTRACT.md`](docs/CLI_CONTRACT.md)           | stable command tree, exit codes, output envelopes   |
+| [`docs/MCP.md`](docs/MCP.md)                             | MCP endpoint, auth, tool catalogue, adding a tool   |
 | [`docs/MODULE_TEMPLATE.md`](docs/MODULE_TEMPLATE.md)     | adding a domain module                              |
 | [`docs/PLATFORM_TEMPLATE.md`](docs/PLATFORM_TEMPLATE.md) | adding a platform primitive                         |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md)                     | workflow, testing, release                          |
