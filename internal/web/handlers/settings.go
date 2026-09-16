@@ -1,10 +1,12 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
 
+	"altalune.id/yasaku/internal/apperror"
 	"altalune.id/yasaku/internal/ledger"
 	"altalune.id/yasaku/internal/project"
 	"altalune.id/yasaku/internal/web"
@@ -14,8 +16,6 @@ import (
 
 const settingsNavKey = "settings"
 
-// settingsTimezones is the curated zone list the timezone datalist offers; any IANA zone may still be typed.
-//
 //nolint:gochecknoglobals // immutable table
 var settingsTimezones = []string{
 	"Asia/Jakarta",
@@ -27,13 +27,9 @@ var settingsTimezones = []string{
 	"UTC",
 }
 
-// settingsCurrencies mirrors the currency table in package money, which exports no enumeration.
-//
 //nolint:gochecknoglobals // immutable table
 var settingsCurrencies = []string{"IDR", "USD", "SGD", "MYR", "EUR", "JPY"}
 
-// settingsMCPScopes is the scope pair an MCP client must request.
-//
 //nolint:gochecknoglobals // immutable table
 var settingsMCPScopes = []string{"yasaku:read", "yasaku:write"}
 
@@ -89,12 +85,15 @@ func (h *SettingsHandler) PostSettings(w http.ResponseWriter, r *http.Request) {
 	v := h.view(sc)
 	v.Timezone, v.Currency = tz, currency
 	day, dayErr := strconv.Atoi(rawDay)
-	v.PeriodStartDay = day
 	if dayErr != nil {
-		v.Error, v.ErrorCode = appErrorBanner(&ledger.InvalidStartDayError{Value: day})
+		v.PeriodStartDay = h.storedStartDay(sc)
+		v.Error = fmt.Sprintf("Period start day must be a whole number between %d and %d, got %q",
+			ledger.MinPeriodStartDay, ledger.MaxPeriodStartDay, rawDay)
+		v.ErrorCode = apperror.CodeLedgerInvalidStartDay
 		Render(w, sc.req, templates.SettingsLayout(h.layout(sc), v))
 		return
 	}
+	v.PeriodStartDay = day
 
 	cur := money.Currency(currency)
 	st, err := h.Ledgers.Update(sc.req.Context(), ledger.Patch{Timezone: &tz, Currency: &cur, PeriodStartDay: &day})
@@ -113,7 +112,6 @@ func (h *SettingsHandler) PostSettings(w http.ResponseWriter, r *http.Request) {
 	Render(w, sc.req, templates.SettingsLayout(h.layout(sc), v))
 }
 
-// requireProject resolves the org and project the path names, gating membership before any row is read.
 func (h *SettingsHandler) requireProject(w http.ResponseWriter, r *http.Request) (projectScope, bool) {
 	p, sid, ok := h.LoadSession(r)
 	if !ok {
@@ -129,6 +127,15 @@ func (h *SettingsHandler) requireProject(w http.ResponseWriter, r *http.Request)
 		return projectScope{}, false
 	}
 	return projectScope{principal: p, sid: sid, org: o, project: proj, req: r}, true
+}
+
+func (h *SettingsHandler) storedStartDay(sc projectScope) int {
+	st, err := h.Ledgers.Get(sc.req.Context())
+	if err != nil {
+		h.LogErr("web settings: stored start day", err)
+		return ledger.DefaultPeriodStartDay
+	}
+	return st.PeriodStartDay
 }
 
 func (h *SettingsHandler) layout(sc projectScope) web.LayoutData {

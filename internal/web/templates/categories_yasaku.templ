@@ -17,7 +17,6 @@ type TxCategoryRow struct {
 
 // TxCategoriesView is the transaction-categories page: one column per kind, archived rows collapsed.
 type TxCategoriesView struct {
-	OrgSlug     string
 	ProjectSlug string
 	ProjectName string
 	Expense     []TxCategoryRow
@@ -33,6 +32,14 @@ type TxCategoriesView struct {
 // IsEmpty reports whether the project has no categories at all, archived ones included.
 func (v TxCategoriesView) IsEmpty() bool {
 	return len(v.Expense) == 0 && len(v.Income) == 0 && len(v.Archived) == 0
+}
+
+// SeededState reports whether the last seed added categories, for the page's status line.
+func (v TxCategoriesView) SeededState() string {
+	if v.Seeded == 0 {
+		return "none"
+	}
+	return "added"
 }
 
 templ txCategoryRowItem(d web.LayoutData, v TxCategoriesView, c TxCategoryRow) {
@@ -136,14 +143,19 @@ templ txCategorySeedCard(d web.LayoutData, v TxCategoriesView) {
 // TxCategoryList is the HTMX-swappable section: every category action targets #tx-category-list.
 templ TxCategoryList(d web.LayoutData, v TxCategoriesView) {
 	<div id="tx-category-list" class="mt-6 space-y-4">
-		@walletBanner(d, v.ErrorKey, v.ErrorMsg, v.ErrorCode)
+		@pageBanner(d, v.ErrorKey, v.ErrorMsg, v.ErrorCode)
 		if v.ShowSeeded {
 			<p
 				data-seeded={ strconv.Itoa(v.Seeded) }
+				data-seeded-state={ v.SeededState() }
 				role="status"
 				class="rounded-md border border-border bg-muted px-3 py-2 text-sm text-foreground"
 			>
-				{ strconv.Itoa(v.Seeded) + " " + d.Tr("category.title") }
+				if v.Seeded == 0 {
+					{ d.Tr("category.seeded_none") }
+				} else {
+					{ d.Tr("category.seeded", "Count", v.Seeded) }
+				}
 			</p>
 		}
 		if v.IsEmpty() {
@@ -156,7 +168,7 @@ templ TxCategoryList(d web.LayoutData, v TxCategoriesView) {
 		}
 		if len(v.Archived) > 0 {
 			<details id="tx-category-archived" class="overflow-hidden rounded-lg border border-border bg-card shadow-sm">
-				<summary class="cursor-pointer px-4 py-3 text-sm text-muted-foreground">{ d.Tr("wallet.archived") }</summary>
+				<summary class="cursor-pointer px-4 py-3 text-sm text-muted-foreground">{ d.Tr("category.archived") }</summary>
 				<ul class="divide-y divide-border/50 border-t border-border opacity-75">
 					for _, c := range v.Archived {
 						@txCategoryRowItem(d, v, c)

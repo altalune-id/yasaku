@@ -172,7 +172,7 @@ templ TransactionsLayout(d web.LayoutData, v TransactionsView) {
 templ TransactionFormPage(d web.LayoutData, v TxFormView, title string) {
 	<section class="flex flex-col gap-4">
 		<h1 class="text-2xl font-semibold tracking-tight text-foreground">{ title }</h1>
-		@TransactionForm(d, v)
+		@TransactionForm(d, txStandalone(v))
 		if v.ID != "" {
 			<form
 				method="post"
@@ -195,7 +195,6 @@ templ TransactionFormPage(d web.LayoutData, v TxFormView, title string) {
 	</section>
 }
 
-// txConfirmAssets guards every data-tx-confirm form with the browser's own confirm dialog.
 templ txConfirmAssets() {
 	<script>
 	document.querySelectorAll("form[data-tx-confirm]").forEach(function (f) {
@@ -210,6 +209,11 @@ templ txConfirmAssets() {
 
 templ TransactionFormLayout(d web.LayoutData, v TxFormView, title string) {
 	@Layout(web.WithContent(d, TransactionFormPage(d, v, title)))
+}
+
+func txStandalone(v TxFormView) TxFormView {
+	v.FullPage = true
+	return v
 }
 
 func txSignedAmount(row TxRow) money.Amount {

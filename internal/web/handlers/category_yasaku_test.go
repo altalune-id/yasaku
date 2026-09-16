@@ -33,10 +33,13 @@ func TestTxCategory_Seed_InsertsTwentyThenNone(t *testing.T) {
 	first := f.do(t, mux, http.MethodPost, "/categories/seed", url.Values{})
 	require.Equal(t, http.StatusOK, first.Code, first.Body.String())
 	assert.Contains(t, first.Body.String(), `data-seeded="20"`)
+	assert.Contains(t, first.Body.String(), `data-seeded-state="added"`)
 
 	second := f.do(t, mux, http.MethodPost, "/categories/seed", url.Values{})
 	require.Equal(t, http.StatusOK, second.Code)
 	assert.Contains(t, second.Body.String(), `data-seeded="0"`)
+	assert.Contains(t, second.Body.String(), `data-seeded-state="none"`,
+		"seeding nothing must say so, not render a bare count over a full grid")
 
 	rows, err := f.TxCategories.List(f.scoped(t), category.ListOpts{})
 	require.NoError(t, err)
@@ -183,8 +186,6 @@ func TestTxCategory_UnknownID_Is404(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, rec.Code)
 }
 
-// TestTxCategory_FragmentsCarryTheOrgScopedActionURLs guards the HTMX trap: a fragment rendered on a
-// bare Base has a nil ActiveOrg, so every action URL collapses to /orgs.
 func TestTxCategory_FragmentsCarryTheOrgScopedActionURLs(t *testing.T) {
 	t.Parallel()
 	f := newWalletFixture(t)

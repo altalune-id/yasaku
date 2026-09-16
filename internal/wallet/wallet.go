@@ -133,6 +133,26 @@ func (w *Wallet) Update(kind Kind, provider string, exclude bool) error {
 	return nil
 }
 
+// Edit replaces the name, kind, provider and exclude-from-total flag in one step; an archived wallet must be unarchived first.
+func (w *Wallet) Edit(name string, kind Kind, provider string, exclude bool) error {
+	if w.IsArchived() {
+		return &ArchivedError{ID: w.ID.String()}
+	}
+	clean, err := cleanName(name)
+	if err != nil {
+		return err
+	}
+	if !kind.Valid() {
+		return &InvalidKindError{Value: string(kind)}
+	}
+	w.Name = clean
+	w.Kind = kind
+	w.Provider = strings.TrimSpace(provider)
+	w.ExcludeFromTotal = exclude
+	w.UpdatedAt = time.Now().UTC()
+	return nil
+}
+
 // Archive retires the wallet, freeing its name for reuse; calling it again is a no-op.
 func (w *Wallet) Archive() {
 	if w.IsArchived() {

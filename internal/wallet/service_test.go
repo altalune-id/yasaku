@@ -379,3 +379,54 @@ func TestService_ResolveByName(t *testing.T) {
 		assert.True(t, wallet.IsNotFoundError(err), "got %T: %v", err, err)
 	})
 }
+
+func TestService_Edit(t *testing.T) {
+	t.Run("replaces every field in one save", func(t *testing.T) {
+		svc, _ := newSvc(t, fakes.NewWallet())
+		ctx, _ := svcCtx(t)
+		w := mustCreate(ctx, t, svc, "BCA")
+
+		got, err := svc.Edit(ctx, w.ID, "  BCA Tahapan  ", wallet.KindSavings, "  BCA  ", true)
+		require.NoError(t, err)
+		assert.Equal(t, "BCA Tahapan", got.Name)
+		assert.Equal(t, wallet.KindSavings, got.Kind)
+		assert.Equal(t, "BCA", got.Provider)
+		assert.True(t, got.ExcludeFromTotal)
+
+		stored, err := svc.ByID(ctx, w.ID)
+		require.NoError(t, err)
+		assert.Equal(t, "BCA Tahapan", stored.Name)
+		assert.Equal(t, wallet.KindSavings, stored.Kind)
+	})
+
+	t.Run("a rejected kind lands no partial rename", func(t *testing.T) {
+		svc, _ := newSvc(t, fakes.NewWallet())
+		ctx, _ := svcCtx(t)
+		w := mustCreate(ctx, t, svc, "BCA")
+
+		_, err := svc.Edit(ctx, w.ID, "Renamed", wallet.Kind("crypto"), "Coinbase", true)
+		require.True(t, wallet.IsInvalidKindError(err), "got %T", err)
+
+		stored, err := svc.ByID(ctx, w.ID)
+		require.NoError(t, err)
+		assert.Equal(t, "BCA", stored.Name)
+		assert.Equal(t, wallet.KindBank, stored.Kind)
+		assert.Empty(t, stored.Provider)
+		assert.False(t, stored.ExcludeFromTotal)
+	})
+
+	t.Run("an archived wallet is refused before anything changes", func(t *testing.T) {
+		svc, _ := newSvc(t, fakes.NewWallet())
+		ctx, _ := svcCtx(t)
+		w := mustCreate(ctx, t, svc, "BCA")
+		_, err := svc.Archive(ctx, w.ID)
+		require.NoError(t, err)
+
+		_, err = svc.Edit(ctx, w.ID, "Renamed", wallet.KindCash, "", false)
+		require.True(t, wallet.IsArchivedError(err), "got %T", err)
+
+		stored, err := svc.ByID(ctx, w.ID)
+		require.NoError(t, err)
+		assert.Equal(t, "BCA", stored.Name)
+	})
+}

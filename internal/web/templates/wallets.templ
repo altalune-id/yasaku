@@ -19,7 +19,6 @@ type WalletRow struct {
 
 // WalletsView is the wallets index: the spendable total, the active wallets and the archived ones.
 type WalletsView struct {
-	OrgSlug     string
 	ProjectSlug string
 	ProjectName string
 	Active      []WalletRow
@@ -30,7 +29,7 @@ type WalletsView struct {
 	ErrorCode   string
 }
 
-templ walletBanner(d web.LayoutData, key, msg, code string) {
+templ pageBanner(d web.LayoutData, key, msg, code string) {
 	if key != "" {
 		@ErrorBanner(d, d.Tr(key), code)
 	} else if msg != "" {
@@ -40,13 +39,15 @@ templ walletBanner(d web.LayoutData, key, msg, code string) {
 
 templ walletRowActions(d web.LayoutData, v WalletsView, r WalletRow) {
 	<div class="flex shrink-0 items-center gap-0.5">
-		<a
-			href={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/wallets/"+r.ID+"/edit")) }
-			aria-label={ d.Tr("wallet.edit") + ": " + r.Name }
-			class="rounded p-2 text-muted-foreground/80 hover:bg-muted hover:text-foreground"
-		>
-			@icons.Icon("pencil", "h-4 w-4")
-		</a>
+		if !r.Archived {
+			<a
+				href={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/wallets/"+r.ID+"/edit")) }
+				aria-label={ d.Tr("wallet.edit") + ": " + r.Name }
+				class="rounded p-2 text-muted-foreground/80 hover:bg-muted hover:text-foreground"
+			>
+				@icons.Icon("pencil", "h-4 w-4")
+			</a>
+		}
 		if r.Archived {
 			<form
 				method="post"
@@ -113,7 +114,7 @@ templ walletListRow(d web.LayoutData, v WalletsView, r WalletRow) {
 // WalletList is the HTMX-swappable section: every wallet action targets #wallet-list.
 templ WalletList(d web.LayoutData, v WalletsView) {
 	<div id="wallet-list" class="mt-6 space-y-4">
-		@walletBanner(d, v.ErrorKey, v.ErrorMsg, v.ErrorCode)
+		@pageBanner(d, v.ErrorKey, v.ErrorMsg, v.ErrorCode)
 		<div class="rounded-lg border border-border bg-card px-4 py-4 shadow-sm">
 			<p class="text-sm text-muted-foreground">{ d.Tr("overview.total") }</p>
 			<p class="mt-1 text-3xl font-semibold tabular-nums tracking-tight text-foreground">{ Money(d, v.Total) }</p>

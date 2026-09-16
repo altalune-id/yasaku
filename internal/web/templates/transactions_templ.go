@@ -756,7 +756,7 @@ func TransactionFormPage(d web.LayoutData, v TxFormView, title string) templ.Com
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = TransactionForm(d, v).Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = TransactionForm(d, txStandalone(v)).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -851,7 +851,6 @@ func TransactionFormPage(d web.LayoutData, v TxFormView, title string) templ.Com
 	})
 }
 
-// txConfirmAssets guards every data-tx-confirm form with the browser's own confirm dialog.
 func txConfirmAssets() templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -908,6 +907,11 @@ func TransactionFormLayout(d web.LayoutData, v TxFormView, title string) templ.C
 		}
 		return nil
 	})
+}
+
+func txStandalone(v TxFormView) TxFormView {
+	v.FullPage = true
+	return v
 }
 
 func txSignedAmount(row TxRow) money.Amount {

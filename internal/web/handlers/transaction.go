@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -32,13 +33,15 @@ const (
 	txPeriodFilters  = 12
 )
 
-// errBadForm reports a field the rendered form can never produce, so it answers 400 rather than a banner.
 var errBadForm = errors.New("web transaction: malformed form field")
 
-// txFilterKeys are the query parameters a list request carries across a load-more hop.
-//
 //nolint:gochecknoglobals // a fixed key list, not runtime state.
 var txFilterKeys = []string{"wallet", "category", "period", "kind", "q"}
+
+// SECURITY: opening and the adjustments are written by the service alone; a posted kind outside this set is refused.
+//
+//nolint:gochecknoglobals // a fixed kind list, not runtime state.
+var txUserKinds = []transaction.Kind{transaction.KindExpense, transaction.KindIncome, transaction.KindTransfer}
 
 // TransactionHandler owns the project-scoped transaction list, quick-add and edit screens.
 type TransactionHandler struct {
@@ -82,7 +85,6 @@ func (h *TransactionHandler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /orgs/{org}/projects/{project}/transactions/{id}/delete", h.PostDelete)
 }
 
-// requireProject resolves the org and project the path names, gating membership before any row is read.
 func (h *TransactionHandler) requireProject(w http.ResponseWriter, r *http.Request) (projectScope, bool) {
 	p, sid, ok := h.LoadSession(r)
 	if !ok {
@@ -193,7 +195,7 @@ func (h *TransactionHandler) PostCreate(w http.ResponseWriter, r *http.Request) 
 	if !ok {
 		return
 	}
-	in, amount, ok := h.readForm(w, sc)
+	in, amount, ok := h.readForm(w, sc, "")
 	if !ok {
 		return
 	}
@@ -222,7 +224,7 @@ func (h *TransactionHandler) PostUpdate(w http.ResponseWriter, r *http.Request) 
 	if !ok {
 		return
 	}
-	in, amount, ok := h.readForm(w, sc)
+	in, amount, ok := h.readForm(w, sc, t.Kind)
 	if !ok {
 		return
 	}
@@ -269,7 +271,7 @@ func (h *TransactionHandler) PostSuggest(w http.ResponseWriter, r *http.Request)
 		h.ErrorPage(w, sc.req, http.StatusBadRequest, "Bad request", "Could not parse form body.")
 		return
 	}
-	kind, err := transaction.ParseKind(strings.TrimSpace(sc.req.PostForm.Get("kind")))
+	kind, err := parseUserKind(sc.req.PostForm.Get("kind"))
 	if err != nil {
 		kind = transaction.KindExpense
 	}
@@ -296,7 +298,6 @@ func (h *TransactionHandler) PostSuggest(w http.ResponseWriter, r *http.Request)
 	Render(w, sc.req, templates.TxCategoryChips(d, form))
 }
 
-// txInput is one quick-add form body after parsing, before the domain sees it.
 type txInput struct {
 	Kind       transaction.Kind
 	Amount     string
@@ -309,9 +310,8 @@ type txInput struct {
 	Note       string
 }
 
-// readForm parses the body and the amount, answering the request itself on failure.
-func (h *TransactionHandler) readForm(w http.ResponseWriter, sc projectScope) (txInput, money.Amount, bool) {
-	in, err := h.parseForm(sc)
+func (h *TransactionHandler) readForm(w http.ResponseWriter, sc projectScope, want transaction.Kind) (txInput, money.Amount, bool) {
+	in, err := h.parseForm(sc, want)
 	if err != nil {
 		if errors.Is(err, errBadForm) {
 			h.ErrorPage(w, sc.req, http.StatusBadRequest, "Bad request", "Could not read that form.")
@@ -328,17 +328,23 @@ func (h *TransactionHandler) readForm(w http.ResponseWriter, sc projectScope) (t
 	return in, amount, true
 }
 
-func (h *TransactionHandler) parseForm(sc projectScope) (txInput, error) {
+// SECURITY: want pins the kind the stored row already has, so a posted kind can never switch it.
+func (h *TransactionHandler) parseForm(sc projectScope, want transaction.Kind) (txInput, error) {
 	if err := sc.req.ParseForm(); err != nil {
 		return txInput{}, errBadForm
 	}
 	f := sc.req.PostForm
-	kind, err := transaction.ParseKind(strings.TrimSpace(f.Get("kind")))
-	if err != nil {
-		return txInput{}, err
+	kind := want
+	if kind == "" {
+		parsed, err := parseUserKind(f.Get("kind"))
+		if err != nil {
+			return txInput{}, err
+		}
+		kind = parsed
 	}
 	in := txInput{Kind: kind, Amount: strings.TrimSpace(f.Get("amount")), Note: strings.TrimSpace(f.Get("note"))}
 
+	var err error
 	in.WalletID, err = uuid.Parse(strings.TrimSpace(f.Get("wallet_id")))
 	if err != nil {
 		return txInput{}, errBadForm
@@ -387,7 +393,7 @@ func (h *TransactionHandler) amountFor(sc projectScope, in txInput) (money.Amoun
 	return a, nil
 }
 
-// occurredAt anchors the civil date at local noon so a timezone shift cannot move it across a day boundary.
+// NOTE: local noon keeps a timezone shift from moving the date across a day boundary.
 func (h *TransactionHandler) occurredAt(sc projectScope, in txInput) time.Time {
 	return in.Date.In(h.location(sc)).Add(12 * time.Hour)
 }
@@ -402,7 +408,6 @@ func (h *TransactionHandler) rememberWallet(w http.ResponseWriter, id uuid.UUID)
 	})
 }
 
-// succeed answers a write: the refreshed list plus a toast for HTMX, a redirect to the overview otherwise.
 func (h *TransactionHandler) succeed(w http.ResponseWriter, sc projectScope, t *transaction.Transaction) {
 	if !h.isHTMX(sc.req) {
 		http.Redirect(w, sc.req, web.Path(h.Cfg.HTTP.BasePath,
@@ -424,14 +429,13 @@ func (h *TransactionHandler) succeed(w http.ResponseWriter, sc projectScope, t *
 	Render(w, sc.req, templates.Toast(d, msg))
 }
 
-// refuse re-renders the list with an error banner; a domain refusal is never a 500.
 func (h *TransactionHandler) refuse(w http.ResponseWriter, sc projectScope, cause error) {
 	ae, ok := apperror.AsAppError(cause)
 	if !ok {
 		h.ErrorPage(w, sc.req, http.StatusInternalServerError, "Save failed", "Could not record that transaction.", cause)
 		return
 	}
-	d := h.LayoutForProject(sc.req, "", sc.org.Slug, sc.project, "transactions")
+	d := h.LayoutForProject(sc.req, h.title(sc, "tx.title"), sc.org.Slug, sc.project, "transactions")
 	list, err := h.listAfterWrite(sc, d)
 	if err != nil {
 		h.LogErr("web transaction: list", err)
@@ -442,7 +446,32 @@ func (h *TransactionHandler) refuse(w http.ResponseWriter, sc projectScope, caus
 		list.Error = d.Tr("tx.locked")
 	}
 	list.ErrorCode = ae.Code()
-	Render(w, sc.req, templates.TransactionList(d, list))
+	if h.isHTMX(sc.req) {
+		Render(w, sc.req, templates.TransactionList(d, list))
+		return
+	}
+	h.refusePage(w, sc, d, list)
+}
+
+func (h *TransactionHandler) refusePage(w http.ResponseWriter, sc projectScope, d web.LayoutData, list templates.TxListView) {
+	form, err := h.formView(sc, d, txInput{Kind: transaction.KindExpense}, "")
+	if err != nil {
+		h.LogErr("web transaction: form", err)
+		h.ErrorPage(w, sc.req, http.StatusInternalServerError, "Save failed", "Could not record that transaction.", err)
+		return
+	}
+	v := templates.TransactionsView{
+		ProjectSlug: sc.project.Slug,
+		ProjectName: sc.project.Name,
+		Form:        form,
+		List:        list,
+	}
+	if err := h.fillFilters(sc, d, &v, h.activeFilters(sc)); err != nil {
+		h.LogErr("web transaction: filters", err)
+		h.ErrorPage(w, sc.req, http.StatusInternalServerError, "Save failed", "Could not record that transaction.", err)
+		return
+	}
+	Render(w, sc.req, templates.TransactionsLayout(d, v))
 }
 
 func (h *TransactionHandler) requireTransaction(w http.ResponseWriter, r *http.Request) (projectScope, *transaction.Transaction, bool) {
@@ -468,7 +497,6 @@ func (h *TransactionHandler) requireTransaction(w http.ResponseWriter, r *http.R
 	return sc, t, true
 }
 
-// listView reads one page of transactions under the query's filters.
 func (h *TransactionHandler) listView(sc projectScope, d web.LayoutData, q url.Values, limit int) (templates.TxListView, error) {
 	opts := transaction.ListOpts{Limit: limit, Search: strings.TrimSpace(q.Get("q"))}
 	if id, err := uuid.Parse(q.Get("wallet")); err == nil {
@@ -509,15 +537,29 @@ func (h *TransactionHandler) listView(sc projectScope, d web.LayoutData, q url.V
 	return v, nil
 }
 
-// listAfterWrite re-reads the list the posting form is swapping: the overview's short one, or the full page.
 func (h *TransactionHandler) listAfterWrite(sc projectScope, d web.LayoutData) (templates.TxListView, error) {
 	if sc.req.PostForm.Get("list") == "recent" {
 		return h.recentView(sc, d)
 	}
-	return h.listView(sc, d, sc.req.URL.Query(), txPageSize)
+	return h.listView(sc, d, h.activeFilters(sc), txPageSize)
 }
 
-// recentView is the overview's short list: no filters, no load-more.
+func (h *TransactionHandler) activeFilters(sc projectScope) url.Values {
+	q := sc.req.URL.Query()
+	if len(q) == 0 {
+		if u, err := url.Parse(sc.req.Header.Get("HX-Current-URL")); err == nil {
+			q = u.Query()
+		}
+	}
+	out := url.Values{}
+	for _, k := range txFilterKeys {
+		if val := q.Get(k); val != "" {
+			out.Set(k, val)
+		}
+	}
+	return out
+}
+
 func (h *TransactionHandler) recentView(sc projectScope, d web.LayoutData) (templates.TxListView, error) {
 	v, err := h.listView(sc, d, url.Values{}, txRecentLimit)
 	if err != nil {
@@ -568,9 +610,7 @@ func (h *TransactionHandler) rows(sc projectScope, d web.LayoutData, items []*tr
 	return out, nil
 }
 
-// formView builds the quick-add card, defaulting the wallet to the last one this browser used.
 func (h *TransactionHandler) formView(sc projectScope, d web.LayoutData, in txInput, id string) (templates.TxFormView, error) {
-	cur := h.currency(sc)
 	loc := h.location(sc)
 	today := civil.DateOf(time.Now(), loc)
 	if in.Date.IsZero() {
@@ -584,8 +624,6 @@ func (h *TransactionHandler) formView(sc projectScope, d web.LayoutData, in txIn
 		Date:        in.Date.String(),
 		Yesterday:   today.AddDays(-1).String(),
 		Note:        in.Note,
-		Symbol:      txCurrencySymbol(d, cur),
-		Group:       cur.DisplayExponent() == 0,
 	}
 	if in.ToWalletID != nil {
 		v.ToWalletID = in.ToWalletID.String()
@@ -606,18 +644,30 @@ func (h *TransactionHandler) formView(sc projectScope, d web.LayoutData, in txIn
 		return templates.TxFormView{}, err
 	}
 	want := h.preferredWallet(sc, in, wallets)
+	cur := h.currency(sc)
 	for _, wl := range wallets {
 		balance, ok := balances[wl.ID]
 		if !ok {
 			balance = money.Zero(wl.Currency)
 		}
+		selected := wl.ID == want
+		if selected {
+			cur = wl.Currency
+		}
 		v.Wallets = append(v.Wallets, templates.TxWalletOption{
-			ID: wl.ID.String(), Name: wl.Name, Balance: balance, Selected: wl.ID == want,
+			ID:       wl.ID.String(),
+			Name:     wl.Name,
+			Balance:  balance,
+			Selected: selected,
+			Symbol:   txCurrencySymbol(d, wl.Currency),
+			Group:    wl.Currency.DisplayExponent() == 0,
 		})
 	}
 	if want != uuid.Nil {
 		v.WalletID = want.String()
 	}
+	v.Symbol = txCurrencySymbol(d, cur)
+	v.Group = cur.DisplayExponent() == 0
 
 	cats, err := h.TxCategories.List(sc.req.Context(), category.ListOpts{})
 	if err != nil {
@@ -637,7 +687,6 @@ func (h *TransactionHandler) formView(sc projectScope, d web.LayoutData, in txIn
 	return v, nil
 }
 
-// preferredWallet picks the posted wallet, else the last-used one this browser remembers, else the first active wallet.
 func (h *TransactionHandler) preferredWallet(sc projectScope, in txInput, wallets []*wallet.Wallet) uuid.UUID {
 	if in.WalletID != uuid.Nil {
 		return in.WalletID
@@ -657,7 +706,6 @@ func (h *TransactionHandler) preferredWallet(sc projectScope, in txInput, wallet
 	return uuid.Nil
 }
 
-// periodOptions offers the current period and its neighbours only; a read never creates one.
 func (h *TransactionHandler) periodOptions(sc projectScope, in txInput) []templates.TxPeriodOption {
 	cur, err := h.Periods.Current(sc.req.Context())
 	if err != nil {
@@ -712,7 +760,7 @@ func (h *TransactionHandler) fillFilters(sc projectScope, d web.LayoutData, v *t
 			Value: p.ID.String(), Label: p.Name, Selected: q.Get("period") == p.ID.String(),
 		})
 	}
-	for _, k := range []transaction.Kind{transaction.KindExpense, transaction.KindIncome, transaction.KindTransfer} {
+	for _, k := range txUserKinds {
 		v.Kinds = append(v.Kinds, templates.TxFilter{
 			Value: string(k), Label: d.Tr(transactionKindKey(k)), Selected: q.Get("kind") == string(k),
 		})
@@ -770,9 +818,16 @@ func (h *TransactionHandler) title(sc projectScope, key string) string {
 
 func (h *TransactionHandler) isHTMX(r *http.Request) bool { return r.Header.Get("HX-Request") != "" }
 
-// txCurrencySymbol returns the leading symbol c renders with in the page locale, e.g. "Rp".
 func txCurrencySymbol(d web.LayoutData, c money.Currency) string {
 	return strings.TrimRight(templates.Money(d, money.Zero(c)), "0123456789.,\u00a0 ")
+}
+
+func parseUserKind(s string) (transaction.Kind, error) {
+	k, err := transaction.ParseKind(strings.TrimSpace(s))
+	if err != nil || !slices.Contains(txUserKinds, k) {
+		return "", errBadForm
+	}
+	return k, nil
 }
 
 func transactionKindKey(k transaction.Kind) string {

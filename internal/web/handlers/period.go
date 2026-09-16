@@ -59,7 +59,7 @@ func (h *PeriodHandler) GetClose(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	v := h.closeView(sc, p, h.requestedEnd(sc.req, p))
+	v := h.closeView(sc, p, h.requestedEnd(sc, p))
 	d := h.layout(sc)
 	if h.isHTMX(sc.req) {
 		Render(w, sc.req, templates.ClosePreviewFragment(d, v))
@@ -79,9 +79,9 @@ func (h *PeriodHandler) PostClose(w http.ResponseWriter, r *http.Request) {
 		h.ErrorPage(w, sc.req, http.StatusBadRequest, "Bad request", "Could not parse form body.")
 		return
 	}
-	end, err := civil.ParseDate(strings.TrimSpace(sc.req.PostForm.Get("end_date")))
+	end, err := period.ParseEnd(sc.req.PostForm.Get("end_date"))
 	if err != nil {
-		h.renderClose(w, sc, p, h.requestedEnd(sc.req, p), &period.InvalidRangeError{Reason: "end date is not a date"})
+		h.renderClose(w, sc, p, h.requestedEnd(sc, p), err)
 		return
 	}
 	if _, closeErr := h.Periods.Close(sc.req.Context(), p.ID, end, sc.principal.UserID); closeErr != nil {
@@ -132,7 +132,6 @@ func (h *PeriodHandler) PostRename(w http.ResponseWriter, r *http.Request) {
 	h.redirectToPeriods(w, sc)
 }
 
-// requireProject resolves the org and project the path names, gating membership before any row is read.
 func (h *PeriodHandler) requireProject(w http.ResponseWriter, r *http.Request) (projectScope, bool) {
 	p, sid, ok := h.LoadSession(r)
 	if !ok {
@@ -207,7 +206,6 @@ func (h *PeriodHandler) renderClose(w http.ResponseWriter, sc projectScope, p *p
 	Render(w, sc.req, templates.ClosePeriodLayout(d, v))
 }
 
-// closeFailed maps a refused close onto page state: an already-closed period is a state, not an error.
 func (h *PeriodHandler) closeFailed(w http.ResponseWriter, sc projectScope, p *period.Period, end civil.Date, err error) {
 	if period.IsAlreadyClosedError(err) {
 		fresh, freshErr := h.Periods.ByID(sc.req.Context(), p.ID)
@@ -240,7 +238,10 @@ func (h *PeriodHandler) periodsView(sc projectScope, cause error) (templates.Per
 	}
 	v.Error, v.ErrorCode = appErrorBanner(cause)
 	loc := h.location(ctx)
-	reopenable := periodReopenableID(items)
+	reopenable, err := h.Periods.Reopenable(ctx)
+	if err != nil {
+		return templates.PeriodsView{}, err
+	}
 	for _, p := range items {
 		row := templates.PeriodRow{
 			ID:    p.ID.String(),
@@ -254,7 +255,7 @@ func (h *PeriodHandler) periodsView(sc projectScope, cause error) (templates.Per
 		}
 		row.End = p.EndDate.String()
 		row.Closed = p.IsLocked()
-		row.CanReopen = p.ID == reopenable
+		row.CanReopen = reopenable != nil && reopenable.ID == p.ID
 		row.CanClose = !p.IsLocked()
 		if p.IsLocked() {
 			if p.ClosedAt != nil {
@@ -278,17 +279,21 @@ func (h *PeriodHandler) currentRow(ctx context.Context, p *period.Period, row te
 	return row
 }
 
-// requestedEnd picks the date the preview is computed for: the frozen one after a reopen, else the query, else today.
-func (h *PeriodHandler) requestedEnd(r *http.Request, p *period.Period) civil.Date {
-	if p.EndDate != nil {
-		return *p.EndDate
-	}
-	if raw := strings.TrimSpace(r.URL.Query().Get("end_date")); raw != "" {
-		if d, err := civil.ParseDate(raw); err == nil {
-			return d
+func (h *PeriodHandler) requestedEnd(sc projectScope, p *period.Period) civil.Date {
+	ctx := sc.req.Context()
+	if p.EndDate == nil {
+		if raw := strings.TrimSpace(sc.req.URL.Query().Get("end_date")); raw != "" {
+			if d, err := civil.ParseDate(raw); err == nil {
+				return d
+			}
 		}
 	}
-	return civil.DateOf(time.Now(), h.location(r.Context()))
+	end, err := h.Periods.SuggestedEnd(ctx, p.ID)
+	if err != nil {
+		h.LogErr("web period: suggested end", err)
+		return civil.DateOf(time.Now(), h.location(ctx))
+	}
+	return end
 }
 
 func (h *PeriodHandler) closeView(sc projectScope, p *period.Period, end civil.Date) templates.ClosePeriodView {
@@ -334,29 +339,6 @@ func (h *PeriodHandler) location(ctx context.Context) *time.Location {
 	return loc
 }
 
-// periodReopenableID returns the one period period.Service.Reopen would accept, or uuid.Nil when none would.
-func periodReopenableID(items []*period.Period) uuid.UUID {
-	for _, p := range items {
-		if p.IsCurrent() || !p.IsLocked() {
-			continue
-		}
-		latest := true
-		for _, o := range items {
-			if o.ID == p.ID || o.IsCurrent() {
-				continue
-			}
-			if !o.IsLocked() || !o.StartDate.Before(p.StartDate) {
-				latest = false
-				break
-			}
-		}
-		if latest {
-			return p.ID
-		}
-	}
-	return uuid.Nil
-}
-
 func applySnapshot(row *templates.PeriodRow, s *period.Snapshot) {
 	if s == nil {
 		return
@@ -385,7 +367,7 @@ func previewFromSnapshot(s *period.Snapshot) (templates.ClosePreview, bool) {
 	return p, true
 }
 
-// appErrorBanner renders a typed domain error as banner copy plus its code. Codes: docs/ERROR_CODES.md.
+// NOTE: the code is the stable handle on a refusal; the catalogue is docs/ERROR_CODES.md.
 func appErrorBanner(err error) (msg, code string) { //nolint:nonamedreturns // two strings differ only by role
 	if err == nil {
 		return "", ""

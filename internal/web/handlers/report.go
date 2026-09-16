@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"cmp"
+	"math"
 	"net/http"
 	"slices"
 	"strconv"
@@ -16,11 +18,8 @@ import (
 	"altalune.id/yasaku/money"
 )
 
-// reportPeriodWindow is how many periods the selector offers and the cashflow bars span.
 const reportPeriodWindow = 6
 
-// reportMaxSlices caps the categorical series: charts.js only has five colourblind-separable
-// slots, so the tail folds into one aggregated slice.
 const reportMaxSlices = 5
 
 const reportOtherKey = "report.other"
@@ -69,7 +68,6 @@ func (h *ReportHandler) GetReports(w http.ResponseWriter, r *http.Request) {
 	d := h.LayoutForProject(sc.req, "", sc.org.Slug, sc.project, "reports")
 	d.Title = d.Tr("report.title") + " · " + sc.project.Name
 	v := templates.ReportsView{
-		OrgSlug:     sc.org.Slug,
 		ProjectSlug: sc.project.Slug,
 		ProjectName: sc.project.Name,
 	}
@@ -89,31 +87,38 @@ func (h *ReportHandler) GetReports(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	window, err := h.cashflowWindow(sc, recent, selected)
+	if err != nil {
+		h.reportFailed(w, sc, "cashflow window", err)
+		return
+	}
 	v.Periods = reportPeriodOptions(recent, selected)
 	v.PeriodName = selected.Name
-	if !h.fill(w, sc, d, selected, recent, &v) {
+	if !h.fill(w, sc, d, selected, window, &v) {
 		return
 	}
 	Render(w, sc.req, templates.ReportsLayout(d, v))
 }
 
-// selectPeriod resolves ?period=, falling back to the current period and then to the newest closed one.
-// SECURITY: ByID is scope-checked, so a foreign period id renders as a 404 rather than another project's totals.
+// selectPeriod resolves ?period=, falling back to the current period and then to the newest in scope. SECURITY: ByID is scope-checked, so a foreign period id renders as a 404 rather than another project's totals.
 func (h *ReportHandler) selectPeriod(w http.ResponseWriter, sc projectScope, recent []*period.Period) (*period.Period, bool) {
 	if raw := strings.TrimSpace(sc.req.URL.Query().Get("period")); raw != "" {
 		id, parseErr := uuid.Parse(raw)
-		if parseErr == nil {
-			p, err := h.Periods.ByID(sc.req.Context(), id)
-			if err == nil {
-				return p, true
-			}
-			if period.IsNotFoundError(err) {
-				h.ErrorPage(w, sc.req, http.StatusNotFound, "Period not found", "No period with that id in this project.", err)
-				return nil, false
-			}
-			h.reportFailed(w, sc, "period byID", err)
+		if parseErr != nil {
+			h.ErrorPage(w, sc.req, http.StatusBadRequest, "Bad period",
+				"That link carries a malformed period id.", parseErr)
 			return nil, false
 		}
+		p, err := h.Periods.ByID(sc.req.Context(), id)
+		if err == nil {
+			return p, true
+		}
+		if period.IsNotFoundError(err) {
+			h.ErrorPage(w, sc.req, http.StatusNotFound, "Period not found", "No period with that id in this project.", err)
+			return nil, false
+		}
+		h.reportFailed(w, sc, "period byID", err)
+		return nil, false
 	}
 	cur, err := h.Periods.Current(sc.req.Context())
 	if err == nil {
@@ -129,10 +134,17 @@ func (h *ReportHandler) selectPeriod(w http.ResponseWriter, sc projectScope, rec
 	return recent[0], true
 }
 
-// fill loads every read model the page needs and writes it onto v; it reports whether the page can render.
+func (h *ReportHandler) cashflowWindow(sc projectScope, recent []*period.Period, selected *period.Period) ([]*period.Period, error) {
+	if len(recent) > 0 && recent[0].ID == selected.ID {
+		return recent, nil
+	}
+	before := selected.StartDate.AddDays(1)
+	return h.Periods.List(sc.req.Context(), period.ListOpts{Limit: reportPeriodWindow, Before: &before})
+}
+
 func (h *ReportHandler) fill(
 	w http.ResponseWriter, sc projectScope, d web.LayoutData,
-	selected *period.Period, recent []*period.Period, v *templates.ReportsView,
+	selected *period.Period, window []*period.Period, v *templates.ReportsView,
 ) bool {
 	ctx := sc.req.Context()
 	summary, err := h.Reports.Summary(ctx, selected.ID)
@@ -150,7 +162,7 @@ func (h *ReportHandler) fill(
 		h.reportFailed(w, sc, "income by category", err)
 		return false
 	}
-	points, err := h.Reports.Cashflow(ctx, reportCashflowIDs(recent))
+	points, err := h.Reports.Cashflow(ctx, reportCashflowIDs(window))
 	if err != nil {
 		h.reportFailed(w, sc, "cashflow", err)
 		return false
@@ -162,22 +174,19 @@ func (h *ReportHandler) fill(
 	}
 
 	currency := summary.Currency
-	if currency == "" {
-		currency = money.IDR
-	}
-	spendRows, kept := reportFoldSlices(d, spend, currency)
-	incomeRows, _ := reportFoldSlices(d, income, currency)
+	spendFold := reportFoldSlices(d, spend, currency)
+	incomeFold := reportFoldSlices(d, income, currency)
 
 	v.Income = templates.Money(d, summary.Income)
 	v.Expense = templates.Money(d, summary.Expense)
 	v.Net = templates.SignedMoney(d, summary.Net)
 	v.TxCount = summary.TxCount
-	v.Wallets, v.Totals = reportWalletRows(d, summary, currency)
-	v.TopSpend = reportCategoryRows(d, spendRows)
-	v.TopIncome = reportCategoryRows(d, incomeRows)
-	v.Donut = reportDonutJSON(d, spendRows)
+	v.Wallets, v.Totals = reportWalletRows(d, summary)
+	v.TopSpend = reportCategoryRows(d, spendFold.rows)
+	v.TopIncome = reportCategoryRows(d, incomeFold.rows)
+	v.Donut = reportDonutJSON(d, spendFold.rows)
 	v.Bars = reportBarsJSON(d, points, currency)
-	v.Sankey = reportSankeyJSON(d, flows, spendRows, kept)
+	v.Sankey = reportSankeyJSON(d, flows, spendFold)
 	return true
 }
 
@@ -186,11 +195,10 @@ func (h *ReportHandler) reportFailed(w http.ResponseWriter, sc projectScope, wha
 	h.ErrorPage(w, sc.req, http.StatusInternalServerError, "Report failed", "Could not load this report.", err)
 }
 
-// reportCashflowIDs returns the listed periods oldest first, which is the order the bars read in.
-func reportCashflowIDs(recent []*period.Period) []uuid.UUID {
-	ids := make([]uuid.UUID, 0, len(recent))
-	for i := len(recent) - 1; i >= 0; i-- {
-		ids = append(ids, recent[i].ID)
+func reportCashflowIDs(window []*period.Period) []uuid.UUID {
+	ids := make([]uuid.UUID, 0, len(window))
+	for i := len(window) - 1; i >= 0; i-- {
+		ids = append(ids, window[i].ID)
 	}
 	return ids
 }
@@ -214,9 +222,8 @@ func reportPeriodOptions(recent []*period.Period, selected *period.Period) []tem
 	}, opts...)
 }
 
-func reportWalletRows(d web.LayoutData, s report.PeriodSummary, currency money.Currency) (rows []templates.ReportWalletRow, totals templates.ReportWalletRow) { //nolint:nonamedreturns // the two results differ in role
-	rows = make([]templates.ReportWalletRow, 0, len(s.Wallets))
-	opening, in, out, closing := money.Zero(currency), money.Zero(currency), money.Zero(currency), money.Zero(currency)
+func reportWalletRows(d web.LayoutData, s report.PeriodSummary) ([]templates.ReportWalletRow, []templates.ReportWalletTotal) {
+	rows := make([]templates.ReportWalletRow, 0, len(s.Wallets))
 	for _, l := range s.Wallets {
 		rows = append(rows, templates.ReportWalletRow{
 			Name:     l.Name,
@@ -226,40 +233,49 @@ func reportWalletRows(d web.LayoutData, s report.PeriodSummary, currency money.C
 			Closing:  templates.Money(d, l.Closing),
 			Excluded: l.ExcludeFromTotal,
 		})
-		opening = opening.Add(l.Opening)
-		in = in.Add(l.In)
-		out = out.Add(l.Out)
-		closing = closing.Add(l.Closing)
 	}
-	totals = templates.ReportWalletRow{
-		Name:    d.Tr("overview.total"),
-		Opening: templates.Money(d, opening),
-		In:      templates.Money(d, in),
-		Out:     templates.Money(d, out),
-		Closing: templates.Money(d, closing),
+	if len(rows) == 0 {
+		return rows, nil
+	}
+	totals := []templates.ReportWalletTotal{{
+		Kind:    "spendable",
+		Label:   d.Tr("report.total_spendable"),
+		Closing: templates.Money(d, s.SpendableTotal),
+	}}
+	if s.Total.Minor != s.SpendableTotal.Minor {
+		totals = append(totals, templates.ReportWalletTotal{
+			Kind:    "all",
+			Label:   d.Tr("report.total_all"),
+			Closing: templates.Money(d, s.Total),
+		})
 	}
 	return rows, totals
 }
 
-// reportSlice is one donut wedge: a category, or the aggregated tail.
 type reportSlice struct {
 	Name   string
 	Amount money.Amount
 	Share  float64
 }
 
-// reportFoldSlices keeps the five largest categories and folds the rest into one aggregated slice,
-// returning the kept category ids so the sankey can label the same entities the same way.
-func reportFoldSlices(d web.LayoutData, cats []report.CategorySlice, currency money.Currency) (rows []reportSlice, kept map[string]string) { //nolint:nonamedreturns // the two results differ in role
+type reportFold struct {
+	rows  []reportSlice
+	kept  map[string]string
+	other string
+}
+
+func reportFoldSlices(d web.LayoutData, cats []report.CategorySlice, currency money.Currency) reportFold {
 	names := reportNames{}
-	kept = make(map[string]string, reportMaxSlices)
-	rows = make([]reportSlice, 0, reportMaxSlices+1)
+	f := reportFold{
+		rows: make([]reportSlice, 0, reportMaxSlices+1),
+		kept: make(map[string]string, reportMaxSlices),
+	}
 	other, otherShare := money.Zero(currency), 0.0
 	for _, s := range cats {
-		if s.Amount.Minor <= 0 {
+		if s.Amount.Minor <= 0 || s.Amount.Currency != currency {
 			continue
 		}
-		if len(rows) >= reportMaxSlices {
+		if len(f.rows) >= reportMaxSlices {
 			other = other.Add(s.Amount)
 			otherShare += s.Share
 			continue
@@ -269,13 +285,14 @@ func reportFoldSlices(d web.LayoutData, cats []report.CategorySlice, currency mo
 			label = d.Tr("tx.uncategorized")
 		}
 		label = names.unique(label)
-		kept[reportCategoryKey(s.CategoryID)] = label
-		rows = append(rows, reportSlice{Name: label, Amount: s.Amount, Share: s.Share})
+		f.kept[reportCategoryKey(s.CategoryID)] = label
+		f.rows = append(f.rows, reportSlice{Name: label, Amount: s.Amount, Share: s.Share})
 	}
+	f.other = names.unique(d.Tr(reportOtherKey))
 	if other.Minor > 0 {
-		rows = append(rows, reportSlice{Name: names.unique(d.Tr(reportOtherKey)), Amount: other, Share: otherShare})
+		f.rows = append(f.rows, reportSlice{Name: f.other, Amount: other, Share: otherShare})
 	}
-	return rows, kept
+	return f
 }
 
 func reportCategoryKey(id *uuid.UUID) string {
@@ -286,18 +303,43 @@ func reportCategoryKey(id *uuid.UUID) string {
 }
 
 func reportCategoryRows(d web.LayoutData, rows []reportSlice) []templates.ReportCategoryRow {
+	shares := reportSharePercents(rows)
 	out := make([]templates.ReportCategoryRow, 0, len(rows))
-	for _, s := range rows {
+	for i, s := range rows {
 		out = append(out, templates.ReportCategoryRow{
 			Name:   s.Name,
 			Amount: templates.Money(d, s.Amount),
-			Share:  strconv.FormatFloat(s.Share*100, 'f', 0, 64) + "%",
+			Share:  strconv.Itoa(shares[i]) + "%",
 		})
 	}
 	return out
 }
 
-// reportNames hands out node and legend labels that are unique, so two entities never merge.
+func reportSharePercents(rows []reportSlice) []int {
+	out := make([]int, len(rows))
+	if len(rows) == 0 {
+		return out
+	}
+	remainder := make([]float64, len(rows))
+	order := make([]int, len(rows))
+	exactTotal, floorTotal := 0.0, 0
+	for i, s := range rows {
+		exact := max(s.Share, 0) * 100
+		floor := math.Floor(exact)
+		out[i] = int(floor)
+		remainder[i] = exact - floor
+		exactTotal += exact
+		floorTotal += out[i]
+		order[i] = i
+	}
+	slices.SortStableFunc(order, func(a, b int) int { return cmp.Compare(remainder[b], remainder[a]) })
+	left := int(math.Round(exactTotal)) - floorTotal
+	for k := 0; k < left && k < len(order); k++ {
+		out[order[k]]++
+	}
+	return out
+}
+
 type reportNames map[string]int
 
 func (n reportNames) unique(name string) string {
@@ -373,8 +415,8 @@ func reportBarsJSON(d web.LayoutData, points []report.CashflowPoint, currency mo
 			"net":     make([]string, 0, len(points)),
 		},
 		Labels: map[string]string{
-			"income":  d.Tr("report.in"),
-			"expense": d.Tr("report.out"),
+			"income":  d.Tr("report.money_in"),
+			"expense": d.Tr("report.money_out"),
 			"net":     d.Tr("overview.net"),
 		},
 		Unit:  reportBarsUnit{Divisor: reportPow10(currency.Exponent()), Symbol: reportCurrencySymbol(d, currency)},
@@ -396,7 +438,6 @@ func reportBarsJSON(d web.LayoutData, points []report.CashflowPoint, currency mo
 	return templates.ChartJSON(p)
 }
 
-// reportHasMovement reports whether any period moved money; a run of zeroed bars says nothing.
 func reportHasMovement(points []report.CashflowPoint) bool {
 	for _, pt := range points {
 		if pt.Income.Minor != 0 || pt.Expense.Minor != 0 {
@@ -428,21 +469,17 @@ type reportWalletFlows struct {
 	amounts map[string]int64
 }
 
-// reportSankeyJSON builds the wallet-to-category graph. Categories come first so a category wears the
-// same colour slot it wears in the donut, and wallet names are disambiguated against them — a shared
-// name would merge two nodes into a self-loop, and ECharts' sankey layout never terminates on a cycle.
-func reportSankeyJSON(d web.LayoutData, flows []report.Flow, rows []reportSlice, kept map[string]string) string {
-	other := d.Tr(reportOtherKey)
+func reportSankeyJSON(d web.LayoutData, flows []report.Flow, fold reportFold) string {
 	order := make([]uuid.UUID, 0, len(flows))
 	byWallet := make(map[uuid.UUID]*reportWalletFlows, len(flows))
-	targeted := make(map[string]bool, len(rows)+1)
+	targeted := make(map[string]bool, len(fold.rows)+1)
 	for _, f := range flows {
 		if f.Amount.Minor <= 0 {
 			continue
 		}
-		target, ok := kept[reportCategoryKey(f.CategoryID)]
+		target, ok := fold.kept[reportCategoryKey(f.CategoryID)]
 		if !ok {
-			target = other
+			target = fold.other
 		}
 		w, seen := byWallet[f.WalletID]
 		if !seen {
@@ -458,14 +495,14 @@ func reportSankeyJSON(d web.LayoutData, flows []report.Flow, rows []reportSlice,
 	}
 
 	names := reportNames{}
-	targets := make([]string, 0, len(rows)+1)
-	for _, s := range rows {
+	targets := make([]string, 0, len(fold.rows)+1)
+	for _, s := range fold.rows {
 		if targeted[s.Name] {
 			targets = append(targets, names.unique(s.Name))
 		}
 	}
-	if targeted[other] && !slices.Contains(targets, other) {
-		targets = append(targets, names.unique(other))
+	if targeted[fold.other] && !slices.Contains(targets, fold.other) {
+		targets = append(targets, names.unique(fold.other))
 	}
 
 	nodes := make([]reportSankeyNode, 0, len(targets)+len(order))
@@ -495,9 +532,8 @@ func reportSankeyJSON(d web.LayoutData, flows []report.Flow, rows []reportSlice,
 	return templates.ChartJSON(reportSankeyPayload{Nodes: nodes, Links: links, Empty: d.Tr("report.no_data")})
 }
 
-// reportCurrencySymbol recovers the currency's prefix from a formatted zero; money keeps its symbol table private.
 func reportCurrencySymbol(d web.LayoutData, c money.Currency) string {
-	return strings.TrimRight(templates.Money(d, money.Zero(c)), "0123456789.,  ")
+	return strings.TrimRight(templates.Money(d, money.Zero(c)), "0123456789.,\u00a0\u202f ")
 }
 
 func reportPow10(n int) int64 {

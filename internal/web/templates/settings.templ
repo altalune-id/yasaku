@@ -24,7 +24,6 @@ type SettingsView struct {
 	MCPScopes      []string
 }
 
-// settingsTimezoneField is one control: the curated zones come from the datalist, anything else is typed in.
 templ settingsTimezoneField(d web.LayoutData, v SettingsView) {
 	<div>
 		<label for="settings-timezone" class="block text-sm font-medium text-foreground">{ d.Tr("settings.timezone") }</label>

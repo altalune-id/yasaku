@@ -86,6 +86,27 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, kind Kind, provider 
 	return w, nil
 }
 
+// Edit replaces the name, kind, provider and exclude-from-total flag of a wallet in scope in a single save.
+func (s *Service) Edit(ctx context.Context, id uuid.UUID, name string, kind Kind, provider string, exclude bool) (*Wallet, error) {
+	ctx, span := tracer.Start(ctx, "wallet.Edit",
+		trace.WithAttributes(attribute.String("wallet.id", id.String())))
+	defer span.End()
+
+	w, err := s.ByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if err := w.Edit(name, kind, provider, exclude); err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+	if err := s.save(ctx, w, "wallet.Edit"); err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+	return w, nil
+}
+
 // Rename changes the display name of a wallet in scope.
 func (s *Service) Rename(ctx context.Context, id uuid.UUID, name string) (*Wallet, error) {
 	ctx, span := tracer.Start(ctx, "wallet.Rename",

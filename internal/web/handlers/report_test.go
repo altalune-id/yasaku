@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"regexp"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -30,6 +32,9 @@ import (
 	"altalune.id/yasaku/internal/web/templates"
 	"altalune.id/yasaku/money"
 )
+
+// NOTE: the fixture loads no i18n bundle, so d.Tr renders the key literal; this is the aggregated slice's label.
+const reportOtherLabel = "report.other"
 
 type reportFixture struct {
 	Deps     handlers.Deps
@@ -106,6 +111,16 @@ func (f *reportFixture) seedScope(t *testing.T) reportScope {
 	}
 }
 
+func (f *reportFixture) seedSibling(t *testing.T, sc reportScope, slug, name string) reportScope {
+	t.Helper()
+	octx := tenant.Into(context.Background(), tenant.Context{OrgID: sc.orgID, UserID: sc.p.UserID})
+	pr, err := f.Projects.Create(octx, sc.orgID, slug, name)
+	require.NoError(t, err)
+	out := sc
+	out.projSlug, out.projID = pr.Slug, pr.ID
+	return out
+}
+
 func (f *reportFixture) seedPeriod(t *testing.T, sc reportScope, start civil.Date, name string, closed bool) *period.Period {
 	t.Helper()
 	p, err := period.New(sc.orgID, sc.projID, start, name)
@@ -142,13 +157,13 @@ func (f *reportFixture) get(t *testing.T, sc reportScope, query string) *httptes
 
 func reportIDR(minor int64) money.Amount { return money.New(minor, money.IDR) }
 
+func reportMoney(minor int64) string { return templates.Money(web.LayoutData{}, reportIDR(minor)) }
+
 func reportCatID() *uuid.UUID { id := uuid.Must(uuid.NewV7()); return &id }
 
-// seedData fills the reader with a period's worth of movement: two wallets, seven expense
-// categories (one of them uncategorized) so the top-5 fold is exercised, and flows for both wallets.
 func (f *reportFixture) seedData(ref report.PeriodRef) {
 	food, transport, rent, fun, health, pets := reportCatID(), reportCatID(), reportCatID(), reportCatID(), reportCatID(), reportCatID()
-	walletCash, walletBank := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
+	walletCash, walletBank, walletSewa := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
 	f.Reader.Ref = ref
 	f.Reader.Summaries = report.PeriodSummary{
 		Period:   ref,
@@ -162,9 +177,11 @@ func (f *reportFixture) seedData(ref report.PeriodRef) {
 				Opening: reportIDR(10000000), In: reportIDR(200000000), Out: reportIDR(160000000), Closing: reportIDR(50000000)},
 			{WalletID: walletBank, Name: "BCA", Kind: "bank",
 				Opening: reportIDR(500000000), In: reportIDR(700000000), Out: reportIDR(400000000), Closing: reportIDR(800000000)},
+			{WalletID: walletSewa, Name: "Sewa", Kind: "bank", ExcludeFromTotal: true,
+				Opening: reportIDR(5000000000), In: reportIDR(0), Out: reportIDR(40000000), Closing: reportIDR(4960000000)},
 		},
 		SpendableTotal: reportIDR(850000000),
-		Total:          reportIDR(850000000),
+		Total:          reportIDR(5810000000),
 	}
 	f.Reader.Spend = []report.CategorySlice{
 		{CategoryID: food, Name: "Makan & Minum", Amount: reportIDR(200000000), Share: 0.357, Count: 20},
@@ -186,6 +203,42 @@ func (f *reportFixture) seedData(ref report.PeriodRef) {
 		{WalletID: walletCash, WalletName: "Dompet Tunai", CategoryID: transport, CategoryName: "Transportasi", Amount: reportIDR(120000000)},
 		{WalletID: walletCash, WalletName: "Dompet Tunai", CategoryID: pets, CategoryName: "Hewan", Amount: reportIDR(30000000)},
 		{WalletID: walletCash, WalletName: "Dompet Tunai", CategoryID: nil, CategoryName: "", Amount: reportIDR(10000000)},
+		{WalletID: walletSewa, WalletName: "Sewa", CategoryID: health, CategoryName: "Kesehatan", Amount: reportIDR(40000000)},
+	}
+}
+
+func (f *reportFixture) seedOtherNameCollision(ref report.PeriodRef) {
+	rank1, rank2, rank4, rank5 := reportCatID(), reportCatID(), reportCatID(), reportCatID()
+	collide, tail1, tail2 := reportCatID(), reportCatID(), reportCatID()
+	wallet := uuid.Must(uuid.NewV7())
+	f.Reader.Ref = ref
+	f.Reader.Summaries = report.PeriodSummary{
+		Period: ref, Currency: money.IDR,
+		Income: reportIDR(0), Expense: reportIDR(1000000000), Net: reportIDR(-1000000000), TxCount: 7,
+		Wallets: []report.WalletLine{
+			{WalletID: wallet, Name: "BCA", Kind: "bank",
+				Opening: reportIDR(1000000000), In: reportIDR(0), Out: reportIDR(1000000000), Closing: reportIDR(0)},
+		},
+		SpendableTotal: reportIDR(0),
+		Total:          reportIDR(0),
+	}
+	f.Reader.Spend = []report.CategorySlice{
+		{CategoryID: rank1, Name: "Makan", Amount: reportIDR(300000000), Share: 0.30, Count: 3},
+		{CategoryID: rank2, Name: "Transportasi", Amount: reportIDR(250000000), Share: 0.25, Count: 2},
+		{CategoryID: collide, Name: reportOtherLabel, Amount: reportIDR(200000000), Share: 0.20, Count: 1},
+		{CategoryID: rank4, Name: "Hiburan", Amount: reportIDR(150000000), Share: 0.15, Count: 1},
+		{CategoryID: rank5, Name: "Kesehatan", Amount: reportIDR(50000000), Share: 0.05, Count: 1},
+		{CategoryID: tail1, Name: "Hewan", Amount: reportIDR(30000000), Share: 0.03, Count: 1},
+		{CategoryID: tail2, Name: "Donasi", Amount: reportIDR(20000000), Share: 0.02, Count: 1},
+	}
+	f.Reader.FlowLines = []report.Flow{
+		{WalletID: wallet, WalletName: "BCA", CategoryID: rank1, CategoryName: "Makan", Amount: reportIDR(300000000)},
+		{WalletID: wallet, WalletName: "BCA", CategoryID: rank2, CategoryName: "Transportasi", Amount: reportIDR(250000000)},
+		{WalletID: wallet, WalletName: "BCA", CategoryID: collide, CategoryName: reportOtherLabel, Amount: reportIDR(200000000)},
+		{WalletID: wallet, WalletName: "BCA", CategoryID: rank4, CategoryName: "Hiburan", Amount: reportIDR(150000000)},
+		{WalletID: wallet, WalletName: "BCA", CategoryID: rank5, CategoryName: "Kesehatan", Amount: reportIDR(50000000)},
+		{WalletID: wallet, WalletName: "BCA", CategoryID: tail1, CategoryName: "Hewan", Amount: reportIDR(30000000)},
+		{WalletID: wallet, WalletName: "BCA", CategoryID: tail2, CategoryName: "Donasi", Amount: reportIDR(20000000)},
 	}
 }
 
@@ -253,6 +306,42 @@ func reportPayloadFor(t *testing.T, body, id string) []byte {
 	return nil
 }
 
+func reportAttrText(t *testing.T, body, attr, value string) string {
+	t.Helper()
+	re := regexp.MustCompile(attr + `="` + value + `"[^>]*>([^<]*)<`)
+	m := re.FindStringSubmatch(body)
+	require.NotNil(t, m, "no element carrying %s=%q in body", attr, value)
+	return strings.TrimSpace(m[1])
+}
+
+func reportDonutAndSankey(t *testing.T, body string) (reportDonutJSON, reportSankeyJSON) {
+	t.Helper()
+	var donut reportDonutJSON
+	var sankey reportSankeyJSON
+	require.NoError(t, json.Unmarshal(reportPayloadFor(t, body, templates.ReportDonutID), &donut))
+	require.NoError(t, json.Unmarshal(reportPayloadFor(t, body, templates.ReportSankeyID), &sankey))
+	return donut, sankey
+}
+
+func assertSankeyAgreesWithDonut(t *testing.T, donut reportDonutJSON, sankey reportSankeyJSON) {
+	t.Helper()
+	wedge := make(map[string]int64, len(donut.Items))
+	for _, it := range donut.Items {
+		require.NotContains(t, wedge, it.Name, "duplicate donut wedge %q", it.Name)
+		wedge[it.Name] = it.Value
+	}
+	inbound := map[string]int64{}
+	for _, l := range sankey.Links {
+		inbound[l.Target] += l.Value
+	}
+	for name, got := range inbound {
+		want, ok := wedge[name]
+		require.True(t, ok, "sankey targets %q, which is not a donut wedge", name)
+		assert.Equal(t, want, got,
+			"sankey routes %d into %q while the donut wedge reads %d", got, name, want)
+	}
+}
+
 func TestReportHandler_GetReports_RendersEveryChart(t *testing.T) {
 	t.Parallel()
 	f := newReportFixture(t)
@@ -295,15 +384,48 @@ func TestReportHandler_GetReports_DonutPayloadIsTheContractChartsJSReads(t *test
 	require.Len(t, got.Items, 6, "five categories plus one aggregated Other slice")
 	assert.Equal(t, "Makan & Minum", got.Items[0].Name)
 	assert.Equal(t, int64(200000000), got.Items[0].Value)
-	assert.Contains(t, got.Items[0].Formatted, "Rp")
-	assert.Contains(t, got.Items[0].Formatted, "2")
-	// The tail (Hewan + the uncategorized slice) folds into one aggregated slice.
+	assert.Equal(t, reportMoney(200000000), got.Items[0].Formatted)
 	assert.Equal(t, int64(40000000), got.Items[5].Value)
+	assert.Equal(t, reportOtherLabel, got.Items[5].Name)
 	assert.NotEmpty(t, got.Empty)
 	for _, it := range got.Items {
 		assert.NotEmpty(t, it.Name)
 		assert.Positive(t, it.Value)
 	}
+}
+
+func TestReportHandler_GetReports_TopCategorySharesSumToOneHundred(t *testing.T) {
+	t.Parallel()
+	f := newReportFixture(t)
+	sc := f.seedScope(t)
+	cur := f.seedPeriod(t, sc, civil.Date{Year: 2026, Month: time.September, Day: 1}, "Sep 2026", false)
+	ref := report.PeriodRef{ID: cur.ID, Name: cur.Name, Start: cur.StartDate}
+	f.Reader.Ref = ref
+	f.Reader.Summaries = report.PeriodSummary{Period: ref, Currency: money.IDR}
+	f.Reader.Spend = make([]report.CategorySlice, 0, 6)
+	for i := range 6 {
+		f.Reader.Spend = append(f.Reader.Spend, report.CategorySlice{
+			CategoryID: reportCatID(),
+			Name:       "Kategori " + strconv.Itoa(i),
+			Amount:     reportIDR(100000000),
+			Share:      1.0 / 6.0,
+			Count:      1,
+		})
+	}
+
+	rec := f.get(t, sc, "")
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	shares := regexp.MustCompile(`data-report-share="1"[^>]*>([^<]*)<`).
+		FindAllStringSubmatch(rec.Body.String(), -1)
+	require.Len(t, shares, 6, "five categories plus the aggregated slice")
+	sum := 0
+	for _, m := range shares {
+		n, err := strconv.Atoi(strings.TrimSuffix(strings.TrimSpace(m[1]), "%"))
+		require.NoError(t, err)
+		sum += n
+	}
+	assert.Equal(t, 100, sum, "rounded shares must add up to exactly 100%%")
 }
 
 func TestReportHandler_GetReports_BarsPayloadRunsOldestFirst(t *testing.T) {
@@ -329,19 +451,45 @@ func TestReportHandler_GetReports_BarsPayloadRunsOldestFirst(t *testing.T) {
 	assert.Equal(t, []int64{60000000, 120000000}, got.Expense)
 	assert.Equal(t, []int64{40000000, 80000000}, got.Net)
 	assert.Len(t, got.Formatted["income"], 2)
-	assert.Contains(t, got.Formatted["income"][0], "Rp")
+	assert.Equal(t, reportMoney(100000000), got.Formatted["income"][0])
 	assert.Equal(t, int64(100), got.Unit.Divisor)
 	assert.Equal(t, "Rp", got.Unit.Symbol)
 	assert.NotEmpty(t, got.Labels["income"])
 	assert.NotEmpty(t, got.Labels["expense"])
 	assert.NotEmpty(t, got.Labels["net"])
 
-	// Cashflow must be asked for oldest-first so the x-axis reads left to right.
 	call, ok := f.Reader.Last("Cashflow")
 	require.True(t, ok)
 	require.Len(t, call.PeriodIDs, 2)
 	assert.Equal(t, prev.ID, call.PeriodIDs[0])
 	assert.Equal(t, cur.ID, call.PeriodIDs[1])
+}
+
+func TestReportHandler_GetReports_CashflowWindowEndsAtTheSelectedPeriod(t *testing.T) {
+	t.Parallel()
+	f := newReportFixture(t)
+	sc := f.seedScope(t)
+	months := []time.Month{
+		time.January, time.February, time.March, time.April,
+		time.May, time.June, time.July, time.August,
+	}
+	seeded := make([]*period.Period, 0, len(months))
+	for i, m := range months {
+		closed := i < len(months)-1
+		seeded = append(seeded, f.seedPeriod(t, sc,
+			civil.Date{Year: 2026, Month: m, Day: 1}, m.String()+" 2026", closed))
+	}
+	selected := seeded[2]
+	f.seedData(report.PeriodRef{ID: selected.ID, Name: selected.Name, Start: selected.StartDate})
+
+	rec := f.get(t, sc, "?period="+selected.ID.String())
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	call, ok := f.Reader.Last("Cashflow")
+	require.True(t, ok)
+	assert.Equal(t,
+		[]uuid.UUID{seeded[0].ID, seeded[1].ID, seeded[2].ID}, call.PeriodIDs,
+		"the cashflow window must end at the selected period, not at the newest one")
 }
 
 func TestReportHandler_GetReports_SankeyIsAcyclicWalletToCategory(t *testing.T) {
@@ -354,9 +502,7 @@ func TestReportHandler_GetReports_SankeyIsAcyclicWalletToCategory(t *testing.T) 
 
 	rec := f.get(t, sc, "")
 	require.Equal(t, http.StatusOK, rec.Code)
-
-	var got reportSankeyJSON
-	require.NoError(t, json.Unmarshal(reportPayloadFor(t, rec.Body.String(), templates.ReportSankeyID), &got))
+	donut, got := reportDonutAndSankey(t, rec.Body.String())
 
 	names := map[string]bool{}
 	for _, n := range got.Nodes {
@@ -371,7 +517,7 @@ func TestReportHandler_GetReports_SankeyIsAcyclicWalletToCategory(t *testing.T) 
 		assert.True(t, names[l.Source], "link source %q is not a node", l.Source)
 		assert.True(t, names[l.Target], "link target %q is not a node", l.Target)
 		assert.Positive(t, l.Value)
-		assert.Contains(t, l.Formatted, "Rp")
+		assert.Equal(t, reportMoney(l.Value), l.Formatted)
 		sources[l.Source] = true
 		targets[l.Target] = true
 	}
@@ -380,6 +526,123 @@ func TestReportHandler_GetReports_SankeyIsAcyclicWalletToCategory(t *testing.T) 
 	}
 	assert.Contains(t, names, "BCA")
 	assert.Contains(t, names, "Makan & Minum")
+	require.True(t, targets["Sewa"], "the fixture must target a category sharing a wallet's name")
+	assertSankeyAgreesWithDonut(t, donut, got)
+}
+
+func TestReportHandler_GetReports_SankeyOtherBucketNeverMergesIntoARealCategory(t *testing.T) {
+	t.Parallel()
+	f := newReportFixture(t)
+	sc := f.seedScope(t)
+	cur := f.seedPeriod(t, sc, civil.Date{Year: 2026, Month: time.September, Day: 1}, "Sep 2026", false)
+	ref := report.PeriodRef{ID: cur.ID, Name: cur.Name, Start: cur.StartDate}
+	f.seedOtherNameCollision(ref)
+
+	rec := f.get(t, sc, "")
+	require.Equal(t, http.StatusOK, rec.Code)
+	donut, sankey := reportDonutAndSankey(t, rec.Body.String())
+
+	require.Len(t, donut.Items, 6)
+	assert.Equal(t, int64(200000000), donut.Items[2].Value, "the real category keeps its own amount")
+	assert.Equal(t, int64(50000000), donut.Items[5].Value, "the aggregated tail is its own wedge")
+	assert.NotEqual(t, donut.Items[2].Name, donut.Items[5].Name,
+		"the aggregate must not reuse a real category's label")
+
+	assertSankeyAgreesWithDonut(t, donut, sankey)
+
+	inbound := map[string]int64{}
+	for _, l := range sankey.Links {
+		inbound[l.Target] += l.Value
+	}
+	assert.Equal(t, int64(50000000), inbound[donut.Items[5].Name],
+		"the aggregated wedge must receive exactly the folded tail")
+}
+
+func TestReportHandler_GetReports_CategoryNamesCannotBreakOutOfThePayloadScript(t *testing.T) {
+	t.Parallel()
+	const evil = `</script><img src=x onerror=alert(1)>`
+	f := newReportFixture(t)
+	sc := f.seedScope(t)
+	cur := f.seedPeriod(t, sc, civil.Date{Year: 2026, Month: time.September, Day: 1}, "Sep 2026", false)
+	ref := report.PeriodRef{ID: cur.ID, Name: cur.Name, Start: cur.StartDate}
+	f.seedData(ref)
+	f.Reader.Spend[0].Name = evil
+	f.Reader.FlowLines[1].CategoryName = evil
+	f.Reader.Summaries.Wallets[0].Name = evil
+
+	rec := f.get(t, sc, "")
+	require.Equal(t, http.StatusOK, rec.Code)
+	body := rec.Body.String()
+
+	assert.NotContains(t, body, "</script><img", "a category name closed the payload script")
+	assert.NotContains(t, body, "<img src=x", "a category name reached the document as markup")
+
+	for _, id := range []string{templates.ReportDonutID, templates.ReportSankeyID} {
+		payload := string(reportPayloadFor(t, body, id))
+		assert.NotContains(t, payload, "<", "payload %s carries a raw '<'", id)
+		assert.NotContains(t, payload, ">", "payload %s carries a raw '>'", id)
+	}
+
+	var donut reportDonutJSON
+	require.NoError(t, json.Unmarshal(reportPayloadFor(t, body, templates.ReportDonutID), &donut))
+	assert.Equal(t, evil, donut.Items[0].Name, "escaping must be reversible, not lossy")
+}
+
+func TestReportHandler_GetReports_WalletFooterTotalsExcludeFlaggedWallets(t *testing.T) {
+	t.Parallel()
+	f := newReportFixture(t)
+	sc := f.seedScope(t)
+	cur := f.seedPeriod(t, sc, civil.Date{Year: 2026, Month: time.September, Day: 1}, "Sep 2026", false)
+	ref := report.PeriodRef{ID: cur.ID, Name: cur.Name, Start: cur.StartDate}
+	f.seedData(ref)
+
+	rec := f.get(t, sc, "")
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	rows := regexp.MustCompile(`<tr data-report-total="([a-z]+)"[^>]*>(.*?)</tr>`).
+		FindAllStringSubmatch(rec.Body.String(), -1)
+	require.Len(t, rows, 2, "a spendable total plus an all-wallets total")
+
+	assert.Equal(t, "spendable", rows[0][1])
+	assert.Contains(t, rows[0][2], reportMoney(850000000),
+		"the spendable total must skip wallets flagged exclude_from_total")
+	assert.NotContains(t, rows[0][2], reportMoney(5810000000))
+
+	assert.Equal(t, "all", rows[1][1])
+	assert.Contains(t, rows[1][2], reportMoney(5810000000))
+}
+
+func TestReportHandler_GetReports_InAndOutLabelsAreNotSharedAcrossDefinitions(t *testing.T) {
+	t.Parallel()
+	f := newReportFixture(t)
+	sc := f.seedScope(t)
+	cur := f.seedPeriod(t, sc, civil.Date{Year: 2026, Month: time.September, Day: 1}, "Sep 2026", false)
+	prev := f.seedPeriod(t, sc, civil.Date{Year: 2026, Month: time.August, Day: 1}, "Aug 2026", true)
+	ref := report.PeriodRef{ID: cur.ID, Name: cur.Name, Start: cur.StartDate}
+	f.seedData(ref)
+	f.seedCashflow(report.PeriodRef{ID: prev.ID, Name: prev.Name, Start: prev.StartDate}, ref)
+
+	rec := f.get(t, sc, "")
+	require.Equal(t, http.StatusOK, rec.Code)
+	body := rec.Body.String()
+
+	statIn := reportAttrText(t, body, "data-report-stat", "in")
+	statOut := reportAttrText(t, body, "data-report-stat", "out")
+	colIn := reportAttrText(t, body, "data-report-col", "in")
+	colOut := reportAttrText(t, body, "data-report-col", "out")
+	for _, s := range []string{statIn, statOut, colIn, colOut} {
+		require.NotEmpty(t, s)
+	}
+	assert.NotEqual(t, statIn, colIn, "the tile and the wallet column measure different things")
+	assert.NotEqual(t, statOut, colOut, "the tile and the wallet column measure different things")
+
+	var bars reportBarsJSON
+	require.NoError(t, json.Unmarshal(reportPayloadFor(t, body, templates.ReportBarsID), &bars))
+	assert.Equal(t, statIn, bars.Labels["income"], "the bars and the tile share one definition")
+	assert.Equal(t, statOut, bars.Labels["expense"], "the bars and the tile share one definition")
+
+	assert.Contains(t, body, `data-report-note="wallet-movement"`)
+	assert.Contains(t, body, `data-report-note="expense-only"`)
 }
 
 func TestReportHandler_GetReports_PeriodQuerySelectsThatPeriod(t *testing.T) {
@@ -403,14 +666,34 @@ func TestReportHandler_GetReports_PeriodQuerySelectsThatPeriod(t *testing.T) {
 	assert.Contains(t, body, "Aug 2026")
 }
 
-func TestReportHandler_GetReports_UnknownPeriodIs404(t *testing.T) {
+func TestReportHandler_GetReports_ForeignProjectPeriodIs404(t *testing.T) {
 	t.Parallel()
 	f := newReportFixture(t)
 	sc := f.seedScope(t)
 	f.seedPeriod(t, sc, civil.Date{Year: 2026, Month: time.September, Day: 1}, "Sep 2026", false)
+	sibling := f.seedSibling(t, sc, "ledger", "Ledger")
+	foreign := f.seedPeriod(t, sibling, civil.Date{Year: 2026, Month: time.August, Day: 1}, "Aug 2026", true)
 
-	rec := f.get(t, sc, "?period="+uuid.Must(uuid.NewV7()).String())
+	rec := f.get(t, sc, "?period="+foreign.ID.String())
 	assert.Equal(t, http.StatusNotFound, rec.Code)
+	assert.Empty(t, f.Reader.Calls(), "another project's period must never reach the report reader")
+
+	rec = f.get(t, sc, "?period="+uuid.Must(uuid.NewV7()).String())
+	assert.Equal(t, http.StatusNotFound, rec.Code)
+	assert.Empty(t, f.Reader.Calls(), "an unknown period must never reach the report reader")
+}
+
+func TestReportHandler_GetReports_MalformedPeriodIs400(t *testing.T) {
+	t.Parallel()
+	f := newReportFixture(t)
+	sc := f.seedScope(t)
+	cur := f.seedPeriod(t, sc, civil.Date{Year: 2026, Month: time.September, Day: 1}, "Sep 2026", false)
+	f.seedData(report.PeriodRef{ID: cur.ID, Name: cur.Name, Start: cur.StartDate})
+
+	rec := f.get(t, sc, "?period=deadbeef")
+	assert.Equal(t, http.StatusBadRequest, rec.Code,
+		"a mangled link must say so rather than silently render another period")
+	assert.Empty(t, f.Reader.Calls(), "a malformed period must never reach the report reader")
 }
 
 func TestReportHandler_GetReports_EmptyProjectRendersEmptyStatesAndNoCharts(t *testing.T) {
@@ -425,9 +708,10 @@ func TestReportHandler_GetReports_EmptyProjectRendersEmptyStatesAndNoCharts(t *t
 	require.Equal(t, http.StatusOK, rec.Code)
 	body := rec.Body.String()
 
-	assert.Contains(t, body, "report.no_data")
+	assert.Contains(t, body, `data-report-empty="1"`)
 	assert.NotContains(t, body, "data-chart=")
 	assert.NotContains(t, body, "data-chart-for=")
+	assert.NotContains(t, body, "data-report-total=")
 }
 
 func TestReportHandler_GetReports_NoPeriodRendersThePeriodEmptyState(t *testing.T) {
@@ -439,8 +723,9 @@ func TestReportHandler_GetReports_NoPeriodRendersThePeriodEmptyState(t *testing.
 	require.Equal(t, http.StatusOK, rec.Code)
 	body := rec.Body.String()
 
-	assert.Contains(t, body, "period.no_period")
+	assert.Contains(t, body, `data-report-empty="1"`)
 	assert.NotContains(t, body, "data-chart=")
+	assert.NotContains(t, body, "data-report-stat=")
 	assert.Empty(t, f.Reader.Calls(), "a project with no period must not be reported on")
 }
 
@@ -457,8 +742,6 @@ func TestReportHandler_GetReports_RedirectsAnonymousCaller(t *testing.T) {
 	assert.Equal(t, "/login", rec.Header().Get("Location"))
 }
 
-// TestReportHandler_GetReports_NeverEnsuresAPeriod pins the read-only contract: rendering the
-// page must not create the project's first period the way EnsureCurrent would.
 func TestReportHandler_GetReports_NeverEnsuresAPeriod(t *testing.T) {
 	t.Parallel()
 	f := newReportFixture(t)

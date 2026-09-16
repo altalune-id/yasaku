@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 	"time"
@@ -17,7 +18,6 @@ import (
 	"altalune.id/yasaku/money"
 )
 
-// walletRecentLimit is how many movements the wallet detail page lists.
 const walletRecentLimit = 20
 
 // WalletHandler owns the project-scoped wallet screens.
@@ -42,7 +42,6 @@ func NewWalletHandler(
 	return &WalletHandler{Deps: d, Wallets: wallets, Open: open, Transactions: txs, Ledgers: ledgers}
 }
 
-// requireYasakuProject resolves the org and project the path names, gating membership before any row is read.
 func requireYasakuProject(d Deps, w http.ResponseWriter, r *http.Request) (projectScope, bool) {
 	p, sid, ok := d.LoadSession(r)
 	if !ok {
@@ -66,7 +65,7 @@ func (h *WalletHandler) GetWallets(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	v, err := h.walletsView(sc, walletError{})
+	v, err := h.walletsView(sc, banner{})
 	if err != nil {
 		h.LogErr("web wallet: list", err)
 		h.ErrorPage(w, sc.req, http.StatusInternalServerError, "List failed", "Could not load wallets.", err)
@@ -88,7 +87,6 @@ func (h *WalletHandler) GetNew(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	v := templates.WalletFormView{
-		OrgSlug:     sc.org.Slug,
 		ProjectSlug: sc.project.Slug,
 		Currency:    string(currency),
 		Kinds:       walletKindOptions(wallet.KindCash),
@@ -116,7 +114,6 @@ func (h *WalletHandler) PostCreate(w http.ResponseWriter, r *http.Request) {
 	form := sc.req.PostForm
 	kind, kindErr := wallet.ParseKind(form.Get("kind"))
 	v := templates.WalletFormView{
-		OrgSlug:     sc.org.Slug,
 		ProjectSlug: sc.project.Slug,
 		Name:        strings.TrimSpace(form.Get("name")),
 		Provider:    strings.TrimSpace(form.Get("provider")),
@@ -126,15 +123,15 @@ func (h *WalletHandler) PostCreate(w http.ResponseWriter, r *http.Request) {
 		Kinds:       walletKindOptions(kind),
 	}
 	if kindErr != nil {
-		h.writeWalletForm(w, sc, v, walletErrorFrom(kindErr), "New wallet")
+		h.writeWalletForm(w, sc, v, bannerFrom(kindErr), "New wallet")
 		return
 	}
 
 	var opening *money.Amount
 	if v.Opening != "" {
-		amount, pErr := money.ParseMajor(v.Opening, currency)
+		amount, pErr := parseAmount(v.Opening, currency)
 		if pErr != nil {
-			h.writeWalletForm(w, sc, v, walletErrorFrom(pErr), "New wallet")
+			h.writeWalletForm(w, sc, v, bannerFrom(pErr), "New wallet")
 			return
 		}
 		opening = &amount
@@ -154,7 +151,7 @@ func (h *WalletHandler) PostCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		h.LogErr("web wallet: create", err)
-		h.writeWalletForm(w, sc, v, walletErrorFrom(err), "New wallet")
+		h.writeWalletForm(w, sc, v, bannerFrom(err), "New wallet")
 		return
 	}
 	h.redirectToWallets(w, sc)
@@ -166,7 +163,7 @@ func (h *WalletHandler) GetDetail(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	h.writeWalletDetail(w, sc, wl, "", walletError{})
+	h.writeWalletDetail(w, sc, wl, adjustState(sc.req.URL.Query().Get("adjust")), banner{})
 }
 
 // GetEdit renders the wallet form prefilled from the row.
@@ -175,10 +172,14 @@ func (h *WalletHandler) GetEdit(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	Render(w, sc.req, templates.WalletFormLayout(h.walletLayout(sc, "Edit wallet"), walletFormFrom(sc, wl)))
+	b := banner{}
+	if wl.IsArchived() {
+		b = bannerFrom(&wallet.ArchivedError{ID: wl.ID.String()})
+	}
+	h.writeWalletForm(w, sc, walletFormFrom(sc, wl), b, "Edit wallet")
 }
 
-// PostUpdate renames a wallet and replaces its kind, provider and exclude-from-total flag.
+// PostUpdate replaces a wallet's name, kind, provider and exclude-from-total flag in one save.
 func (h *WalletHandler) PostUpdate(w http.ResponseWriter, r *http.Request) {
 	sc, wl, ok := h.requireWallet(w, r)
 	if !ok {
@@ -196,23 +197,12 @@ func (h *WalletHandler) PostUpdate(w http.ResponseWriter, r *http.Request) {
 	v.Exclude = form.Get("exclude_from_total") != ""
 	v.Kinds = walletKindOptions(kind)
 	if kindErr != nil {
-		h.writeWalletForm(w, sc, v, walletErrorFrom(kindErr), "Edit wallet")
+		h.writeWalletForm(w, sc, v, bannerFrom(kindErr), "Edit wallet")
 		return
 	}
-	// NOTE: refuse up front so a rename cannot land on a wallet whose Update is about to be rejected.
-	if wl.IsArchived() {
-		h.writeWalletForm(w, sc, v, walletErrorFrom(&wallet.ArchivedError{ID: wl.ID.String()}), "Edit wallet")
-		return
-	}
-
-	if _, err := h.Wallets.Rename(sc.req.Context(), wl.ID, v.Name); err != nil {
-		h.LogErr("web wallet: rename", err)
-		h.writeWalletForm(w, sc, v, walletErrorFrom(err), "Edit wallet")
-		return
-	}
-	if _, err := h.Wallets.Update(sc.req.Context(), wl.ID, kind, v.Provider, v.Exclude); err != nil {
-		h.LogErr("web wallet: update", err)
-		h.writeWalletForm(w, sc, v, walletErrorFrom(err), "Edit wallet")
+	if _, err := h.Wallets.Edit(sc.req.Context(), wl.ID, v.Name, kind, v.Provider, v.Exclude); err != nil {
+		h.LogErr("web wallet: edit", err)
+		h.writeWalletForm(w, sc, v, bannerFrom(err), "Edit wallet")
 		return
 	}
 	h.redirectToWallets(w, sc)
@@ -226,10 +216,10 @@ func (h *WalletHandler) PostArchive(w http.ResponseWriter, r *http.Request) {
 	}
 	if _, err := h.Wallets.Archive(sc.req.Context(), wl.ID); err != nil {
 		h.LogErr("web wallet: archive", err)
-		h.writeWalletList(w, sc, walletErrorFrom(err))
+		h.writeWalletList(w, sc, bannerFrom(err))
 		return
 	}
-	h.writeWalletList(w, sc, walletError{})
+	h.writeWalletList(w, sc, banner{})
 }
 
 // PostUnarchive returns a wallet to active use and returns the refreshed list fragment.
@@ -240,10 +230,10 @@ func (h *WalletHandler) PostUnarchive(w http.ResponseWriter, r *http.Request) {
 	}
 	if _, err := h.Wallets.Unarchive(sc.req.Context(), wl.ID); err != nil {
 		h.LogErr("web wallet: unarchive", err)
-		h.writeWalletList(w, sc, walletErrorFrom(err))
+		h.writeWalletList(w, sc, bannerFrom(err))
 		return
 	}
-	h.writeWalletList(w, sc, walletError{})
+	h.writeWalletList(w, sc, banner{})
 }
 
 // PostDelete removes a wallet; one that still holds transactions comes back as a banner offering Archive.
@@ -254,10 +244,10 @@ func (h *WalletHandler) PostDelete(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := h.Wallets.Delete(sc.req.Context(), wl.ID); err != nil {
 		h.LogErr("web wallet: delete", err)
-		h.writeWalletList(w, sc, walletErrorFrom(err))
+		h.writeWalletList(w, sc, bannerFrom(err))
 		return
 	}
-	h.writeWalletList(w, sc, walletError{})
+	h.writeWalletList(w, sc, banner{})
 }
 
 // GetAdjust renders the balance-adjustment form for one wallet.
@@ -266,7 +256,11 @@ func (h *WalletHandler) GetAdjust(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	h.writeAdjustForm(w, sc, wl, "", walletError{})
+	b := banner{}
+	if wl.IsArchived() {
+		b = bannerFrom(&wallet.ArchivedError{ID: wl.ID.String()})
+	}
+	h.writeAdjustForm(w, sc, wl, "", b)
 }
 
 // PostAdjust brings a wallet's derived balance to the target; an unchanged balance writes nothing.
@@ -280,22 +274,29 @@ func (h *WalletHandler) PostAdjust(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	raw := strings.TrimSpace(sc.req.PostForm.Get("target"))
-	target, err := money.ParseMajor(raw, wl.Currency)
+	target, err := parseAmount(raw, wl.Currency)
 	if err != nil {
-		h.writeAdjustForm(w, sc, wl, raw, walletErrorFrom(err))
+		h.writeAdjustForm(w, sc, wl, raw, bannerFrom(err))
 		return
 	}
 	written, err := h.Transactions.Adjust(sc.req.Context(), wl.ID, target, time.Now().UTC(), sc.principal.UserID)
 	if err != nil {
 		h.LogErr("web wallet: adjust", err)
-		h.writeAdjustForm(w, sc, wl, raw, walletErrorFrom(err))
+		h.writeAdjustForm(w, sc, wl, raw, bannerFrom(err))
 		return
 	}
 	state := templates.AdjustUnchanged
 	if written != nil {
 		state = templates.AdjustChanged
 	}
-	h.writeWalletDetail(w, sc, wl, state, walletError{})
+	h.redirectToWallet(w, sc, wl.ID, state)
+}
+
+func adjustState(q string) string {
+	if q == templates.AdjustChanged || q == templates.AdjustUnchanged {
+		return q
+	}
+	return ""
 }
 
 // Register wires the wallet routes onto mux.
@@ -313,29 +314,38 @@ func (h *WalletHandler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /orgs/{org}/projects/{project}/wallets/{id}/adjust", h.PostAdjust)
 }
 
-// walletError is the banner one screen shows: a translated key when yasaku has one, else the app message.
-type walletError struct {
+type banner struct {
 	Key  string
 	Msg  string
 	Code string
 }
 
-func walletErrorFrom(err error) walletError {
+func bannerFrom(err error) banner {
 	if err == nil {
-		return walletError{}
+		return banner{}
 	}
-	out := walletError{Code: ErrorRef(err)}
-	switch {
-	case wallet.IsInUseError(err):
+	out := banner{Code: ErrorRef(err)}
+	if wallet.IsInUseError(err) {
 		out.Key = "wallet.in_use"
-	default:
-		if ae, ok := apperror.AsAppError(err); ok {
-			out.Msg = ae.Message()
-		} else {
-			out.Msg = err.Error()
-		}
+		return out
 	}
+	if ae, ok := apperror.AsAppError(err); ok {
+		out.Msg = ae.Message()
+		return out
+	}
+	out.Msg = err.Error()
 	return out
+}
+
+func parseAmount(raw string, cur money.Currency) (money.Amount, error) {
+	a, err := money.ParseMajor(raw, cur)
+	if err == nil {
+		return a, nil
+	}
+	if pe, ok := errors.AsType[*money.ParseError](err); ok {
+		return money.Amount{}, &transaction.InvalidAmountError{Reason: pe.Reason}
+	}
+	return money.Amount{}, err
 }
 
 func (h *WalletHandler) requireWallet(w http.ResponseWriter, r *http.Request) (projectScope, *wallet.Wallet, bool) {
@@ -361,7 +371,6 @@ func (h *WalletHandler) requireWallet(w http.ResponseWriter, r *http.Request) (p
 	return sc, wl, true
 }
 
-// walletLayout builds the full project layout; fragments use it too, so their action URLs keep the org scope.
 func (h *WalletHandler) walletLayout(sc projectScope, title string) web.LayoutData {
 	return h.LayoutForProject(sc.req, title+" · "+sc.project.Name, sc.org.Slug, sc.project, "wallets")
 }
@@ -374,7 +383,7 @@ func (h *WalletHandler) currency(sc projectScope) (money.Currency, error) {
 	return settings.Currency, nil
 }
 
-func (h *WalletHandler) walletsView(sc projectScope, banner walletError) (templates.WalletsView, error) {
+func (h *WalletHandler) walletsView(sc projectScope, b banner) (templates.WalletsView, error) {
 	ctx := sc.req.Context()
 	items, err := h.Wallets.List(ctx, wallet.ListOpts{IncludeArchived: true})
 	if err != nil {
@@ -390,13 +399,12 @@ func (h *WalletHandler) walletsView(sc projectScope, banner walletError) (templa
 	}
 
 	v := templates.WalletsView{
-		OrgSlug:     sc.org.Slug,
 		ProjectSlug: sc.project.Slug,
 		ProjectName: sc.project.Name,
 		Total:       money.Zero(currency),
-		ErrorKey:    banner.Key,
-		ErrorMsg:    banner.Msg,
-		ErrorCode:   banner.Code,
+		ErrorKey:    b.Key,
+		ErrorMsg:    b.Msg,
+		ErrorCode:   b.Code,
 	}
 	for _, it := range items {
 		row := walletRow(it, balanceOf(balances, it))
@@ -436,7 +444,6 @@ func walletRow(w *wallet.Wallet, balance money.Amount) templates.WalletRow {
 
 func walletFormFrom(sc projectScope, w *wallet.Wallet) templates.WalletFormView {
 	return templates.WalletFormView{
-		OrgSlug:     sc.org.Slug,
 		ProjectSlug: sc.project.Slug,
 		ID:          w.ID.String(),
 		Name:        w.Name,
@@ -447,8 +454,8 @@ func walletFormFrom(sc projectScope, w *wallet.Wallet) templates.WalletFormView 
 	}
 }
 
-func (h *WalletHandler) writeWalletList(w http.ResponseWriter, sc projectScope, banner walletError) {
-	v, err := h.walletsView(sc, banner)
+func (h *WalletHandler) writeWalletList(w http.ResponseWriter, sc projectScope, b banner) {
+	v, err := h.walletsView(sc, b)
 	if err != nil {
 		h.LogErr("web wallet: list", err)
 		h.ErrorPage(w, sc.req, http.StatusInternalServerError, "List failed", "Could not load wallets.", err)
@@ -457,12 +464,12 @@ func (h *WalletHandler) writeWalletList(w http.ResponseWriter, sc projectScope, 
 	Render(w, sc.req, templates.WalletList(h.walletLayout(sc, "Wallets"), v))
 }
 
-func (h *WalletHandler) writeWalletForm(w http.ResponseWriter, sc projectScope, v templates.WalletFormView, banner walletError, title string) {
-	v.ErrorKey, v.ErrorMsg, v.ErrorCode = banner.Key, banner.Msg, banner.Code
+func (h *WalletHandler) writeWalletForm(w http.ResponseWriter, sc projectScope, v templates.WalletFormView, b banner, title string) {
+	v.ErrorKey, v.ErrorMsg, v.ErrorCode = b.Key, b.Msg, b.Code
 	Render(w, sc.req, templates.WalletFormLayout(h.walletLayout(sc, title), v))
 }
 
-func (h *WalletHandler) writeWalletDetail(w http.ResponseWriter, sc projectScope, wl *wallet.Wallet, state string, banner walletError) {
+func (h *WalletHandler) writeWalletDetail(w http.ResponseWriter, sc projectScope, wl *wallet.Wallet, state string, b banner) {
 	ctx := sc.req.Context()
 	balance, err := h.Transactions.Balance(ctx, wl.ID)
 	if err != nil {
@@ -477,20 +484,19 @@ func (h *WalletHandler) writeWalletDetail(w http.ResponseWriter, sc projectScope
 		return
 	}
 	v := templates.WalletDetailView{
-		OrgSlug:     sc.org.Slug,
 		ProjectSlug: sc.project.Slug,
 		Wallet:      walletRow(wl, balance),
 		Balance:     balance,
 		Recent:      walletTxRows(wl.ID, items),
 		AdjustState: state,
-		ErrorKey:    banner.Key,
-		ErrorMsg:    banner.Msg,
-		ErrorCode:   banner.Code,
+		ErrorKey:    b.Key,
+		ErrorMsg:    b.Msg,
+		ErrorCode:   b.Code,
 	}
 	Render(w, sc.req, templates.WalletDetailLayout(h.walletLayout(sc, wl.Name), v))
 }
 
-func (h *WalletHandler) writeAdjustForm(w http.ResponseWriter, sc projectScope, wl *wallet.Wallet, target string, banner walletError) {
+func (h *WalletHandler) writeAdjustForm(w http.ResponseWriter, sc projectScope, wl *wallet.Wallet, target string, b banner) {
 	balance, err := h.Transactions.Balance(sc.req.Context(), wl.ID)
 	if err != nil {
 		h.LogErr("web wallet: balance", err)
@@ -498,17 +504,22 @@ func (h *WalletHandler) writeAdjustForm(w http.ResponseWriter, sc projectScope, 
 		return
 	}
 	v := templates.WalletAdjustView{
-		OrgSlug:     sc.org.Slug,
 		ProjectSlug: sc.project.Slug,
 		WalletID:    wl.ID.String(),
 		WalletName:  wl.Name,
 		Current:     balance,
 		Target:      target,
-		ErrorKey:    banner.Key,
-		ErrorMsg:    banner.Msg,
-		ErrorCode:   banner.Code,
+		ErrorKey:    b.Key,
+		ErrorMsg:    b.Msg,
+		ErrorCode:   b.Code,
 	}
 	Render(w, sc.req, templates.WalletAdjustLayout(h.walletLayout(sc, "Adjust balance"), v))
+}
+
+func (h *WalletHandler) redirectToWallet(w http.ResponseWriter, sc projectScope, id uuid.UUID, state string) {
+	target := web.Path(h.Cfg.HTTP.BasePath,
+		projectPath(sc.org.Slug, sc.project.Slug, "/wallets/"+id.String())) + "?adjust=" + state
+	http.Redirect(w, sc.req, target, http.StatusSeeOther) //nolint:gosec // G710: both slugs come from rows already resolved by their own slug patterns
 }
 
 func (h *WalletHandler) redirectToWallets(w http.ResponseWriter, sc projectScope) {
@@ -529,7 +540,6 @@ func walletTxRows(walletID uuid.UUID, items []*transaction.Transaction) []templa
 	return rows
 }
 
-// signedFor gives the movement its direction for walletID: the receiving side of a transfer is an inflow.
 func signedFor(walletID uuid.UUID, t *transaction.Transaction) money.Amount {
 	if t.Kind == transaction.KindTransfer && t.ToWalletID != nil && *t.ToWalletID == walletID {
 		return t.Amount

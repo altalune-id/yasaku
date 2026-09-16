@@ -6,12 +6,14 @@ import (
 	"altalune.id/yasaku/money"
 )
 
-// TxWalletOption is one wallet in the quick-add wallet picker.
+// TxWalletOption is one wallet in the quick-add wallet picker, carrying how its own currency is typed.
 type TxWalletOption struct {
 	ID       string
 	Name     string
 	Balance  money.Amount
 	Selected bool
+	Symbol   string
+	Group    bool
 }
 
 // TxCategoryOption is one category chip in the quick-add form.
@@ -50,6 +52,7 @@ type TxFormView struct {
 	Symbol      string
 	Group       bool
 	Recent      bool
+	FullPage    bool
 	Error       string
 	ErrorCode   string
 }
@@ -60,10 +63,7 @@ templ TransactionForm(d web.LayoutData, v TxFormView) {
 		id="tx-quick-add"
 		method="post"
 		action={ templ.SafeURL(txFormAction(d, v)) }
-		hx-post={ txFormAction(d, v) }
-		hx-target="#tx-list"
-		hx-swap="outerHTML"
-		hx-on::after-request="if(event.detail.successful && !event.detail.xhr.responseText.includes('data-tx-error')) { this.querySelector('[name=amount]').value=''; this.querySelector('[name=note]').value=''; this.querySelector('[name=amount]').focus(); }"
+		{ txFormSwap(d, v)... }
 		class="rounded-xl border border-border bg-card p-4 shadow-sm"
 	>
 		if v.Error != "" {
@@ -76,7 +76,7 @@ templ TransactionForm(d web.LayoutData, v TxFormView) {
 		}
 		<label for="tx-amount" class="block text-xs font-medium text-muted-foreground">{ d.Tr("tx.amount") }</label>
 		<div class="mt-1 flex items-baseline gap-2">
-			<span class="text-xl font-medium text-muted-foreground">{ v.Symbol }</span>
+			<span data-tx-symbol-slot class="text-xl font-medium text-muted-foreground">{ v.Symbol }</span>
 			<input
 				id="tx-amount"
 				name="amount"
@@ -99,13 +99,24 @@ templ TransactionForm(d web.LayoutData, v TxFormView) {
 				@txKindPill(d, v, "income", "tx.kind_income")
 				@txKindPill(d, v, "transfer", "tx.kind_transfer")
 			</div>
+			if v.ID != "" {
+				<input type="hidden" name="kind" value={ v.Kind } data-tx-kind-locked="1"/>
+				<p class="mt-1.5 text-xs text-muted-foreground">{ d.Tr("tx.kind_locked") }</p>
+			}
 		</fieldset>
 		<div class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
 			<div>
 				<label for="tx-wallet" class="block text-xs font-medium text-muted-foreground">{ txWalletLabel(d, v) }</label>
 				<select id="tx-wallet" name="wallet_id" required class={ txControlClass }>
 					for _, w := range v.Wallets {
-						<option value={ w.ID } selected?={ w.Selected }>{ txWalletLabelFor(d, w) }</option>
+						<option
+							value={ w.ID }
+							selected?={ w.Selected }
+							data-tx-symbol={ w.Symbol }
+							data-tx-group={ txBoolAttr(w.Group) }
+						>
+							{ txWalletLabelFor(d, w) }
+						</option>
 					}
 				</select>
 			</div>
@@ -202,22 +213,22 @@ templ TxCategoryChips(d web.LayoutData, v TxFormView) {
 }
 
 templ txKindPill(d web.LayoutData, v TxFormView, kind, key string) {
-	<label class="cursor-pointer">
+	<label class={ templ.KV("cursor-pointer", v.ID == ""), templ.KV("cursor-default", v.ID != "") }>
 		<input
 			type="radio"
 			name="kind"
 			value={ kind }
 			checked?={ v.Kind == kind }
+			disabled?={ v.ID != "" }
 			class="peer sr-only"
 			data-tx-kind={ kind }
 		/>
-		<span class="flex items-center justify-center rounded-md px-3 py-2 text-sm font-medium text-muted-foreground peer-checked:bg-card peer-checked:text-foreground peer-checked:shadow-sm">
+		<span class="flex items-center justify-center rounded-md px-3 py-2 text-sm font-medium text-muted-foreground peer-checked:bg-card peer-checked:text-foreground peer-checked:shadow-sm peer-disabled:opacity-60">
 			{ d.Tr(key) }
 		</span>
 	</label>
 }
 
-// txFormAssets groups the amount input's thousands separator, the transfer toggle and the "Kemarin" shortcut.
 templ txFormAssets() {
 	<script>
 	(function () {
@@ -226,14 +237,29 @@ templ txFormAssets() {
 		form.dataset.txWired = "1";
 
 		const amount = form.querySelector("[name=amount]");
-		if (amount && amount.dataset.txGroup === "1") {
-			const group = () => {
-				const digits = amount.value.replace(/\D/g, "");
-				amount.value = digits === "" ? "" : digits.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
-			};
+		const group = () => {
+			if (!amount || amount.dataset.txGroup !== "1") return;
+			const digits = amount.value.replace(/\D/g, "");
+			amount.value = digits === "" ? "" : digits.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+		};
+		if (amount) {
 			amount.addEventListener("input", group);
 			group();
 		}
+
+		const walletSelect = form.querySelector("[name=wallet_id]");
+		const symbolSlot = form.querySelector("[data-tx-symbol-slot]");
+		const syncCurrency = () => {
+			const opt = walletSelect && walletSelect.selectedOptions[0];
+			if (!opt || opt.dataset.txGroup === undefined) return;
+			if (symbolSlot) symbolSlot.textContent = opt.dataset.txSymbol || "";
+			if (!amount) return;
+			if (amount.dataset.txGroup !== opt.dataset.txGroup) amount.value = "";
+			amount.dataset.txGroup = opt.dataset.txGroup;
+			group();
+		};
+		if (walletSelect) walletSelect.addEventListener("change", syncCurrency);
+		syncCurrency();
 
 		const to = form.querySelector("[data-tx-to-wallet]");
 		const chips = form.querySelector("#tx-category");
@@ -261,6 +287,21 @@ templ txFormAssets() {
 const txControlClass = "mt-1 w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground shadow-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring"
 
 const txChipClass = "inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-xs text-muted-foreground peer-checked:border-primary peer-checked:bg-primary/10 peer-checked:text-foreground peer-focus-visible:ring-2 peer-focus-visible:ring-ring"
+
+// NOTE: the standalone page renders no #tx-list, so it keeps its native submit instead of an htmx swap that could never resolve.
+func txFormSwap(d web.LayoutData, v TxFormView) templ.Attributes {
+	if v.FullPage {
+		return templ.Attributes{}
+	}
+	return templ.Attributes{
+		"hx-post":   txFormAction(d, v),
+		"hx-target": "#tx-list",
+		"hx-swap":   "outerHTML",
+		"hx-on::after-request": "if(event.detail.successful && !event.detail.xhr.responseText.includes('data-tx-error'))" +
+			" { this.querySelector('[name=amount]').value=''; this.querySelector('[name=note]').value='';" +
+			" this.querySelector('[name=amount]').focus(); }",
+	}
+}
 
 func txFormAction(d web.LayoutData, v TxFormView) string {
 	if v.ID == "" {

@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -207,7 +208,6 @@ func (f *txFixture) scoped(orgID, projectID, userID uuid.UUID) context.Context {
 	return tenant.Into(context.Background(), tenant.Context{OrgID: orgID, ProjectID: projectID, UserID: userID})
 }
 
-// projectCtx is the tenant scope the seeded org/project pair live in.
 func (f *txFixture) projectCtx(t *testing.T) context.Context {
 	t.Helper()
 	return f.scoped(f.OrgID, f.ProjID, f.Principal.UserID)
@@ -287,7 +287,7 @@ func TestOverviewHandler_Get_RemembersTheProject(t *testing.T) {
 	p, ok, err := f.Sessions.Load(context.Background(), sid)
 	require.NoError(t, err)
 	require.True(t, ok)
-	assert.NotEqual(t, uuid.Nil, p.ActiveProjectID)
+	assert.Equal(t, f.ProjID, p.ActiveProjectID)
 }
 
 func TestTransactionHandler_PostCreate_RecordsExpenseAndReturnsFragment(t *testing.T) {
@@ -312,8 +312,7 @@ func TestTransactionHandler_PostCreate_RecordsExpenseAndReturnsFragment(t *testi
 	assert.Contains(t, body, "Rp40.000")
 	assert.Contains(t, body, `id="toast"`)
 	assert.Contains(t, body, `hx-swap-oob="true"`)
-	// SECURITY-adjacent regression guard: a fragment rendered with a bare Deps.Base collapses every
-	// action URL to /orgs, which type checking and the route probes both miss.
+	// SECURITY: a fragment rendered with a bare Deps.Base collapses every action URL to /orgs.
 	assert.Contains(t, body, f.path("/transactions/"))
 	assert.NotContains(t, body, `href="/orgs/transactions`)
 
@@ -356,7 +355,7 @@ func TestTransactionHandler_PostCreate_ClosedPeriodRendersBannerAndWritesNothing
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, f.request(t, http.MethodPost, f.path("/transactions"), form, true))
 
-	assert.Less(t, rec.Code, 500)
+	require.Equal(t, http.StatusOK, rec.Code)
 	body := rec.Body.String()
 	assert.Contains(t, body, `id="tx-list"`)
 	assert.Contains(t, body, "TXN008")
@@ -459,4 +458,356 @@ func TestTransactionHandler_PostCreate_WithoutHTMXRedirectsToOverview(t *testing
 
 	require.Equal(t, http.StatusSeeOther, rec.Code)
 	assert.Equal(t, f.path("/overview"), rec.Header().Get("Location"))
+}
+
+var hxTargetRe = regexp.MustCompile(`hx-target="#([^"]+)"`)
+
+func txHeadline(t *testing.T, body string) string {
+	t.Helper()
+	i := strings.Index(body, "tx-quick-add")
+	require.Positive(t, i)
+	return body[:i]
+}
+
+func assertHXTargetsResolve(t *testing.T, body string) {
+	t.Helper()
+	for _, m := range hxTargetRe.FindAllStringSubmatch(body, -1) {
+		assert.Contains(t, body, `id="`+m[1]+`"`,
+			"hx-target #%s has no matching element in the same document", m[1])
+	}
+}
+
+func (f *txFixture) siblingProject(t *testing.T) (uuid.UUID, uuid.UUID) {
+	t.Helper()
+	octx := tenant.Into(context.Background(), tenant.Context{OrgID: f.OrgID, UserID: f.Principal.UserID})
+	other, err := f.Projects.Create(octx, f.OrgID, "other", "Other")
+	require.NoError(t, err)
+	ctx := f.scoped(f.OrgID, other.ID, f.Principal.UserID)
+	w, err := f.Wallets.Create(ctx, wallet.Params{Name: "Lain", Kind: wallet.KindCash, Currency: money.IDR})
+	require.NoError(t, err)
+	tx, err := f.Transactions.Record(ctx, transaction.RecordInput{
+		WalletID:   w.ID,
+		Kind:       transaction.KindExpense,
+		Amount:     money.New(1000000, money.IDR),
+		Note:       "Punya proyek lain",
+		OccurredAt: time.Now(),
+	})
+	require.NoError(t, err)
+	return other.ID, tx.ID
+}
+
+func (f *txFixture) closedPeriodTx(t *testing.T) uuid.UUID {
+	t.Helper()
+	ctx := f.projectCtx(t)
+	cur, err := f.Periods.EnsureCurrent(ctx)
+	require.NoError(t, err)
+	loc, err := f.Ledgers.Location(ctx, cur.OrgID, cur.ProjectID)
+	require.NoError(t, err)
+	tx, err := f.Transactions.Record(ctx, transaction.RecordInput{
+		WalletID:   f.Cash,
+		Kind:       transaction.KindExpense,
+		Amount:     money.New(1000000, money.IDR),
+		Note:       "Sudah terkunci",
+		OccurredAt: time.Now(),
+	})
+	require.NoError(t, err)
+	_, err = f.Periods.Close(ctx, cur.ID, civil.DateOf(time.Now(), loc), f.Principal.UserID)
+	require.NoError(t, err)
+	return tx.ID
+}
+
+func TestTransactionHandler_PostCreate_RejectsSystemReservedKinds(t *testing.T) {
+	t.Parallel()
+	for _, kind := range []string{"opening", "adjustment_in", "adjustment_out", "refund"} {
+		t.Run(kind, func(t *testing.T) {
+			t.Parallel()
+			f := newTxFixture(t)
+			mux := http.NewServeMux()
+			f.txHandler().Register(mux)
+
+			form := url.Values{
+				"kind":      {kind},
+				"amount":    {"40000"},
+				"wallet_id": {f.Cash.String()},
+				"date":      {civil.DateOf(time.Now(), time.UTC).String()},
+			}
+			rec := httptest.NewRecorder()
+			mux.ServeHTTP(rec, f.request(t, http.MethodPost, f.path("/transactions"), form, true))
+
+			assert.Equal(t, http.StatusBadRequest, rec.Code)
+			items, _, err := f.Transactions.List(f.projectCtx(t), transaction.ListOpts{})
+			require.NoError(t, err)
+			assert.Empty(t, items)
+		})
+	}
+}
+
+func TestTransactionHandler_GetNew_EveryHXTargetExistsInTheDocument(t *testing.T) {
+	t.Parallel()
+	f := newTxFixture(t)
+	mux := http.NewServeMux()
+	f.txHandler().Register(mux)
+
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, f.request(t, http.MethodGet, f.path("/transactions/new"), nil, false))
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	assertHXTargetsResolve(t, rec.Body.String())
+}
+
+func TestTransactionHandler_GetEdit_EveryHXTargetExistsInTheDocument(t *testing.T) {
+	t.Parallel()
+	f := newTxFixture(t)
+	ctx := f.projectCtx(t)
+	tx, err := f.Transactions.Record(ctx, transaction.RecordInput{
+		WalletID:   f.Cash,
+		Kind:       transaction.KindExpense,
+		Amount:     money.New(1000000, money.IDR),
+		Note:       "Bakso",
+		OccurredAt: time.Now(),
+	})
+	require.NoError(t, err)
+
+	mux := http.NewServeMux()
+	f.txHandler().Register(mux)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, f.request(t, http.MethodGet, f.path("/transactions/"+tx.ID.String()+"/edit"), nil, false))
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	assertHXTargetsResolve(t, rec.Body.String())
+}
+
+func TestTransactionHandler_GetList_EveryHXTargetExistsInTheDocument(t *testing.T) {
+	t.Parallel()
+	f := newTxFixture(t)
+	mux := http.NewServeMux()
+	f.txHandler().Register(mux)
+
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, f.request(t, http.MethodGet, f.path("/transactions"), nil, false))
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	assertHXTargetsResolve(t, rec.Body.String())
+}
+
+func TestTransactionHandler_GetEdit_LocksTheKind(t *testing.T) {
+	t.Parallel()
+	f := newTxFixture(t)
+	ctx := f.projectCtx(t)
+	tx, err := f.Transactions.Record(ctx, transaction.RecordInput{
+		WalletID:   f.Cash,
+		Kind:       transaction.KindExpense,
+		Amount:     money.New(1000000, money.IDR),
+		OccurredAt: time.Now(),
+	})
+	require.NoError(t, err)
+
+	mux := http.NewServeMux()
+	f.txHandler().Register(mux)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, f.request(t, http.MethodGet, f.path("/transactions/"+tx.ID.String()+"/edit"), nil, false))
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	body := rec.Body.String()
+	assert.Contains(t, body, `data-tx-kind-locked="1"`)
+	assert.Contains(t, body, `value="income" disabled`)
+}
+
+func TestTransactionHandler_PostUpdate_RevisesAmountAndKeepsTheStoredKind(t *testing.T) {
+	t.Parallel()
+	f := newTxFixture(t)
+	ctx := f.projectCtx(t)
+	tx, err := f.Transactions.Record(ctx, transaction.RecordInput{
+		WalletID:   f.Cash,
+		Kind:       transaction.KindExpense,
+		Amount:     money.New(1000000, money.IDR),
+		Note:       "Bakso",
+		OccurredAt: time.Now(),
+	})
+	require.NoError(t, err)
+
+	mux := http.NewServeMux()
+	f.txHandler().Register(mux)
+	form := url.Values{
+		"kind":      {"income"},
+		"amount":    {"25000"},
+		"wallet_id": {f.Bank.String()},
+		"date":      {civil.DateOf(time.Now(), time.UTC).String()},
+		"note":      {"Bakso urat"},
+	}
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, f.request(t, http.MethodPost, f.path("/transactions/"+tx.ID.String()), form, true))
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	assert.Contains(t, rec.Body.String(), `id="tx-list"`)
+
+	got, err := f.Transactions.ByID(ctx, tx.ID)
+	require.NoError(t, err)
+	assert.Equal(t, transaction.KindExpense, got.Kind)
+	assert.Equal(t, int64(2500000), got.Amount.Minor)
+	assert.Equal(t, f.Bank, got.WalletID)
+	assert.Equal(t, "Bakso urat", got.Note)
+}
+
+func TestTransactionHandler_PostDelete_RemovesTheTransaction(t *testing.T) {
+	t.Parallel()
+	f := newTxFixture(t)
+	ctx := f.projectCtx(t)
+	tx, err := f.Transactions.Record(ctx, transaction.RecordInput{
+		WalletID:   f.Cash,
+		Kind:       transaction.KindExpense,
+		Amount:     money.New(1000000, money.IDR),
+		OccurredAt: time.Now(),
+	})
+	require.NoError(t, err)
+
+	mux := http.NewServeMux()
+	f.txHandler().Register(mux)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, f.request(t, http.MethodPost, f.path("/transactions/"+tx.ID.String()+"/delete"), url.Values{}, false))
+
+	require.Equal(t, http.StatusSeeOther, rec.Code)
+	assert.Equal(t, f.path("/overview"), rec.Header().Get("Location"))
+
+	items, _, err := f.Transactions.List(ctx, transaction.ListOpts{})
+	require.NoError(t, err)
+	assert.Empty(t, items)
+}
+
+func TestTransactionHandler_PostDelete_ClosedPeriodWithoutHTMXRendersFullPage(t *testing.T) {
+	t.Parallel()
+	f := newTxFixture(t)
+	id := f.closedPeriodTx(t)
+
+	mux := http.NewServeMux()
+	f.txHandler().Register(mux)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, f.request(t, http.MethodPost, f.path("/transactions/"+id.String()+"/delete"), url.Values{}, false))
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	body := rec.Body.String()
+	assert.Contains(t, body, "<html")
+	assert.Contains(t, body, "</html>")
+	assert.Contains(t, body, "TXN008")
+
+	items, _, err := f.Transactions.List(f.projectCtx(t), transaction.ListOpts{})
+	require.NoError(t, err)
+	assert.Len(t, items, 1)
+}
+
+func TestTransactionHandler_SiblingProjectTransactionIsNotFound(t *testing.T) {
+	t.Parallel()
+	f := newTxFixture(t)
+	_, id := f.siblingProject(t)
+
+	mux := http.NewServeMux()
+	f.txHandler().Register(mux)
+	for _, tc := range []struct {
+		name, method, target string
+		form                 url.Values
+	}{
+		{"edit", http.MethodGet, f.path("/transactions/" + id.String() + "/edit"), nil},
+		{"update", http.MethodPost, f.path("/transactions/" + id.String()), url.Values{
+			"kind": {"expense"}, "amount": {"1000"}, "wallet_id": {f.Cash.String()},
+		}},
+		{"delete", http.MethodPost, f.path("/transactions/" + id.String() + "/delete"), url.Values{}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			mux.ServeHTTP(rec, f.request(t, tc.method, tc.target, tc.form, false))
+			assert.Equal(t, http.StatusNotFound, rec.Code)
+		})
+	}
+}
+
+func TestTransactionHandler_GetNew_AmountFollowsTheSelectedWalletCurrency(t *testing.T) {
+	t.Parallel()
+	f := newTxFixture(t)
+	usd, err := f.Wallets.Create(f.projectCtx(t), wallet.Params{
+		Name: "Payoneer", Kind: wallet.KindBank, Currency: money.Currency("USD"),
+	})
+	require.NoError(t, err)
+
+	mux := http.NewServeMux()
+	f.txHandler().Register(mux)
+	r := f.request(t, http.MethodGet, f.path("/transactions/new"), nil, false)
+	r.AddCookie(&http.Cookie{Name: handlers.LastWalletCookie, Value: usd.ID.String()})
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, r)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	body := rec.Body.String()
+	assert.Contains(t, body, `data-tx-group="0"`, "USD must not be grouped like a zero-decimal currency")
+	assert.Contains(t, body, `data-tx-symbol="$"`)
+	assert.Contains(t, body, `data-tx-symbol="Rp"`)
+}
+
+func TestTransactionHandler_PostCreate_KeepsTheActiveFilter(t *testing.T) {
+	t.Parallel()
+	f := newTxFixture(t)
+	ctx := f.projectCtx(t)
+	_, err := f.Transactions.Record(ctx, transaction.RecordInput{
+		WalletID:   f.Cash,
+		Kind:       transaction.KindExpense,
+		Amount:     money.New(2000000, money.IDR),
+		Note:       "Bakso tunai",
+		OccurredAt: time.Now(),
+	})
+	require.NoError(t, err)
+
+	mux := http.NewServeMux()
+	f.txHandler().Register(mux)
+	form := url.Values{
+		"kind":      {"expense"},
+		"amount":    {"30000"},
+		"wallet_id": {f.Bank.String()},
+		"date":      {civil.DateOf(time.Now(), time.UTC).String()},
+		"note":      {"Listrik bank"},
+	}
+	r := f.request(t, http.MethodPost, f.path("/transactions"), form, true)
+	r.Header.Set("HX-Current-URL", "http://localhost"+f.path("/transactions")+"?wallet="+f.Cash.String())
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, r)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	body := rec.Body.String()
+	assert.Contains(t, body, "Bakso tunai")
+	assert.NotContains(t, body, "Listrik bank")
+}
+
+func TestOverviewHandler_Get_MixedCurrencyWalletsQualifyTheHeadline(t *testing.T) {
+	t.Parallel()
+	f := newTxFixture(t)
+	f.ReportReader.Balances = []report.WalletLine{
+		{WalletID: f.Cash, Name: "Tunai", Kind: "cash", Closing: money.New(2500000, money.IDR)},
+		{WalletID: f.Bank, Name: "Payoneer", Kind: "bank", Closing: money.New(120000, money.Currency("USD"))},
+	}
+	mux := http.NewServeMux()
+	f.overviewHandler().Register(mux)
+
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, f.request(t, http.MethodGet, f.path("/overview"), nil, false))
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	head := txHeadline(t, rec.Body.String())
+	assert.Contains(t, head, "Rp25.000")
+	assert.Contains(t, head, `data-mixed-currency="1"`)
+}
+
+func TestOverviewHandler_Get_SingleForeignCurrencyStillTotals(t *testing.T) {
+	t.Parallel()
+	f := newTxFixture(t)
+	f.ReportReader.Balances = []report.WalletLine{
+		{WalletID: f.Bank, Name: "Payoneer", Kind: "bank", Closing: money.New(120000, money.Currency("USD"))},
+	}
+	mux := http.NewServeMux()
+	f.overviewHandler().Register(mux)
+
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, f.request(t, http.MethodGet, f.path("/overview"), nil, false))
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	head := txHeadline(t, rec.Body.String())
+	assert.Contains(t, head, "$1.200,00")
+	assert.NotContains(t, head, `data-mixed-currency="1"`)
 }

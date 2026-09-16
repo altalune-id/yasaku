@@ -31,6 +31,13 @@ type ReportWalletRow struct {
 	Excluded bool
 }
 
+// ReportWalletTotal is one footer row of the wallet movement table: a closing balance, never a movement.
+type ReportWalletTotal struct {
+	Kind    string
+	Label   string
+	Closing string
+}
+
 // ReportCategoryRow is one line of a top-categories list.
 type ReportCategoryRow struct {
 	Name   string
@@ -38,10 +45,8 @@ type ReportCategoryRow struct {
 	Share  string
 }
 
-// ReportsView is everything the reports page renders; the three chart fields are JSON payloads,
-// empty when that section has nothing to draw.
+// ReportsView is everything the reports page renders; an empty chart field means that section draws nothing.
 type ReportsView struct {
-	OrgSlug     string
 	ProjectSlug string
 	ProjectName string
 
@@ -55,7 +60,7 @@ type ReportsView struct {
 	TxCount int
 
 	Wallets []ReportWalletRow
-	Totals  ReportWalletRow
+	Totals  []ReportWalletTotal
 
 	TopSpend  []ReportCategoryRow
 	TopIncome []ReportCategoryRow
@@ -74,7 +79,11 @@ func (v ReportsView) HasCharts() bool {
 func (v ReportsView) TxCountText() string { return strconv.Itoa(v.TxCount) }
 
 templ reportEmpty(message string) {
-	<p class="mt-4 rounded-md border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">{ message }</p>
+	<p data-report-empty="1" class="mt-4 rounded-md border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">{ message }</p>
+}
+
+templ reportNote(kind, text string) {
+	<p data-report-note={ kind } class="mt-2 text-xs text-muted-foreground">{ text }</p>
 }
 
 templ reportSectionTitle(icon, title string) {
@@ -108,9 +117,9 @@ templ reportPeriodPicker(d web.LayoutData, v ReportsView) {
 	</form>
 }
 
-templ reportStat(label, value string) {
+templ reportStat(key, label, value string) {
 	<div class="rounded-md border border-border/60 bg-muted/30 px-3 py-2">
-		<dt class="text-xs font-medium text-muted-foreground">{ label }</dt>
+		<dt data-report-stat={ key } class="text-xs font-medium text-muted-foreground">{ label }</dt>
 		<dd class="mt-0.5 text-lg font-semibold tabular-nums text-foreground">{ value }</dd>
 	</div>
 }
@@ -119,10 +128,10 @@ templ reportSummarySection(d web.LayoutData, v ReportsView) {
 	<section class="rounded-lg border border-border bg-card p-4 shadow-sm">
 		@reportSectionTitle("wallet", d.Tr("report.summary"))
 		<dl class="mt-3 grid grid-cols-2 gap-2 lg:grid-cols-4">
-			@reportStat(d.Tr("report.in"), v.Income)
-			@reportStat(d.Tr("report.out"), v.Expense)
-			@reportStat(d.Tr("overview.net"), v.Net)
-			@reportStat(d.Tr("period.tx_count"), v.TxCountText())
+			@reportStat("in", d.Tr("report.money_in"), v.Income)
+			@reportStat("out", d.Tr("report.money_out"), v.Expense)
+			@reportStat("net", d.Tr("overview.net"), v.Net)
+			@reportStat("tx", d.Tr("period.tx_count"), v.TxCountText())
 		</dl>
 		if len(v.Wallets) == 0 {
 			@reportEmpty(d.Tr("report.no_data"))
@@ -133,8 +142,8 @@ templ reportSummarySection(d web.LayoutData, v ReportsView) {
 						<tr class="border-b border-border text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
 							<th scope="col" class="py-2 pr-3">{ d.Tr("report.wallet") }</th>
 							<th scope="col" class="py-2 px-3 text-right">{ d.Tr("report.opening") }</th>
-							<th scope="col" class="py-2 px-3 text-right">{ d.Tr("report.in") }</th>
-							<th scope="col" class="py-2 px-3 text-right">{ d.Tr("report.out") }</th>
+							<th scope="col" data-report-col="in" class="py-2 px-3 text-right">{ d.Tr("report.wallet_in") }</th>
+							<th scope="col" data-report-col="out" class="py-2 px-3 text-right">{ d.Tr("report.wallet_out") }</th>
 							<th scope="col" class="py-2 pl-3 text-right">{ d.Tr("report.closing") }</th>
 						</tr>
 					</thead>
@@ -155,16 +164,16 @@ templ reportSummarySection(d web.LayoutData, v ReportsView) {
 						}
 					</tbody>
 					<tfoot>
-						<tr class="border-t border-border font-medium">
-							<th scope="row" class="py-2 pr-3 text-left text-foreground">{ v.Totals.Name }</th>
-							<td class="py-2 px-3 text-right tabular-nums text-foreground">{ v.Totals.Opening }</td>
-							<td class="py-2 px-3 text-right tabular-nums text-foreground">{ v.Totals.In }</td>
-							<td class="py-2 px-3 text-right tabular-nums text-foreground">{ v.Totals.Out }</td>
-							<td class="py-2 pl-3 text-right tabular-nums text-foreground">{ v.Totals.Closing }</td>
-						</tr>
+						for _, tot := range v.Totals {
+							<tr data-report-total={ tot.Kind } class="border-t border-border font-medium">
+								<th scope="row" colspan="4" class="py-2 pr-3 text-left text-foreground">{ tot.Label }</th>
+								<td class="py-2 pl-3 text-right tabular-nums text-foreground">{ tot.Closing }</td>
+							</tr>
+						}
 					</tfoot>
 				</table>
 			</div>
+			@reportNote("wallet-movement", d.Tr("report.wallet_movement_note"))
 		}
 	</section>
 }
@@ -175,7 +184,7 @@ templ reportCategoryList(rows []ReportCategoryRow) {
 			<li class="flex items-baseline justify-between gap-3 py-2 text-sm">
 				<span class="min-w-0 flex-1 truncate text-foreground">{ c.Name }</span>
 				<span class="shrink-0 tabular-nums text-foreground">{ c.Amount }</span>
-				<span class="w-10 shrink-0 text-right text-xs tabular-nums text-muted-foreground">{ c.Share }</span>
+				<span data-report-share="1" class="w-10 shrink-0 text-right text-xs tabular-nums text-muted-foreground">{ c.Share }</span>
 			</li>
 		}
 	</ul>
@@ -192,6 +201,7 @@ templ reportCategorySection(d web.LayoutData, v ReportsView) {
 				<div>
 					<h3 class="text-sm font-medium text-muted-foreground">{ d.Tr("report.top_categories") }</h3>
 					@reportCategoryList(v.TopSpend)
+					@reportNote("expense-only", d.Tr("report.expense_only_note"))
 				</div>
 			</div>
 		}
@@ -199,6 +209,7 @@ templ reportCategorySection(d web.LayoutData, v ReportsView) {
 			<div class="mt-6 border-t border-border pt-4">
 				<h3 class="text-sm font-medium text-muted-foreground">{ d.Tr("report.income_by_category") }</h3>
 				@reportCategoryList(v.TopIncome)
+				@reportNote("income-only", d.Tr("report.income_only_note"))
 			</div>
 		}
 	</section>
@@ -222,6 +233,7 @@ templ reportFlowsSection(d web.LayoutData, v ReportsView) {
 			@reportEmpty(d.Tr("report.no_data"))
 		} else {
 			@Chart(ReportSankeyID, "sankey", v.Sankey, "mt-3 h-96")
+			@reportNote("expense-only", d.Tr("report.expense_only_note"))
 		}
 	</section>
 }

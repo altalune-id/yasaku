@@ -3,6 +3,7 @@ package handlers_test
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -36,8 +37,6 @@ import (
 	"altalune.id/yasaku/schema"
 )
 
-// periodFixture boots the yasaku domain services over a migrated SQLite file, so the close flow
-// exercises the real stores rather than canned reader output.
 // NOTE: these tests are deliberately not t.Parallel — go-jet v2.13.0 mutates a package-global
 // expression singleton, so two concurrent SQLite writers trip the race detector (docs/BACKLOG.md).
 type periodFixture struct {
@@ -56,6 +55,7 @@ type periodFixture struct {
 	User      *user.User
 	Org       *org.Org
 	Project   *project.Project
+	Sibling   *project.Project
 	Principal session.Principal
 }
 
@@ -179,6 +179,8 @@ func newPeriodFixture(t *testing.T, caps capabilities.Capabilities) *periodFixtu
 	octx := tenant.Into(ctx, tenant.Context{OrgID: o.ID, UserID: u.ID})
 	proj, err := projects.Create(octx, o.ID, "harian", "Harian")
 	require.NoError(t, err)
+	sibling, err := projects.Create(octx, o.ID, "tetangga", "Tetangga")
+	require.NoError(t, err)
 
 	f := &periodFixture{
 		Cfg:      cfg,
@@ -195,6 +197,7 @@ func newPeriodFixture(t *testing.T, caps capabilities.Capabilities) *periodFixtu
 		User:     u,
 		Org:      o,
 		Project:  proj,
+		Sibling:  sibling,
 	}
 	f.Deps = handlers.Deps{
 		Cfg:      cfg,
@@ -208,7 +211,6 @@ func newPeriodFixture(t *testing.T, caps capabilities.Capabilities) *periodFixtu
 	return f
 }
 
-// scoped returns a context already carrying the fixture's tenant scope, the way the handlers build one.
 func (f *periodFixture) scoped(t *testing.T) context.Context {
 	t.Helper()
 	return tenant.Into(t.Context(), tenant.Context{OrgID: f.Org.ID, ProjectID: f.Project.ID, UserID: f.User.ID})
@@ -256,7 +258,6 @@ func (f *periodFixture) today(t *testing.T) civil.Date {
 	return civil.DateOf(time.Now(), loc)
 }
 
-// seedBooks opens a wallet and records one income and one expense into the project's first period.
 func (f *periodFixture) seedBooks(t *testing.T) *period.Period {
 	t.Helper()
 	ctx := f.scoped(t)
@@ -411,7 +412,7 @@ func TestPeriods_ReopenThenRecloseRefusesADifferentDate(t *testing.T) {
 
 	page := f.do(t, http.MethodGet, closePath, nil)
 	require.Equal(t, http.StatusOK, page.Code)
-	assert.Contains(t, page.Body.String(), "disabled", "the frozen end date must not be editable")
+	assert.Regexp(t, `<input[^>]*\sdisabled[\s>]`, page.Body.String(), "the frozen end date must not be editable")
 	assert.Contains(t, page.Body.String(), "period.locked_hint")
 
 	wrong := f.do(t, http.MethodPost, closePath, url.Values{"end_date": {end.AddDays(-1).String()}})
@@ -428,9 +429,13 @@ func TestPeriods_ReopenThenRecloseRefusesADifferentDate(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, period.StatusClosed, relocked.Status)
 
+	dup := f.do(t, http.MethodPost, closePath, url.Values{"end_date": {end.String()}})
+	assert.Equal(t, http.StatusOK, dup.Code, "a re-submitted re-close is state, not an error page")
+	assert.Contains(t, dup.Body.String(), "period.status_closed")
+
 	closings, err := f.Periods.Closings(f.scoped(t), cur.ID)
 	require.NoError(t, err)
-	assert.Len(t, closings, 2, "a reopened period accumulates one closing per close")
+	assert.Len(t, closings, 2, "a reopened period accumulates one closing per close, and no more")
 }
 
 func TestPeriods_PostRename_PersistsAndRefusesAnEmptyName(t *testing.T) {
@@ -518,5 +523,136 @@ func (f *periodFixture) seedClosed(ctx context.Context, t *testing.T, start, end
 	p.ClosedAt = &closedAt
 	p.Snapshot = &period.Snapshot{Currency: money.IDR, Income: 400_000, Expense: 150_000, Net: 250_000, TxCount: 3}
 	require.NoError(t, f.PerStore.Save(ctx, p))
+	return p
+}
+
+func TestPeriods_GetClose_DefaultEndDateFollowsTheConfiguredStartDay(t *testing.T) {
+	f := newPeriodFixture(t, defaultCaps())
+	ctx := f.scoped(t)
+	cur, err := period.New(f.Org.ID, f.Project.ID, civil.Date{Year: 2026, Month: 3, Day: 1}, "Maret")
+	require.NoError(t, err)
+	require.NoError(t, f.PerStore.Save(ctx, cur))
+	closePath := f.path("/periods/" + cur.ID.String() + "/close")
+
+	rec := f.do(t, http.MethodGet, closePath, nil)
+	require.Equal(t, http.StatusOK, rec.Code)
+	assert.Contains(t, rec.Body.String(), `value="2026-03-31"`,
+		"a cycle starting on the 1st closes on the last day before the next 1st")
+
+	saved := f.do(t, http.MethodPost, f.path("/settings"), url.Values{
+		"timezone":         {ledger.DefaultTimezone},
+		"currency":         {"IDR"},
+		"period_start_day": {"25"},
+	})
+	require.Equal(t, http.StatusOK, saved.Code)
+
+	again := f.do(t, http.MethodGet, closePath, nil)
+	require.Equal(t, http.StatusOK, again.Code)
+	body := again.Body.String()
+	assert.Contains(t, body, `value="2026-03-24"`,
+		"moving the payday to the 25th must move the suggested close date with it")
+	assert.NotContains(t, body, `value="2026-03-31"`)
+}
+
+func TestPeriods_GetClose_ExplicitEndDateStillWins(t *testing.T) {
+	f := newPeriodFixture(t, defaultCaps())
+	ctx := f.scoped(t)
+	cur, err := period.New(f.Org.ID, f.Project.ID, civil.Date{Year: 2026, Month: 3, Day: 1}, "Maret")
+	require.NoError(t, err)
+	require.NoError(t, f.PerStore.Save(ctx, cur))
+
+	rec := f.do(t, http.MethodGet, f.path("/periods/"+cur.ID.String()+"/close?end_date=2026-04-10"), nil)
+	require.Equal(t, http.StatusOK, rec.Code)
+	assert.Contains(t, rec.Body.String(), `value="2026-04-10"`)
+}
+
+func TestPeriods_GetPeriods_UnreadableTotalsAreNotRenderedAsZero(t *testing.T) {
+	f := newPeriodFixture(t, defaultCaps())
+	f.seedBooks(t)
+	f.Reports = report.NewService(brokenReportReader{}, discardLogger(), passthroughUnexpected(), f.Ledgers)
+
+	rec := f.do(t, http.MethodGet, f.path("/periods"), nil)
+	require.Equal(t, http.StatusOK, rec.Code)
+	body := rec.Body.String()
+	assert.Contains(t, body, "period.totals_unavailable")
+	assert.NotContains(t, body, "period.snapshot_income",
+		"an unreadable summary must not render the current period as zero money")
+}
+
+func TestPeriods_RejectsAPeriodFromASiblingProject(t *testing.T) {
+	f := newPeriodFixture(t, defaultCaps())
+	other := f.siblingPeriod(t)
+
+	cases := []struct {
+		name   string
+		method string
+		suffix string
+		form   url.Values
+	}{
+		{"get close", http.MethodGet, "/close", nil},
+		{"post close", http.MethodPost, "/close", url.Values{"end_date": {f.today(t).String()}}},
+		{"post reopen", http.MethodPost, "/reopen", url.Values{}},
+		{"post rename", http.MethodPost, "/rename", url.Values{"name": {"Bajakan"}}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := f.do(t, tc.method, f.path("/periods/"+other.ID.String()+tc.suffix), tc.form)
+			assert.Equal(t, http.StatusNotFound, rec.Code,
+				"the handler must re-scope the id, not trust the path")
+		})
+	}
+
+	own := f.do(t, http.MethodGet, "/orgs/"+f.Org.Slug+"/projects/"+f.Sibling.Slug+"/periods/"+other.ID.String()+"/close", nil)
+	require.Equal(t, http.StatusOK, own.Code,
+		"the same id under its own project must render, or the 404s above prove nothing")
+
+	still, err := f.PerStore.ByID(f.siblingScope(t), other.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "Tetangga", still.Name, "the sibling project's row must be untouched")
+	assert.Equal(t, period.StatusOpen, still.Status)
+}
+
+func TestSettings_PostSettings_NonNumericStartDayKeepsTheStoredValue(t *testing.T) {
+	f := newPeriodFixture(t, defaultCaps())
+	require.Equal(t, http.StatusOK, f.do(t, http.MethodPost, f.path("/settings"), url.Values{
+		"timezone":         {ledger.DefaultTimezone},
+		"currency":         {"IDR"},
+		"period_start_day": {"25"},
+	}).Code)
+
+	rec := f.do(t, http.MethodPost, f.path("/settings"), url.Values{
+		"timezone":         {ledger.DefaultTimezone},
+		"currency":         {"IDR"},
+		"period_start_day": {"dua puluh lima"},
+	})
+	require.Equal(t, http.StatusOK, rec.Code)
+	body := rec.Body.String()
+	assert.Contains(t, body, "LDG002")
+	assert.Contains(t, body, "dua puluh lima", "the banner must name what was submitted")
+	assert.Contains(t, body, `value="25"`, "the field must come back at the stored value")
+	assert.NotContains(t, body, `value="0"`, "0 is not a value the input's own constraints accept")
+	assert.NotContains(t, body, "settings.saved")
+
+	st, err := f.Ledgers.Get(f.scoped(t))
+	require.NoError(t, err)
+	assert.Equal(t, 25, st.PeriodStartDay)
+}
+
+type brokenReportReader struct{ report.Reader }
+
+func (brokenReportReader) Period(context.Context, uuid.UUID, uuid.UUID, uuid.UUID) (report.PeriodRef, error) {
+	return report.PeriodRef{}, errors.New("report reader is down")
+}
+
+func (f *periodFixture) siblingScope(t *testing.T) context.Context {
+	t.Helper()
+	return tenant.Into(t.Context(), tenant.Context{OrgID: f.Org.ID, ProjectID: f.Sibling.ID, UserID: f.User.ID})
+}
+
+func (f *periodFixture) siblingPeriod(t *testing.T) *period.Period {
+	t.Helper()
+	p, err := period.New(f.Org.ID, f.Sibling.ID, civil.Date{Year: 2026, Month: 3, Day: 1}, "Tetangga")
+	require.NoError(t, err)
+	require.NoError(t, f.PerStore.Save(f.siblingScope(t), p))
 	return p
 }

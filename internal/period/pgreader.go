@@ -27,6 +27,25 @@ func (s *postgresStore) ByID(ctx context.Context, id uuid.UUID) (*Period, error)
 	return s.queryOne(ctx, tx, where, id.String())
 }
 
+// ByIDLocked reads the row FOR UPDATE, so a concurrent writer blocks until the caller's unit of work commits.
+func (s *postgresStore) ByIDLocked(ctx context.Context, id uuid.UUID) (*Period, error) {
+	tx, owned, tc, err := s.txAcquire(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if owned {
+		defer func() { _ = tx.Rollback() }()
+	}
+	// SECURITY: org predicate, not RLS alone — a BYPASSRLS role would otherwise read another org's row.
+	stmt := postgres.SELECT(s.table.AllColumns).
+		FROM(s.table).
+		WHERE(s.table.ID.EQ(postgres.UUID(id)).
+			AND(s.table.OrgID.EQ(postgres.UUID(tc.OrgID)))).
+		LIMIT(1).
+		FOR(postgres.UPDATE())
+	return s.queryStmt(ctx, tx, stmt, id.String())
+}
+
 func (s *postgresStore) Current(ctx context.Context, orgID, projectID uuid.UUID) (*Period, error) {
 	tx, owned, tc, err := s.txAcquire(ctx)
 	if err != nil {
@@ -154,13 +173,16 @@ func (s *postgresStore) scope(orgID, projectID, ctxOrgID uuid.UUID) postgres.Boo
 }
 
 func (s *postgresStore) queryOne(ctx context.Context, tx qrm.Queryable, where postgres.BoolExpression, notFoundID string) (*Period, error) {
-	stmt := postgres.SELECT(s.table.AllColumns).FROM(s.table).WHERE(where).LIMIT(1)
+	return s.queryStmt(ctx, tx, postgres.SELECT(s.table.AllColumns).FROM(s.table).WHERE(where).LIMIT(1), notFoundID)
+}
+
+func (s *postgresStore) queryStmt(ctx context.Context, tx qrm.Queryable, stmt postgres.SelectStatement, notFoundID string) (*Period, error) {
 	var row pgPeriodRow
 	if qErr := stmt.QueryContext(ctx, tx, &row); qErr != nil {
 		if errors.Is(qErr, qrm.ErrNoRows) || errors.Is(qErr, sql.ErrNoRows) {
 			return nil, &NotFoundError{ID: notFoundID}
 		}
-		return nil, fmt.Errorf("period.postgres.queryOne: %w", qErr)
+		return nil, fmt.Errorf("period.postgres.queryStmt: %w", qErr)
 	}
 	return row.toPeriod()
 }

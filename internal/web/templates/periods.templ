@@ -134,7 +134,13 @@ templ periodCurrentCard(d web.LayoutData, v PeriodsView) {
 			{ d.Tr("period.start") }
 			<span class="tabular-nums">{ v.Current.Start }</span>
 		</p>
-		@periodTotals(d, v.Current)
+		if v.Current.HasTotals {
+			@periodTotals(d, v.Current)
+		} else {
+			<p class="mt-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-200">
+				{ d.Tr("period.totals_unavailable") }
+			</p>
+		}
 		<div class="mt-5 flex flex-wrap items-center gap-3">
 			<a
 				href={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/periods/"+v.Current.ID+"/close")) }
@@ -143,10 +149,12 @@ templ periodCurrentCard(d web.LayoutData, v PeriodsView) {
 				@icons.Icon("lock", "h-4 w-4")
 				{ d.Tr("period.close") }
 			</a>
-			<p class="text-xs text-muted-foreground">
-				{ d.Tr("period.tx_count") }
-				<span class="tabular-nums">{ strconv.Itoa(v.Current.TxCount) }</span>
-			</p>
+			if v.Current.HasTotals {
+				<p class="text-xs text-muted-foreground">
+					{ d.Tr("period.tx_count") }
+					<span class="tabular-nums">{ strconv.Itoa(v.Current.TxCount) }</span>
+				</p>
+			}
 		</div>
 		@periodRenameForm(d, v.ProjectSlug, v.Current)
 	</article>
@@ -334,6 +342,8 @@ templ ClosePeriodPage(d web.LayoutData, v ClosePeriodView) {
 				if v.DateLocked {
 					<input type="hidden" name="end_date" value={ v.EndDate }/>
 					<p class="mt-1.5 text-xs text-muted-foreground">{ d.Tr("period.locked_hint") }</p>
+				} else {
+					<p class="mt-1.5 text-xs text-muted-foreground">{ d.Tr("period.end_date_hint") }</p>
 				}
 				@ClosePreviewFragment(d, v)
 				<p class="mt-6 text-sm text-muted-foreground">{ d.Tr("period.close_confirm") }</p>

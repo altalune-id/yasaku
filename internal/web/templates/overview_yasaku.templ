@@ -26,6 +26,7 @@ type YasakuOverviewView struct {
 	Income      money.Amount
 	Expense     money.Amount
 	Net         money.Amount
+	Mixed       bool
 	Wallets     []YasakuWalletCard
 	Form        TxFormView
 	List        TxListView
@@ -41,6 +42,9 @@ templ YasakuOverviewPage(d web.LayoutData, v YasakuOverviewView) {
 				{ d.Tr("overview.total") }
 				<span class="ms-1 tabular-nums text-foreground/80">{ Money(d, v.Total) }</span>
 			</p>
+			if v.Mixed {
+				<p data-mixed-currency="1" class="mt-1 text-xs text-muted-foreground">{ d.Tr("overview.mixed_currency") }</p>
+			}
 		</header>
 		<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
 			@TransactionForm(d, v.Form)

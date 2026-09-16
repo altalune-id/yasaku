@@ -19,6 +19,8 @@ import (
 //nolint:gochecknoglobals // OTel tracer is a package-level fixture, not runtime state.
 var tracer = otel.Tracer("altalune.id/yasaku/internal/period")
 
+type rowReader func(ctx context.Context, id uuid.UUID) (*Period, error)
+
 // Service is the periods driving port.
 type Service struct {
 	store      Store
@@ -99,6 +101,48 @@ func (s *Service) EnsureCurrent(ctx context.Context) (*Period, error) {
 	}
 	span.SetAttributes(attribute.String("period.id", first.ID.String()))
 	return first, nil
+}
+
+// SuggestedEnd returns the end date a close of the identified period defaults to under the project's cycle settings.
+func (s *Service) SuggestedEnd(ctx context.Context, id uuid.UUID) (civil.Date, error) {
+	ctx, span := tracer.Start(ctx, "period.SuggestedEnd",
+		trace.WithAttributes(attribute.String("period.id", id.String())))
+	defer span.End()
+
+	tc, err := tenant.From(ctx)
+	if err != nil {
+		return civil.Date{}, err
+	}
+	p, err := s.scoped(ctx, tc, id)
+	if err != nil {
+		return civil.Date{}, err
+	}
+	if p.EndDate != nil {
+		return *p.EndDate, nil
+	}
+	loc, startDay, err := s.cycle(ctx, tc)
+	if err != nil {
+		return civil.Date{}, err
+	}
+	return SuggestedEnd(p.StartDate, civil.DateOf(s.now(), loc), startDay), nil
+}
+
+// Reopenable returns the one period Reopen would accept in the caller's scope, or nil when none would.
+func (s *Service) Reopenable(ctx context.Context) (*Period, error) {
+	ctx, span := tracer.Start(ctx, "period.Reopenable")
+	defer span.End()
+
+	tc, err := tenant.From(ctx)
+	if err != nil {
+		return nil, err
+	}
+	items, err := s.store.List(ctx, tc.OrgID, tc.ProjectID, ListOpts{})
+	if err != nil {
+		span.RecordError(err)
+		return nil, s.unexpected(ctx, "period.Reopenable: list", err,
+			"org_id", tc.OrgID, "project_id", tc.ProjectID)
+	}
+	return LatestClosed(items), nil
 }
 
 // Current returns the project's current period without creating one.
@@ -213,15 +257,20 @@ func (s *Service) Close(ctx context.Context, id uuid.UUID, end civil.Date, by uu
 	if err != nil {
 		return nil, err
 	}
-	p, err := s.closable(ctx, tc, id, end)
-	if err != nil {
+	if _, err := s.closable(ctx, tc, id, end); err != nil {
 		span.RecordError(err)
 		return nil, err
 	}
-	firstClose := p.EndDate == nil
 	closedAt := s.now().UTC()
+	var closed *Period
 	var snapErr error
 	txErr := s.uow(ctx, func(ctx context.Context) error {
+		// NOTE: the guard is re-read under a row lock here, so a second request for the same close cannot pass it on a stale row and append a duplicate closing.
+		p, err := s.closableLocked(ctx, tc, id, end)
+		if err != nil {
+			return err
+		}
+		firstClose := p.EndDate == nil
 		// NOTE: computed inside the unit of work so the window between freezing the totals and committing the close is the transaction's width, not unbounded; READ COMMITTED does not close it.
 		snap, err := s.snap.Snapshot(ctx, tc.OrgID, tc.ProjectID, p.ID)
 		if err != nil {
@@ -252,6 +301,7 @@ func (s *Service) Close(ctx context.Context, id uuid.UUID, end civil.Date, by uu
 		if err := s.store.SaveClosing(ctx, closing); err != nil {
 			return err
 		}
+		closed = p
 		if !firstClose {
 			return nil
 		}
@@ -271,7 +321,7 @@ func (s *Service) Close(ctx context.Context, id uuid.UUID, end civil.Date, by uu
 		}
 		return nil, s.unexpected(ctx, "period.Close: commit", txErr, "period_id", id)
 	}
-	return p, nil
+	return closed, nil
 }
 
 // Reopen unlocks the most recently closed period, keeping its end date and now-stale snapshot.
@@ -296,13 +346,9 @@ func (s *Service) Reopen(ctx context.Context, id uuid.UUID) (*Period, error) {
 		span.RecordError(err)
 		return nil, s.unexpected(ctx, "period.Reopen: list", err, "period_id", id)
 	}
-	for _, o := range siblings {
-		if o.ID == p.ID || o.IsCurrent() {
-			continue
-		}
-		if !o.IsLocked() || !o.StartDate.Before(p.StartDate) {
-			return nil, &NotLatestClosedError{ID: id.String()}
-		}
+	latest := LatestClosed(siblings)
+	if latest == nil || latest.ID != p.ID {
+		return nil, &NotLatestClosedError{ID: id.String()}
 	}
 	p.Status = StatusOpen
 	p.UpdatedAt = s.now().UTC()
@@ -389,9 +435,21 @@ func (s *Service) Closings(ctx context.Context, id uuid.UUID) ([]*Closing, error
 	return out, nil
 }
 
-// SECURITY: the store filters by org only, so the project must be checked here or a sibling project's row is reachable.
 func (s *Service) scoped(ctx context.Context, tc tenant.Context, id uuid.UUID) (*Period, error) {
-	p, err := s.store.ByID(ctx, id)
+	return s.scopedRow(ctx, tc, id, s.store.ByID)
+}
+
+func (s *Service) scopedLocked(ctx context.Context, tc tenant.Context, id uuid.UUID) (*Period, error) {
+	read := s.store.ByID
+	if ls, ok := s.store.(LockingStore); ok {
+		read = ls.ByIDLocked
+	}
+	return s.scopedRow(ctx, tc, id, read)
+}
+
+// SECURITY: the store filters by org only, so the project must be checked here or a sibling project's row is reachable.
+func (s *Service) scopedRow(ctx context.Context, tc tenant.Context, id uuid.UUID, read rowReader) (*Period, error) {
+	p, err := read(ctx, id)
 	if err != nil {
 		if IsNotFoundError(err) {
 			return nil, err
@@ -409,26 +467,44 @@ func (s *Service) closable(ctx context.Context, tc tenant.Context, id uuid.UUID,
 	if err != nil {
 		return nil, err
 	}
-	if p.IsLocked() {
-		return nil, &AlreadyClosedError{ID: id.String()}
+	if checkErr := s.checkClosable(ctx, tc, p, end); checkErr != nil {
+		return nil, checkErr
 	}
-	if p.EndDate != nil {
-		if end.Compare(*p.EndDate) != 0 {
-			return nil, &InvalidRangeError{Reason: "end date is fixed after reopen"}
-		}
-		return p, nil
-	}
-	if end.Before(p.StartDate) {
-		return nil, &InvalidRangeError{Reason: "end date is before the start date"}
-	}
-	loc, err := s.location(ctx, tc)
+	return p, nil
+}
+
+func (s *Service) closableLocked(ctx context.Context, tc tenant.Context, id uuid.UUID, end civil.Date) (*Period, error) {
+	p, err := s.scopedLocked(ctx, tc, id)
 	if err != nil {
 		return nil, err
 	}
-	if civil.DateOf(s.now(), loc).Before(end) {
-		return nil, &InvalidRangeError{Reason: "end date is in the future"}
+	if checkErr := s.checkClosable(ctx, tc, p, end); checkErr != nil {
+		return nil, checkErr
 	}
 	return p, nil
+}
+
+func (s *Service) checkClosable(ctx context.Context, tc tenant.Context, p *Period, end civil.Date) error {
+	if p.IsLocked() {
+		return &AlreadyClosedError{ID: p.ID.String()}
+	}
+	if p.EndDate != nil {
+		if end.Compare(*p.EndDate) != 0 {
+			return &InvalidRangeError{Reason: "end date is fixed after reopen"}
+		}
+		return nil
+	}
+	if end.Before(p.StartDate) {
+		return &InvalidRangeError{Reason: "end date is before the start date"}
+	}
+	loc, err := s.location(ctx, tc)
+	if err != nil {
+		return err
+	}
+	if civil.DateOf(s.now(), loc).Before(end) {
+		return &InvalidRangeError{Reason: "end date is in the future"}
+	}
+	return nil
 }
 
 func (s *Service) cycle(ctx context.Context, tc tenant.Context) (*time.Location, int, error) {

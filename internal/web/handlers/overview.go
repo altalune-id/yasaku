@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"slices"
 
 	"altalune.id/yasaku/internal/category"
 	"altalune.id/yasaku/internal/ledger"
@@ -57,7 +58,6 @@ func (h *OverviewHandler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /orgs/{org}/projects/{project}/overview", h.GetOverview)
 }
 
-// requireProject resolves the org and project the path names, gating membership before any row is read.
 func (h *OverviewHandler) requireProject(w http.ResponseWriter, r *http.Request) (projectScope, bool) {
 	p, sid, ok := h.LoadSession(r)
 	if !ok {
@@ -75,7 +75,6 @@ func (h *OverviewHandler) requireProject(w http.ResponseWriter, r *http.Request)
 	return projectScope{principal: p, sid: sid, org: o, project: proj, req: r}, true
 }
 
-// remember stores the org and project as the session's last-used pair, which only / reads.
 func (h *OverviewHandler) remember(sc projectScope) {
 	if sc.principal.ActiveOrgID == sc.org.ID && sc.principal.ActiveProjectID == sc.project.ID {
 		return
@@ -111,8 +110,6 @@ func (h *OverviewHandler) view(sc projectScope, d web.LayoutData) (templates.Yas
 	v := templates.YasakuOverviewView{
 		ProjectSlug: sc.project.Slug,
 		ProjectName: sc.project.Name,
-		Spendable:   money.Zero(cur),
-		Total:       money.Zero(cur),
 		Income:      money.Zero(cur),
 		Expense:     money.Zero(cur),
 		Net:         money.Zero(cur),
@@ -130,14 +127,8 @@ func (h *OverviewHandler) view(sc projectScope, d web.LayoutData) (templates.Yas
 			Balance:  l.Closing,
 			Excluded: l.ExcludeFromTotal,
 		})
-		if l.Closing.Currency != v.Total.Currency {
-			continue
-		}
-		v.Total = v.Total.Add(l.Closing)
-		if !l.ExcludeFromTotal {
-			v.Spendable = v.Spendable.Add(l.Closing)
-		}
 	}
+	v.Spendable, v.Total, v.Mixed = headlineTotals(lines, cur)
 
 	if err := h.fillPeriod(sc, &v); err != nil {
 		return templates.YasakuOverviewView{}, err
@@ -152,7 +143,6 @@ func (h *OverviewHandler) view(sc projectScope, d web.LayoutData) (templates.Yas
 	return v, nil
 }
 
-// fillPeriod reads the current period without creating one; a project that has none shows the empty state.
 func (h *OverviewHandler) fillPeriod(sc projectScope, v *templates.YasakuOverviewView) error {
 	cur, err := h.Periods.Current(sc.req.Context())
 	if err != nil {
@@ -173,6 +163,31 @@ func (h *OverviewHandler) fillPeriod(sc projectScope, v *templates.YasakuOvervie
 	}
 	v.Income, v.Expense, v.Net = summary.Income, summary.Expense, summary.Net
 	return nil
+}
+
+// NOTE: nothing here converts between currencies, so a wallet in another one is left out of the headline and reported as mixed.
+func headlineTotals(lines []report.WalletLine, fallback money.Currency) (spendable, total money.Amount, mixed bool) { //nolint:nonamedreturns // three return values differ in role
+	seen := make([]money.Currency, 0, 2)
+	for _, l := range lines {
+		if !slices.Contains(seen, l.Closing.Currency) {
+			seen = append(seen, l.Closing.Currency)
+		}
+	}
+	cur := fallback
+	if len(seen) == 1 {
+		cur = seen[0]
+	}
+	spendable, total = money.Zero(cur), money.Zero(cur)
+	for _, l := range lines {
+		if l.Closing.Currency != cur {
+			continue
+		}
+		total = total.Add(l.Closing)
+		if !l.ExcludeFromTotal {
+			spendable = spendable.Add(l.Closing)
+		}
+	}
+	return spendable, total, len(seen) > 1
 }
 
 func (h *OverviewHandler) title(sc projectScope) string {

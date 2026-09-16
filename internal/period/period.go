@@ -94,6 +94,67 @@ func FirstStart(today civil.Date, startDay int) civil.Date {
 	return civil.Date{Year: prev.Year, Month: prev.Month, Day: day}
 }
 
+// SuggestedEnd returns the end date a close defaults to: the day before the next cycle start, capped at today and never before start.
+func SuggestedEnd(start, today civil.Date, startDay int) civil.Date {
+	end := nextCycleStart(start, startDay).AddDays(-1)
+	if today.Before(end) {
+		end = today
+	}
+	if end.Before(start) {
+		return start
+	}
+	return end
+}
+
+func nextCycleStart(start civil.Date, startDay int) civil.Date {
+	day := ClampStartDay(startDay)
+	next := civil.Date{Year: start.Year, Month: start.Month, Day: day}
+	if !start.Before(next) {
+		next = civil.Date{Year: start.Year, Month: start.Month + 1, Day: day}
+		if start.Month == time.December {
+			next = civil.Date{Year: start.Year + 1, Month: time.January, Day: day}
+		}
+	}
+	return next
+}
+
+// LatestClosed returns the only period Reopen accepts: the newest closed one, or nil when no period may be reopened.
+func LatestClosed(items []*Period) *Period {
+	var best *Period
+	for _, p := range items {
+		if p.IsCurrent() {
+			continue
+		}
+		if !p.IsLocked() {
+			return nil
+		}
+		if best == nil || best.StartDate.Before(p.StartDate) {
+			best = p
+		}
+	}
+	if best == nil {
+		return nil
+	}
+	for _, p := range items {
+		if p.ID == best.ID || p.IsCurrent() {
+			continue
+		}
+		if !p.StartDate.Before(best.StartDate) {
+			return nil
+		}
+	}
+	return best
+}
+
+// ParseEnd reads a submitted close date, reporting a typed refusal when it is not a calendar date.
+func ParseEnd(raw string) (civil.Date, error) {
+	d, err := civil.ParseDate(strings.TrimSpace(raw))
+	if err != nil {
+		return civil.Date{}, &InvalidRangeError{Reason: "end date is not a date"}
+	}
+	return d, nil
+}
+
 // Rename replaces the display name, leaving the aggregate untouched when the name is rejected.
 func (p *Period) Rename(name string) error {
 	clean, err := cleanName(name)

@@ -67,6 +67,7 @@ type fixture struct {
 	uowCalls      int
 	insideUOW     bool
 	snapInsideUOW bool
+	beforeUOW     func()
 	ctx           context.Context //nolint:containedctx // test fixture convenience
 	tc            tenant.Context
 	now           time.Time
@@ -105,6 +106,9 @@ func newFixture(t *testing.T) *fixture {
 	f.snap.hook = func() { f.snapInsideUOW = f.insideUOW }
 	uow := func(ctx context.Context, fn func(ctx context.Context) error) error {
 		f.uowCalls++
+		if f.beforeUOW != nil {
+			f.beforeUOW()
+		}
 		f.insideUOW = true
 		defer func() { f.insideUOW = false }()
 		return fn(ctx)
@@ -586,4 +590,98 @@ func TestEnsureCurrent_RequiresTenantScope(t *testing.T) {
 	f := newFixture(t)
 	_, err := f.svc.EnsureCurrent(t.Context())
 	assert.Error(t, err)
+}
+
+func TestSuggestedEnd_HonoursTheConfiguredStartDay(t *testing.T) {
+	f := newFixture(t)
+	f.settings.startDay = 1
+	f.setNow(t, 2026, 3, 1)
+	p1, err := f.svc.EnsureCurrent(f.ctx)
+	require.NoError(t, err)
+	require.Equal(t, date(2026, 3, 1), p1.StartDate)
+
+	f.setNow(t, 2026, 9, 16)
+	got, err := f.svc.SuggestedEnd(f.ctx, p1.ID)
+	require.NoError(t, err)
+	assert.Equal(t, date(2026, 3, 31), got)
+
+	f.settings.startDay = 25
+	got, err = f.svc.SuggestedEnd(f.ctx, p1.ID)
+	require.NoError(t, err)
+	assert.Equal(t, date(2026, 3, 24), got,
+		"moving the payday to the 25th must move the suggested close date with it")
+}
+
+func TestSuggestedEnd_ReturnsTheFrozenEndAfterReopen(t *testing.T) {
+	f := newFixture(t)
+	p1, err := f.svc.EnsureCurrent(f.ctx)
+	require.NoError(t, err)
+	f.setNow(t, 2026, 9, 25)
+	_, err = f.svc.Close(f.ctx, p1.ID, date(2026, 9, 24), f.tc.UserID)
+	require.NoError(t, err)
+	_, err = f.svc.Reopen(f.ctx, p1.ID)
+	require.NoError(t, err)
+
+	got, err := f.svc.SuggestedEnd(f.ctx, p1.ID)
+	require.NoError(t, err)
+	assert.Equal(t, date(2026, 9, 24), got)
+}
+
+func TestReopenable_MatchesWhatReopenAccepts(t *testing.T) {
+	f := newFixture(t)
+	none, err := f.svc.Reopenable(f.ctx)
+	require.NoError(t, err)
+	assert.Nil(t, none)
+
+	p1, err := f.svc.EnsureCurrent(f.ctx)
+	require.NoError(t, err)
+	f.setNow(t, 2026, 9, 25)
+	_, err = f.svc.Close(f.ctx, p1.ID, date(2026, 9, 24), f.tc.UserID)
+	require.NoError(t, err)
+
+	got, err := f.svc.Reopenable(f.ctx)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, p1.ID, got.ID)
+
+	p2, err := f.svc.Current(f.ctx)
+	require.NoError(t, err)
+	f.setNow(t, 2026, 10, 25)
+	_, err = f.svc.Close(f.ctx, p2.ID, date(2026, 10, 24), f.tc.UserID)
+	require.NoError(t, err)
+
+	got, err = f.svc.Reopenable(f.ctx)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, p2.ID, got.ID)
+
+	_, err = f.svc.Reopen(f.ctx, p2.ID)
+	require.NoError(t, err)
+	got, err = f.svc.Reopenable(f.ctx)
+	require.NoError(t, err)
+	assert.Nil(t, got, "nothing may be reopened while a past period is already open")
+}
+
+func TestClose_RecheckesInsideTheUnitOfWork(t *testing.T) {
+	f := newFixture(t)
+	p1, err := f.svc.EnsureCurrent(f.ctx)
+	require.NoError(t, err)
+	f.setNow(t, 2026, 9, 25)
+	_, err = f.svc.Close(f.ctx, p1.ID, date(2026, 9, 24), f.tc.UserID)
+	require.NoError(t, err)
+	_, err = f.svc.Reopen(f.ctx, p1.ID)
+	require.NoError(t, err)
+
+	f.beforeUOW = func() {
+		f.beforeUOW = nil
+		_, raceErr := f.svc.Close(f.ctx, p1.ID, date(2026, 9, 24), f.tc.UserID)
+		require.NoError(t, raceErr, "the winning close must commit before the loser re-reads")
+	}
+	_, err = f.svc.Close(f.ctx, p1.ID, date(2026, 9, 24), f.tc.UserID)
+	assert.True(t, period.IsAlreadyClosedError(err),
+		"a close that lost the race must be refused inside the unit of work; got %T: %v", err, err)
+
+	closings, err := f.svc.Closings(f.ctx, p1.ID)
+	require.NoError(t, err)
+	assert.Len(t, closings, 2, "the losing request must not append a third closing")
 }

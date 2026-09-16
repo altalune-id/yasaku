@@ -21,6 +21,11 @@ type Store interface {
 	ListClosings(ctx context.Context, orgID, projectID, periodID uuid.UUID) ([]*Closing, error)
 }
 
+// LockingStore is the optional Store extension whose read takes a row lock inside the caller's unit of work.
+type LockingStore interface {
+	ByIDLocked(ctx context.Context, id uuid.UUID) (*Period, error)
+}
+
 // SettingsReader supplies the project's cycle settings; satisfied by the ledger module in boot.
 type SettingsReader interface {
 	Location(ctx context.Context, orgID, projectID uuid.UUID) (*time.Location, error)

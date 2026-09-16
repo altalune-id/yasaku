@@ -31,7 +31,7 @@ func (h *TxCategoryHandler) GetCategories(w http.ResponseWriter, r *http.Request
 	if !ok {
 		return
 	}
-	v, err := h.categoriesView(sc, walletError{}, -1)
+	v, err := h.categoriesView(sc, banner{}, -1)
 	if err != nil {
 		h.LogErr("web category: list", err)
 		h.ErrorPage(w, sc.req, http.StatusInternalServerError, "List failed", "Could not load categories.", err)
@@ -52,16 +52,16 @@ func (h *TxCategoryHandler) PostCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	kind, err := category.ParseKind(sc.req.PostForm.Get("kind"))
 	if err != nil {
-		h.writeTxCategoryList(w, sc, txCategoryErrorFrom(err))
+		h.writeTxCategoryList(w, sc, categoryBannerFrom(err))
 		return
 	}
 	name := strings.TrimSpace(sc.req.PostForm.Get("name"))
 	if _, err := h.TxCategories.Create(sc.req.Context(), name, kind, "", ""); err != nil {
 		h.LogErr("web category: create", err)
-		h.writeTxCategoryList(w, sc, txCategoryErrorFrom(err))
+		h.writeTxCategoryList(w, sc, categoryBannerFrom(err))
 		return
 	}
-	h.writeTxCategoryList(w, sc, walletError{})
+	h.writeTxCategoryList(w, sc, banner{})
 }
 
 // PostSeed inserts every missing default category and reports how many it added.
@@ -73,10 +73,10 @@ func (h *TxCategoryHandler) PostSeed(w http.ResponseWriter, r *http.Request) {
 	added, err := h.TxCategories.SeedDefaults(sc.req.Context())
 	if err != nil {
 		h.LogErr("web category: seed", err)
-		h.writeTxCategoryList(w, sc, txCategoryErrorFrom(err))
+		h.writeTxCategoryList(w, sc, categoryBannerFrom(err))
 		return
 	}
-	h.writeTxCategoryListSeeded(w, sc, walletError{}, added)
+	h.writeTxCategoryListSeeded(w, sc, banner{}, added)
 }
 
 // PostRename renames a category and returns the refreshed list fragment.
@@ -92,10 +92,10 @@ func (h *TxCategoryHandler) PostRename(w http.ResponseWriter, r *http.Request) {
 	name := strings.TrimSpace(sc.req.PostForm.Get("name"))
 	if _, err := h.TxCategories.Rename(sc.req.Context(), c.ID, name); err != nil {
 		h.LogErr("web category: rename", err)
-		h.writeTxCategoryList(w, sc, txCategoryErrorFrom(err))
+		h.writeTxCategoryList(w, sc, categoryBannerFrom(err))
 		return
 	}
-	h.writeTxCategoryList(w, sc, walletError{})
+	h.writeTxCategoryList(w, sc, banner{})
 }
 
 // PostArchive hides a category from the pickers and returns the refreshed list fragment.
@@ -106,10 +106,10 @@ func (h *TxCategoryHandler) PostArchive(w http.ResponseWriter, r *http.Request) 
 	}
 	if _, err := h.TxCategories.Archive(sc.req.Context(), c.ID); err != nil {
 		h.LogErr("web category: archive", err)
-		h.writeTxCategoryList(w, sc, txCategoryErrorFrom(err))
+		h.writeTxCategoryList(w, sc, categoryBannerFrom(err))
 		return
 	}
-	h.writeTxCategoryList(w, sc, walletError{})
+	h.writeTxCategoryList(w, sc, banner{})
 }
 
 // PostUnarchive returns a category to the pickers and returns the refreshed list fragment.
@@ -120,10 +120,10 @@ func (h *TxCategoryHandler) PostUnarchive(w http.ResponseWriter, r *http.Request
 	}
 	if _, err := h.TxCategories.Unarchive(sc.req.Context(), c.ID); err != nil {
 		h.LogErr("web category: unarchive", err)
-		h.writeTxCategoryList(w, sc, txCategoryErrorFrom(err))
+		h.writeTxCategoryList(w, sc, categoryBannerFrom(err))
 		return
 	}
-	h.writeTxCategoryList(w, sc, walletError{})
+	h.writeTxCategoryList(w, sc, banner{})
 }
 
 // PostDelete removes a category; one still on transactions comes back as a banner offering Archive.
@@ -134,10 +134,10 @@ func (h *TxCategoryHandler) PostDelete(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := h.TxCategories.Delete(sc.req.Context(), c.ID); err != nil {
 		h.LogErr("web category: delete", err)
-		h.writeTxCategoryList(w, sc, txCategoryErrorFrom(err))
+		h.writeTxCategoryList(w, sc, categoryBannerFrom(err))
 		return
 	}
-	h.writeTxCategoryList(w, sc, walletError{})
+	h.writeTxCategoryList(w, sc, banner{})
 }
 
 // Register wires the transaction-category routes onto mux.
@@ -151,11 +151,11 @@ func (h *TxCategoryHandler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /orgs/{org}/projects/{project}/categories/{id}/delete", h.PostDelete)
 }
 
-func txCategoryErrorFrom(err error) walletError {
+func categoryBannerFrom(err error) banner {
 	if category.IsInUseError(err) {
-		return walletError{Key: "category.in_use", Code: ErrorRef(err)}
+		return banner{Key: "category.in_use", Code: ErrorRef(err)}
 	}
-	return walletErrorFrom(err)
+	return bannerFrom(err)
 }
 
 func (h *TxCategoryHandler) requireCategory(w http.ResponseWriter, r *http.Request) (projectScope, *category.Category, bool) {
@@ -181,25 +181,23 @@ func (h *TxCategoryHandler) requireCategory(w http.ResponseWriter, r *http.Reque
 	return sc, c, true
 }
 
-// txCategoryLayout builds the full project layout; fragments use it too, so their action URLs keep the org scope.
 func (h *TxCategoryHandler) txCategoryLayout(sc projectScope) web.LayoutData {
 	return h.LayoutForProject(sc.req, "Categories · "+sc.project.Name, sc.org.Slug, sc.project, "categories")
 }
 
-func (h *TxCategoryHandler) categoriesView(sc projectScope, banner walletError, seeded int) (templates.TxCategoriesView, error) {
+func (h *TxCategoryHandler) categoriesView(sc projectScope, b banner, seeded int) (templates.TxCategoriesView, error) {
 	rows, err := h.TxCategories.List(sc.req.Context(), category.ListOpts{IncludeArchived: true})
 	if err != nil {
 		return templates.TxCategoriesView{}, err
 	}
 	v := templates.TxCategoriesView{
-		OrgSlug:     sc.org.Slug,
 		ProjectSlug: sc.project.Slug,
 		ProjectName: sc.project.Name,
 		Seeded:      seeded,
 		ShowSeeded:  seeded >= 0,
-		ErrorKey:    banner.Key,
-		ErrorMsg:    banner.Msg,
-		ErrorCode:   banner.Code,
+		ErrorKey:    b.Key,
+		ErrorMsg:    b.Msg,
+		ErrorCode:   b.Code,
 	}
 	for _, c := range rows {
 		row := templates.TxCategoryRow{
@@ -220,12 +218,12 @@ func (h *TxCategoryHandler) categoriesView(sc projectScope, banner walletError, 
 	return v, nil
 }
 
-func (h *TxCategoryHandler) writeTxCategoryList(w http.ResponseWriter, sc projectScope, banner walletError) {
-	h.writeTxCategoryListSeeded(w, sc, banner, -1)
+func (h *TxCategoryHandler) writeTxCategoryList(w http.ResponseWriter, sc projectScope, b banner) {
+	h.writeTxCategoryListSeeded(w, sc, b, -1)
 }
 
-func (h *TxCategoryHandler) writeTxCategoryListSeeded(w http.ResponseWriter, sc projectScope, banner walletError, seeded int) {
-	v, err := h.categoriesView(sc, banner, seeded)
+func (h *TxCategoryHandler) writeTxCategoryListSeeded(w http.ResponseWriter, sc projectScope, b banner, seeded int) {
+	v, err := h.categoriesView(sc, b, seeded)
 	if err != nil {
 		h.LogErr("web category: list", err)
 		h.ErrorPage(w, sc.req, http.StatusInternalServerError, "List failed", "Could not load categories.", err)

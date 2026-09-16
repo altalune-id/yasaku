@@ -15,7 +15,6 @@ type WalletKindOption struct {
 
 // WalletFormView backs both the new and the edit wallet form; an empty ID means a new wallet.
 type WalletFormView struct {
-	OrgSlug     string
 	ProjectSlug string
 	ID          string
 	Name        string
@@ -53,7 +52,6 @@ const (
 
 // WalletDetailView is one wallet with its derived balance and its most recent movements.
 type WalletDetailView struct {
-	OrgSlug     string
 	ProjectSlug string
 	Wallet      WalletRow
 	Balance     money.Amount
@@ -66,7 +64,6 @@ type WalletDetailView struct {
 
 // WalletAdjustView backs the balance-adjustment form.
 type WalletAdjustView struct {
-	OrgSlug     string
 	ProjectSlug string
 	WalletID    string
 	WalletName  string
@@ -92,7 +89,7 @@ templ WalletFormPage(d web.LayoutData, v WalletFormView) {
 				}
 			</h1>
 		</header>
-		@walletBanner(d, v.ErrorKey, v.ErrorMsg, v.ErrorCode)
+		@pageBanner(d, v.ErrorKey, v.ErrorMsg, v.ErrorCode)
 		<form
 			method="post"
 			action={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, v.Action())) }
@@ -186,7 +183,7 @@ templ WalletAdjustPage(d web.LayoutData, v WalletAdjustView) {
 			<h1 class="text-2xl font-semibold text-foreground">{ d.Tr("wallet.adjust") }</h1>
 			<p class="mt-1 truncate text-sm text-muted-foreground">{ v.WalletName }</p>
 		</header>
-		@walletBanner(d, v.ErrorKey, v.ErrorMsg, v.ErrorCode)
+		@pageBanner(d, v.ErrorKey, v.ErrorMsg, v.ErrorCode)
 		<div class="mt-6 rounded-lg border border-border bg-card px-4 py-4 shadow-sm">
 			<p class="text-sm text-muted-foreground">{ d.Tr("wallet.balance") }</p>
 			<p class="mt-1 text-2xl font-semibold tabular-nums tracking-tight text-foreground">{ Money(d, v.Current) }</p>
@@ -260,32 +257,32 @@ templ WalletDetailPage(d web.LayoutData, v WalletDetailView) {
 				{ d.Tr("wallet.title") }
 			</a>
 		</header>
-		@walletBanner(d, v.ErrorKey, v.ErrorMsg, v.ErrorCode)
+		@pageBanner(d, v.ErrorKey, v.ErrorMsg, v.ErrorCode)
 		<div class="mt-6 rounded-lg border border-border bg-card px-4 py-4 shadow-sm">
 			<p class="text-sm text-muted-foreground">{ d.Tr("wallet.balance") }</p>
 			<p class="mt-1 text-3xl font-semibold tabular-nums tracking-tight text-foreground">{ Money(d, v.Balance) }</p>
 			if v.AdjustState == AdjustUnchanged {
-				<p class="mt-2 text-sm text-muted-foreground">
-					{ d.Tr("tx.kind_adjustment") + " " + Money(d, money.Zero(v.Balance.Currency)) }
-				</p>
+				<p class="mt-2 text-sm text-muted-foreground">{ d.Tr("wallet.adjust_unchanged") }</p>
 			}
 		</div>
-		<div class="mt-4 flex flex-wrap gap-2">
-			<a
-				href={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/wallets/"+v.Wallet.ID+"/adjust")) }
-				class="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-2 text-sm font-medium text-foreground shadow-sm hover:bg-muted"
-			>
-				@icons.Icon("banknote", "h-4 w-4")
-				<span>{ d.Tr("wallet.adjust") }</span>
-			</a>
-			<a
-				href={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/wallets/"+v.Wallet.ID+"/edit")) }
-				class="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-2 text-sm font-medium text-foreground shadow-sm hover:bg-muted"
-			>
-				@icons.Icon("pencil", "h-4 w-4")
-				<span>{ d.Tr("wallet.edit") }</span>
-			</a>
-		</div>
+		if !v.Wallet.Archived {
+			<div class="mt-4 flex flex-wrap gap-2">
+				<a
+					href={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/wallets/"+v.Wallet.ID+"/adjust")) }
+					class="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-2 text-sm font-medium text-foreground shadow-sm hover:bg-muted"
+				>
+					@icons.Icon("banknote", "h-4 w-4")
+					<span>{ d.Tr("wallet.adjust") }</span>
+				</a>
+				<a
+					href={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/wallets/"+v.Wallet.ID+"/edit")) }
+					class="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-2 text-sm font-medium text-foreground shadow-sm hover:bg-muted"
+				>
+					@icons.Icon("pencil", "h-4 w-4")
+					<span>{ d.Tr("wallet.edit") }</span>
+				</a>
+			</div>
+		}
 		<h2 class="mt-8 text-sm font-medium text-muted-foreground">{ d.Tr("wallet.recent") }</h2>
 		<ul class="mt-2 divide-y divide-border/50 overflow-hidden rounded-lg border border-border bg-card shadow-sm">
 			if len(v.Recent) == 0 {
