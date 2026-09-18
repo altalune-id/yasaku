@@ -97,9 +97,22 @@ func buildMCP(
 			}
 		},
 	})
+	wellKnown := srv.WellKnown()
+	challenge := mcpsrv.ChallengeRoutes(cfg.HTTP.BasePath, cfg.MCP.ChallengeToken)
+	for pattern, h := range challenge {
+		wellKnown[pattern] = h
+	}
+	if len(challenge) == 0 {
+		// NOTE: authl re-checks the proof on a schedule, so a missing token fails admission long
+		// after boot looks healthy; say so now rather than leave it to a support ticket.
+		log.Warn("boot: mcp challenge token unset — authl cannot verify host control",
+			slog.String("set", "YASAKU_MCP_CHALLENGE_TOKEN"))
+	}
+
 	log.Info("boot: mcp enabled",
 		slog.String("endpoint", cfg.MCPEndpoint()),
 		slog.String("audience", cfg.MCP.Audience),
-		slog.Int("domains", len(mcpDomains)))
-	return srv.Handler(), srv.WellKnown(), nil
+		slog.Int("domains", len(mcpDomains)),
+		slog.Int("challenge_routes", len(challenge)))
+	return srv.Handler(), wellKnown, nil
 }

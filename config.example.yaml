@@ -148,6 +148,8 @@ mcp:
   audience: ""
   # env: YASAKU_MCP_AUDIENCE_OVERRIDE
   audienceOverride: ""
+  # env: YASAKU_MCP_CHALLENGE_TOKEN
+  challengeToken: ""
   # [bootstrap] env: YASAKU_MCP_ENABLED
   enabled: false
 

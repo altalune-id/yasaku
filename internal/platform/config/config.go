@@ -132,6 +132,8 @@ type MCPConfig struct {
 	// Audience is the RFC 8707 resource identifier bearer tokens must carry; it defaults to MCPEndpoint.
 	Audience         string `yaml:"audience"         mapstructure:"audience"         awareness:"bootstrap"`
 	AudienceOverride bool   `yaml:"audienceOverride" mapstructure:"audienceOverride" awareness:"-"`
+	// ChallengeToken is the ownership proof authl issues; it is published, not secret.
+	ChallengeToken string `yaml:"challengeToken" mapstructure:"challengeToken" awareness:"-"`
 }
 
 // MCPEndpoint returns the absolute URL the MCP surface is mounted at.
