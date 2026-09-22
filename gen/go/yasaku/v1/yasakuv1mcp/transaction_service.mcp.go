@@ -137,11 +137,12 @@ func RegisterTransactionServiceTools(reg mcp.Registry, h yasakuv1connect.Transac
 		return protojson.Marshal(resp.Msg)
 	})
 	reg.Register(mcp.ToolSpec{
-		Name:        "list_recent_tx",
-		Description: "Daftar transaksi terbaru, bisa disaring per dompet, kategori, periode atau jenis. Period must be a period ID from list_periods or current_period, never a period name. Limit defaults to 50 and is capped at 200. Pass the returned next_cursor back as cursor for the following page; an empty next_cursor means the last page. The returned total_in and total_out cover only the rows on this page, and are empty when those rows do not all share one currency.",
-		Scope:       mcp.ScopeRead,
-		Mutation:    false,
-		InputSchema: json.RawMessage(`{"type":"object","properties":{"target":{"type":"object","properties":{"org":{"type":"string"},"project":{"type":"string"}},"additionalProperties":false},"wallet":{"type":"string"},"kind":{"type":"string","description":"One of income, expense, transfer, opening, adjustment_in or adjustment_out. Empty means every kind."},"category":{"type":"string"},"period":{"type":"string","description":"Period ID from list_periods or current_period, never a period name. Empty means every period."},"limit":{"type":"integer","description":"Defaults to 50, capped at 200."},"cursor":{"type":"string"}},"additionalProperties":false}`),
+		Name:          "list_recent_tx",
+		Description:   "Daftar transaksi terbaru, bisa disaring per dompet, kategori, periode atau jenis. Period must be a period ID from list_periods or current_period, never a period name. Limit defaults to 50 and is capped at 200. Pass the returned next_cursor back as cursor for the following page; an empty next_cursor means the last page. The returned total_in and total_out cover only the rows on this page, and are empty when those rows do not all share one currency.",
+		Scope:         mcp.ScopeRead,
+		Mutation:      false,
+		InputSchema:   json.RawMessage(`{"type":"object","properties":{"target":{"type":"object","properties":{"org":{"type":"string"},"project":{"type":"string"}},"additionalProperties":false},"wallet":{"type":"string"},"kind":{"type":"string","description":"One of income, expense, transfer, opening, adjustment_in or adjustment_out. Empty means every kind."},"category":{"type":"string"},"period":{"type":"string","description":"Period ID from list_periods or current_period, never a period name. Empty means every period."},"limit":{"type":"integer","description":"Defaults to 50, capped at 200."},"cursor":{"type":"string"}},"additionalProperties":false}`),
+		UIResourceURI: "ui://yasaku/app",
 	}, func(ctx context.Context, input json.RawMessage) (json.RawMessage, error) {
 		if len(input) == 0 {
 			input = json.RawMessage(`{}`)
@@ -157,11 +158,12 @@ func RegisterTransactionServiceTools(reg mcp.Registry, h yasakuv1connect.Transac
 		return protojson.Marshal(resp.Msg)
 	})
 	reg.Register(mcp.ToolSpec{
-		Name:        "search_tx",
-		Description: "Cari transaksi berdasarkan catatannya, dengan rentang tanggal opsional. The query matches the note case-insensitively; from and to are YYYY-MM-DD and inclusive. Limit defaults to 50 and is capped at 200. Pass the returned next_cursor back as cursor for the following page. The returned total_in and total_out cover only the rows on this page, and are empty when those rows do not all share one currency.",
-		Scope:       mcp.ScopeRead,
-		Mutation:    false,
-		InputSchema: json.RawMessage(`{"type":"object","properties":{"target":{"type":"object","properties":{"org":{"type":"string"},"project":{"type":"string"}},"additionalProperties":false},"query":{"type":"string"},"from":{"type":"string"},"to":{"type":"string"},"limit":{"type":"integer","description":"Defaults to 50, capped at 200."},"cursor":{"type":"string"}},"additionalProperties":false}`),
+		Name:          "search_tx",
+		Description:   "Cari transaksi berdasarkan catatannya, dengan rentang tanggal opsional. The query matches the note case-insensitively; from and to are YYYY-MM-DD and inclusive. Limit defaults to 50 and is capped at 200. Pass the returned next_cursor back as cursor for the following page. The returned total_in and total_out cover only the rows on this page, and are empty when those rows do not all share one currency.",
+		Scope:         mcp.ScopeRead,
+		Mutation:      false,
+		InputSchema:   json.RawMessage(`{"type":"object","properties":{"target":{"type":"object","properties":{"org":{"type":"string"},"project":{"type":"string"}},"additionalProperties":false},"query":{"type":"string"},"from":{"type":"string"},"to":{"type":"string"},"limit":{"type":"integer","description":"Defaults to 50, capped at 200."},"cursor":{"type":"string"}},"additionalProperties":false}`),
+		UIResourceURI: "ui://yasaku/app",
 	}, func(ctx context.Context, input json.RawMessage) (json.RawMessage, error) {
 		if len(input) == 0 {
 			input = json.RawMessage(`{}`)

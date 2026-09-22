@@ -44,6 +44,12 @@ func TestFixturesMatchTheProtos(t *testing.T) {
 		{"period_report_sparse.json", &yasakuv1.PeriodReportResponse{}},
 		{"cashflow_report.json", &yasakuv1.CashflowReportResponse{}},
 		{"preview_close.json", &yasakuv1.PreviewCloseResponse{}},
+		{"tx_list.json", &yasakuv1.ListTransactionsResponse{}},
+		{"tx_list_sparse.json", &yasakuv1.ListTransactionsResponse{}},
+		{"wallets_list.json", &yasakuv1.ListWalletsResponse{}},
+		{"wallets_list_sparse.json", &yasakuv1.ListWalletsResponse{}},
+		{"wallet_detail.json", &yasakuv1.GetWalletResponse{}},
+		{"wallet_totals.json", &yasakuv1.WalletTotalsResponse{}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.file, func(t *testing.T) {
@@ -150,5 +156,117 @@ func TestPreviewCloseOffersCloseAction(t *testing.T) {
 	}
 	if !strings.Contains(got, `data-action="close-period"`) {
 		t.Errorf("the markup must carry data-action for boot.js delegation:\n%s", got)
+	}
+}
+
+func TestTxListRendersEveryRow(t *testing.T) {
+	vm := newJSVM(t)
+	got, actions := renderFixture(t, vm, "list_recent_tx", "tx_list.json")
+	for _, want := range []string{"Nasi goreng", "IDR 12,000", "IDR 120,000", "Food &amp; Drinks", "Tabungan", "Sisihkan"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("tx list missing %q\n%s", want, got)
+		}
+	}
+	if !strings.Contains(got, ">In<") || !strings.Contains(got, ">Out<") {
+		t.Error("tx list must show totalIn and totalOut")
+	}
+	if strings.Contains(got, "Food & Drinks") {
+		t.Error("an ampersand in a category name must be escaped")
+	}
+	if len(actions) != 0 {
+		t.Errorf("tx list declares no tool-calling actions, got %v", actions)
+	}
+}
+
+func TestSearchTxUsesTheSameRenderer(t *testing.T) {
+	vm := newJSVM(t)
+	a, _ := renderFixture(t, vm, "list_recent_tx", "tx_list.json")
+	b, _ := renderFixture(t, vm, "search_tx", "tx_list.json")
+	if a != b {
+		t.Error("search_tx and list_recent_tx return the same shape and must render identically")
+	}
+}
+
+func TestTxListSurvivesSparsePayload(t *testing.T) {
+	vm := newJSVM(t)
+	got, _ := renderFixture(t, vm, "list_recent_tx", "tx_list_sparse.json")
+	for _, bad := range []string{"undefined", "NaN", "[object Object]"} {
+		if strings.Contains(got, bad) {
+			t.Errorf("sparse tx list leaked %q:\n%s", bad, got)
+		}
+	}
+}
+
+func TestTxListEscapesNotes(t *testing.T) {
+	vm := newJSVM(t)
+	v, err := vm.RunString(`renderTool("list_recent_tx", {transactions:[{id:"x",kind:"expense",note:"<script>alert(1)</script>"}]}).html`)
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	if strings.Contains(v.String(), "<script>alert") {
+		t.Errorf("note was not escaped:\n%s", v.String())
+	}
+}
+
+func TestWalletListRendersBalancesAndKinds(t *testing.T) {
+	vm := newJSVM(t)
+	got, _ := renderFixture(t, vm, "list_wallets", "wallets_list.json")
+	for _, want := range []string{"Makan Daily Cash", "IDR 108,000", "Tabungan", "IDR 5,000,000", "cash", "savings"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("wallet list missing %q\n%s", want, got)
+		}
+	}
+	if !strings.Contains(got, "excluded") {
+		t.Errorf("a wallet with excludeFromTotal must be marked:\n%s", got)
+	}
+}
+
+func TestWalletDetailShowsRecentTransactions(t *testing.T) {
+	vm := newJSVM(t)
+	got, _ := renderFixture(t, vm, "get_wallet", "wallet_detail.json")
+	for _, want := range []string{"Makan Daily Cash", "IDR 108,000", "Nasi goreng", "IDR 120,000"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("wallet detail missing %q\n%s", want, got)
+		}
+	}
+}
+
+func TestWalletTotalsDistinguishesSpendableFromTotal(t *testing.T) {
+	vm := newJSVM(t)
+	got, _ := renderFixture(t, vm, "wallet_totals", "wallet_totals.json")
+	for _, want := range []string{"IDR 108,000", "IDR 5,108,000", "September 2026", "Tabungan"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("wallet totals missing %q\n%s", want, got)
+		}
+	}
+	if !strings.Contains(got, "Spendable") {
+		t.Errorf("spendable total must be labelled distinctly from total:\n%s", got)
+	}
+}
+
+func TestWalletViewsSurviveSparsePayloads(t *testing.T) {
+	vm := newJSVM(t)
+	for _, tc := range []struct{ tool, fixture string }{
+		{"list_wallets", "wallets_list_sparse.json"},
+		{"get_wallet", "tx_list_sparse.json"},
+		{"wallet_totals", "tx_list_sparse.json"},
+	} {
+		got, _ := renderFixture(t, vm, tc.tool, tc.fixture)
+		for _, bad := range []string{"undefined", "NaN", "[object Object]"} {
+			if strings.Contains(got, bad) {
+				t.Errorf("%s on sparse payload leaked %q:\n%s", tc.tool, bad, got)
+			}
+		}
+	}
+}
+
+func TestWalletNamesAreEscaped(t *testing.T) {
+	vm := newJSVM(t)
+	v, err := vm.RunString(`renderTool("list_wallets", {wallets:[{id:"w",name:"<img src=x onerror=alert(1)>"}]}).html`)
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	if strings.Contains(v.String(), "<img src=x") {
+		t.Errorf("wallet name was not escaped:\n%s", v.String())
 	}
 }

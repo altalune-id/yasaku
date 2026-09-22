@@ -17,11 +17,12 @@ import (
 // RegisterWalletServiceTools registers every MCP-annotated WalletService method on reg.
 func RegisterWalletServiceTools(reg mcp.Registry, h yasakuv1connect.WalletServiceHandler) {
 	reg.Register(mcp.ToolSpec{
-		Name:        "list_wallets",
-		Description: "Daftar dompet beserta saldo terkininya. Balances are derived from transactions, never stored. Archived wallets are hidden unless include_archived is true.",
-		Scope:       mcp.ScopeRead,
-		Mutation:    false,
-		InputSchema: json.RawMessage(`{"type":"object","properties":{"target":{"type":"object","properties":{"org":{"type":"string"},"project":{"type":"string"}},"additionalProperties":false},"includeArchived":{"type":"boolean"}},"additionalProperties":false}`),
+		Name:          "list_wallets",
+		Description:   "Daftar dompet beserta saldo terkininya. Balances are derived from transactions, never stored. Archived wallets are hidden unless include_archived is true.",
+		Scope:         mcp.ScopeRead,
+		Mutation:      false,
+		InputSchema:   json.RawMessage(`{"type":"object","properties":{"target":{"type":"object","properties":{"org":{"type":"string"},"project":{"type":"string"}},"additionalProperties":false},"includeArchived":{"type":"boolean"}},"additionalProperties":false}`),
+		UIResourceURI: "ui://yasaku/app",
 	}, func(ctx context.Context, input json.RawMessage) (json.RawMessage, error) {
 		if len(input) == 0 {
 			input = json.RawMessage(`{}`)
@@ -37,11 +38,12 @@ func RegisterWalletServiceTools(reg mcp.Registry, h yasakuv1connect.WalletServic
 		return protojson.Marshal(resp.Msg)
 	})
 	reg.Register(mcp.ToolSpec{
-		Name:        "get_wallet",
-		Description: "Detail satu dompet beserta transaksi terakhirnya. The wallet is addressed by name or id; a name that matches more than one wallet is refused with the candidates.",
-		Scope:       mcp.ScopeRead,
-		Mutation:    false,
-		InputSchema: json.RawMessage(`{"type":"object","properties":{"target":{"type":"object","properties":{"org":{"type":"string"},"project":{"type":"string"}},"additionalProperties":false},"wallet":{"type":"string"}},"additionalProperties":false}`),
+		Name:          "get_wallet",
+		Description:   "Detail satu dompet beserta transaksi terakhirnya. The wallet is addressed by name or id; a name that matches more than one wallet is refused with the candidates.",
+		Scope:         mcp.ScopeRead,
+		Mutation:      false,
+		InputSchema:   json.RawMessage(`{"type":"object","properties":{"target":{"type":"object","properties":{"org":{"type":"string"},"project":{"type":"string"}},"additionalProperties":false},"wallet":{"type":"string"}},"additionalProperties":false}`),
+		UIResourceURI: "ui://yasaku/app",
 	}, func(ctx context.Context, input json.RawMessage) (json.RawMessage, error) {
 		if len(input) == 0 {
 			input = json.RawMessage(`{}`)
@@ -137,11 +139,12 @@ func RegisterWalletServiceTools(reg mcp.Registry, h yasakuv1connect.WalletServic
 		return protojson.Marshal(resp.Msg)
 	})
 	reg.Register(mcp.ToolSpec{
-		Name:        "wallet_totals",
-		Description: "Ringkasan uang: total bisa dipakai, total semua dompet, dan pemasukan, pengeluaran serta selisih periode berjalan. The spendable total leaves out wallets flagged exclude_from_total.",
-		Scope:       mcp.ScopeRead,
-		Mutation:    false,
-		InputSchema: json.RawMessage(`{"type":"object","properties":{"target":{"type":"object","properties":{"org":{"type":"string"},"project":{"type":"string"}},"additionalProperties":false}},"additionalProperties":false}`),
+		Name:          "wallet_totals",
+		Description:   "Ringkasan uang: total bisa dipakai, total semua dompet, dan pemasukan, pengeluaran serta selisih periode berjalan. The spendable total leaves out wallets flagged exclude_from_total.",
+		Scope:         mcp.ScopeRead,
+		Mutation:      false,
+		InputSchema:   json.RawMessage(`{"type":"object","properties":{"target":{"type":"object","properties":{"org":{"type":"string"},"project":{"type":"string"}},"additionalProperties":false}},"additionalProperties":false}`),
+		UIResourceURI: "ui://yasaku/app",
 	}, func(ctx context.Context, input json.RawMessage) (json.RawMessage, error) {
 		if len(input) == 0 {
 			input = json.RawMessage(`{}`)

@@ -123,7 +123,7 @@ func (s *Server) trace(next sdk.MethodHandler) sdk.MethodHandler {
 	return func(ctx context.Context, method string, req sdk.Request) (sdk.Result, error) {
 		res, err := next(ctx, method, req)
 		if method != "initialize" {
-			s.logger.InfoContext(ctx, "mcp: request", "method", method)
+			s.logger.DebugContext(ctx, "mcp: request", "method", method)
 			return res, err
 		}
 		attrs := []any{"method", method}

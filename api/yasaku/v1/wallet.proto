@@ -17,6 +17,7 @@ service WalletService {
       name: "list_wallets"
       description: "Daftar dompet beserta saldo terkininya. Balances are derived from transactions, never stored. Archived wallets are hidden unless include_archived is true."
       access: ACCESS_READ
+      ui: "app"
     };
   }
   rpc GetWallet(GetWalletRequest) returns (GetWalletResponse) {
@@ -24,6 +25,7 @@ service WalletService {
       name: "get_wallet"
       description: "Detail satu dompet beserta transaksi terakhirnya. The wallet is addressed by name or id; a name that matches more than one wallet is refused with the candidates."
       access: ACCESS_READ
+      ui: "app"
     };
   }
   rpc CreateWallet(CreateWalletRequest) returns (CreateWalletResponse) {
@@ -65,6 +67,7 @@ service WalletService {
       name: "wallet_totals"
       description: "Ringkasan uang: total bisa dipakai, total semua dompet, dan pemasukan, pengeluaran serta selisih periode berjalan. The spendable total leaves out wallets flagged exclude_from_total."
       access: ACCESS_READ
+      ui: "app"
     };
   }
 }

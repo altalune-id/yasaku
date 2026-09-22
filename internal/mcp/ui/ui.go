@@ -13,7 +13,7 @@ import (
 const ResourceURI = "ui://yasaku/app"
 
 //go:embed shell.html app.css assets/ext-apps-2.0.0.js
-//go:embed src/html.js src/format.js src/charts.js src/registry.js src/views/report.js src/bridge.js src/boot.js
+//go:embed src/html.js src/format.js src/charts.js src/registry.js src/views/report.js src/views/tx.js src/views/wallets.js src/bridge.js src/boot.js
 var files embed.FS
 
 const vendorPart = "assets/ext-apps-2.0.0.js"
@@ -28,6 +28,8 @@ var scriptParts = []string{
 	"src/charts.js",
 	"src/registry.js",
 	"src/views/report.js",
+	"src/views/tx.js",
+	"src/views/wallets.js",
 	"src/bridge.js",
 	"src/boot.js",
 }

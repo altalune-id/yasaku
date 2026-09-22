@@ -64,6 +64,7 @@ service TransactionService {
       name: "list_recent_tx"
       description: "Daftar transaksi terbaru, bisa disaring per dompet, kategori, periode atau jenis. Period must be a period ID from list_periods or current_period, never a period name. Limit defaults to 50 and is capped at 200. Pass the returned next_cursor back as cursor for the following page; an empty next_cursor means the last page. The returned total_in and total_out cover only the rows on this page, and are empty when those rows do not all share one currency."
       access: ACCESS_READ
+      ui: "app"
     };
   }
   rpc SearchTransactions(SearchTransactionsRequest) returns (SearchTransactionsResponse) {
@@ -71,6 +72,7 @@ service TransactionService {
       name: "search_tx"
       description: "Cari transaksi berdasarkan catatannya, dengan rentang tanggal opsional. The query matches the note case-insensitively; from and to are YYYY-MM-DD and inclusive. Limit defaults to 50 and is capped at 200. Pass the returned next_cursor back as cursor for the following page. The returned total_in and total_out cover only the rows on this page, and are empty when those rows do not all share one currency."
       access: ACCESS_READ
+      ui: "app"
     };
   }
   rpc SuggestCategory(SuggestCategoryRequest) returns (SuggestCategoryResponse);
