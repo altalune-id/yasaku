@@ -17,6 +17,7 @@ service TransactionService {
       description: "Catat pengeluaran (uang keluar) dari sebuah dompet. Amount in major units of the wallet currency. Wallet and category accept a name or an id, but period must be a period ID from list_periods or current_period, never a period name. Call without confirm to preview; call again with confirm=true to save. The preview is the resolved intent, not the saved record: it carries no id and no timestamps, and a concurrent write landing in between can change what is actually saved."
       access: ACCESS_WRITE
       mutation: true
+      ui: "app"
     };
   }
   rpc RecordIncome(RecordIncomeRequest) returns (RecordIncomeResponse) {
@@ -25,6 +26,7 @@ service TransactionService {
       description: "Catat pemasukan (uang masuk) ke sebuah dompet. Amount in major units of the wallet currency. Wallet and category accept a name or an id, but period must be a period ID from list_periods or current_period, never a period name. Call without confirm to preview; call again with confirm=true to save. The preview is the resolved intent, not the saved record: it carries no id and no timestamps, and a concurrent write landing in between can change what is actually saved."
       access: ACCESS_WRITE
       mutation: true
+      ui: "app"
     };
   }
   rpc RecordTransfer(RecordTransferRequest) returns (RecordTransferResponse) {
@@ -33,6 +35,7 @@ service TransactionService {
       description: "Pindahkan uang antar dompet milik sendiri; ini bukan pengeluaran. Both wallets must hold the same currency and a transfer carries no category. Wallets accept a name or an id, but period must be a period ID from list_periods or current_period, never a period name. Call without confirm to preview; call again with confirm=true to save. The preview is the resolved intent, not the saved record: it carries no id and no timestamps, and a concurrent write landing in between can change what is actually saved."
       access: ACCESS_WRITE
       mutation: true
+      ui: "app"
     };
   }
   rpc RecordBatch(RecordBatchRequest) returns (RecordBatchResponse) {
@@ -41,6 +44,7 @@ service TransactionService {
       description: "Catat banyak transaksi sekaligus, misalnya dari satu cerita panjang. Each item is recorded independently, so one bad row does not undo the rest; read the per-item outcomes. Item kind is income, expense or transfer only. Each item's period must be a period ID from list_periods or current_period, never a period name. Call without confirm to preview; call again with confirm=true to save. Each previewed outcome is the resolved intent, not the saved record: it carries no id and no timestamps, and a concurrent write landing in between can change what is actually saved."
       access: ACCESS_WRITE
       mutation: true
+      ui: "app"
     };
   }
   rpc ReviseTransaction(ReviseTransactionRequest) returns (ReviseTransactionResponse) {
@@ -49,6 +53,7 @@ service TransactionService {
       description: "Perbaiki transaksi yang sudah dicatat. Only the fields you send are changed; an empty category clears it. Period must be a period ID from list_periods or current_period, never a period name. A transaction inside a closed period is refused until the period is reopened. Call without confirm to preview; call again with confirm=true to save. The preview is the resolved intent, not the saved record: its id is real but its timestamps are not final, and a concurrent write landing in between can change what is actually saved."
       access: ACCESS_WRITE
       mutation: true
+      ui: "app"
     };
   }
   rpc DeleteTransaction(DeleteTransactionRequest) returns (DeleteTransactionResponse) {
@@ -57,6 +62,7 @@ service TransactionService {
       description: "Hapus transaksi secara permanen. A transaction inside a closed period is refused until the period is reopened. Call without confirm to preview which row would go; call again with confirm=true to delete. The preview is the resolved intent read at preview time; a concurrent write landing in between can change what is actually deleted."
       access: ACCESS_WRITE
       mutation: true
+      ui: "app"
     };
   }
   rpc ListTransactions(ListTransactionsRequest) returns (ListTransactionsResponse) {

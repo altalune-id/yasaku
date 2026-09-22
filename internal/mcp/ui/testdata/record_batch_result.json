@@ -1,0 +1,4 @@
+{"results":[
+  {"transaction":{"id":"tx_a","kind":"expense","wallet":{"id":"wal_bca","name":"Makan Daily Cash"},"amount":{"amount":"12000","currency":"IDR"}}},
+  {"index":1,"error":"period is closed"}
+]}

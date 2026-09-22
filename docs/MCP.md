@@ -185,9 +185,18 @@ ChatGPT.
 `permissions` are forbidden on tool `_meta` and belong on the resource.
 Set `mcp.appsUI=true` to publish the resource; it defaults to false.
 
-Eight tools carry the link today: `period_report`, `cashflow_report`,
-`preview_close`, `list_wallets`, `get_wallet`, `wallet_totals`,
-`list_recent_tx` and `search_tx`. The
+**All 27 tools carry the link.** The bundle routes on tool name: reads render a
+card or chart, and the 14 mutations share one phase machine driven by the
+`{needs, preview, result, warning}` envelope — `needs` renders an editable form
+with the server's `candidates` as pickers, `preview` renders the resolved intent
+plus a Confirm control, and `result` renders a receipt.
+
+A commit is never rebuilt from the response. Several previews cannot round-trip
+into their own request — `close_period`'s is a bare `Snapshot` with no period id,
+and `adjust_balance`'s carries the computed delta rather than the target balance.
+The bundle instead merges the original tool arguments (delivered on
+`ui/notifications/tool-input`) with `confirm: true`, which is also how `target`
+survives the round trip. The
 bundle is one resource, `ui://yasaku/app`, assembled in `internal/mcp/ui` from
 ordered source parts and published only when `mcp.appsUI=true`.
 

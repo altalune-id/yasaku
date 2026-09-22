@@ -15,6 +15,7 @@ service PeriodService {
       name: "current_period"
       description: "Periode berjalan beserta total sementaranya. The running snapshot is computed live and changes with every transaction until the period is closed."
       access: ACCESS_READ
+      ui: "app"
     };
   }
   rpc ListPeriods(ListPeriodsRequest) returns (ListPeriodsResponse) {
@@ -22,6 +23,7 @@ service PeriodService {
       name: "list_periods"
       description: "Daftar periode, terbaru dulu. Use the returned id wherever another tool asks for a period. A closed period carries the snapshot frozen at its close; the current period has an empty end_date. Limit defaults to every period in the project."
       access: ACCESS_READ
+      ui: "app"
     };
   }
   rpc PreviewClose(PreviewCloseRequest) returns (PreviewCloseResponse) {
@@ -38,6 +40,7 @@ service PeriodService {
       description: "Tutup buku: bekukan total periode dan buka periode berikutnya keesokan harinya. Period must be a period ID from list_periods or current_period, never a period name; leave it empty for the current period. The end date is YYYY-MM-DD and must be today or earlier. A closed period refuses new transactions until it is reopened. Call without confirm to preview the snapshot; call again with confirm=true to close. The preview is the resolved intent, not the frozen record: it is recomputed at close time, so a transaction landing in between changes the totals that are actually saved."
       access: ACCESS_WRITE
       mutation: true
+      ui: "app"
     };
   }
   rpc ReopenPeriod(ReopenPeriodRequest) returns (ReopenPeriodResponse) {
@@ -46,6 +49,7 @@ service PeriodService {
       description: "Buka kembali periode yang paling terakhir ditutup supaya transaksinya bisa diperbaiki. Period must be a period ID from list_periods, never a period name. Only the latest closed period may be reopened, and its end date stays fixed. Call without confirm to preview; call again with confirm=true to reopen. The preview is the stored period read at preview time, so a concurrent close landing in between can change what is actually reopened."
       access: ACCESS_WRITE
       mutation: true
+      ui: "app"
     };
   }
   rpc RenamePeriod(RenamePeriodRequest) returns (RenamePeriodResponse);

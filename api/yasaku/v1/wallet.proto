@@ -34,6 +34,7 @@ service WalletService {
       description: "Buat dompet baru, boleh sekalian dengan saldo awal. Kind is one of cash, bank, ewallet, savings, investment or other; currency is immutable once set. Savings and investment wallets default to being excluded from the spendable total. Call without confirm to preview; call again with confirm=true to save. The preview is the resolved intent, not the saved record: it carries no id and no timestamps, and a concurrent write landing in between can change what is actually saved."
       access: ACCESS_WRITE
       mutation: true
+      ui: "app"
     };
   }
   rpc UpdateWallet(UpdateWalletRequest) returns (UpdateWalletResponse) {
@@ -42,6 +43,7 @@ service WalletService {
       description: "Ubah nama, jenis, penyedia atau flag exclude_from_total sebuah dompet. Only the fields you send are changed; kind is one of cash, bank, ewallet, savings, investment or other. Currency cannot be changed and an archived wallet must be unarchived first. Call without confirm to preview; call again with confirm=true to save. The preview is the resolved intent, not the saved record: it is the stored row with your changes applied, and a concurrent write landing in between can change what is actually saved."
       access: ACCESS_WRITE
       mutation: true
+      ui: "app"
     };
   }
   rpc ArchiveWallet(ArchiveWalletRequest) returns (ArchiveWalletResponse) {
@@ -50,6 +52,7 @@ service WalletService {
       description: "Arsipkan dompet yang sudah tidak dipakai; riwayat transaksinya tetap utuh dan namanya bebas dipakai ulang. An archived wallet refuses new transactions. Call without confirm to preview; call again with confirm=true to archive. The preview is the wallet as it stands now, read at preview time, so a concurrent write landing in between can change what is actually archived."
       access: ACCESS_WRITE
       mutation: true
+      ui: "app"
     };
   }
   rpc UnarchiveWallet(UnarchiveWalletRequest) returns (UnarchiveWalletResponse);
@@ -60,6 +63,7 @@ service WalletService {
       description: "Samakan saldo dompet dengan hitungan sebenarnya dengan menulis satu transaksi penyesuaian. Give the balance the wallet should end up with, in major units of its currency, not the difference. The date is YYYY-MM-DD and empty means today. When the wallet already holds that balance nothing is written and both preview and result come back empty. Call without confirm to preview; call again with confirm=true to save. The preview is the resolved intent, not the saved record: it carries no id and no timestamps, and a concurrent write landing in between can change both the adjustment and the balance it lands on."
       access: ACCESS_WRITE
       mutation: true
+      ui: "app"
     };
   }
   rpc WalletTotals(WalletTotalsRequest) returns (WalletTotalsResponse) {

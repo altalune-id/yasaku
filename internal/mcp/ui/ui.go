@@ -13,23 +13,26 @@ import (
 const ResourceURI = "ui://yasaku/app"
 
 //go:embed shell.html app.css assets/ext-apps-2.0.0.js
-//go:embed src/html.js src/format.js src/charts.js src/registry.js src/views/report.js src/views/tx.js src/views/wallets.js src/bridge.js src/boot.js
+//go:embed src/html.js src/format.js src/phase.js src/charts.js src/registry.js src/views/report.js src/views/tx.js src/views/wallets.js src/views/lists.js src/views/mutation.js src/views/bulk.js src/bridge.js src/boot.js
 var files embed.FS
 
 const vendorPart = "assets/ext-apps-2.0.0.js"
 
-// NOTE: order matters — these share one global scope, so helpers must evaluate
-// before the views that use them, and boot.js last. Never replace with a glob.
+// NOTE: registry.js must precede every views/ entry — const VIEWS is in the TDZ until it runs, and views call registerView at load. Pinned by TestRegistryLoadsBeforeAnyView.
 //
 //nolint:gochecknoglobals // an ordered embed manifest has to be package level.
 var scriptParts = []string{
 	"src/html.js",
 	"src/format.js",
+	"src/phase.js",
 	"src/charts.js",
 	"src/registry.js",
 	"src/views/report.js",
 	"src/views/tx.js",
 	"src/views/wallets.js",
+	"src/views/lists.js",
+	"src/views/mutation.js",
+	"src/views/bulk.js",
 	"src/bridge.js",
 	"src/boot.js",
 }

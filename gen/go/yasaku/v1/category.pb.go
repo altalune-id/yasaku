@@ -1057,19 +1057,19 @@ const file_yasaku_v1_category_proto_rawDesc = "" +
 	"\x05needs\x18\x01 \x01(\v2\x10.yasaku.v1.NeedsR\x05needs\x12#\n" +
 	"\rpreview_count\x18\x02 \x01(\x05R\fpreviewCount\x12\x1a\n" +
 	"\binserted\x18\x03 \x01(\x05R\binserted\x12\x18\n" +
-	"\awarning\x18\x04 \x01(\tR\awarning2\xbe\x0f\n" +
-	"\x0fCategoryService\x12\xae\x02\n" +
-	"\x0eListCategories\x12 .yasaku.v1.ListCategoriesRequest\x1a!.yasaku.v1.ListCategoriesResponse\"\xd6\x01\xca\xf3\x18\xd1\x01\n" +
-	"\x0flist_categories\x12\xbb\x01Daftar kategori pengeluaran dan pemasukan milik proyek. Filter by kind \"expense\" or \"income\", or leave kind empty for both. Archived categories are hidden unless include_archived is true.\x18\x01\x12\xfb\x04\n" +
-	"\x0eCreateCategory\x12 .yasaku.v1.CreateCategoryRequest\x1a!.yasaku.v1.CreateCategoryResponse\"\xa3\x04\xca\xf3\x18\x9e\x04\n" +
-	"\x0fcreate_category\x12\x86\x04Buat kategori baru. Kind is expense or income and cannot be changed afterwards. Icon must come from a fixed allow-list and colour must be chart-1 through chart-5 or a #rrggbb hex value; an unaccepted icon or colour comes back in needs.candidates rather than being saved. Both may be left empty. Call without confirm to preview; call again with confirm=true to save. The preview is the resolved intent, not the saved record: it carries no id, and a concurrent write landing in between can change what is actually saved.\x18\x02 \x01\x12U\n" +
+	"\awarning\x18\x04 \x01(\tR\awarning2\xcd\x0f\n" +
+	"\x0fCategoryService\x12\xb3\x02\n" +
+	"\x0eListCategories\x12 .yasaku.v1.ListCategoriesRequest\x1a!.yasaku.v1.ListCategoriesResponse\"\xdb\x01\xca\xf3\x18\xd6\x01\n" +
+	"\x0flist_categories\x12\xbb\x01Daftar kategori pengeluaran dan pemasukan milik proyek. Filter by kind \"expense\" or \"income\", or leave kind empty for both. Archived categories are hidden unless include_archived is true.\x18\x01*\x03app\x12\x80\x05\n" +
+	"\x0eCreateCategory\x12 .yasaku.v1.CreateCategoryRequest\x1a!.yasaku.v1.CreateCategoryResponse\"\xa8\x04\xca\xf3\x18\xa3\x04\n" +
+	"\x0fcreate_category\x12\x86\x04Buat kategori baru. Kind is expense or income and cannot be changed afterwards. Icon must come from a fixed allow-list and colour must be chart-1 through chart-5 or a #rrggbb hex value; an unaccepted icon or colour comes back in needs.candidates rather than being saved. Both may be left empty. Call without confirm to preview; call again with confirm=true to save. The preview is the resolved intent, not the saved record: it carries no id, and a concurrent write landing in between can change what is actually saved.\x18\x02 \x01*\x03app\x12U\n" +
 	"\x0eRenameCategory\x12 .yasaku.v1.RenameCategoryRequest\x1a!.yasaku.v1.RenameCategoryResponse\x12U\n" +
 	"\x0eUpdateCategory\x12 .yasaku.v1.UpdateCategoryRequest\x1a!.yasaku.v1.UpdateCategoryResponse\x12X\n" +
 	"\x0fArchiveCategory\x12!.yasaku.v1.ArchiveCategoryRequest\x1a\".yasaku.v1.ArchiveCategoryResponse\x12^\n" +
 	"\x11UnarchiveCategory\x12#.yasaku.v1.UnarchiveCategoryRequest\x1a$.yasaku.v1.UnarchiveCategoryResponse\x12U\n" +
-	"\x0eDeleteCategory\x12 .yasaku.v1.DeleteCategoryRequest\x1a!.yasaku.v1.DeleteCategoryResponse\x12\xbc\x04\n" +
-	"\x15SeedDefaultCategories\x12'.yasaku.v1.SeedDefaultCategoriesRequest\x1a(.yasaku.v1.SeedDefaultCategoriesResponse\"\xcf\x03\xca\xf3\x18\xca\x03\n" +
-	"\x17seed_default_categories\x12\xaa\x03Isi proyek dengan kategori bawaan (13 pengeluaran, 7 pemasukan). Idempotent: a default whose name already exists is skipped, so nothing is duplicated. Call without confirm to preview how many would be added as preview_count; call again with confirm=true to insert them and read inserted. The preview count is the resolved intent, not the saved outcome: a concurrent seed landing in between can make fewer rows actually insert.\x18\x02 \x01B\x91\x01\n" +
+	"\x0eDeleteCategory\x12 .yasaku.v1.DeleteCategoryRequest\x1a!.yasaku.v1.DeleteCategoryResponse\x12\xc1\x04\n" +
+	"\x15SeedDefaultCategories\x12'.yasaku.v1.SeedDefaultCategoriesRequest\x1a(.yasaku.v1.SeedDefaultCategoriesResponse\"\xd4\x03\xca\xf3\x18\xcf\x03\n" +
+	"\x17seed_default_categories\x12\xaa\x03Isi proyek dengan kategori bawaan (13 pengeluaran, 7 pemasukan). Idempotent: a default whose name already exists is skipped, so nothing is duplicated. Call without confirm to preview how many would be added as preview_count; call again with confirm=true to insert them and read inserted. The preview count is the resolved intent, not the saved outcome: a concurrent seed landing in between can make fewer rows actually insert.\x18\x02 \x01*\x03appB\x91\x01\n" +
 	"\rcom.yasaku.v1B\rCategoryProtoP\x01Z,altalune.id/yasaku/gen/go/yasaku/v1;yasakuv1\xa2\x02\x03YXX\xaa\x02\tYasaku.V1\xca\x02\tYasaku\\V1\xe2\x02\x15Yasaku\\V1\\GPBMetadata\xea\x02\n" +
 	"Yasaku::V1b\x06proto3"
 

@@ -25,7 +25,7 @@ function txRow(t) {
   </div>`;
 }
 
-function txListView(d) {
+function txListView(d, action) {
   const rows = d.transactions || [];
   if (!rows.length) {
     return html`<div class="ya-root"><p class="ya-muted">No transactions yet.</p></div>`;
@@ -37,7 +37,9 @@ function txListView(d) {
         ${raw(kpi("Rows", num(rows.length)))}
       </div>`
     : "";
-  const more = d.nextCursor ? html`<p class="ya-muted">More rows available.</p>` : "";
+  const more = d.nextCursor
+    ? html`<div><button class="ya-action" type="button" data-action="${action("more", "list_recent_tx", { cursor: d.nextCursor })}">Load more</button></div>`
+    : "";
   return html`<div class="ya-root">
     ${raw(totals)}
     <div class="ya-card">${raw(rows.map(txRow).join(""))}</div>

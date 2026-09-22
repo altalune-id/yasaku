@@ -2,6 +2,7 @@ package ui
 
 import (
 	"os"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -85,4 +86,16 @@ func TestDumpBundle(t *testing.T) {
 		t.Fatalf("write: %v", err)
 	}
 	t.Logf("wrote %s", path)
+}
+
+func TestRegistryLoadsBeforeAnyView(t *testing.T) {
+	registry := slices.Index(scriptParts, "src/registry.js")
+	if registry < 0 {
+		t.Fatal("src/registry.js is not in scriptParts")
+	}
+	for i, p := range scriptParts {
+		if strings.HasPrefix(p, "src/views/") && i < registry {
+			t.Errorf("%s loads before src/registry.js; registerView would hit the TDZ on const VIEWS and blank the panel", p)
+		}
+	}
 }

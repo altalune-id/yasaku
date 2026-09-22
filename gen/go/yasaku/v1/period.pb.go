@@ -1001,18 +1001,18 @@ const file_yasaku_v1_period_proto_rawDesc = "" +
 	"\x06period\x18\x02 \x01(\tR\x06period\x12\x12\n" +
 	"\x04name\x18\x03 \x01(\tR\x04name\"A\n" +
 	"\x14RenamePeriodResponse\x12)\n" +
-	"\x06period\x18\x01 \x01(\v2\x11.yasaku.v1.PeriodR\x06period2\xa3\x12\n" +
-	"\rPeriodService\x12\x89\x02\n" +
-	"\x10GetCurrentPeriod\x12\".yasaku.v1.GetCurrentPeriodRequest\x1a#.yasaku.v1.GetCurrentPeriodResponse\"\xab\x01\xca\xf3\x18\xa6\x01\n" +
-	"\x0ecurrent_period\x12\x91\x01Periode berjalan beserta total sementaranya. The running snapshot is computed live and changes with every transaction until the period is closed.\x18\x01\x12\xd4\x02\n" +
-	"\vListPeriods\x12\x1d.yasaku.v1.ListPeriodsRequest\x1a\x1e.yasaku.v1.ListPeriodsResponse\"\x85\x02\xca\xf3\x18\x80\x02\n" +
-	"\flist_periods\x12\xed\x01Daftar periode, terbaru dulu. Use the returned id wherever another tool asks for a period. A closed period carries the snapshot frozen at its close; the current period has an empty end_date. Limit defaults to every period in the project.\x18\x01\x12\x89\x03\n" +
+	"\x06period\x18\x01 \x01(\v2\x11.yasaku.v1.PeriodR\x06period2\xb7\x12\n" +
+	"\rPeriodService\x12\x8e\x02\n" +
+	"\x10GetCurrentPeriod\x12\".yasaku.v1.GetCurrentPeriodRequest\x1a#.yasaku.v1.GetCurrentPeriodResponse\"\xb0\x01\xca\xf3\x18\xab\x01\n" +
+	"\x0ecurrent_period\x12\x91\x01Periode berjalan beserta total sementaranya. The running snapshot is computed live and changes with every transaction until the period is closed.\x18\x01*\x03app\x12\xd9\x02\n" +
+	"\vListPeriods\x12\x1d.yasaku.v1.ListPeriodsRequest\x1a\x1e.yasaku.v1.ListPeriodsResponse\"\x8a\x02\xca\xf3\x18\x85\x02\n" +
+	"\flist_periods\x12\xed\x01Daftar periode, terbaru dulu. Use the returned id wherever another tool asks for a period. A closed period carries the snapshot frozen at its close; the current period has an empty end_date. Limit defaults to every period in the project.\x18\x01*\x03app\x12\x89\x03\n" +
 	"\fPreviewClose\x12\x1e.yasaku.v1.PreviewCloseRequest\x1a\x1f.yasaku.v1.PreviewCloseResponse\"\xb7\x02\xca\xf3\x18\xb2\x02\n" +
-	"\rpreview_close\x12\x99\x02Hitung apa yang akan dibekukan kalau periode ditutup pada tanggal tertentu, tanpa menyimpan apa pun. Period must be a period ID from list_periods or current_period, never a period name; leave it empty for the current period. The end date is YYYY-MM-DD and must be today or earlier.\x18\x01*\x03app\x12\xac\x05\n" +
-	"\vClosePeriod\x12\x1d.yasaku.v1.ClosePeriodRequest\x1a\x1e.yasaku.v1.ClosePeriodResponse\"\xdd\x04\xca\xf3\x18\xd8\x04\n" +
-	"\fclose_period\x12\xc3\x04Tutup buku: bekukan total periode dan buka periode berikutnya keesokan harinya. Period must be a period ID from list_periods or current_period, never a period name; leave it empty for the current period. The end date is YYYY-MM-DD and must be today or earlier. A closed period refuses new transactions until it is reopened. Call without confirm to preview the snapshot; call again with confirm=true to close. The preview is the resolved intent, not the frozen record: it is recomputed at close time, so a transaction landing in between changes the totals that are actually saved.\x18\x02 \x01\x12\xa2\x04\n" +
-	"\fReopenPeriod\x12\x1e.yasaku.v1.ReopenPeriodRequest\x1a\x1f.yasaku.v1.ReopenPeriodResponse\"\xd0\x03\xca\xf3\x18\xcb\x03\n" +
-	"\rreopen_period\x12\xb5\x03Buka kembali periode yang paling terakhir ditutup supaya transaksinya bisa diperbaiki. Period must be a period ID from list_periods, never a period name. Only the latest closed period may be reopened, and its end date stays fixed. Call without confirm to preview; call again with confirm=true to reopen. The preview is the stored period read at preview time, so a concurrent close landing in between can change what is actually reopened.\x18\x02 \x01\x12O\n" +
+	"\rpreview_close\x12\x99\x02Hitung apa yang akan dibekukan kalau periode ditutup pada tanggal tertentu, tanpa menyimpan apa pun. Period must be a period ID from list_periods or current_period, never a period name; leave it empty for the current period. The end date is YYYY-MM-DD and must be today or earlier.\x18\x01*\x03app\x12\xb1\x05\n" +
+	"\vClosePeriod\x12\x1d.yasaku.v1.ClosePeriodRequest\x1a\x1e.yasaku.v1.ClosePeriodResponse\"\xe2\x04\xca\xf3\x18\xdd\x04\n" +
+	"\fclose_period\x12\xc3\x04Tutup buku: bekukan total periode dan buka periode berikutnya keesokan harinya. Period must be a period ID from list_periods or current_period, never a period name; leave it empty for the current period. The end date is YYYY-MM-DD and must be today or earlier. A closed period refuses new transactions until it is reopened. Call without confirm to preview the snapshot; call again with confirm=true to close. The preview is the resolved intent, not the frozen record: it is recomputed at close time, so a transaction landing in between changes the totals that are actually saved.\x18\x02 \x01*\x03app\x12\xa7\x04\n" +
+	"\fReopenPeriod\x12\x1e.yasaku.v1.ReopenPeriodRequest\x1a\x1f.yasaku.v1.ReopenPeriodResponse\"\xd5\x03\xca\xf3\x18\xd0\x03\n" +
+	"\rreopen_period\x12\xb5\x03Buka kembali periode yang paling terakhir ditutup supaya transaksinya bisa diperbaiki. Period must be a period ID from list_periods, never a period name. Only the latest closed period may be reopened, and its end date stays fixed. Call without confirm to preview; call again with confirm=true to reopen. The preview is the stored period read at preview time, so a concurrent close landing in between can change what is actually reopened.\x18\x02 \x01*\x03app\x12O\n" +
 	"\fRenamePeriod\x12\x1e.yasaku.v1.RenamePeriodRequest\x1a\x1f.yasaku.v1.RenamePeriodResponseB\x8f\x01\n" +
 	"\rcom.yasaku.v1B\vPeriodProtoP\x01Z,altalune.id/yasaku/gen/go/yasaku/v1;yasakuv1\xa2\x02\x03YXX\xaa\x02\tYasaku.V1\xca\x02\tYasaku\\V1\xe2\x02\x15Yasaku\\V1\\GPBMetadata\xea\x02\n" +
 	"Yasaku::V1b\x06proto3"
