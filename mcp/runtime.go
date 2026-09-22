@@ -7,11 +7,20 @@ import (
 	"log/slog"
 	"net/http"
 	"slices"
+	"strings"
 
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 const unexpectedMessage = "unexpected error"
+
+// MIMEApp is the MCP Apps media type for a single-file HTML UI resource.
+const MIMEApp = "text/html;profile=mcp-app"
+
+const (
+	metaKeyUI       = "ui"
+	metaKeyUILegacy = "ui/resourceUri"
+)
 
 // Scope is an authorization scope a caller must hold to invoke a tool.
 type Scope string
@@ -25,11 +34,12 @@ const (
 
 // ToolSpec describes one MCP tool: its identity, the scope it needs, and its input schema.
 type ToolSpec struct {
-	Name        string
-	Description string
-	Scope       Scope
-	Mutation    bool
-	InputSchema json.RawMessage
+	Name          string
+	Description   string
+	Scope         Scope
+	Mutation      bool
+	InputSchema   json.RawMessage
+	UIResourceURI string
 }
 
 // Handler executes one tool call over raw JSON in and raw JSON out.
@@ -70,23 +80,33 @@ func WithLogger(l *slog.Logger) Option {
 	}
 }
 
+// WithUI enables the MCP Apps link; when false, Register ignores ToolSpec.UIResourceURI.
+func WithUI(enabled bool) Option {
+	return func(s *Server) { s.ui = enabled }
+}
+
 // Server hosts MCP tools over the SDK. Its zero value is unusable; build one with NewServer.
 type Server struct {
 	sdk *sdk.Server
-	// NOTE: written only by Register, which is construction-time by contract; unguarded by design.
-	names  map[string]struct{}
-	scopes func(ctx context.Context) []string
-	mapErr func(ctx context.Context, err error) (ErrorPayload, bool)
-	logger *slog.Logger
+	// NOTE: names, uiRefs and resources are written only by Register and AddUIResource, which are construction-time by contract; unguarded by design.
+	names     map[string]struct{}
+	uiRefs    map[string]string
+	resources map[string]UIResource
+	ui        bool
+	scopes    func(ctx context.Context) []string
+	mapErr    func(ctx context.Context, err error) (ErrorPayload, bool)
+	logger    *slog.Logger
 }
 
 // NewServer builds a Server that denies every scope, maps no error, and discards logs until options say otherwise.
 func NewServer(name, version string, opts ...Option) *Server {
 	s := &Server{
-		names:  make(map[string]struct{}),
-		scopes: func(context.Context) []string { return nil },
-		mapErr: func(context.Context, error) (ErrorPayload, bool) { return ErrorPayload{}, false },
-		logger: slog.New(slog.DiscardHandler),
+		names:     make(map[string]struct{}),
+		uiRefs:    make(map[string]string),
+		resources: make(map[string]UIResource),
+		scopes:    func(context.Context) []string { return nil },
+		mapErr:    func(context.Context, error) (ErrorPayload, bool) { return ErrorPayload{}, false },
+		logger:    slog.New(slog.DiscardHandler),
 	}
 	for _, opt := range opts {
 		opt(s)
@@ -130,6 +150,14 @@ func (s *Server) Register(spec ToolSpec, h Handler) {
 		},
 	}
 
+	if s.ui && spec.UIResourceURI != "" {
+		tool.Meta = sdk.Meta{
+			metaKeyUI:       map[string]any{"resourceUri": spec.UIResourceURI},
+			metaKeyUILegacy: spec.UIResourceURI,
+		}
+		s.uiRefs[spec.Name] = spec.UIResourceURI
+	}
+
 	s.sdk.AddTool(tool, func(ctx context.Context, req *sdk.CallToolRequest) (*sdk.CallToolResult, error) {
 		if err := s.authorize(ctx, spec); err != nil {
 			return s.failure(ctx, spec.Name, err), nil
@@ -142,20 +170,75 @@ func (s *Server) Register(spec ToolSpec, h Handler) {
 	})
 }
 
-// Handler returns the stateless streamable HTTP handler; the endpoint is POST-only, as the SDK answers GET and DELETE with 405.
+// UIResource is one static MCP Apps bundle a tool's result can be rendered by.
+type UIResource struct {
+	URI      string
+	Name     string
+	MIMEType string
+	Body     string
+	Meta     map[string]any
+}
+
+// AddUIResource publishes r; it panics on a resource the app should never build.
+func (s *Server) AddUIResource(r UIResource) {
+	s.mustBuilt()
+	if r.URI == "" {
+		panic("mcp: UIResource.URI must not be empty")
+	}
+	if !strings.HasPrefix(r.URI, "ui://") {
+		panic("mcp: UIResource.URI scheme must be ui, got " + r.URI)
+	}
+	if r.Body == "" {
+		panic("mcp: UIResource.Body must not be empty for " + r.URI)
+	}
+	if _, dup := s.resources[r.URI]; dup {
+		panic("mcp: duplicate UI resource " + r.URI)
+	}
+	if r.MIMEType == "" {
+		r.MIMEType = MIMEApp
+	}
+	s.resources[r.URI] = r
+
+	s.sdk.AddResource(&sdk.Resource{
+		URI:      r.URI,
+		Name:     r.Name,
+		MIMEType: r.MIMEType,
+	}, func(context.Context, *sdk.ReadResourceRequest) (*sdk.ReadResourceResult, error) {
+		return &sdk.ReadResourceResult{
+			Contents: []*sdk.ResourceContents{{
+				URI:      r.URI,
+				MIMEType: r.MIMEType,
+				Text:     r.Body,
+				Meta:     sdk.Meta(r.Meta),
+			}},
+		}, nil
+	})
+}
+
+// Handler returns the stateless streamable HTTP handler; the endpoint is POST-only, as the SDK answers GET and DELETE with 405. It panics if a tool references an unpublished UI resource.
 func (s *Server) Handler() http.Handler {
 	s.mustBuilt()
+	s.mustResolved()
 	return sdk.NewStreamableHTTPHandler(
 		func(*http.Request) *sdk.Server { return s.sdk },
 		&sdk.StreamableHTTPOptions{Stateless: true, Logger: s.logger},
 	)
 }
 
-// SDK exposes the underlying SDK server for transports the HTTP handler does not cover.
+// SDK exposes the underlying SDK server for transports the HTTP handler does not cover. It panics if a tool references an unpublished UI resource.
 // NOTE: only Handler's stateless transport gives the scope reader and error mapper the live request context; a stateful session or stdio binds one context for the whole session, so request ids there are stale or absent.
 func (s *Server) SDK() *sdk.Server {
 	s.mustBuilt()
+	s.mustResolved()
 	return s.sdk
+}
+
+func (s *Server) mustResolved() {
+	for tool, uri := range s.uiRefs {
+		if _, ok := s.resources[uri]; !ok {
+			panic("mcp: tool " + tool + " references unpublished UI resource " + uri)
+		}
+	}
 }
 
 func (s *Server) mustBuilt() {

@@ -23,7 +23,7 @@ var update = flag.Bool("update", false, "rewrite the golden files instead of com
 
 func TestGenerateWritesOneFilePerAnnotatedService(t *testing.T) {
 	p := newPlugin(t, "yasakutest/v1/fixture.proto")
-	if err := Generate(p); err != nil {
+	if err := Generate(p, Options{UIPrefix: "ui://yasakutest"}); err != nil {
 		t.Fatalf("Generate() error = %v", err)
 	}
 
@@ -42,7 +42,7 @@ func TestGenerateWritesOneFilePerAnnotatedService(t *testing.T) {
 
 func TestGenerateSkipsServicesWithoutAnnotatedMethods(t *testing.T) {
 	p := newPlugin(t, "yasakutest/v1/unannotated.proto")
-	if err := Generate(p); err != nil {
+	if err := Generate(p, Options{UIPrefix: "ui://yasakutest"}); err != nil {
 		t.Fatalf("Generate() error = %v", err)
 	}
 	if got := len(p.Response().File); got != 0 {
@@ -59,7 +59,7 @@ func TestInputSchemas(t *testing.T) {
 			continue
 		}
 		for _, svc := range file.Services {
-			tools, err := serviceTools(svc, map[string]string{})
+			tools, err := serviceTools(svc, map[string]string{}, Options{UIPrefix: "ui://yasakutest"})
 			if err != nil {
 				t.Fatalf("serviceTools(%s) error = %v", svc.Desc.FullName(), err)
 			}
@@ -112,7 +112,7 @@ func TestGenerateRefusals(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			p := newPlugin(t, tt.file)
-			err := Generate(p)
+			err := Generate(p, Options{UIPrefix: "ui://yasakutest"})
 			if err == nil {
 				t.Fatalf("Generate() error = nil, want a refusal")
 			}
@@ -127,7 +127,7 @@ func TestGenerateRefusals(t *testing.T) {
 
 func TestDuplicateToolNamesAcrossFiles(t *testing.T) {
 	p := newPlugin(t, "yasakutest/v1/fixture.proto", "yasakutest/v1/bad_echo.proto")
-	err := Generate(p)
+	err := Generate(p, Options{UIPrefix: "ui://yasakutest"})
 	if err == nil {
 		t.Fatal("Generate() error = nil, want a refusal on the cross-file duplicate")
 	}
@@ -242,5 +242,27 @@ func checkGolden(t *testing.T, name, got string) {
 	}
 	if !bytes.Equal([]byte(got), want) {
 		t.Errorf("generated output differs from %s\n--- got ---\n%s\n--- want ---\n%s", path, got, want)
+	}
+}
+
+func TestGenerateRejectsBadUIName(t *testing.T) {
+	p := newPlugin(t, "yasakutest/v1/bad_ui.proto")
+	err := Generate(p, Options{UIPrefix: "ui://yasakutest"})
+	if err == nil {
+		t.Fatal(`Generate() = nil, want error for ui name "App_1"`)
+	}
+	if !strings.Contains(err.Error(), "App_1") {
+		t.Errorf("error %q must name the offending value", err)
+	}
+}
+
+func TestGenerateRequiresUIPrefixWhenUISet(t *testing.T) {
+	p := newPlugin(t, "yasakutest/v1/fixture.proto")
+	err := Generate(p, Options{})
+	if err == nil {
+		t.Fatal("Generate() = nil, want error when ui is set but ui_prefix is absent")
+	}
+	if !strings.Contains(err.Error(), "ui_prefix") {
+		t.Errorf("error %q must name ui_prefix", err)
 	}
 }

@@ -74,11 +74,13 @@ func (Access) EnumDescriptor() ([]byte, []int) {
 
 // Tool marks an RPC as an MCP tool. A method with mutation true must carry a bool confirm field in its request.
 type Tool struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	Description   string                 `protobuf:"bytes,2,opt,name=description,proto3" json:"description,omitempty"`
-	Access        Access                 `protobuf:"varint,3,opt,name=access,proto3,enum=yasaku.mcp.v1.Access" json:"access,omitempty"`
-	Mutation      bool                   `protobuf:"varint,4,opt,name=mutation,proto3" json:"mutation,omitempty"`
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	Name        string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Description string                 `protobuf:"bytes,2,opt,name=description,proto3" json:"description,omitempty"`
+	Access      Access                 `protobuf:"varint,3,opt,name=access,proto3,enum=yasaku.mcp.v1.Access" json:"access,omitempty"`
+	Mutation    bool                   `protobuf:"varint,4,opt,name=mutation,proto3" json:"mutation,omitempty"`
+	// ui names the MCP Apps resource rendering this tool's result; empty means JSON only.
+	Ui            string `protobuf:"bytes,5,opt,name=ui,proto3" json:"ui,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -141,6 +143,13 @@ func (x *Tool) GetMutation() bool {
 	return false
 }
 
+func (x *Tool) GetUi() string {
+	if x != nil {
+		return x.Ui
+	}
+	return ""
+}
+
 var file_yasaku_mcp_v1_annotations_proto_extTypes = []protoimpl.ExtensionInfo{
 	{
 		ExtendedType:  (*descriptorpb.MethodOptions)(nil),
@@ -162,12 +171,13 @@ var File_yasaku_mcp_v1_annotations_proto protoreflect.FileDescriptor
 
 const file_yasaku_mcp_v1_annotations_proto_rawDesc = "" +
 	"\n" +
-	"\x1fyasaku/mcp/v1/annotations.proto\x12\ryasaku.mcp.v1\x1a google/protobuf/descriptor.proto\"\x87\x01\n" +
+	"\x1fyasaku/mcp/v1/annotations.proto\x12\ryasaku.mcp.v1\x1a google/protobuf/descriptor.proto\"\x97\x01\n" +
 	"\x04Tool\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12 \n" +
 	"\vdescription\x18\x02 \x01(\tR\vdescription\x12-\n" +
 	"\x06access\x18\x03 \x01(\x0e2\x15.yasaku.mcp.v1.AccessR\x06access\x12\x1a\n" +
-	"\bmutation\x18\x04 \x01(\bR\bmutation*C\n" +
+	"\bmutation\x18\x04 \x01(\bR\bmutation\x12\x0e\n" +
+	"\x02ui\x18\x05 \x01(\tR\x02ui*C\n" +
 	"\x06Access\x12\x16\n" +
 	"\x12ACCESS_UNSPECIFIED\x10\x00\x12\x0f\n" +
 	"\vACCESS_READ\x10\x01\x12\x10\n" +

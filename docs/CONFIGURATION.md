@@ -163,6 +163,7 @@ rows at expiry.
 | `mcp.enabled`          | `false`         | `bootstrap` | Mounts the MCP endpoint at `<basePath>/mcp` and its protected-resource metadata.        |
 | `mcp.audience`         | `MCPEndpoint()` | `bootstrap` | RFC 8707 resource identifier bearer tokens must name; defaults to the mounted endpoint. |
 | `mcp.audienceOverride` | `false`         | `-`         | Allows `mcp.audience` to differ from the mounted endpoint.                              |
+| `mcp.appsUI`           | `false`         | `-`         | Publishes the MCP Apps UI resource and links tools to it (`YASAKU_MCP_APPS_UI`).        |
 
 `mcp.enabled=true` requires `tokens.issuer` (`YASAKU_TOKENS_ISSUER`): MCP callers
 authenticate with a bearer token from that issuer, never with a session cookie.

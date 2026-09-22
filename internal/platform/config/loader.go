@@ -99,6 +99,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("scheduler.shutdownGrace", "30s")
 
 	v.SetDefault("mcp.enabled", false)
+	v.SetDefault("mcp.appsUI", false)
 
 	v.SetDefault("api.enabled", true)
 	v.SetDefault("api.openapi.enabled", true)

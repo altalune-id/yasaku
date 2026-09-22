@@ -1,0 +1,36 @@
+// bridge.js
+// createBridge returns the host seam every view depends on.
+function createBridge(handlers, loadModule) {
+  let app = null;
+  let mod = null;
+
+  function applyHostStyles(ctx) {
+    if (!ctx || !mod) return;
+    if (ctx.theme) mod.applyDocumentTheme(ctx.theme);
+    if (ctx.styles && ctx.styles.variables) mod.applyHostStyleVariables(ctx.styles.variables);
+    if (ctx.styles && ctx.styles.css && ctx.styles.css.fonts) mod.applyHostFonts(ctx.styles.css.fonts);
+  }
+
+  async function connect() {
+    mod = await loadModule();
+    // NOTE: capabilities is the SECOND positional argument. Omit the third so
+    // autoResize stays on and the host gets ui/notifications/size-changed.
+    app = new mod.App({ name: "yasaku", version: "1.0.0" }, { availableDisplayModes: ["inline"] });
+    app.ontoolinput = function (params) { handlers.onToolInput(params); };
+    app.ontoolresult = function (result) { handlers.onToolResult(result); };
+    app.onhostcontextchanged = function (ctx) { applyHostStyles(ctx); handlers.onHostContext(ctx); };
+    app.onerror = function (e) { console.error(e); };
+    await app.connect();
+    applyHostStyles(app.getHostContext());
+    return app.getHostContext();
+  }
+
+  return {
+    connect: connect,
+    hostContext: function () { return app ? app.getHostContext() : null; },
+    callTool: function (name, args) {
+      if (!app) return Promise.reject(new Error("bridge not connected"));
+      return app.callServerTool({ name: name, arguments: args || {} });
+    },
+  };
+}

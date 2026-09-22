@@ -1001,14 +1001,14 @@ const file_yasaku_v1_period_proto_rawDesc = "" +
 	"\x06period\x18\x02 \x01(\tR\x06period\x12\x12\n" +
 	"\x04name\x18\x03 \x01(\tR\x04name\"A\n" +
 	"\x14RenamePeriodResponse\x12)\n" +
-	"\x06period\x18\x01 \x01(\v2\x11.yasaku.v1.PeriodR\x06period2\x9e\x12\n" +
+	"\x06period\x18\x01 \x01(\v2\x11.yasaku.v1.PeriodR\x06period2\xa3\x12\n" +
 	"\rPeriodService\x12\x89\x02\n" +
 	"\x10GetCurrentPeriod\x12\".yasaku.v1.GetCurrentPeriodRequest\x1a#.yasaku.v1.GetCurrentPeriodResponse\"\xab\x01\xca\xf3\x18\xa6\x01\n" +
 	"\x0ecurrent_period\x12\x91\x01Periode berjalan beserta total sementaranya. The running snapshot is computed live and changes with every transaction until the period is closed.\x18\x01\x12\xd4\x02\n" +
 	"\vListPeriods\x12\x1d.yasaku.v1.ListPeriodsRequest\x1a\x1e.yasaku.v1.ListPeriodsResponse\"\x85\x02\xca\xf3\x18\x80\x02\n" +
-	"\flist_periods\x12\xed\x01Daftar periode, terbaru dulu. Use the returned id wherever another tool asks for a period. A closed period carries the snapshot frozen at its close; the current period has an empty end_date. Limit defaults to every period in the project.\x18\x01\x12\x84\x03\n" +
-	"\fPreviewClose\x12\x1e.yasaku.v1.PreviewCloseRequest\x1a\x1f.yasaku.v1.PreviewCloseResponse\"\xb2\x02\xca\xf3\x18\xad\x02\n" +
-	"\rpreview_close\x12\x99\x02Hitung apa yang akan dibekukan kalau periode ditutup pada tanggal tertentu, tanpa menyimpan apa pun. Period must be a period ID from list_periods or current_period, never a period name; leave it empty for the current period. The end date is YYYY-MM-DD and must be today or earlier.\x18\x01\x12\xac\x05\n" +
+	"\flist_periods\x12\xed\x01Daftar periode, terbaru dulu. Use the returned id wherever another tool asks for a period. A closed period carries the snapshot frozen at its close; the current period has an empty end_date. Limit defaults to every period in the project.\x18\x01\x12\x89\x03\n" +
+	"\fPreviewClose\x12\x1e.yasaku.v1.PreviewCloseRequest\x1a\x1f.yasaku.v1.PreviewCloseResponse\"\xb7\x02\xca\xf3\x18\xb2\x02\n" +
+	"\rpreview_close\x12\x99\x02Hitung apa yang akan dibekukan kalau periode ditutup pada tanggal tertentu, tanpa menyimpan apa pun. Period must be a period ID from list_periods or current_period, never a period name; leave it empty for the current period. The end date is YYYY-MM-DD and must be today or earlier.\x18\x01*\x03app\x12\xac\x05\n" +
 	"\vClosePeriod\x12\x1d.yasaku.v1.ClosePeriodRequest\x1a\x1e.yasaku.v1.ClosePeriodResponse\"\xdd\x04\xca\xf3\x18\xd8\x04\n" +
 	"\fclose_period\x12\xc3\x04Tutup buku: bekukan total periode dan buka periode berikutnya keesokan harinya. Period must be a period ID from list_periods or current_period, never a period name; leave it empty for the current period. The end date is YYYY-MM-DD and must be today or earlier. A closed period refuses new transactions until it is reopened. Call without confirm to preview the snapshot; call again with confirm=true to close. The preview is the resolved intent, not the frozen record: it is recomputed at close time, so a transaction landing in between changes the totals that are actually saved.\x18\x02 \x01\x12\xa2\x04\n" +
 	"\fReopenPeriod\x12\x1e.yasaku.v1.ReopenPeriodRequest\x1a\x1f.yasaku.v1.ReopenPeriodResponse\"\xd0\x03\xca\xf3\x18\xcb\x03\n" +

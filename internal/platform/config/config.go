@@ -134,6 +134,8 @@ type MCPConfig struct {
 	AudienceOverride bool   `yaml:"audienceOverride" mapstructure:"audienceOverride" awareness:"-"`
 	// ChallengeToken is the ownership proof authl issues; it is published, not secret.
 	ChallengeToken string `yaml:"challengeToken" mapstructure:"challengeToken" awareness:"-"`
+	// AppsUI publishes the MCP Apps UI resource and links tools to it.
+	AppsUI bool `yaml:"appsUI" mapstructure:"appsUI" awareness:"-"`
 }
 
 // MCPEndpoint returns the absolute URL the MCP surface is mounted at.

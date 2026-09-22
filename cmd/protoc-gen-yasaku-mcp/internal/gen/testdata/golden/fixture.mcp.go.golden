@@ -17,11 +17,12 @@ import (
 // RegisterFixtureServiceTools registers every MCP-annotated FixtureService method on reg.
 func RegisterFixtureServiceTools(reg mcp.Registry, h yasakutestv1connect.FixtureServiceHandler) {
 	reg.Register(mcp.ToolSpec{
-		Name:        "ping",
-		Description: "Ping echoes the target back and reports the server clock.",
-		Scope:       mcp.ScopeRead,
-		Mutation:    false,
-		InputSchema: json.RawMessage(`{"type":"object","properties":{"target":{"type":"object","properties":{"org":{"type":"string","description":"Org is the organisation slug."},"project":{"type":"string"}},"additionalProperties":false},"echo":{"type":"string","description":"Echo is the text sent back verbatim."},"big":{"type":"string","pattern":"^-?[0-9]+$"},"small":{"type":"integer"},"ratio":{"type":"number"},"loud":{"type":"boolean"},"blob":{"type":"string","format":"byte"},"tags":{"type":"array","items":{"type":"string"}},"labels":{"type":"object","additionalProperties":{"type":"string"}},"scoped":{"type":"object","additionalProperties":{"type":"object","properties":{"org":{"type":"string","description":"Org is the organisation slug."},"project":{"type":"string"}},"additionalProperties":false}},"kind":{"type":"string","enum":["KIND_UNSPECIFIED","KIND_FAST","KIND_SLOW"]},"at":{"type":"string","format":"date-time"},"node":{"type":"object","properties":{"id":{"type":"string"},"child":{"type":"object"},"siblings":{"type":"array","items":{"type":"object"}}},"additionalProperties":false},"note":{"type":"string"}},"additionalProperties":false}`),
+		Name:          "ping",
+		Description:   "Ping echoes the target back and reports the server clock.",
+		Scope:         mcp.ScopeRead,
+		Mutation:      false,
+		InputSchema:   json.RawMessage(`{"type":"object","properties":{"target":{"type":"object","properties":{"org":{"type":"string","description":"Org is the organisation slug."},"project":{"type":"string"}},"additionalProperties":false},"echo":{"type":"string","description":"Echo is the text sent back verbatim."},"big":{"type":"string","pattern":"^-?[0-9]+$"},"small":{"type":"integer"},"ratio":{"type":"number"},"loud":{"type":"boolean"},"blob":{"type":"string","format":"byte"},"tags":{"type":"array","items":{"type":"string"}},"labels":{"type":"object","additionalProperties":{"type":"string"}},"scoped":{"type":"object","additionalProperties":{"type":"object","properties":{"org":{"type":"string","description":"Org is the organisation slug."},"project":{"type":"string"}},"additionalProperties":false}},"kind":{"type":"string","enum":["KIND_UNSPECIFIED","KIND_FAST","KIND_SLOW"]},"at":{"type":"string","format":"date-time"},"node":{"type":"object","properties":{"id":{"type":"string"},"child":{"type":"object"},"siblings":{"type":"array","items":{"type":"object"}}},"additionalProperties":false},"note":{"type":"string"}},"additionalProperties":false}`),
+		UIResourceURI: "ui://yasakutest/app",
 	}, func(ctx context.Context, input json.RawMessage) (json.RawMessage, error) {
 		if len(input) == 0 {
 			input = json.RawMessage(`{}`)

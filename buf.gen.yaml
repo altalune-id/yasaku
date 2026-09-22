@@ -18,3 +18,4 @@ plugins:
     out: gen/go
     opt:
       - paths=source_relative
+      - ui_prefix=ui://yasaku
