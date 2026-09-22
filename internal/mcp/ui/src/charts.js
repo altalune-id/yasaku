@@ -1,12 +1,19 @@
 // charts.js
 const CHART_FALLBACKS = ["#3b82f6", "#f97316", "#22c55e", "#a855f7", "#64748b"];
 
+// SECURITY: the result lands in a raw SVG attribute and in style="background:…",
+// so only a validated token may escape this function. Anything else falls back.
+const HEX_COLOUR = /^#[0-9a-fA-F]{6}$/;
+const CHART_TOKEN = /^chart-[1-5]$/;
+
 function swatchColour(token) {
-  if (!token) return CHART_FALLBACKS[4];
-  if (String(token).charAt(0) === "#") return String(token);
-  const n = parseInt(String(token).replace("chart-", ""), 10);
-  const fallback = CHART_FALLBACKS[(isFinite(n) ? n - 1 : 4) % CHART_FALLBACKS.length];
-  return "var(--color-" + esc(token) + ", " + fallback + ")";
+  const t = String(token === undefined || token === null ? "" : token);
+  if (HEX_COLOUR.test(t)) return t;
+  if (CHART_TOKEN.test(t)) {
+    const n = parseInt(t.slice(6), 10);
+    return "var(--color-" + t + ", " + CHART_FALLBACKS[n - 1] + ")";
+  }
+  return CHART_FALLBACKS[4];
 }
 
 function donutSVG(slices) {

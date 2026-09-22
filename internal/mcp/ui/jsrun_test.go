@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/dop251/goja"
@@ -109,4 +110,8 @@ func TestFormatPercentToleratesMissing(t *testing.T) {
 			t.Errorf("%s = %q, want %q", expr, got, want)
 		}
 	}
+}
+
+func jsQuote(s string) string {
+	return "'" + strings.ReplaceAll(strings.ReplaceAll(s, `\`, `\\`), "'", `\'`) + "'"
 }

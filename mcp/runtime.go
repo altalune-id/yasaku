@@ -37,6 +37,7 @@ type ToolSpec struct {
 	Description   string
 	Scope         Scope
 	Mutation      bool
+	Destructive   bool
 	InputSchema   json.RawMessage
 	UIResourceURI string
 }
@@ -169,13 +170,17 @@ func (s *Server) Register(spec ToolSpec, h Handler) {
 		schema = json.RawMessage(`{"type":"object"}`)
 	}
 	mutation := spec.Mutation
+	destructive := spec.Destructive
+	closedWorld := false
 	tool := &sdk.Tool{
 		Name:        spec.Name,
+		Title:       titleOf(spec.Name),
 		Description: spec.Description,
 		InputSchema: schema,
 		Annotations: &sdk.ToolAnnotations{
 			ReadOnlyHint:    !mutation,
-			DestructiveHint: &mutation,
+			DestructiveHint: &destructive,
+			OpenWorldHint:   &closedWorld,
 		},
 	}
 
@@ -260,6 +265,15 @@ func (s *Server) SDK() *sdk.Server {
 	s.mustBuilt()
 	s.mustResolved()
 	return s.sdk
+}
+
+// titleOf turns a snake_case tool name into the human-readable title hosts show in place of the name.
+func titleOf(name string) string {
+	t := strings.ReplaceAll(name, "_", " ")
+	if t == "" {
+		return t
+	}
+	return strings.ToUpper(t[:1]) + t[1:]
 }
 
 func (s *Server) mustResolved() {

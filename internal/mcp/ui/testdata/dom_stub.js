@@ -18,18 +18,38 @@
     const ls = this.listeners[type] || [];
     for (let i = 0; i < ls.length; i++) ls[i](ev);
   };
-  El.prototype.querySelectorAll = function () {
-    return this.children;
+  El.prototype.matches = function (sel) {
+    if (sel === "[name]") return this.attrs["name"] !== undefined;
+    if (sel === "[data-action]") return this.attrs["data-action"] !== undefined;
+    if (sel === "form") return this.tagName === "form";
+    return false;
   };
-  El.prototype.closest = function () {
-    return this.attrs["data-action"] ? this : null;
+  El.prototype.querySelectorAll = function (sel) {
+    const out = [];
+    for (let i = 0; i < this.children.length; i++) {
+      if (this.children[i].matches(sel)) out.push(this.children[i]);
+    }
+    return out;
+  };
+  El.prototype.querySelector = function (sel) {
+    const all = this.querySelectorAll(sel);
+    return all.length ? all[0] : null;
+  };
+  El.prototype.closest = function (sel) {
+    let n = this;
+    while (n) {
+      if (n.matches(sel)) return n;
+      n = n.parent || null;
+    }
+    return null;
   };
 
   const root = new El("div", { id: "root" });
   globalThis.__root = root;
-  globalThis.__mkEl = function (attrs, children) {
-    const e = new El("button", attrs);
+  globalThis.__mkEl = function (attrs, children, tag) {
+    const e = new El(tag || "button", attrs);
     e.children = children || [];
+    for (let i = 0; i < e.children.length; i++) e.children[i].parent = e;
     return e;
   };
   globalThis.console = globalThis.console || { error: function () {}, log: function () {} };

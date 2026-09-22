@@ -41,6 +41,11 @@ func TestDumpPreview(t *testing.T) {
 		{"adjust_balance (no-op)", "adjust_balance_noop.json"},
 		{"record_batch", "record_batch_preview.json"},
 		{"seed_default_categories", "seed_preview.json"},
+		{"search_tx", "search_tx.json"},
+		{"update_wallet", "update_wallet_preview.json"},
+		{"archive_wallet", "archive_wallet_preview.json"},
+		{"record_income", "record_income_preview.json"},
+		{"revise_tx", "revise_tx_preview.json"},
 	}
 
 	vm := newJSVM(t)

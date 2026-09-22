@@ -53,6 +53,7 @@ func TestFixturesMatchTheProtos(t *testing.T) {
 		{"preview_close.json", &yasakuv1.PreviewCloseResponse{}},
 		{"tx_list.json", &yasakuv1.ListTransactionsResponse{}},
 		{"tx_list_sparse.json", &yasakuv1.ListTransactionsResponse{}},
+		{"search_tx.json", &yasakuv1.SearchTransactionsResponse{}},
 		{"wallets_list.json", &yasakuv1.ListWalletsResponse{}},
 		{"wallets_list_sparse.json", &yasakuv1.ListWalletsResponse{}},
 		{"wallet_detail.json", &yasakuv1.GetWalletResponse{}},
@@ -487,6 +488,8 @@ func TestListViewsEscapeNames(t *testing.T) {
 		`renderTool("list_categories", {categories:[{id:"c",name:"` + evil + `"}]}).html`,
 		`renderTool("list_periods", {periods:[{id:"p",name:"` + evil + `"}]}).html`,
 		`renderTool("list_projects", {projects:[{org:"o",orgName:"` + evil + `"}]}).html`,
+		`renderTool("current_period", {period:{id:"p",name:"` + evil + `"}}).html`,
+		`renderTool("now", {timezone:"` + evil + `",currentPeriod:{id:"p",name:"x"}}).html`,
 	} {
 		v, err := vm.RunString(expr)
 		if err != nil {
@@ -503,7 +506,11 @@ var mutationTools = []string{
 	"create_wallet", "update_wallet", "archive_wallet", "adjust_balance",
 	"record_expense", "record_income", "record_transfer", "revise_tx", "delete_tx",
 	"close_period", "reopen_period", "create_category",
+	"record_batch", "seed_default_categories",
 }
+
+//nolint:gochecknoglobals // the 12 single-entity mutations, whose preview is one object.
+var entityMutationTools = mutationTools[:12]
 
 // TestNoMutationEmitsConfirmOutsidePreview is the safety property: only a
 // preview-phase commit control may ask the server to write.
@@ -529,7 +536,7 @@ func TestNoMutationEmitsConfirmOutsidePreview(t *testing.T) {
 
 func TestEveryMutationOffersCommitOnlyInPreview(t *testing.T) {
 	vm := newJSVM(t)
-	for _, tool := range mutationTools {
+	for _, tool := range entityMutationTools {
 		v, err := vm.RunString(`JSON.stringify(renderTool(` + strconv.Quote(tool) + `, {preview:{id:"x",name:"n"}}).actions)`)
 		if err != nil {
 			t.Fatalf("%s: %v", tool, err)
@@ -655,5 +662,18 @@ func TestSeedZeroOffersNoCommit(t *testing.T) {
 	}
 	if _, ok := prevActions["commit"]; !ok {
 		t.Errorf("seed preview must offer a commit, got %v", prevActions)
+	}
+}
+
+func TestBulkViewsTolerateAScalarPreview(t *testing.T) {
+	vm := newJSVM(t)
+	for _, tool := range []string{"record_batch", "seed_default_categories"} {
+		v, err := vm.RunString(`renderTool(` + strconv.Quote(tool) + `, {preview:{id:"x"}}).html`)
+		if err != nil {
+			t.Fatalf("%s threw on a non-array preview: %v", tool, err)
+		}
+		if strings.Contains(v.String(), "undefined") {
+			t.Errorf("%s leaked a placeholder:\n%s", tool, v.String())
+		}
 	}
 }

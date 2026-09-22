@@ -18,7 +18,7 @@ import (
 func RegisterPeriodServiceTools(reg mcp.Registry, h yasakuv1connect.PeriodServiceHandler) {
 	reg.Register(mcp.ToolSpec{
 		Name:          "current_period",
-		Description:   "Periode berjalan beserta total sementaranya. The running snapshot is computed live and changes with every transaction until the period is closed.",
+		Description:   "Read the running period and its provisional totals. The running snapshot is computed live and changes with every transaction until the period is closed. A project with no period yet comes back empty.",
 		Scope:         mcp.ScopeRead,
 		Mutation:      false,
 		InputSchema:   json.RawMessage(`{"type":"object","properties":{"target":{"type":"object","properties":{"org":{"type":"string"},"project":{"type":"string"}},"additionalProperties":false}},"additionalProperties":false}`),
@@ -39,7 +39,7 @@ func RegisterPeriodServiceTools(reg mcp.Registry, h yasakuv1connect.PeriodServic
 	})
 	reg.Register(mcp.ToolSpec{
 		Name:          "list_periods",
-		Description:   "Daftar periode, terbaru dulu. Use the returned id wherever another tool asks for a period. A closed period carries the snapshot frozen at its close; the current period has an empty end_date. Limit defaults to every period in the project.",
+		Description:   "List the periods, newest first. Use the returned id wherever another tool asks for a period. A closed period carries the snapshot frozen at its close; the current period has an empty end_date. Limit defaults to every period in the project.",
 		Scope:         mcp.ScopeRead,
 		Mutation:      false,
 		InputSchema:   json.RawMessage(`{"type":"object","properties":{"target":{"type":"object","properties":{"org":{"type":"string"},"project":{"type":"string"}},"additionalProperties":false},"limit":{"type":"integer"}},"additionalProperties":false}`),
@@ -60,7 +60,7 @@ func RegisterPeriodServiceTools(reg mcp.Registry, h yasakuv1connect.PeriodServic
 	})
 	reg.Register(mcp.ToolSpec{
 		Name:          "preview_close",
-		Description:   "Hitung apa yang akan dibekukan kalau periode ditutup pada tanggal tertentu, tanpa menyimpan apa pun. Period must be a period ID from list_periods or current_period, never a period name; leave it empty for the current period. The end date is YYYY-MM-DD and must be today or earlier.",
+		Description:   "Calculate what closing a period on a given date would freeze, without saving anything. Period must be a period ID from list_periods or current_period, never a period name; leave it empty for the current period. The end date is YYYY-MM-DD, must be today or earlier, must not precede the period start, and empty means today in the project's timezone.",
 		Scope:         mcp.ScopeRead,
 		Mutation:      false,
 		InputSchema:   json.RawMessage(`{"type":"object","properties":{"target":{"type":"object","properties":{"org":{"type":"string"},"project":{"type":"string"}},"additionalProperties":false},"period":{"type":"string","description":"Period ID from list_periods or current_period, never a period name. Empty means the current period."},"endDate":{"type":"string","description":"YYYY-MM-DD; must be today or earlier and not before the period start."}},"additionalProperties":false}`),
@@ -81,9 +81,10 @@ func RegisterPeriodServiceTools(reg mcp.Registry, h yasakuv1connect.PeriodServic
 	})
 	reg.Register(mcp.ToolSpec{
 		Name:          "close_period",
-		Description:   "Tutup buku: bekukan total periode dan buka periode berikutnya keesokan harinya. Period must be a period ID from list_periods or current_period, never a period name; leave it empty for the current period. The end date is YYYY-MM-DD and must be today or earlier. A closed period refuses new transactions until it is reopened. Call without confirm to preview the snapshot; call again with confirm=true to close. The preview is the resolved intent, not the frozen record: it is recomputed at close time, so a transaction landing in between changes the totals that are actually saved.",
+		Description:   "Close the books: freeze the period totals and, on a first close, open the next period the following day. Period must be a period ID from list_periods or current_period, never a period name; leave it empty for the current period. The end date is YYYY-MM-DD, must be today or earlier, and on a reopened period it is fixed and must match the stored end date. A closed period refuses new transactions until it is reopened. Call without confirm to preview the snapshot; call again with confirm=true to close. The preview is the resolved intent, not the frozen record: it is recomputed at close time, so a transaction landing in between changes the totals that are actually saved.",
 		Scope:         mcp.ScopeWrite,
 		Mutation:      true,
+		Destructive:   true,
 		InputSchema:   json.RawMessage(`{"type":"object","properties":{"target":{"type":"object","properties":{"org":{"type":"string"},"project":{"type":"string"}},"additionalProperties":false},"period":{"type":"string","description":"Period ID from list_periods or current_period, never a period name. Empty means the current period."},"endDate":{"type":"string","description":"YYYY-MM-DD; must be today or earlier and not before the period start. On a reopened period it is fixed and must match the stored end date."},"confirm":{"type":"boolean"}},"additionalProperties":false}`),
 		UIResourceURI: "ui://yasaku/app",
 	}, func(ctx context.Context, input json.RawMessage) (json.RawMessage, error) {
@@ -102,9 +103,10 @@ func RegisterPeriodServiceTools(reg mcp.Registry, h yasakuv1connect.PeriodServic
 	})
 	reg.Register(mcp.ToolSpec{
 		Name:          "reopen_period",
-		Description:   "Buka kembali periode yang paling terakhir ditutup supaya transaksinya bisa diperbaiki. Period must be a period ID from list_periods, never a period name. Only the latest closed period may be reopened, and its end date stays fixed. Call without confirm to preview; call again with confirm=true to reopen. The preview is the stored period read at preview time, so a concurrent close landing in between can change what is actually reopened.",
+		Description:   "Reopen the most recently closed period so its transactions can be corrected. Name the closed period explicitly; period must be a period ID from list_periods, never a period name, and it is not defaulted. Only the latest closed period may be reopened, and its end date stays fixed. Call without confirm to preview; call again with confirm=true to reopen. The preview is the stored period read at preview time, so a concurrent close landing in between can change what is actually reopened.",
 		Scope:         mcp.ScopeWrite,
 		Mutation:      true,
+		Destructive:   true,
 		InputSchema:   json.RawMessage(`{"type":"object","properties":{"target":{"type":"object","properties":{"org":{"type":"string"},"project":{"type":"string"}},"additionalProperties":false},"period":{"type":"string","description":"Period ID from list_periods, never a period name."},"confirm":{"type":"boolean"}},"additionalProperties":false}`),
 		UIResourceURI: "ui://yasaku/app",
 	}, func(ctx context.Context, input json.RawMessage) (json.RawMessage, error) {

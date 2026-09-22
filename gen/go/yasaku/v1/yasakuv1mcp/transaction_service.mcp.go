@@ -18,7 +18,7 @@ import (
 func RegisterTransactionServiceTools(reg mcp.Registry, h yasakuv1connect.TransactionServiceHandler) {
 	reg.Register(mcp.ToolSpec{
 		Name:          "record_expense",
-		Description:   "Catat pengeluaran (uang keluar) dari sebuah dompet. Amount in major units of the wallet currency. Wallet and category accept a name or an id, but period must be a period ID from list_periods or current_period, never a period name. Call without confirm to preview; call again with confirm=true to save. The preview is the resolved intent, not the saved record: it carries no id and no timestamps, and a concurrent write landing in between can change what is actually saved.",
+		Description:   "Record an expense (money going out) from a wallet. Amount in major units of the wallet currency. Wallet and category accept a name or an id, but period must be a period ID from list_periods or current_period, never a period name. The period must be the one containing occurred_at or one next to it, and a closed period is refused. Call without confirm to preview; call again with confirm=true to save. The preview is the resolved intent, not the saved record: it carries no id and no timestamps, and a concurrent write landing in between can change what is actually saved.",
 		Scope:         mcp.ScopeWrite,
 		Mutation:      true,
 		InputSchema:   json.RawMessage(`{"type":"object","properties":{"target":{"type":"object","properties":{"org":{"type":"string"},"project":{"type":"string"}},"additionalProperties":false},"wallet":{"type":"string"},"amount":{"type":"object","properties":{"amount":{"type":"string"},"currency":{"type":"string"}},"additionalProperties":false},"category":{"type":"string"},"note":{"type":"string"},"occurredAt":{"type":"string"},"period":{"type":"string","description":"Period ID from list_periods or current_period, never a period name. Empty means the period containing occurred_at."},"confirm":{"type":"boolean"}},"additionalProperties":false}`),
@@ -39,7 +39,7 @@ func RegisterTransactionServiceTools(reg mcp.Registry, h yasakuv1connect.Transac
 	})
 	reg.Register(mcp.ToolSpec{
 		Name:          "record_income",
-		Description:   "Catat pemasukan (uang masuk) ke sebuah dompet. Amount in major units of the wallet currency. Wallet and category accept a name or an id, but period must be a period ID from list_periods or current_period, never a period name. Call without confirm to preview; call again with confirm=true to save. The preview is the resolved intent, not the saved record: it carries no id and no timestamps, and a concurrent write landing in between can change what is actually saved.",
+		Description:   "Record income (money coming in) into a wallet. Amount in major units of the wallet currency. Wallet and category accept a name or an id, but period must be a period ID from list_periods or current_period, never a period name. The period must be the one containing occurred_at or one next to it, and a closed period is refused. Call without confirm to preview; call again with confirm=true to save. The preview is the resolved intent, not the saved record: it carries no id and no timestamps, and a concurrent write landing in between can change what is actually saved.",
 		Scope:         mcp.ScopeWrite,
 		Mutation:      true,
 		InputSchema:   json.RawMessage(`{"type":"object","properties":{"target":{"type":"object","properties":{"org":{"type":"string"},"project":{"type":"string"}},"additionalProperties":false},"wallet":{"type":"string"},"amount":{"type":"object","properties":{"amount":{"type":"string"},"currency":{"type":"string"}},"additionalProperties":false},"category":{"type":"string"},"note":{"type":"string"},"occurredAt":{"type":"string"},"period":{"type":"string","description":"Period ID from list_periods or current_period, never a period name. Empty means the period containing occurred_at."},"confirm":{"type":"boolean"}},"additionalProperties":false}`),
@@ -60,7 +60,7 @@ func RegisterTransactionServiceTools(reg mcp.Registry, h yasakuv1connect.Transac
 	})
 	reg.Register(mcp.ToolSpec{
 		Name:          "record_transfer",
-		Description:   "Pindahkan uang antar dompet milik sendiri; ini bukan pengeluaran. Both wallets must hold the same currency and a transfer carries no category. Wallets accept a name or an id, but period must be a period ID from list_periods or current_period, never a period name. Call without confirm to preview; call again with confirm=true to save. The preview is the resolved intent, not the saved record: it carries no id and no timestamps, and a concurrent write landing in between can change what is actually saved.",
+		Description:   "Move money between the user's own wallets; this is not an expense. Both wallets must hold the same currency and a transfer carries no category. Wallets accept a name or an id, but period must be a period ID from list_periods or current_period, never a period name. The period must be the one containing occurred_at or one next to it, and a closed period is refused. Call without confirm to preview; call again with confirm=true to save. The preview is the resolved intent, not the saved record: it carries no id and no timestamps, and a concurrent write landing in between can change what is actually saved.",
 		Scope:         mcp.ScopeWrite,
 		Mutation:      true,
 		InputSchema:   json.RawMessage(`{"type":"object","properties":{"target":{"type":"object","properties":{"org":{"type":"string"},"project":{"type":"string"}},"additionalProperties":false},"fromWallet":{"type":"string"},"toWallet":{"type":"string"},"amount":{"type":"object","properties":{"amount":{"type":"string"},"currency":{"type":"string"}},"additionalProperties":false},"note":{"type":"string"},"occurredAt":{"type":"string"},"period":{"type":"string","description":"Period ID from list_periods or current_period, never a period name. Empty means the period containing occurred_at."},"confirm":{"type":"boolean"}},"additionalProperties":false}`),
@@ -81,7 +81,7 @@ func RegisterTransactionServiceTools(reg mcp.Registry, h yasakuv1connect.Transac
 	})
 	reg.Register(mcp.ToolSpec{
 		Name:          "record_batch",
-		Description:   "Catat banyak transaksi sekaligus, misalnya dari satu cerita panjang. Each item is recorded independently, so one bad row does not undo the rest; read the per-item outcomes. Item kind is income, expense or transfer only. Each item's period must be a period ID from list_periods or current_period, never a period name. Call without confirm to preview; call again with confirm=true to save. Each previewed outcome is the resolved intent, not the saved record: it carries no id and no timestamps, and a concurrent write landing in between can change what is actually saved.",
+		Description:   "Record many transactions at once, for example from one long account of a day. Each item is recorded independently, so one bad row does not undo the rest; read the per-item outcomes. Item kind is income, expense or transfer only. Each item's period must be a period ID from list_periods or current_period, never a period name, and a closed period is refused. Call without confirm to preview; call again with confirm=true to save. Each previewed outcome is the resolved intent, not the saved record: it carries no id and no timestamps, and a concurrent write landing in between can change what is actually saved.",
 		Scope:         mcp.ScopeWrite,
 		Mutation:      true,
 		InputSchema:   json.RawMessage(`{"type":"object","properties":{"target":{"type":"object","properties":{"org":{"type":"string"},"project":{"type":"string"}},"additionalProperties":false},"items":{"type":"array","items":{"type":"object","properties":{"kind":{"type":"string","description":"One of income, expense or transfer. A batch may not write the system kinds opening, adjustment_in or adjustment_out."},"wallet":{"type":"string"},"toWallet":{"type":"string"},"amount":{"type":"object","properties":{"amount":{"type":"string"},"currency":{"type":"string"}},"additionalProperties":false},"category":{"type":"string"},"note":{"type":"string"},"occurredAt":{"type":"string"},"period":{"type":"string","description":"Period ID from list_periods or current_period, never a period name. Empty means the period containing occurred_at."}},"additionalProperties":false}},"confirm":{"type":"boolean"}},"additionalProperties":false}`),
@@ -102,9 +102,10 @@ func RegisterTransactionServiceTools(reg mcp.Registry, h yasakuv1connect.Transac
 	})
 	reg.Register(mcp.ToolSpec{
 		Name:          "revise_tx",
-		Description:   "Perbaiki transaksi yang sudah dicatat. Only the fields you send are changed; an empty category clears it. Period must be a period ID from list_periods or current_period, never a period name. A transaction inside a closed period is refused until the period is reopened. Call without confirm to preview; call again with confirm=true to save. The preview is the resolved intent, not the saved record: its id is real but its timestamps are not final, and a concurrent write landing in between can change what is actually saved.",
+		Description:   "Correct a transaction that is already recorded. Only the fields you send are changed; an empty category clears it. Period must be a period ID from list_periods or current_period, never a period name. A transaction inside a closed period is refused until the period is reopened, and a system-written opening or adjustment row cannot be revised. Call without confirm to preview; call again with confirm=true to save. The preview is the resolved intent, not the saved record: its id is real but its timestamps are not final, and a concurrent write landing in between can change what is actually saved.",
 		Scope:         mcp.ScopeWrite,
 		Mutation:      true,
+		Destructive:   true,
 		InputSchema:   json.RawMessage(`{"type":"object","properties":{"target":{"type":"object","properties":{"org":{"type":"string"},"project":{"type":"string"}},"additionalProperties":false},"id":{"type":"string"},"wallet":{"type":"string"},"toWallet":{"type":"string"},"amount":{"type":"object","properties":{"amount":{"type":"string"},"currency":{"type":"string"}},"additionalProperties":false},"category":{"type":"string"},"note":{"type":"string"},"occurredAt":{"type":"string"},"period":{"type":"string","description":"Period ID from list_periods or current_period, never a period name. Absent leaves the period alone; it is re-derived when occurred_at moves."},"confirm":{"type":"boolean"}},"additionalProperties":false}`),
 		UIResourceURI: "ui://yasaku/app",
 	}, func(ctx context.Context, input json.RawMessage) (json.RawMessage, error) {
@@ -123,9 +124,10 @@ func RegisterTransactionServiceTools(reg mcp.Registry, h yasakuv1connect.Transac
 	})
 	reg.Register(mcp.ToolSpec{
 		Name:          "delete_tx",
-		Description:   "Hapus transaksi secara permanen. A transaction inside a closed period is refused until the period is reopened. Call without confirm to preview which row would go; call again with confirm=true to delete. The preview is the resolved intent read at preview time; a concurrent write landing in between can change what is actually deleted.",
+		Description:   "Delete a transaction permanently. A transaction inside a closed period is refused until the period is reopened, and a system-written opening or adjustment row cannot be deleted. Call without confirm to preview which row would go; call again with confirm=true to delete. The preview is the resolved intent read at preview time; a concurrent write landing in between can change what is actually deleted.",
 		Scope:         mcp.ScopeWrite,
 		Mutation:      true,
+		Destructive:   true,
 		InputSchema:   json.RawMessage(`{"type":"object","properties":{"target":{"type":"object","properties":{"org":{"type":"string"},"project":{"type":"string"}},"additionalProperties":false},"id":{"type":"string"},"confirm":{"type":"boolean"}},"additionalProperties":false}`),
 		UIResourceURI: "ui://yasaku/app",
 	}, func(ctx context.Context, input json.RawMessage) (json.RawMessage, error) {
@@ -144,7 +146,7 @@ func RegisterTransactionServiceTools(reg mcp.Registry, h yasakuv1connect.Transac
 	})
 	reg.Register(mcp.ToolSpec{
 		Name:          "list_recent_tx",
-		Description:   "Daftar transaksi terbaru, bisa disaring per dompet, kategori, periode atau jenis. Period must be a period ID from list_periods or current_period, never a period name. Limit defaults to 50 and is capped at 200. Pass the returned next_cursor back as cursor for the following page; an empty next_cursor means the last page. The returned total_in and total_out cover only the rows on this page, and are empty when those rows do not all share one currency.",
+		Description:   "List the most recent transactions, optionally filtered by wallet, category, period or kind. Period must be a period ID from list_periods or current_period, never a period name. Limit defaults to 50 and is capped at 200. Pass the returned next_cursor back as cursor for the following page; an empty next_cursor means the last page. The returned total_in and total_out cover only the rows on this page, and are empty when those rows do not all share one currency.",
 		Scope:         mcp.ScopeRead,
 		Mutation:      false,
 		InputSchema:   json.RawMessage(`{"type":"object","properties":{"target":{"type":"object","properties":{"org":{"type":"string"},"project":{"type":"string"}},"additionalProperties":false},"wallet":{"type":"string"},"kind":{"type":"string","description":"One of income, expense, transfer, opening, adjustment_in or adjustment_out. Empty means every kind."},"category":{"type":"string"},"period":{"type":"string","description":"Period ID from list_periods or current_period, never a period name. Empty means every period."},"limit":{"type":"integer","description":"Defaults to 50, capped at 200."},"cursor":{"type":"string"}},"additionalProperties":false}`),
@@ -165,7 +167,7 @@ func RegisterTransactionServiceTools(reg mcp.Registry, h yasakuv1connect.Transac
 	})
 	reg.Register(mcp.ToolSpec{
 		Name:          "search_tx",
-		Description:   "Cari transaksi berdasarkan catatannya, dengan rentang tanggal opsional. The query matches the note case-insensitively; from and to are YYYY-MM-DD and inclusive. Limit defaults to 50 and is capped at 200. Pass the returned next_cursor back as cursor for the following page. The returned total_in and total_out cover only the rows on this page, and are empty when those rows do not all share one currency.",
+		Description:   "Search transactions by their note, with an optional date range. The query matches the note case-insensitively; from and to are YYYY-MM-DD and inclusive. Limit defaults to 50 and is capped at 200. Pass the returned next_cursor back as cursor for the following page. The returned total_in and total_out cover only the rows on this page, and are empty when those rows do not all share one currency.",
 		Scope:         mcp.ScopeRead,
 		Mutation:      false,
 		InputSchema:   json.RawMessage(`{"type":"object","properties":{"target":{"type":"object","properties":{"org":{"type":"string"},"project":{"type":"string"}},"additionalProperties":false},"query":{"type":"string"},"from":{"type":"string"},"to":{"type":"string"},"limit":{"type":"integer","description":"Defaults to 50, capped at 200."},"cursor":{"type":"string"}},"additionalProperties":false}`),

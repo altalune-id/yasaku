@@ -16,7 +16,11 @@ function createBridge(handlers, loadModule) {
     // NOTE: capabilities is the SECOND positional argument. Omit the third so
     // autoResize stays on and the host gets ui/notifications/size-changed.
     app = new mod.App({ name: "yasaku", version: "1.0.0" }, { availableDisplayModes: ["inline"] });
-    app.ontoolinput = function (params) { handlers.onToolInput(params); };
+    app.ontoolinput = function (params) {
+      const ctx = app.getHostContext();
+      const tool = ctx && ctx.toolInfo && ctx.toolInfo.tool ? ctx.toolInfo.tool.name : "";
+      handlers.onToolInput(params, tool);
+    };
     app.ontoolresult = function (result) { handlers.onToolResult(result); };
     app.onhostcontextchanged = function (ctx) { applyHostStyles(ctx); handlers.onHostContext(ctx); };
     app.onerror = function (e) { console.error(e); };

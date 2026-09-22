@@ -14,7 +14,7 @@ service TransactionService {
   rpc RecordExpense(RecordExpenseRequest) returns (RecordExpenseResponse) {
     option (yasaku.mcp.v1.tool) = {
       name: "record_expense"
-      description: "Catat pengeluaran (uang keluar) dari sebuah dompet. Amount in major units of the wallet currency. Wallet and category accept a name or an id, but period must be a period ID from list_periods or current_period, never a period name. Call without confirm to preview; call again with confirm=true to save. The preview is the resolved intent, not the saved record: it carries no id and no timestamps, and a concurrent write landing in between can change what is actually saved."
+      description: "Record an expense (money going out) from a wallet. Amount in major units of the wallet currency. Wallet and category accept a name or an id, but period must be a period ID from list_periods or current_period, never a period name. The period must be the one containing occurred_at or one next to it, and a closed period is refused. Call without confirm to preview; call again with confirm=true to save. The preview is the resolved intent, not the saved record: it carries no id and no timestamps, and a concurrent write landing in between can change what is actually saved."
       access: ACCESS_WRITE
       mutation: true
       ui: "app"
@@ -23,7 +23,7 @@ service TransactionService {
   rpc RecordIncome(RecordIncomeRequest) returns (RecordIncomeResponse) {
     option (yasaku.mcp.v1.tool) = {
       name: "record_income"
-      description: "Catat pemasukan (uang masuk) ke sebuah dompet. Amount in major units of the wallet currency. Wallet and category accept a name or an id, but period must be a period ID from list_periods or current_period, never a period name. Call without confirm to preview; call again with confirm=true to save. The preview is the resolved intent, not the saved record: it carries no id and no timestamps, and a concurrent write landing in between can change what is actually saved."
+      description: "Record income (money coming in) into a wallet. Amount in major units of the wallet currency. Wallet and category accept a name or an id, but period must be a period ID from list_periods or current_period, never a period name. The period must be the one containing occurred_at or one next to it, and a closed period is refused. Call without confirm to preview; call again with confirm=true to save. The preview is the resolved intent, not the saved record: it carries no id and no timestamps, and a concurrent write landing in between can change what is actually saved."
       access: ACCESS_WRITE
       mutation: true
       ui: "app"
@@ -32,7 +32,7 @@ service TransactionService {
   rpc RecordTransfer(RecordTransferRequest) returns (RecordTransferResponse) {
     option (yasaku.mcp.v1.tool) = {
       name: "record_transfer"
-      description: "Pindahkan uang antar dompet milik sendiri; ini bukan pengeluaran. Both wallets must hold the same currency and a transfer carries no category. Wallets accept a name or an id, but period must be a period ID from list_periods or current_period, never a period name. Call without confirm to preview; call again with confirm=true to save. The preview is the resolved intent, not the saved record: it carries no id and no timestamps, and a concurrent write landing in between can change what is actually saved."
+      description: "Move money between the user's own wallets; this is not an expense. Both wallets must hold the same currency and a transfer carries no category. Wallets accept a name or an id, but period must be a period ID from list_periods or current_period, never a period name. The period must be the one containing occurred_at or one next to it, and a closed period is refused. Call without confirm to preview; call again with confirm=true to save. The preview is the resolved intent, not the saved record: it carries no id and no timestamps, and a concurrent write landing in between can change what is actually saved."
       access: ACCESS_WRITE
       mutation: true
       ui: "app"
@@ -41,7 +41,7 @@ service TransactionService {
   rpc RecordBatch(RecordBatchRequest) returns (RecordBatchResponse) {
     option (yasaku.mcp.v1.tool) = {
       name: "record_batch"
-      description: "Catat banyak transaksi sekaligus, misalnya dari satu cerita panjang. Each item is recorded independently, so one bad row does not undo the rest; read the per-item outcomes. Item kind is income, expense or transfer only. Each item's period must be a period ID from list_periods or current_period, never a period name. Call without confirm to preview; call again with confirm=true to save. Each previewed outcome is the resolved intent, not the saved record: it carries no id and no timestamps, and a concurrent write landing in between can change what is actually saved."
+      description: "Record many transactions at once, for example from one long account of a day. Each item is recorded independently, so one bad row does not undo the rest; read the per-item outcomes. Item kind is income, expense or transfer only. Each item's period must be a period ID from list_periods or current_period, never a period name, and a closed period is refused. Call without confirm to preview; call again with confirm=true to save. Each previewed outcome is the resolved intent, not the saved record: it carries no id and no timestamps, and a concurrent write landing in between can change what is actually saved."
       access: ACCESS_WRITE
       mutation: true
       ui: "app"
@@ -50,25 +50,27 @@ service TransactionService {
   rpc ReviseTransaction(ReviseTransactionRequest) returns (ReviseTransactionResponse) {
     option (yasaku.mcp.v1.tool) = {
       name: "revise_tx"
-      description: "Perbaiki transaksi yang sudah dicatat. Only the fields you send are changed; an empty category clears it. Period must be a period ID from list_periods or current_period, never a period name. A transaction inside a closed period is refused until the period is reopened. Call without confirm to preview; call again with confirm=true to save. The preview is the resolved intent, not the saved record: its id is real but its timestamps are not final, and a concurrent write landing in between can change what is actually saved."
+      description: "Correct a transaction that is already recorded. Only the fields you send are changed; an empty category clears it. Period must be a period ID from list_periods or current_period, never a period name. A transaction inside a closed period is refused until the period is reopened, and a system-written opening or adjustment row cannot be revised. Call without confirm to preview; call again with confirm=true to save. The preview is the resolved intent, not the saved record: its id is real but its timestamps are not final, and a concurrent write landing in between can change what is actually saved."
       access: ACCESS_WRITE
       mutation: true
       ui: "app"
+      destructive: true
     };
   }
   rpc DeleteTransaction(DeleteTransactionRequest) returns (DeleteTransactionResponse) {
     option (yasaku.mcp.v1.tool) = {
       name: "delete_tx"
-      description: "Hapus transaksi secara permanen. A transaction inside a closed period is refused until the period is reopened. Call without confirm to preview which row would go; call again with confirm=true to delete. The preview is the resolved intent read at preview time; a concurrent write landing in between can change what is actually deleted."
+      description: "Delete a transaction permanently. A transaction inside a closed period is refused until the period is reopened, and a system-written opening or adjustment row cannot be deleted. Call without confirm to preview which row would go; call again with confirm=true to delete. The preview is the resolved intent read at preview time; a concurrent write landing in between can change what is actually deleted."
       access: ACCESS_WRITE
       mutation: true
       ui: "app"
+      destructive: true
     };
   }
   rpc ListTransactions(ListTransactionsRequest) returns (ListTransactionsResponse) {
     option (yasaku.mcp.v1.tool) = {
       name: "list_recent_tx"
-      description: "Daftar transaksi terbaru, bisa disaring per dompet, kategori, periode atau jenis. Period must be a period ID from list_periods or current_period, never a period name. Limit defaults to 50 and is capped at 200. Pass the returned next_cursor back as cursor for the following page; an empty next_cursor means the last page. The returned total_in and total_out cover only the rows on this page, and are empty when those rows do not all share one currency."
+      description: "List the most recent transactions, optionally filtered by wallet, category, period or kind. Period must be a period ID from list_periods or current_period, never a period name. Limit defaults to 50 and is capped at 200. Pass the returned next_cursor back as cursor for the following page; an empty next_cursor means the last page. The returned total_in and total_out cover only the rows on this page, and are empty when those rows do not all share one currency."
       access: ACCESS_READ
       ui: "app"
     };
@@ -76,7 +78,7 @@ service TransactionService {
   rpc SearchTransactions(SearchTransactionsRequest) returns (SearchTransactionsResponse) {
     option (yasaku.mcp.v1.tool) = {
       name: "search_tx"
-      description: "Cari transaksi berdasarkan catatannya, dengan rentang tanggal opsional. The query matches the note case-insensitively; from and to are YYYY-MM-DD and inclusive. Limit defaults to 50 and is capped at 200. Pass the returned next_cursor back as cursor for the following page. The returned total_in and total_out cover only the rows on this page, and are empty when those rows do not all share one currency."
+      description: "Search transactions by their note, with an optional date range. The query matches the note case-insensitively; from and to are YYYY-MM-DD and inclusive. Limit defaults to 50 and is capped at 200. Pass the returned next_cursor back as cursor for the following page. The returned total_in and total_out cover only the rows on this page, and are empty when those rows do not all share one currency."
       access: ACCESS_READ
       ui: "app"
     };

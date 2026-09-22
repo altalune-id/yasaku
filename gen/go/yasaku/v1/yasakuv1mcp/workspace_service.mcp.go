@@ -18,7 +18,7 @@ import (
 func RegisterWorkspaceServiceTools(reg mcp.Registry, h yasakuv1connect.WorkspaceServiceHandler) {
 	reg.Register(mcp.ToolSpec{
 		Name:          "list_projects",
-		Description:   "Daftar buku kas yang boleh diakses. Use the returned org and project slugs as the target of every other tool; a caller with exactly one project may leave the target empty.",
+		Description:   "List the ledgers the caller may access. Use the returned org and project slugs as the target of every other tool; a caller with exactly one org and one project inside it may leave the target empty.",
 		Scope:         mcp.ScopeRead,
 		Mutation:      false,
 		InputSchema:   json.RawMessage(`{"type":"object","properties":{},"additionalProperties":false}`),
@@ -39,7 +39,7 @@ func RegisterWorkspaceServiceTools(reg mcp.Registry, h yasakuv1connect.Workspace
 	})
 	reg.Register(mcp.ToolSpec{
 		Name:          "now",
-		Description:   "Tanggal dan jam sekarang menurut zona waktu buku kas, beserta periode berjalan. Call this before writing a dated transaction so relative words like \"kemarin\" resolve against the ledger's own clock, not the caller's.",
+		Description:   "Report the current date and time in the ledger's timezone, together with the period in progress when one is open. Call this before writing a dated transaction so relative words like \"yesterday\" resolve against the ledger's own clock, not the caller's.",
 		Scope:         mcp.ScopeRead,
 		Mutation:      false,
 		InputSchema:   json.RawMessage(`{"type":"object","properties":{"target":{"type":"object","properties":{"org":{"type":"string"},"project":{"type":"string"}},"additionalProperties":false}},"additionalProperties":false}`),

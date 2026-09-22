@@ -16,7 +16,8 @@ function batchRow(o, i) {
   </div>`;
 }
 
-function batchCard(rows) {
+function batchCard(maybeRows) {
+  const rows = Array.isArray(maybeRows) ? maybeRows : [];
   const clean = rows.filter(function (o) { return !(o.error || o.errorCode); }).length;
   return html`<div class="ya-card">
     <div class="ya-kpi-label">${num(clean)} of ${num(rows.length)} rows are writable</div>
@@ -27,7 +28,7 @@ function batchCard(rows) {
 registerView("record_batch", function (d, action) {
   const phase = phaseOf(d);
   if (phase === "needs") {
-    return html`<div class="ya-root"><div class="ya-card">${raw(needsList(d).map(needField).join(""))}</div></div>`;
+    return needsForm(d, action, "record_batch", "Record batch");
   }
   if (phase === "result") {
     return html`<div class="ya-root">
@@ -52,7 +53,7 @@ registerView("record_batch", function (d, action) {
 // NOTE: at zero, previewed and committed are byte-identical {} on the wire — they cannot be told apart.
 registerView("seed_default_categories", function (d, action) {
   if (needsList(d).length > 0) {
-    return html`<div class="ya-root"><div class="ya-card">${raw(needsList(d).map(needField).join(""))}</div></div>`;
+    return needsForm(d, action, "seed_default_categories", "Seed default categories");
   }
   if (d.inserted !== undefined) {
     return html`<div class="ya-root">

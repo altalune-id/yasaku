@@ -304,12 +304,12 @@ const file_yasaku_v1_workspace_proto_rawDesc = "" +
 	"\btimezone\x18\x01 \x01(\tR\btimezone\x12\x14\n" +
 	"\x05today\x18\x02 \x01(\tR\x05today\x12,\n" +
 	"\x03now\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\x03now\x128\n" +
-	"\x0ecurrent_period\x18\x04 \x01(\v2\x11.yasaku.v1.PeriodR\rcurrentPeriod2\xd5\x04\n" +
-	"\x10WorkspaceService\x12\x9b\x02\n" +
-	"\fListProjects\x12\x1e.yasaku.v1.ListProjectsRequest\x1a\x1f.yasaku.v1.ListProjectsResponse\"\xc9\x01\xca\xf3\x18\xc4\x01\n" +
-	"\rlist_projects\x12\xab\x01Daftar buku kas yang boleh diakses. Use the returned org and project slugs as the target of every other tool; a caller with exactly one project may leave the target empty.\x18\x01*\x03app\x12\xa2\x02\n" +
-	"\x03Now\x12\x15.yasaku.v1.NowRequest\x1a\x16.yasaku.v1.NowResponse\"\xeb\x01\xca\xf3\x18\xe6\x01\n" +
-	"\x03now\x12\xd7\x01Tanggal dan jam sekarang menurut zona waktu buku kas, beserta periode berjalan. Call this before writing a dated transaction so relative words like \"kemarin\" resolve against the ledger's own clock, not the caller's.\x18\x01*\x03appB\x92\x01\n" +
+	"\x0ecurrent_period\x18\x04 \x01(\v2\x11.yasaku.v1.PeriodR\rcurrentPeriod2\x93\x05\n" +
+	"\x10WorkspaceService\x12\xb5\x02\n" +
+	"\fListProjects\x12\x1e.yasaku.v1.ListProjectsRequest\x1a\x1f.yasaku.v1.ListProjectsResponse\"\xe3\x01\xca\xf3\x18\xde\x01\n" +
+	"\rlist_projects\x12\xc5\x01List the ledgers the caller may access. Use the returned org and project slugs as the target of every other tool; a caller with exactly one org and one project inside it may leave the target empty.\x18\x01*\x03app\x12\xc6\x02\n" +
+	"\x03Now\x12\x15.yasaku.v1.NowRequest\x1a\x16.yasaku.v1.NowResponse\"\x8f\x02\xca\xf3\x18\x8a\x02\n" +
+	"\x03now\x12\xfb\x01Report the current date and time in the ledger's timezone, together with the period in progress when one is open. Call this before writing a dated transaction so relative words like \"yesterday\" resolve against the ledger's own clock, not the caller's.\x18\x01*\x03appB\x92\x01\n" +
 	"\rcom.yasaku.v1B\x0eWorkspaceProtoP\x01Z,altalune.id/yasaku/gen/go/yasaku/v1;yasakuv1\xa2\x02\x03YXX\xaa\x02\tYasaku.V1\xca\x02\tYasaku\\V1\xe2\x02\x15Yasaku\\V1\\GPBMetadata\xea\x02\n" +
 	"Yasaku::V1b\x06proto3"
 

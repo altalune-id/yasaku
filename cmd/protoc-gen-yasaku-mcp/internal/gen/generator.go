@@ -30,6 +30,7 @@ type tool struct {
 	description string
 	scope       string
 	mutation    bool
+	destructive bool
 	method      *protogen.Method
 	schema      json.RawMessage
 	uiResource  string
@@ -154,6 +155,7 @@ func newTool(method *protogen.Method, spec *yasakumcpv1.Tool, opts Options) (too
 		description: description,
 		scope:       scope,
 		mutation:    spec.GetMutation(),
+		destructive: spec.GetDestructive(),
 		method:      method,
 		schema:      schema,
 		uiResource:  uiURI,
@@ -196,6 +198,9 @@ func writeService(p *protogen.Plugin, file *protogen.File, svc *protogen.Service
 		g.P("Description: ", strconv.Quote(t.description), ",")
 		g.P("Scope: ", g.QualifiedGoIdent(runtimePackage.Ident(t.scope)), ",")
 		g.P("Mutation: ", t.mutation, ",")
+		if t.destructive {
+			g.P("Destructive: true,")
+		}
 		g.P("InputSchema: ", rawMessage, "(", goStringLiteral(string(t.schema)), "),")
 		if t.uiResource != "" {
 			g.P("UIResourceURI: ", strconv.Quote(t.uiResource), ",")

@@ -22,6 +22,28 @@ function needField(n) {
   </div>`;
 }
 
+// subjectOf names what a preview acts on. close_period's preview is a bare Snapshot
+// carrying no period id, so the subject comes from the captured tool input.
+function subjectOf(d) {
+  const p = d.preview || {};
+  const name = p.name || (p.wallet || {}).name || (p.category || {}).name;
+  if (name) return ": " + name;
+  const from = typeof capturedArgs === "function" ? capturedArgs() : {};
+  return from.period ? ": " + from.period : "";
+}
+
+function needsForm(d, action, tool, title) {
+  const rows = needsList(d).map(needField);
+  const edit = action("edit", tool, { confirm: false });
+  return html`<div class="ya-root">
+    <div class="ya-kpi-value">${title}</div>
+    <form class="ya-card">
+      ${raw(rows.join(""))}
+      <div><button class="ya-action" type="button" data-action="${edit}">Continue</button></div>
+    </form>
+  </div>`;
+}
+
 function walletEntity(w) {
   const e = w || {};
   return html`<div class="ya-card ya-kpis">
@@ -52,15 +74,7 @@ function entityMutationView(opts) {
     const phase = phaseOf(d);
 
     if (phase === "needs") {
-      const rows = needsList(d).map(needField);
-      const edit = action("edit", opts.tool, { confirm: false });
-      return html`<div class="ya-root">
-        <div class="ya-kpi-value">${opts.title}</div>
-        <form class="ya-card" data-action="${edit}">
-          ${raw(rows.join(""))}
-          <div><button class="ya-action" type="button" data-action="${edit}">Continue</button></div>
-        </form>
-      </div>`;
+      return needsForm(d, action, opts.tool, opts.title);
     }
 
     if (phase === "preview") {
@@ -68,7 +82,7 @@ function entityMutationView(opts) {
       const edit = action("edit", opts.tool, { confirm: false });
       return html`<div class="ya-root">
         <div>
-          <div class="ya-kpi-value">${opts.title}</div>
+          <div class="ya-kpi-value">${opts.title}${subjectOf(d)}</div>
           <div class="ya-muted">${opts.previewNote}</div>
         </div>
         ${raw(opts.preview(d.preview))}

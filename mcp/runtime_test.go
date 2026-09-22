@@ -330,8 +330,10 @@ func TestServerAnnotationsReflectMutation(t *testing.T) {
 		if tool.Annotations.DestructiveHint == nil {
 			t.Fatalf("tool %s has no DestructiveHint", tool.Name)
 		}
-		if *tool.Annotations.DestructiveHint != mutation {
-			t.Fatalf("tool %s DestructiveHint = %v, want %v", tool.Name, *tool.Annotations.DestructiveHint, mutation)
+		// destructiveHint reflects ToolSpec.Destructive, not Mutation: the spec
+		// reserves it for writes that overwrite or remove, not additive ones.
+		if *tool.Annotations.DestructiveHint {
+			t.Fatalf("tool %s DestructiveHint = true; neither fixture spec is destructive", tool.Name)
 		}
 		if tool.Description == "" {
 			t.Fatalf("tool %s lost its description", tool.Name)
@@ -854,5 +856,44 @@ func TestTraceLevels(t *testing.T) {
 	}
 	if !strings.Contains(out, `tool=wallet_list`) {
 		t.Errorf("tools/call must log the tool name at Info — the endpoint is one path, so nothing else records it:\n%s", out)
+	}
+}
+
+func TestToolAnnotationsFollowTheSpec(t *testing.T) {
+	s := NewServer("yasaku", "test", staticScopes(string(ScopeRead), string(ScopeWrite)))
+	s.Register(readSpec(), echoHandler)
+	s.Register(writeSpec(), echoHandler)
+	cs := connect(t, s)
+
+	read := toolByName(t, cs, "wallet_list")
+	if read.Title != "Wallet list" {
+		t.Errorf("read Title = %q, want a human-readable title; hosts show Name otherwise", read.Title)
+	}
+	if !read.Annotations.ReadOnlyHint {
+		t.Error("a read tool must set readOnlyHint")
+	}
+	if read.Annotations.OpenWorldHint == nil || *read.Annotations.OpenWorldHint {
+		t.Error("openWorldHint defaults to true; yasaku's tools act on a closed ledger and must set it false")
+	}
+
+	write := toolByName(t, cs, "wallet_create")
+	if write.Annotations.ReadOnlyHint {
+		t.Error("a mutation must not set readOnlyHint")
+	}
+	if write.Annotations.DestructiveHint == nil || *write.Annotations.DestructiveHint {
+		t.Error("an additive mutation must set destructiveHint false; marking every write destructive desensitises the host prompt")
+	}
+}
+
+func TestDestructiveHintTracksTheSpecFlag(t *testing.T) {
+	s := NewServer("yasaku", "test", staticScopes(string(ScopeWrite)))
+	spec := writeSpec()
+	spec.Name = "wallet_delete"
+	spec.Destructive = true
+	s.Register(spec, echoHandler)
+
+	tool := toolByName(t, connect(t, s), "wallet_delete")
+	if tool.Annotations.DestructiveHint == nil || !*tool.Annotations.DestructiveHint {
+		t.Error("a spec marked Destructive must set destructiveHint true")
 	}
 }
