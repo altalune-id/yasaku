@@ -835,3 +835,24 @@ func TestNoPanicWhenUIDisabled(t *testing.T) {
 	s.Handler()
 	s.SDK()
 }
+
+func TestTraceLevels(t *testing.T) {
+	var buf bytes.Buffer
+	s := NewServer("yasaku", "test", staticScopes(string(ScopeRead)),
+		WithLogger(slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelInfo}))))
+	s.Register(readSpec(), echoHandler)
+
+	cs := connect(t, s)
+	if _, err := cs.ListTools(t.Context(), &sdk.ListToolsParams{}); err != nil {
+		t.Fatalf("list tools: %v", err)
+	}
+	callTool(t, cs, "wallet_list", map[string]any{})
+
+	out := buf.String()
+	if strings.Contains(out, "tools/list") {
+		t.Errorf("protocol chatter must not reach Info:\n%s", out)
+	}
+	if !strings.Contains(out, `tool=wallet_list`) {
+		t.Errorf("tools/call must log the tool name at Info — the endpoint is one path, so nothing else records it:\n%s", out)
+	}
+}

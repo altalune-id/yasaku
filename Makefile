@@ -73,7 +73,7 @@ mcp-ui-dev: ## Assemble the MCP Apps bundle to tmp/bundle.html for local layout 
 mcp-ui-preview: ## Render every MCP view against its fixture to tmp/preview.html
 	@mkdir -p tmp
 	@YASAKU_UI_PREVIEW=$(CURDIR)/tmp/preview.html $(GO) test ./internal/mcp/ui/ -run TestDumpPreview -count=1 >/dev/null
-	@echo "wrote tmp/preview.html — open it to see all four views rendered"
+	@echo "wrote tmp/preview.html — open it to see every view rendered"
 
 ui-vendor: ## Download pinned static assets into internal/web/static
 	@if [ -x scripts/ui-vendor.sh ]; then bash scripts/ui-vendor.sh; else echo "(scripts/ui-vendor.sh missing — skipping)"; fi

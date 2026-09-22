@@ -2,6 +2,9 @@ package ui
 
 import (
 	"embed"
+	"os"
+	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -30,7 +33,10 @@ func renderFixture(t *testing.T, vm *goja.Runtime, tool, fixture string) (string
 	if !ok {
 		t.Fatalf("renderTool returned %T, want an object", v.Export())
 	}
-	html, _ := out["html"].(string)
+	html, ok := out["html"].(string)
+	if !ok {
+		t.Fatalf("renderTool(%s).html = %T, want string", tool, out["html"])
+	}
 	actions, _ := out["actions"].(map[string]any)
 	return html, actions
 }
@@ -50,6 +56,8 @@ func TestFixturesMatchTheProtos(t *testing.T) {
 		{"wallets_list_sparse.json", &yasakuv1.ListWalletsResponse{}},
 		{"wallet_detail.json", &yasakuv1.GetWalletResponse{}},
 		{"wallet_totals.json", &yasakuv1.WalletTotalsResponse{}},
+		{"wallet_detail_sparse.json", &yasakuv1.GetWalletResponse{}},
+		{"wallet_totals_sparse.json", &yasakuv1.WalletTotalsResponse{}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.file, func(t *testing.T) {
@@ -234,13 +242,32 @@ func TestWalletDetailShowsRecentTransactions(t *testing.T) {
 func TestWalletTotalsDistinguishesSpendableFromTotal(t *testing.T) {
 	vm := newJSVM(t)
 	got, _ := renderFixture(t, vm, "wallet_totals", "wallet_totals.json")
-	for _, want := range []string{"IDR 108,000", "IDR 5,108,000", "September 2026", "Tabungan"} {
+	for _, want := range []string{"IDR 99,000", "IDR 5,099,000", "IDR 120,000", "IDR 12,000", "IDR 108,000", "September 2026", "Tabungan"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("wallet totals missing %q\n%s", want, got)
 		}
 	}
-	if !strings.Contains(got, "Spendable") {
-		t.Errorf("spendable total must be labelled distinctly from total:\n%s", got)
+	for _, label := range []string{"Spendable", "Total", "Income", "Expense", "Net"} {
+		if !strings.Contains(got, ">"+label+"<") {
+			t.Errorf("wallet totals must label %q — the tool description promises income and expense:\n%s", label, got)
+		}
+	}
+}
+
+func TestWalletDetailAndTotalsEscapeNames(t *testing.T) {
+	vm := newJSVM(t)
+	const evil = `<img src=x onerror=alert(1)>`
+	for _, expr := range []string{
+		`renderTool("get_wallet", {wallet:{id:"w",name:"` + evil + `"}}).html`,
+		`renderTool("wallet_totals", {wallets:[{wallet:{id:"w",name:"` + evil + `"}}]}).html`,
+	} {
+		v, err := vm.RunString(expr)
+		if err != nil {
+			t.Fatalf("render: %v", err)
+		}
+		if strings.Contains(v.String(), "<img src=x") {
+			t.Errorf("name not escaped by %s:\n%s", expr, v.String())
+		}
 	}
 }
 
@@ -248,14 +275,17 @@ func TestWalletViewsSurviveSparsePayloads(t *testing.T) {
 	vm := newJSVM(t)
 	for _, tc := range []struct{ tool, fixture string }{
 		{"list_wallets", "wallets_list_sparse.json"},
-		{"get_wallet", "tx_list_sparse.json"},
-		{"wallet_totals", "tx_list_sparse.json"},
+		{"get_wallet", "wallet_detail_sparse.json"},
+		{"wallet_totals", "wallet_totals_sparse.json"},
 	} {
 		got, _ := renderFixture(t, vm, tc.tool, tc.fixture)
 		for _, bad := range []string{"undefined", "NaN", "[object Object]"} {
 			if strings.Contains(got, bad) {
 				t.Errorf("%s on sparse payload leaked %q:\n%s", tc.tool, bad, got)
 			}
+		}
+		if !strings.Contains(got, "Dompet Baru") {
+			t.Errorf("%s dropped the one field the sparse payload does carry:\n%s", tc.tool, got)
 		}
 	}
 }
@@ -268,5 +298,86 @@ func TestWalletNamesAreEscaped(t *testing.T) {
 	}
 	if strings.Contains(v.String(), "<img src=x") {
 		t.Errorf("wallet name was not escaped:\n%s", v.String())
+	}
+}
+
+func TestRegistryIsNotFooledByPrototypeKeys(t *testing.T) {
+	vm := newJSVM(t)
+	for _, name := range []string{"constructor", "toString", "__proto__", "hasOwnProperty"} {
+		v, err := vm.RunString(`renderTool(` + strconv.Quote(name) + `, {}).html`)
+		if err != nil {
+			t.Fatalf("renderTool(%q): %v", name, err)
+		}
+		got := v.Export()
+		s, ok := got.(string)
+		if !ok {
+			t.Errorf("renderTool(%q).html = %T, want string — boot.js assigns this straight to innerHTML", name, got)
+			continue
+		}
+		if !strings.Contains(s, "ya-muted") {
+			t.Errorf("renderTool(%q) must render the neutral panel, got:\n%s", name, s)
+		}
+	}
+}
+
+func TestTxSignIsNotFooledByPrototypeKeys(t *testing.T) {
+	vm := newJSVM(t)
+	v, err := vm.RunString(`renderTool("list_recent_tx", {transactions:[{id:"x",kind:"constructor"}]}).html`)
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	if strings.Contains(v.String(), "native code") {
+		t.Errorf("a kind matching an Object.prototype member leaked a function into the glyph:\n%s", v.String())
+	}
+}
+
+// TestEveryAnnotatedToolHasAView pins the two sides together: a tool annotated
+// ui: "app" with no registered view renders "No view for …" in the host, and a
+// registered view with no annotation is dead code. Both are silent today.
+func TestEveryAnnotatedToolHasAView(t *testing.T) {
+	vm := newJSVM(t)
+	v, err := vm.RunString(`Object.keys(VIEWS).sort().join(",")`)
+	if err != nil {
+		t.Fatalf("read VIEWS: %v", err)
+	}
+	registered := map[string]bool{}
+	for _, n := range strings.Split(v.String(), ",") {
+		registered[n] = true
+	}
+
+	annotated := map[string]bool{}
+	root := filepath.Join("..", "..", "..", "gen", "go", "yasaku", "v1", "yasakuv1mcp")
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		t.Fatalf("read generated dir: %v", err)
+	}
+	nameRe := regexp.MustCompile(`Name:\s+"([a-z0-9_]+)"`)
+	for _, e := range entries {
+		src, err := os.ReadFile(filepath.Join(root, e.Name())) //nolint:gosec // generated tree
+		if err != nil {
+			t.Fatalf("read %s: %v", e.Name(), err)
+		}
+		for _, block := range strings.Split(string(src), "reg.Register(") {
+			if !strings.Contains(block, "UIResourceURI:") {
+				continue
+			}
+			if m := nameRe.FindStringSubmatch(block); m != nil {
+				annotated[m[1]] = true
+			}
+		}
+	}
+	if len(annotated) == 0 {
+		t.Fatal("found no annotated tools; the scrape is broken, not the code")
+	}
+
+	for name := range annotated {
+		if !registered[name] {
+			t.Errorf("tool %q carries ui: \"app\" but no view is registered — the host will render \"No view for\"", name)
+		}
+	}
+	for name := range registered {
+		if !annotated[name] {
+			t.Errorf("view %q is registered but no tool carries ui: \"app\" for it — dead code", name)
+		}
 	}
 }

@@ -12,7 +12,7 @@ function walletRow(w) {
   </div>`;
 }
 
-registerView("list_wallets", function (d) {
+function renderWalletList(d) {
   const wallets = d.wallets || [];
   if (!wallets.length) {
     return html`<div class="ya-root"><p class="ya-muted">No wallets yet.</p></div>`;
@@ -23,9 +23,9 @@ registerView("list_wallets", function (d) {
       ${raw(wallets.map(walletRow).join(""))}
     </div>
   </div>`;
-});
+}
 
-registerView("get_wallet", function (d) {
+function renderWalletDetail(d) {
   const w = d.wallet || {};
   const recent = d.recent || [];
   const meta = [w.kind, w.provider, w.currency].filter(Boolean).join(" · ");
@@ -46,9 +46,9 @@ registerView("get_wallet", function (d) {
     </div>
     ${raw(rows)}
   </div>`;
-});
+}
 
-registerView("wallet_totals", function (d) {
+function renderWalletTotals(d) {
   const p = d.period || {};
   const lines = (d.wallets || []).map(function (l) {
     const excluded = l.excludeFromTotal ? html`<span class="ya-muted">excluded</span>` : "";
@@ -70,8 +70,16 @@ registerView("wallet_totals", function (d) {
     <div class="ya-card ya-kpis">
       ${raw(kpi("Spendable", money(d.spendableTotal)))}
       ${raw(kpi("Total", money(d.total)))}
+    </div>
+    <div class="ya-card ya-kpis">
+      ${raw(kpi("Income", money(d.income)))}
+      ${raw(kpi("Expense", money(d.expense)))}
       ${raw(kpi("Net", money(d.net)))}
     </div>
     ${raw(lines.length ? html`<div class="ya-card">${raw(lines.join(""))}</div>` : "")}
   </div>`;
-});
+}
+
+registerView("list_wallets", renderWalletList);
+registerView("get_wallet", renderWalletDetail);
+registerView("wallet_totals", renderWalletTotals);

@@ -169,21 +169,25 @@ field, a tool name that is not lower snake case, a duplicate tool name,
 
 ### The UI link
 
-A tool with `ui` carries both the canonical and the deprecated link, exactly as
-the reference `registerAppTool` does:
+A tool with `ui` carries exactly one key:
 
 ```json
-"_meta": {
-  "ui": { "resourceUri": "ui://yasaku/app" },
-  "ui/resourceUri": "ui://yasaku/app"
-}
+"_meta": { "ui": { "resourceUri": "ui://yasaku/app" } }
 ```
+
+The spec also documents a deprecated flat `"ui/resourceUri"` sibling, and the
+reference `registerAppTool` emits it. yasaku does **not**: `$defs/McpUiToolMeta`
+sets `additionalProperties: false`, so a host validating the whole `_meta`
+object rejects the pair. Emitting the sibling stopped the bundle rendering in
+ChatGPT.
 
 `visibility` is omitted; it defaults to `["model", "app"]`. `csp` and
 `permissions` are forbidden on tool `_meta` and belong on the resource.
 Set `mcp.appsUI=true` to publish the resource; it defaults to false.
 
-`period_report`, `cashflow_report` and `preview_close` carry the link today. The
+Eight tools carry the link today: `period_report`, `cashflow_report`,
+`preview_close`, `list_wallets`, `get_wallet`, `wallet_totals`,
+`list_recent_tx` and `search_tx`. The
 bundle is one resource, `ui://yasaku/app`, assembled in `internal/mcp/ui` from
 ordered source parts and published only when `mcp.appsUI=true`.
 

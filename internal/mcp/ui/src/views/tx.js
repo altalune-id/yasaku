@@ -1,5 +1,8 @@
 // views/tx.js
-const TX_SIGN = { expense: "−", income: "+", transfer: "→", opening: "•", adjustment_in: "+", adjustment_out: "−" };
+// NOTE: null-prototype, so a kind like "constructor" cannot resolve to an inherited value.
+const TX_SIGN = Object.assign(Object.create(null), {
+  expense: "−", income: "+", transfer: "⇄", opening: "•", adjustment_in: "+", adjustment_out: "−",
+});
 
 function txDate(ts) {
   if (!ts) return "";

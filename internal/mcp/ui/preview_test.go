@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-// TestDumpPreview renders every view against its fixture into one static page so
+// TestDumpPreview renders every registered view against its fixture into one static page so
 // layout can be checked without a host. Opt in with YASAKU_UI_PREVIEW=<path>.
 func TestDumpPreview(t *testing.T) {
 	path := os.Getenv("YASAKU_UI_PREVIEW")
@@ -19,6 +19,10 @@ func TestDumpPreview(t *testing.T) {
 		{"period_report (sparse)", "period_report_sparse.json"},
 		{"cashflow_report", "cashflow_report.json"},
 		{"preview_close", "preview_close.json"},
+		{"list_recent_tx", "tx_list.json"},
+		{"list_wallets", "wallets_list.json"},
+		{"get_wallet", "wallet_detail.json"},
+		{"wallet_totals", "wallet_totals.json"},
 	}
 
 	vm := newJSVM(t)

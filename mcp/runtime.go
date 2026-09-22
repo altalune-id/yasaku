@@ -122,16 +122,27 @@ func NewServer(name, version string, opts ...Option) *Server {
 func (s *Server) trace(next sdk.MethodHandler) sdk.MethodHandler {
 	return func(ctx context.Context, method string, req sdk.Request) (sdk.Result, error) {
 		res, err := next(ctx, method, req)
-		if method != "initialize" {
+		switch method {
+		case "initialize":
+			attrs := []any{"method", method}
+			if p, ok := req.GetParams().(*sdk.InitializeParams); ok && p != nil {
+				raw, _ := json.Marshal(p.Capabilities)
+				attrs = append(attrs, "client", p.ClientInfo.Name, "client_version", p.ClientInfo.Version, "capabilities", string(raw))
+			}
+			s.logger.InfoContext(ctx, "mcp: request", attrs...)
+		case "tools/call":
+			// NOTE: the endpoint is one path, so an HTTP access log cannot say which tool ran; this is the only per-tool usage record.
+			name := ""
+			switch p := req.GetParams().(type) {
+			case *sdk.CallToolParams:
+				name = p.Name
+			case *sdk.CallToolParamsRaw:
+				name = p.Name
+			}
+			s.logger.InfoContext(ctx, "mcp: request", "method", method, "tool", name)
+		default:
 			s.logger.DebugContext(ctx, "mcp: request", "method", method)
-			return res, err
 		}
-		attrs := []any{"method", method}
-		if p, ok := req.GetParams().(*sdk.InitializeParams); ok && p != nil {
-			raw, _ := json.Marshal(p.Capabilities)
-			attrs = append(attrs, "client", p.ClientInfo.Name, "client_version", p.ClientInfo.Version, "capabilities", string(raw))
-		}
-		s.logger.InfoContext(ctx, "mcp: request", attrs...)
 		return res, err
 	}
 }

@@ -1,12 +1,70 @@
 {
-  "spendableTotal":{"amount":"108000","currency":"IDR"},
-  "total":{"amount":"5108000","currency":"IDR"},
-  "income":{"amount":"120000","currency":"IDR"},
-  "expense":{"amount":"12000","currency":"IDR"},
-  "net":{"amount":"108000","currency":"IDR"},
-  "period":{"id":"per_2026_09","name":"September 2026","startDate":"2026-09-01","endDate":"2026-09-30","status":"open"},
-  "wallets":[
-    {"wallet":{"id":"wal_bca","name":"Makan Daily Cash"},"kind":"cash","opening":{"amount":"0","currency":"IDR"},"in":{"amount":"120000","currency":"IDR"},"out":{"amount":"12000","currency":"IDR"},"closing":{"amount":"108000","currency":"IDR"}},
-    {"wallet":{"id":"wal_save","name":"Tabungan"},"kind":"savings","excludeFromTotal":true,"opening":{"amount":"5000000","currency":"IDR"},"closing":{"amount":"5000000","currency":"IDR"}}
+  "spendableTotal": {
+    "amount": "99000",
+    "currency": "IDR"
+  },
+  "total": {
+    "amount": "5099000",
+    "currency": "IDR"
+  },
+  "income": {
+    "amount": "120000",
+    "currency": "IDR"
+  },
+  "expense": {
+    "amount": "12000",
+    "currency": "IDR"
+  },
+  "net": {
+    "amount": "108000",
+    "currency": "IDR"
+  },
+  "period": {
+    "id": "per_2026_09",
+    "name": "September 2026",
+    "startDate": "2026-09-01",
+    "endDate": "2026-09-30",
+    "status": "open"
+  },
+  "wallets": [
+    {
+      "wallet": {
+        "id": "wal_bca",
+        "name": "Makan Daily Cash"
+      },
+      "kind": "cash",
+      "opening": {
+        "amount": "0",
+        "currency": "IDR"
+      },
+      "in": {
+        "amount": "120000",
+        "currency": "IDR"
+      },
+      "out": {
+        "amount": "12000",
+        "currency": "IDR"
+      },
+      "closing": {
+        "amount": "108000",
+        "currency": "IDR"
+      }
+    },
+    {
+      "wallet": {
+        "id": "wal_save",
+        "name": "Tabungan"
+      },
+      "kind": "savings",
+      "excludeFromTotal": true,
+      "opening": {
+        "amount": "5000000",
+        "currency": "IDR"
+      },
+      "closing": {
+        "amount": "5000000",
+        "currency": "IDR"
+      }
+    }
   ]
 }
