@@ -764,7 +764,7 @@ func toolByName(t *testing.T, cs *sdk.ClientSession, name string) *sdk.Tool {
 	return nil
 }
 
-func TestUIMetaEmitsBothKeys(t *testing.T) {
+func TestUIMetaEmitsOnlyTheCanonicalKey(t *testing.T) {
 	s := NewServer("yasaku", "test", WithUI(true))
 	s.AddUIResource(UIResource{URI: "ui://yasaku/app", Body: "<html></html>"})
 	s.Register(uiSpec(), echoHandler)
@@ -780,8 +780,8 @@ func TestUIMetaEmitsBothKeys(t *testing.T) {
 	if _, present := obj["visibility"]; present {
 		t.Error("visibility must be omitted so it defaults to [model, app]")
 	}
-	if got := tool.Meta[metaKeyUILegacy]; got != "ui://yasaku/app" {
-		t.Errorf("legacy key = %v, want the URI string", got)
+	if len(tool.Meta) != 1 {
+		t.Errorf("_meta = %v, want exactly the ui key — a sibling key breaks hosts that validate the whole object", tool.Meta)
 	}
 }
 

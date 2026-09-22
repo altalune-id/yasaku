@@ -66,10 +66,20 @@ func TestEmittedUIMetaMatchesOfficialSchema(t *testing.T) {
 	}
 }
 
-func TestWholeMetaWouldFailSchema(t *testing.T) {
+// TestWholeMetaAlsoValidates guards the reason the deprecated flat sibling key is
+// not emitted: McpUiToolMeta sets additionalProperties:false, so a host validating
+// the whole _meta object must still accept what we send.
+func TestWholeMetaAlsoValidates(t *testing.T) {
 	tool := uiMetaTool(t)
-	if err := mcpUIToolMetaSchema(t).Validate(roundTrip(t, map[string]any(tool.Meta))); err == nil {
-		t.Error("validating the whole _meta must fail on additionalProperties:false; " +
-			"if this passes, the schema changed and this task's guidance needs revisiting")
+	whole := roundTrip(t, map[string]any(tool.Meta))
+	inner, ok := whole.(map[string]any)["ui"]
+	if !ok {
+		t.Fatalf("_meta has no ui key: %v", whole)
+	}
+	if err := mcpUIToolMetaSchema(t).Validate(inner); err != nil {
+		t.Errorf("_meta.ui violates McpUiToolMeta: %v", err)
+	}
+	if len(whole.(map[string]any)) != 1 {
+		t.Errorf("_meta carries %d keys; a sibling of ui breaks strict hosts", len(whole.(map[string]any)))
 	}
 }

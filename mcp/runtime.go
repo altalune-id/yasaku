@@ -18,8 +18,7 @@ const unexpectedMessage = "unexpected error"
 const MIMEApp = "text/html;profile=mcp-app"
 
 const (
-	metaKeyUI       = "ui"
-	metaKeyUILegacy = "ui/resourceUri"
+	metaKeyUI = "ui"
 )
 
 // Scope is an authorization scope a caller must hold to invoke a tool.
@@ -151,10 +150,10 @@ func (s *Server) Register(spec ToolSpec, h Handler) {
 	}
 
 	if s.ui && spec.UIResourceURI != "" {
-		tool.Meta = sdk.Meta{
-			metaKeyUI:       map[string]any{"resourceUri": spec.UIResourceURI},
-			metaKeyUILegacy: spec.UIResourceURI,
-		}
+		// NOTE: the deprecated flat "ui/resourceUri" sibling is deliberately NOT emitted:
+		// McpUiToolMeta sets additionalProperties:false, and a host validating the whole
+		// _meta object rejects it. Hosts that render today read _meta.ui.resourceUri.
+		tool.Meta = sdk.Meta{metaKeyUI: map[string]any{"resourceUri": spec.UIResourceURI}}
 		s.uiRefs[spec.Name] = spec.UIResourceURI
 	}
 

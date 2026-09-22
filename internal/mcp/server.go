@@ -69,7 +69,6 @@ func New(d Deps) *Server {
 			URI:  ui.ResourceURI,
 			Name: "yasaku",
 			Body: ui.Document(),
-			Meta: map[string]any{"ui": map[string]any{"prefersBorder": true}},
 		})
 	}
 	s := &Server{
