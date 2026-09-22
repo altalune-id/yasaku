@@ -62,7 +62,9 @@ func New(d Deps) *Server {
 	if d.Register != nil {
 		d.Register(rt)
 	}
-	if d.Cfg != nil && d.Cfg.MCP.AppsUI {
+	appsUI := d.Cfg != nil && d.Cfg.MCP.AppsUI
+	log.Info("mcp: apps ui", "enabled", appsUI, "resource", ui.ResourceURI)
+	if appsUI {
 		rt.AddUIResource(mcprt.UIResource{
 			URI:  ui.ResourceURI,
 			Name: "yasaku",
