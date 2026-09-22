@@ -114,7 +114,26 @@ func NewServer(name, version string, opts ...Option) *Server {
 		&sdk.Implementation{Name: name, Version: version},
 		&sdk.ServerOptions{Logger: s.logger},
 	)
+	s.sdk.AddReceivingMiddleware(s.trace)
 	return s
+}
+
+// trace logs every inbound method, and what the client advertised at initialize.
+func (s *Server) trace(next sdk.MethodHandler) sdk.MethodHandler {
+	return func(ctx context.Context, method string, req sdk.Request) (sdk.Result, error) {
+		res, err := next(ctx, method, req)
+		if method != "initialize" {
+			s.logger.InfoContext(ctx, "mcp: request", "method", method)
+			return res, err
+		}
+		attrs := []any{"method", method}
+		if p, ok := req.GetParams().(*sdk.InitializeParams); ok && p != nil {
+			raw, _ := json.Marshal(p.Capabilities)
+			attrs = append(attrs, "client", p.ClientInfo.Name, "client_version", p.ClientInfo.Version, "capabilities", string(raw))
+		}
+		s.logger.InfoContext(ctx, "mcp: request", attrs...)
+		return res, err
+	}
 }
 
 // Register adds a tool to the server; it panics on a spec the generator should never produce.
