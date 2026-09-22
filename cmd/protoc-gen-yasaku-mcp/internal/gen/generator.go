@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -31,10 +32,11 @@ type tool struct {
 	mutation    bool
 	method      *protogen.Method
 	schema      json.RawMessage
+	uiResource  string
 }
 
 // Generate writes one MCP binding file per service that carries at least one annotated method.
-func Generate(p *protogen.Plugin) error {
+func Generate(p *protogen.Plugin, opts Options) error {
 	p.SupportedFeatures = uint64(pluginpb.CodeGeneratorResponse_FEATURE_PROTO3_OPTIONAL)
 
 	taken := map[string]string{}
@@ -43,7 +45,7 @@ func Generate(p *protogen.Plugin) error {
 			continue
 		}
 		for _, svc := range file.Services {
-			tools, err := serviceTools(svc, taken)
+			tools, err := serviceTools(svc, taken, opts)
 			if err != nil {
 				return err
 			}
@@ -56,14 +58,14 @@ func Generate(p *protogen.Plugin) error {
 	return nil
 }
 
-func serviceTools(svc *protogen.Service, taken map[string]string) ([]tool, error) {
+func serviceTools(svc *protogen.Service, taken map[string]string, opts Options) ([]tool, error) {
 	var tools []tool
 	for _, method := range svc.Methods {
 		spec, annotated := toolAnnotation(method)
 		if !annotated {
 			continue
 		}
-		built, err := newTool(method, spec)
+		built, err := newTool(method, spec, opts)
 		if err != nil {
 			return nil, err
 		}
@@ -88,10 +90,30 @@ func toolAnnotation(method *protogen.Method) (*yasakumcpv1.Tool, bool) {
 	return spec, true
 }
 
-func newTool(method *protogen.Method, spec *yasakumcpv1.Tool) (tool, error) {
+//nolint:gochecknoglobals // compiled once; a package-level regexp is the idiom.
+var uiNameRe = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
+
+func uiResourceURI(ui, prefix, method string) (string, error) {
+	if ui == "" {
+		return "", nil
+	}
+	if !uiNameRe.MatchString(ui) {
+		return "", fmt.Errorf("%s: ui %q must match %s", method, ui, uiNameRe)
+	}
+	if prefix == "" {
+		return "", fmt.Errorf("%s: ui %q set but ui_prefix plugin parameter is absent", method, ui)
+	}
+	return prefix + "/" + ui, nil
+}
+
+func newTool(method *protogen.Method, spec *yasakumcpv1.Tool, opts Options) (tool, error) {
 	full := method.Desc.FullName()
 	if method.Desc.IsStreamingClient() || method.Desc.IsStreamingServer() {
 		return tool{}, fmt.Errorf("%s: an MCP tool must be a unary RPC", full)
+	}
+	uiURI, err := uiResourceURI(spec.GetUi(), opts.UIPrefix, string(full))
+	if err != nil {
+		return tool{}, err
 	}
 
 	name := spec.GetName()
@@ -134,6 +156,7 @@ func newTool(method *protogen.Method, spec *yasakumcpv1.Tool) (tool, error) {
 		mutation:    spec.GetMutation(),
 		method:      method,
 		schema:      schema,
+		uiResource:  uiURI,
 	}, nil
 }
 
@@ -174,6 +197,9 @@ func writeService(p *protogen.Plugin, file *protogen.File, svc *protogen.Service
 		g.P("Scope: ", g.QualifiedGoIdent(runtimePackage.Ident(t.scope)), ",")
 		g.P("Mutation: ", t.mutation, ",")
 		g.P("InputSchema: ", rawMessage, "(", goStringLiteral(string(t.schema)), "),")
+		if t.uiResource != "" {
+			g.P("UIResourceURI: ", strconv.Quote(t.uiResource), ",")
+		}
 		g.P("}, func(ctx ", g.QualifiedGoIdent(contextPackage.Ident("Context")), ", input ", rawMessage,
 			") (", rawMessage, ", error) {")
 		g.P("if len(input) == 0 {")

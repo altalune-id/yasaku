@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -14,6 +15,7 @@ import (
 
 	apperrorv1 "altalune.id/yasaku/gen/go/apperror/v1"
 	"altalune.id/yasaku/internal/apperror"
+	"altalune.id/yasaku/internal/mcp/ui"
 	"altalune.id/yasaku/internal/platform/config"
 	mcprt "altalune.id/yasaku/mcp"
 	"altalune.id/yasaku/reqid"
@@ -273,5 +275,36 @@ func TestNew_RunsTheRegisterClosureOnce(t *testing.T) {
 	})
 	if calls != 1 {
 		t.Fatalf("Register closure ran %d times, want 1", calls)
+	}
+}
+
+func TestUIResourcePublishedOnlyWhenEnabled(t *testing.T) {
+	for _, appsUI := range []bool{false, true} {
+		t.Run(fmt.Sprintf("appsUI=%v", appsUI), func(t *testing.T) {
+			cfg := &config.Config{
+				HTTP: config.HTTPConfig{BaseURL: "https://y.example", BasePath: ""},
+				MCP:  config.MCPConfig{Enabled: true, Audience: "https://y.example/mcp", AppsUI: appsUI},
+			}
+			cfg.Tokens.Issuer = "https://idp.example"
+
+			srv := New(Deps{
+				Cfg:      cfg,
+				Verifier: stubVerifier{},
+				Version:  "test",
+				Register: func(reg mcprt.Registry) {
+					reg.Register(mcprt.ToolSpec{
+						Name:          "ui_probe",
+						Description:   "probe",
+						Scope:         mcprt.ScopeRead,
+						UIResourceURI: ui.ResourceURI,
+					}, func(context.Context, json.RawMessage) (json.RawMessage, error) {
+						return json.RawMessage(`{}`), nil
+					})
+				},
+			})
+			if srv == nil {
+				t.Fatal("New returned nil")
+			}
+		})
 	}
 }

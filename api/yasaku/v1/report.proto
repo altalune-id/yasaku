@@ -15,6 +15,7 @@ service ReportService {
       name: "period_report"
       description: "Laporan satu periode: pemasukan, pengeluaran, selisih, rincian per kategori dan per dompet. Period must be a period ID from list_periods or current_period, never a period name; leave it empty for the current period. Category slices are largest first and share is a fraction of that direction's total."
       access: ACCESS_READ
+      ui: "app"
     };
   }
   rpc CashflowReport(CashflowReportRequest) returns (CashflowReportResponse) {
@@ -22,6 +23,7 @@ service ReportService {
       name: "cashflow_report"
       description: "Tren arus kas beberapa periode terakhir, satu titik per periode. Periods defaults to the last 6 and is capped at 24. Points run oldest to newest so a trend reads left to right."
       access: ACCESS_READ
+      ui: "app"
     };
   }
 }

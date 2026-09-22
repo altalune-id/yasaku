@@ -11,7 +11,10 @@ option go_package = "altalune.id/yasaku/cmd/protoc-gen-yasaku-mcp/internal/gen/t
 service FixtureService {
   // Ping echoes the target back and reports the server clock.
   rpc Ping(PingRequest) returns (PingResponse) {
-    option (yasaku.mcp.v1.tool) = {access: ACCESS_READ};
+    option (yasaku.mcp.v1.tool) = {
+      access: ACCESS_READ
+      ui: "app"
+    };
   }
   rpc Poke(PokeRequest) returns (PokeResponse) {
     option (yasaku.mcp.v1.tool) = {

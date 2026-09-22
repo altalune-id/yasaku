@@ -147,6 +147,7 @@ Wherever a tool takes a wallet or a category it accepts a name or an id. A
        description: "..."
        access: ACCESS_WRITE
        mutation: true
+       ui: "app"
      };
    }
    ```
@@ -156,10 +157,41 @@ Wherever a tool takes a wallet or a category it accepts a name or an id. A
 3. Add the domain to the `mcpDomains` manifest in `internal/boot/mcp.go`.
    `assertMCPWiring` fails the boot if an annotated service is never registered.
 
-The plugin refuses to generate on five conditions, each a build failure rather
+`ui` is optional and names the MCP Apps resource that renders the tool's result.
+It is a short name, not a URI: `buf.gen.yaml` passes `ui_prefix=ui://yasaku` and
+the generator joins the two. Leave it out for a JSON-only tool.
+
+The plugin refuses to generate on seven conditions, each a build failure rather
 than a runtime surprise: a `mutation: true` request with no `bool confirm`
 field, a tool name that is not lower snake case, a duplicate tool name,
-`ACCESS_UNSPECIFIED`, and a streaming RPC.
+`ACCESS_UNSPECIFIED`, a streaming RPC, a `ui` value that is not
+`^[a-z][a-z0-9-]*$`, and `ui` set while `ui_prefix` is absent.
+
+### The UI link
+
+A tool with `ui` carries both the canonical and the deprecated link, exactly as
+the reference `registerAppTool` does:
+
+```json
+"_meta": {
+  "ui": { "resourceUri": "ui://yasaku/app" },
+  "ui/resourceUri": "ui://yasaku/app"
+}
+```
+
+`visibility` is omitted; it defaults to `["model", "app"]`. `csp` and
+`permissions` are forbidden on tool `_meta` and belong on the resource.
+Set `mcp.appsUI=true` to publish the resource; it defaults to false.
+
+`period_report`, `cashflow_report` and `preview_close` carry the link today. The
+bundle is one resource, `ui://yasaku/app`, assembled in `internal/mcp/ui` from
+ordered source parts and published only when `mcp.appsUI=true`.
+
+The vendored `ext-apps` bundle exports its names as aliases over minified
+bindings, and an inlined module's exports are unreachable, so `ui.go` appends a
+generated `globalThis.__extApps={...}` derived from the bundle's own `export`
+list. `make mcp-ui-dev` writes the assembled document to `tmp/bundle.html` for
+local layout checks; it will not connect to a host.
 
 ## Testing the surface
 

@@ -1,4 +1,4 @@
-.PHONY: help build test test-race test-cover vet fmt check generate ui-vendor buf migrate docker clean install-tools lint dev test-integration test-all gen-plugin-fixture
+.PHONY: help build test test-race test-cover vet fmt check generate ui-vendor buf migrate docker clean install-tools lint dev test-integration test-all gen-plugin-fixture mcp-ui-vendor mcp-ui-dev mcp-ui-preview
 
 GO      ?= go
 BIN     := bin/yasaku
@@ -61,6 +61,19 @@ FIXTURE_DIR := cmd/protoc-gen-yasaku-mcp/internal/gen/testdata
 gen-plugin-fixture: ## Rebuild protoc-gen-yasaku-mcp's golden-test descriptor set from testdata/proto
 	pnpm exec buf build $(FIXTURE_DIR)/proto -o $(FIXTURE_DIR)/fixture.binpb
 	@echo "→ rebuilt $(FIXTURE_DIR)/fixture.binpb; review the diff, then \`go test ./cmd/protoc-gen-yasaku-mcp/... -update\` if the goldens should move"
+
+mcp-ui-vendor: ## Download pinned MCP Apps assets (sha256-verified) into internal/mcp/ui/assets
+	@if [ -x scripts/mcp-ui-vendor.sh ]; then bash scripts/mcp-ui-vendor.sh; else echo "(scripts/mcp-ui-vendor.sh missing — skipping)"; fi
+
+mcp-ui-dev: ## Assemble the MCP Apps bundle to tmp/bundle.html for local layout checks
+	@mkdir -p tmp
+	@YASAKU_UI_DUMP=$(CURDIR)/tmp/bundle.html $(GO) test ./internal/mcp/ui/ -run TestDumpBundle -count=1 >/dev/null
+	@echo "wrote tmp/bundle.html — open it to check layout (the bridge will not connect outside a host)"
+
+mcp-ui-preview: ## Render every MCP view against its fixture to tmp/preview.html
+	@mkdir -p tmp
+	@YASAKU_UI_PREVIEW=$(CURDIR)/tmp/preview.html $(GO) test ./internal/mcp/ui/ -run TestDumpPreview -count=1 >/dev/null
+	@echo "wrote tmp/preview.html — open it to see all four views rendered"
 
 ui-vendor: ## Download pinned static assets into internal/web/static
 	@if [ -x scripts/ui-vendor.sh ]; then bash scripts/ui-vendor.sh; else echo "(scripts/ui-vendor.sh missing — skipping)"; fi

@@ -29,6 +29,7 @@ service PeriodService {
       name: "preview_close"
       description: "Hitung apa yang akan dibekukan kalau periode ditutup pada tanggal tertentu, tanpa menyimpan apa pun. Period must be a period ID from list_periods or current_period, never a period name; leave it empty for the current period. The end date is YYYY-MM-DD and must be today or earlier."
       access: ACCESS_READ
+      ui: "app"
     };
   }
   rpc ClosePeriod(ClosePeriodRequest) returns (ClosePeriodResponse) {

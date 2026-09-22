@@ -12,6 +12,7 @@ import (
 
 	apperrorv1 "altalune.id/yasaku/gen/go/apperror/v1"
 	"altalune.id/yasaku/internal/apperror"
+	"altalune.id/yasaku/internal/mcp/ui"
 	"altalune.id/yasaku/internal/platform/config"
 	"altalune.id/yasaku/internal/platform/session"
 	"altalune.id/yasaku/internal/platform/tokens"
@@ -56,9 +57,18 @@ func New(d Deps) *Server {
 		mcprt.WithScopes(scopesFrom),
 		mcprt.WithErrorMapper(mapError),
 		mcprt.WithLogger(log),
+		mcprt.WithUI(d.Cfg != nil && d.Cfg.MCP.AppsUI),
 	)
 	if d.Register != nil {
 		d.Register(rt)
+	}
+	if d.Cfg != nil && d.Cfg.MCP.AppsUI {
+		rt.AddUIResource(mcprt.UIResource{
+			URI:  ui.ResourceURI,
+			Name: "yasaku",
+			Body: ui.Document(),
+			Meta: map[string]any{"ui": map[string]any{"prefersBorder": true}},
+		})
 	}
 	s := &Server{
 		Verifier: d.Verifier,

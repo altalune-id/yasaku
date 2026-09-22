@@ -1,0 +1,10 @@
+{
+  "period": {"id":"per_2026_09","name":"September 2026","startDate":"2026-09-01","endDate":"2026-09-30","status":"open"},
+  "snapshot": {
+    "income": {"amount":"12500000","currency":"IDR"},
+    "expense": {"amount":"8750000","currency":"IDR"},
+    "net": {"amount":"3750000","currency":"IDR"},
+    "txCount": 42,
+    "wallets": [{"wallet":{"id":"wal_bca","name":"BCA"},"closing":{"amount":"8750000","currency":"IDR"}}]
+  }
+}

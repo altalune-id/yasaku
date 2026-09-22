@@ -1,0 +1,5 @@
+{"points":[
+  {"period":{"id":"per_2026_07","name":"Jul 2026"},"income":{"amount":"11000000","currency":"IDR"},"expense":{"amount":"9400000","currency":"IDR"},"net":{"amount":"1600000","currency":"IDR"}},
+  {"period":{"id":"per_2026_08","name":"Aug 2026"},"income":{"amount":"12000000","currency":"IDR"},"expense":{"amount":"10100000","currency":"IDR"},"net":{"amount":"1900000","currency":"IDR"}},
+  {"period":{"id":"per_2026_09","name":"Sep 2026"},"income":{"amount":"12500000","currency":"IDR"},"expense":{"amount":"8750000","currency":"IDR"},"net":{"amount":"3750000","currency":"IDR"}}
+]}

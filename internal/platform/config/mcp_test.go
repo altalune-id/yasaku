@@ -174,3 +174,15 @@ func TestLoad_MCPDisabledByDefault(t *testing.T) {
 		t.Fatal("mcp.enabled must default to false")
 	}
 }
+
+func TestLoad_MCPAppsUIDisabledByDefault(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	dir := t.TempDir()
+	cfg, err := Load("", withCwdOverride(t, dir), withGenesisFallback(t))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.MCP.AppsUI {
+		t.Fatal("mcp.appsUI must default to false so the live ChatGPT integration is unaffected")
+	}
+}

@@ -1,0 +1,18 @@
+{
+  "period": {"id":"per_2026_09","name":"September 2026","startDate":"2026-09-01","endDate":"2026-09-30","status":"open"},
+  "income": {"amount":"12500000","currency":"IDR"},
+  "expense": {"amount":"8750000","currency":"IDR"},
+  "net": {"amount":"3750000","currency":"IDR"},
+  "txCount": 42,
+  "spendByCategory": [
+    {"category":{"id":"cat_food","name":"Makan","icon":"utensils","color":"chart-1"},"amount":{"amount":"3500000","currency":"IDR"},"share":0.4,"count":18},
+    {"category":{"id":"cat_transport","name":"Transport","icon":"car","color":"chart-2"},"amount":{"amount":"2625000","currency":"IDR"},"share":0.3,"count":12},
+    {"category":{"id":"","name":"Uncategorized","color":"chart-5"},"amount":{"amount":"2625000","currency":"IDR"},"share":0.3,"count":12}
+  ],
+  "incomeByCategory": [
+    {"category":{"id":"cat_salary","name":"Gaji","color":"chart-3"},"amount":{"amount":"12500000","currency":"IDR"},"share":1,"count":1}
+  ],
+  "wallets": [
+    {"wallet":{"id":"wal_bca","name":"BCA"},"kind":"bank","opening":{"amount":"5000000","currency":"IDR"},"in":{"amount":"12500000","currency":"IDR"},"out":{"amount":"8750000","currency":"IDR"},"closing":{"amount":"8750000","currency":"IDR"}}
+  ]
+}

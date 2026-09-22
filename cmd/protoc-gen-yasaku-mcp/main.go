@@ -11,8 +11,9 @@ import (
 )
 
 func main() {
-	protogen.Options{}.Run(func(p *protogen.Plugin) error {
-		if err := gen.Generate(p); err != nil {
+	var opts gen.Options
+	protogen.Options{ParamFunc: opts.Set}.Run(func(p *protogen.Plugin) error {
+		if err := gen.Generate(p, opts); err != nil {
 			fmt.Fprintf(os.Stderr, "protoc-gen-yasaku-mcp: %v\n", err)
 			os.Exit(1)
 		}

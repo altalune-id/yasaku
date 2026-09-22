@@ -666,3 +666,172 @@ func TestDegradeLogsCarryRequestContext(t *testing.T) {
 		})
 	}
 }
+
+func TestAddUIResourcePanics(t *testing.T) {
+	tests := []struct {
+		name string
+		res  UIResource
+		want string
+	}{
+		{"empty uri", UIResource{Body: "<html></html>"}, "URI must not be empty"},
+		{"bad scheme", UIResource{URI: "https://x/app", Body: "x"}, "scheme must be ui"},
+		{"empty body", UIResource{URI: "ui://yasaku/app"}, "Body must not be empty"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			defer func() {
+				r := recover()
+				if r == nil {
+					t.Fatal("expected panic, got none")
+				}
+				msg, ok := r.(string)
+				if !ok || !strings.Contains(msg, tc.want) {
+					t.Errorf("panic = %v, want substring %q", r, tc.want)
+				}
+			}()
+			NewServer("yasaku", "test").AddUIResource(tc.res)
+		})
+	}
+}
+
+func TestAddUIResourceDuplicate(t *testing.T) {
+	s := NewServer("yasaku", "test")
+	r := UIResource{URI: "ui://yasaku/app", Body: "<html></html>"}
+	s.AddUIResource(r)
+	defer func() {
+		if recover() == nil {
+			t.Fatal("expected panic on duplicate URI")
+		}
+	}()
+	s.AddUIResource(r)
+}
+
+func TestAddUIResourceServesBodyAndDefaultsMIME(t *testing.T) {
+	s := NewServer("yasaku", "test")
+	s.AddUIResource(UIResource{
+		URI:  "ui://yasaku/app",
+		Body: "<html></html>",
+		Meta: map[string]any{"ui": map[string]any{"prefersBorder": true}},
+	})
+
+	cs := connect(t, s)
+	res, err := cs.ReadResource(t.Context(), &sdk.ReadResourceParams{URI: "ui://yasaku/app"})
+	if err != nil {
+		t.Fatalf("read resource: %v", err)
+	}
+	if len(res.Contents) != 1 {
+		t.Fatalf("contents = %d, want 1", len(res.Contents))
+	}
+	c := res.Contents[0]
+	if c.MIMEType != MIMEApp {
+		t.Errorf("mime = %q, want %q", c.MIMEType, MIMEApp)
+	}
+	if c.Text != "<html></html>" {
+		t.Errorf("body = %q", c.Text)
+	}
+	if _, ok := c.Meta["ui"]; !ok {
+		t.Error("Meta must land on ResourceContents, where the spec puts ui.csp")
+	}
+}
+
+func TestResourceAdvertisesCapability(t *testing.T) {
+	s := NewServer("yasaku", "test")
+	s.AddUIResource(UIResource{URI: "ui://yasaku/app", Body: "<html></html>"})
+
+	if connect(t, s).InitializeResult().Capabilities.Resources == nil {
+		t.Fatal("publishing a resource must advertise the resources capability")
+	}
+}
+
+func uiSpec() ToolSpec {
+	s := readSpec()
+	s.UIResourceURI = "ui://yasaku/app"
+	return s
+}
+
+func toolByName(t *testing.T, cs *sdk.ClientSession, name string) *sdk.Tool {
+	t.Helper()
+	res, err := cs.ListTools(t.Context(), &sdk.ListToolsParams{})
+	if err != nil {
+		t.Fatalf("list tools: %v", err)
+	}
+	for _, tool := range res.Tools {
+		if tool.Name == name {
+			return tool
+		}
+	}
+	t.Fatalf("tool %q not listed", name)
+	return nil
+}
+
+func TestUIMetaEmitsBothKeys(t *testing.T) {
+	s := NewServer("yasaku", "test", WithUI(true))
+	s.AddUIResource(UIResource{URI: "ui://yasaku/app", Body: "<html></html>"})
+	s.Register(uiSpec(), echoHandler)
+
+	tool := toolByName(t, connect(t, s), "wallet_list")
+	obj, ok := tool.Meta[metaKeyUI].(map[string]any)
+	if !ok {
+		t.Fatalf("_meta[%q] = %T, want map", metaKeyUI, tool.Meta[metaKeyUI])
+	}
+	if got := obj["resourceUri"]; got != "ui://yasaku/app" {
+		t.Errorf("canonical resourceUri = %v", got)
+	}
+	if _, present := obj["visibility"]; present {
+		t.Error("visibility must be omitted so it defaults to [model, app]")
+	}
+	if got := tool.Meta[metaKeyUILegacy]; got != "ui://yasaku/app" {
+		t.Errorf("legacy key = %v, want the URI string", got)
+	}
+}
+
+func TestWithUIDisabledDropsTheLink(t *testing.T) {
+	s := NewServer("yasaku", "test", WithUI(false))
+	s.Register(uiSpec(), echoHandler)
+	if tool := toolByName(t, connect(t, s), "wallet_list"); len(tool.Meta) != 0 {
+		t.Errorf("_meta = %v, want empty when UI is disabled", tool.Meta)
+	}
+}
+
+func TestUIDefaultsOff(t *testing.T) {
+	s := NewServer("yasaku", "test")
+	s.Register(uiSpec(), echoHandler)
+	if tool := toolByName(t, connect(t, s), "wallet_list"); len(tool.Meta) != 0 {
+		t.Errorf("_meta = %v, want empty by default", tool.Meta)
+	}
+}
+
+func TestHandlerPanicsOnDanglingUIResource(t *testing.T) {
+	s := NewServer("yasaku", "test", WithUI(true))
+	s.Register(uiSpec(), echoHandler)
+
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatal("expected panic on dangling UI resource")
+		}
+		msg, ok := r.(string)
+		if !ok || !strings.Contains(msg, "wallet_list") || !strings.Contains(msg, "ui://yasaku/app") {
+			t.Errorf("panic %v must name both the tool and the URI", r)
+		}
+	}()
+	s.Handler()
+}
+
+func TestSDKPanicsOnDanglingUIResource(t *testing.T) {
+	s := NewServer("yasaku", "test", WithUI(true))
+	s.Register(uiSpec(), echoHandler)
+	defer func() {
+		if recover() == nil {
+			t.Fatal("expected panic on dangling UI resource via SDK()")
+		}
+	}()
+	s.SDK()
+}
+
+func TestNoPanicWhenUIDisabled(t *testing.T) {
+	s := NewServer("yasaku", "test", WithUI(false))
+	s.Register(uiSpec(), echoHandler)
+	s.Handler()
+	s.SDK()
+}

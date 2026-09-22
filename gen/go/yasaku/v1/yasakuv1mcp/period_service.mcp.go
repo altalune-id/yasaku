@@ -57,11 +57,12 @@ func RegisterPeriodServiceTools(reg mcp.Registry, h yasakuv1connect.PeriodServic
 		return protojson.Marshal(resp.Msg)
 	})
 	reg.Register(mcp.ToolSpec{
-		Name:        "preview_close",
-		Description: "Hitung apa yang akan dibekukan kalau periode ditutup pada tanggal tertentu, tanpa menyimpan apa pun. Period must be a period ID from list_periods or current_period, never a period name; leave it empty for the current period. The end date is YYYY-MM-DD and must be today or earlier.",
-		Scope:       mcp.ScopeRead,
-		Mutation:    false,
-		InputSchema: json.RawMessage(`{"type":"object","properties":{"target":{"type":"object","properties":{"org":{"type":"string"},"project":{"type":"string"}},"additionalProperties":false},"period":{"type":"string","description":"Period ID from list_periods or current_period, never a period name. Empty means the current period."},"endDate":{"type":"string","description":"YYYY-MM-DD; must be today or earlier and not before the period start."}},"additionalProperties":false}`),
+		Name:          "preview_close",
+		Description:   "Hitung apa yang akan dibekukan kalau periode ditutup pada tanggal tertentu, tanpa menyimpan apa pun. Period must be a period ID from list_periods or current_period, never a period name; leave it empty for the current period. The end date is YYYY-MM-DD and must be today or earlier.",
+		Scope:         mcp.ScopeRead,
+		Mutation:      false,
+		InputSchema:   json.RawMessage(`{"type":"object","properties":{"target":{"type":"object","properties":{"org":{"type":"string"},"project":{"type":"string"}},"additionalProperties":false},"period":{"type":"string","description":"Period ID from list_periods or current_period, never a period name. Empty means the current period."},"endDate":{"type":"string","description":"YYYY-MM-DD; must be today or earlier and not before the period start."}},"additionalProperties":false}`),
+		UIResourceURI: "ui://yasaku/app",
 	}, func(ctx context.Context, input json.RawMessage) (json.RawMessage, error) {
 		if len(input) == 0 {
 			input = json.RawMessage(`{}`)

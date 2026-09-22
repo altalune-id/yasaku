@@ -27,6 +27,10 @@ components:
         mutation:
           type: boolean
           title: mutation
+        ui:
+          type: string
+          title: ui
+          description: ui names the MCP Apps resource rendering this tool's result; empty means JSON only.
       title: Tool
       additionalProperties: false
       description: Tool marks an RPC as an MCP tool. A method with mutation true must carry a bool confirm field in its request.

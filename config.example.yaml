@@ -144,6 +144,8 @@ mail:
     user: ""
 
 mcp:
+  # env: YASAKU_MCP_APPS_UI
+  appsUI: false
   # [bootstrap] env: YASAKU_MCP_AUDIENCE
   audience: ""
   # env: YASAKU_MCP_AUDIENCE_OVERRIDE

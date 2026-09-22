@@ -1,0 +1,26 @@
+[
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "readOnlyHint": false
+    },
+    "description": "create a wallet",
+    "inputSchema": {
+      "type": "object"
+    },
+    "name": "wallet_create"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "readOnlyHint": true
+    },
+    "description": "list wallets",
+    "inputSchema": {
+      "type": "object"
+    },
+    "name": "wallet_list"
+  }
+]
