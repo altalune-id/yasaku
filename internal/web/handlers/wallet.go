@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"altalune.id/yasaku/civil"
 	"altalune.id/yasaku/internal/apperror"
 	"altalune.id/yasaku/internal/ledger"
 	"altalune.id/yasaku/internal/project"
@@ -487,7 +488,7 @@ func (h *WalletHandler) writeWalletDetail(w http.ResponseWriter, sc projectScope
 		ProjectSlug: sc.project.Slug,
 		Wallet:      walletRow(wl, balance),
 		Balance:     balance,
-		Recent:      walletTxRows(wl.ID, items),
+		Recent:      walletTxRows(wl.ID, items, h.location(sc)),
 		AdjustState: state,
 		ErrorKey:    b.Key,
 		ErrorMsg:    b.Msg,
@@ -527,17 +528,29 @@ func (h *WalletHandler) redirectToWallets(w http.ResponseWriter, sc projectScope
 	http.Redirect(w, sc.req, target, http.StatusSeeOther) //nolint:gosec // G710: both slugs come from rows already resolved by their own slug patterns
 }
 
-func walletTxRows(walletID uuid.UUID, items []*transaction.Transaction) []templates.WalletTxRow {
+func walletTxRows(walletID uuid.UUID, items []*transaction.Transaction, loc *time.Location) []templates.WalletTxRow {
 	rows := make([]templates.WalletTxRow, 0, len(items))
 	for _, t := range items {
 		rows = append(rows, templates.WalletTxRow{
 			KindKey: transactionKindKey(t.Kind),
 			Signed:  signedFor(walletID, t),
 			Note:    t.Note,
-			Date:    t.OccurredAt.Format(time.DateOnly),
+			Date:    civil.DateOf(t.OccurredAt, loc).String(),
 		})
 	}
 	return rows
+}
+
+func (h *WalletHandler) location(sc projectScope) *time.Location {
+	s, err := h.Ledgers.Get(sc.req.Context())
+	if err != nil || s == nil {
+		return time.UTC
+	}
+	loc, err := s.Location()
+	if err != nil {
+		return time.UTC
+	}
+	return loc
 }
 
 func signedFor(walletID uuid.UUID, t *transaction.Transaction) money.Amount {
