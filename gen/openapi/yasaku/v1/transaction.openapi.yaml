@@ -1052,6 +1052,10 @@ components:
         createdAt:
           title: created_at
           $ref: '#/components/schemas/google.protobuf.Timestamp'
+        date:
+          type: string
+          title: date
+          description: The transaction's calendar date as YYYY-MM-DD in the project timezone.
       title: Transaction
       additionalProperties: false
       description: Transaction is one movement of money; amount is always positive and the direction comes from kind.

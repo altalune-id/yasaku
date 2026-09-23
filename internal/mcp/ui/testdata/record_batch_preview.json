@@ -1,5 +1,5 @@
 {"preview":[
-  {"transaction":{"kind":"expense","wallet":{"id":"wal_bca","name":"Makan Daily Cash"},"amount":{"amount":"12000","currency":"IDR"},"note":"Nasi goreng"}},
-  {"index":1,"transaction":{"kind":"expense","wallet":{"id":"wal_bca","name":"Makan Daily Cash"},"amount":{"amount":"8000","currency":"IDR"},"note":"Es teh"}},
+  {"transaction":{"kind":"expense","wallet":{"id":"wal_bca","name":"Makan Daily Cash"},"amount":{"amount":"12000","currency":"IDR"},"note":"Nasi goreng","occurredAt":"2026-09-21T21:30:00Z","date":"2026-09-22"}},
+  {"index":1,"transaction":{"kind":"expense","wallet":{"id":"wal_bca","name":"Makan Daily Cash"},"amount":{"amount":"8000","currency":"IDR"},"note":"Es teh","occurredAt":"2026-09-21T22:15:00Z","date":"2026-09-22"}},
   {"index":2,"errorCode":"YSK404","error":"wallet \"Dompet Hilang\" not found"}
 ]}

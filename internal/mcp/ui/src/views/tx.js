@@ -4,7 +4,11 @@ const TX_SIGN = Object.assign(Object.create(null), {
   expense: "−", income: "+", transfer: "⇄", opening: "•", adjustment_in: "+", adjustment_out: "−",
 });
 
-function txDate(ts) {
+// NOTE: prefer the civil date; occurredAt is normalised to UTC by protojson and
+// reads a day early for any project east of Greenwich.
+function txDate(t) {
+  if (t && t.date) return String(t.date);
+  const ts = t && t.occurredAt;
   if (!ts) return "";
   return String(ts).slice(0, 10);
 }
@@ -20,7 +24,7 @@ function txRow(t) {
     <span class="ya-muted">${TX_SIGN[t.kind] || "•"}</span>
     <span>${label}</span>
     <span class="ya-muted">${sub}</span>
-    <span class="ya-muted">${txDate(t.occurredAt)}</span>
+    <span class="ya-muted">${txDate(t)}</span>
     <span class="ya-num">${money(t.amount)}</span>
   </div>`;
 }

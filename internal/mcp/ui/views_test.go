@@ -677,3 +677,60 @@ func TestBulkViewsTolerateAScalarPreview(t *testing.T) {
 		}
 	}
 }
+
+// TestTxDatePrefersTheCivilDate pins txDate on the civil date, falling back to the UTC instant only when no date is present.
+func TestTxDatePrefersTheCivilDate(t *testing.T) {
+	vm := newJSVM(t)
+	v, err := vm.RunString(`renderTool("list_recent_tx", {transactions:[
+		{id:"a",kind:"expense",date:"2026-09-23",occurredAt:"2026-09-22T19:30:00Z"}
+	]}).html`)
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	if !strings.Contains(v.String(), "2026-09-23") {
+		t.Errorf("the civil date must win over the UTC instant:\n%s", v.String())
+	}
+	if strings.Contains(v.String(), "2026-09-22") {
+		t.Errorf("the UTC day must not be shown when a civil date is present:\n%s", v.String())
+	}
+
+	fallback, err := vm.RunString(`renderTool("list_recent_tx", {transactions:[
+		{id:"a",kind:"expense",occurredAt:"2026-09-22T19:30:00Z"}
+	]}).html`)
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	if !strings.Contains(fallback.String(), "2026-09-22") {
+		t.Errorf("with no civil date the instant is all we have:\n%s", fallback.String())
+	}
+}
+
+func TestPreviewsAndBatchRowsRenderTheCivilDate(t *testing.T) {
+	vm := newJSVM(t)
+	tests := []struct {
+		tool, fixture, civil, utc string
+	}{
+		{"list_recent_tx", "tx_list.json", "2026-09-15", "2026-09-14"},
+		{"get_wallet", "wallet_detail.json", "2026-09-01", "2026-08-31"},
+		{"record_expense", "record_expense_preview.json", "2026-09-22", "2026-09-21"},
+		{"record_income", "record_income_preview.json", "2026-09-01", "2026-08-31"},
+		{"record_transfer", "record_transfer_preview.json", "2026-09-10", "2026-09-09"},
+		{"adjust_balance", "adjust_balance_preview.json", "2026-09-22", "2026-09-21"},
+		{"record_batch", "record_batch_preview.json", "2026-09-22", "2026-09-21"},
+		{"record_batch", "record_batch_result.json", "2026-09-22", "2026-09-21"},
+		{"search_tx", "search_tx.json", "2026-09-15", ""},
+		{"revise_tx", "revise_tx_preview.json", "2026-09-15", ""},
+		{"delete_tx", "delete_tx_result.json", "2026-09-15", ""},
+	}
+	for _, tc := range tests {
+		t.Run(tc.fixture, func(t *testing.T) {
+			got, _ := renderFixture(t, vm, tc.tool, tc.fixture)
+			if !strings.Contains(got, tc.civil) {
+				t.Errorf("%s must render the project-timezone day %s:\n%s", tc.fixture, tc.civil, got)
+			}
+			if tc.utc != "" && strings.Contains(got, tc.utc) {
+				t.Errorf("%s leaked the UTC day %s from occurredAt:\n%s", tc.fixture, tc.utc, got)
+			}
+		})
+	}
+}

@@ -248,6 +248,7 @@ func toProtoCategorySlices(slices []report.CategorySlice) []*yasakuv1.CategorySl
 }
 
 type refCache struct {
+	loc        *time.Location
 	wallets    *wallet.Service
 	categories *category.Service
 	periods    *period.Service
@@ -257,8 +258,12 @@ type refCache struct {
 	period   map[uuid.UUID]*period.Period
 }
 
-func newRefCache(w *wallet.Service, c *category.Service, p *period.Service) *refCache {
+func newRefCache(w *wallet.Service, c *category.Service, p *period.Service, loc *time.Location) *refCache {
+	if loc == nil {
+		loc = time.UTC
+	}
 	return &refCache{
+		loc:        loc,
 		wallets:    w,
 		categories: c,
 		periods:    p,
@@ -327,6 +332,7 @@ func (r *refCache) tx(ctx context.Context, t *transaction.Transaction) *yasakuv1
 		Note:       t.Note,
 		OccurredAt: toTimestamp(t.OccurredAt),
 		CreatedAt:  toTimestamp(t.CreatedAt),
+		Date:       civil.DateOf(t.OccurredAt, r.loc).String(),
 	}
 	if t.ToWalletID != nil {
 		out.ToWallet = r.walletRef(ctx, *t.ToWalletID)

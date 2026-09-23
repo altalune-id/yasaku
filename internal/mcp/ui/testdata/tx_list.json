@@ -1,8 +1,8 @@
 {
   "transactions": [
-    {"id":"tx_1","kind":"expense","wallet":{"id":"wal_bca","name":"Makan Daily Cash"},"amount":{"amount":"12000","currency":"IDR"},"category":{"id":"cat_food","name":"Food & Drinks","kind":"expense","icon":"utensils","color":"chart-1"},"periodId":"per_2026_09","periodName":"September 2026","note":"Nasi goreng","occurredAt":"2026-09-15T04:30:00Z","createdAt":"2026-09-15T04:31:00Z"},
-    {"id":"tx_2","kind":"income","wallet":{"id":"wal_bca","name":"Makan Daily Cash"},"amount":{"amount":"120000","currency":"IDR"},"category":{"id":"cat_salary","name":"Gaji","kind":"income","color":"chart-3"},"periodId":"per_2026_09","periodName":"September 2026","occurredAt":"2026-09-01T02:00:00Z","createdAt":"2026-09-01T02:00:00Z"},
-    {"id":"tx_3","kind":"transfer","wallet":{"id":"wal_bca","name":"Makan Daily Cash"},"toWallet":{"id":"wal_save","name":"Tabungan"},"amount":{"amount":"50000","currency":"IDR"},"periodId":"per_2026_09","periodName":"September 2026","note":"Sisihkan","occurredAt":"2026-09-10T09:00:00Z","createdAt":"2026-09-10T09:00:00Z"}
+    {"id":"tx_1","kind":"expense","wallet":{"id":"wal_bca","name":"Makan Daily Cash"},"amount":{"amount":"12000","currency":"IDR"},"category":{"id":"cat_food","name":"Food & Drinks","kind":"expense","icon":"utensils","color":"chart-1"},"periodId":"per_2026_09","periodName":"September 2026","note":"Nasi goreng","occurredAt":"2026-09-14T21:30:00Z","createdAt":"2026-09-14T21:31:00Z","date":"2026-09-15"},
+    {"id":"tx_2","kind":"income","wallet":{"id":"wal_bca","name":"Makan Daily Cash"},"amount":{"amount":"120000","currency":"IDR"},"category":{"id":"cat_salary","name":"Gaji","kind":"income","color":"chart-3"},"periodId":"per_2026_09","periodName":"September 2026","occurredAt":"2026-08-31T19:00:00Z","createdAt":"2026-08-31T19:00:00Z","date":"2026-09-01"},
+    {"id":"tx_3","kind":"transfer","wallet":{"id":"wal_bca","name":"Makan Daily Cash"},"toWallet":{"id":"wal_save","name":"Tabungan"},"amount":{"amount":"50000","currency":"IDR"},"periodId":"per_2026_09","periodName":"September 2026","note":"Sisihkan","occurredAt":"2026-09-09T20:00:00Z","createdAt":"2026-09-09T20:00:00Z","date":"2026-09-10"}
   ],
   "totalIn": {"amount":"120000","currency":"IDR"},
   "totalOut": {"amount":"12000","currency":"IDR"}

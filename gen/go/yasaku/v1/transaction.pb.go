@@ -28,16 +28,18 @@ type Transaction struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	Id    string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	// One of income, expense, transfer, opening, adjustment_in, adjustment_out. The last three are written by the system and never accepted on a write.
-	Kind          string                 `protobuf:"bytes,2,opt,name=kind,proto3" json:"kind,omitempty"`
-	Wallet        *WalletRef             `protobuf:"bytes,3,opt,name=wallet,proto3" json:"wallet,omitempty"`
-	ToWallet      *WalletRef             `protobuf:"bytes,4,opt,name=to_wallet,json=toWallet,proto3" json:"to_wallet,omitempty"`
-	Amount        *Money                 `protobuf:"bytes,5,opt,name=amount,proto3" json:"amount,omitempty"`
-	Category      *Category              `protobuf:"bytes,6,opt,name=category,proto3" json:"category,omitempty"`
-	PeriodId      string                 `protobuf:"bytes,7,opt,name=period_id,json=periodId,proto3" json:"period_id,omitempty"`
-	PeriodName    string                 `protobuf:"bytes,8,opt,name=period_name,json=periodName,proto3" json:"period_name,omitempty"`
-	Note          string                 `protobuf:"bytes,9,opt,name=note,proto3" json:"note,omitempty"`
-	OccurredAt    *timestamppb.Timestamp `protobuf:"bytes,10,opt,name=occurred_at,json=occurredAt,proto3" json:"occurred_at,omitempty"`
-	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,11,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	Kind       string                 `protobuf:"bytes,2,opt,name=kind,proto3" json:"kind,omitempty"`
+	Wallet     *WalletRef             `protobuf:"bytes,3,opt,name=wallet,proto3" json:"wallet,omitempty"`
+	ToWallet   *WalletRef             `protobuf:"bytes,4,opt,name=to_wallet,json=toWallet,proto3" json:"to_wallet,omitempty"`
+	Amount     *Money                 `protobuf:"bytes,5,opt,name=amount,proto3" json:"amount,omitempty"`
+	Category   *Category              `protobuf:"bytes,6,opt,name=category,proto3" json:"category,omitempty"`
+	PeriodId   string                 `protobuf:"bytes,7,opt,name=period_id,json=periodId,proto3" json:"period_id,omitempty"`
+	PeriodName string                 `protobuf:"bytes,8,opt,name=period_name,json=periodName,proto3" json:"period_name,omitempty"`
+	Note       string                 `protobuf:"bytes,9,opt,name=note,proto3" json:"note,omitempty"`
+	OccurredAt *timestamppb.Timestamp `protobuf:"bytes,10,opt,name=occurred_at,json=occurredAt,proto3" json:"occurred_at,omitempty"`
+	CreatedAt  *timestamppb.Timestamp `protobuf:"bytes,11,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	// The transaction's calendar date as YYYY-MM-DD in the project timezone.
+	Date          string `protobuf:"bytes,12,opt,name=date,proto3" json:"date,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -147,6 +149,13 @@ func (x *Transaction) GetCreatedAt() *timestamppb.Timestamp {
 		return x.CreatedAt
 	}
 	return nil
+}
+
+func (x *Transaction) GetDate() string {
+	if x != nil {
+		return x.Date
+	}
+	return ""
 }
 
 // BatchItem is one row of a RecordBatch.
@@ -1705,7 +1714,7 @@ var File_yasaku_v1_transaction_proto protoreflect.FileDescriptor
 
 const file_yasaku_v1_transaction_proto_rawDesc = "" +
 	"\n" +
-	"\x1byasaku/v1/transaction.proto\x12\tyasaku.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1fyasaku/mcp/v1/annotations.proto\x1a\x18yasaku/v1/category.proto\x1a\x16yasaku/v1/common.proto\"\xb7\x03\n" +
+	"\x1byasaku/v1/transaction.proto\x12\tyasaku.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1fyasaku/mcp/v1/annotations.proto\x1a\x18yasaku/v1/category.proto\x1a\x16yasaku/v1/common.proto\"\xcb\x03\n" +
 	"\vTransaction\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04kind\x18\x02 \x01(\tR\x04kind\x12,\n" +
@@ -1721,7 +1730,8 @@ const file_yasaku_v1_transaction_proto_rawDesc = "" +
 	" \x01(\v2\x1a.google.protobuf.TimestampR\n" +
 	"occurredAt\x129\n" +
 	"\n" +
-	"created_at\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"\xe7\x01\n" +
+	"created_at\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12\x12\n" +
+	"\x04date\x18\f \x01(\tR\x04date\"\xe7\x01\n" +
 	"\tBatchItem\x12\x12\n" +
 	"\x04kind\x18\x01 \x01(\tR\x04kind\x12\x16\n" +
 	"\x06wallet\x18\x02 \x01(\tR\x06wallet\x12\x1b\n" +
