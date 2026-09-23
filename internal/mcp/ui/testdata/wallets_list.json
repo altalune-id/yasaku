@@ -1,0 +1,4 @@
+{"wallets":[
+  {"id":"wal_bca","name":"Makan Daily Cash","kind":"cash","currency":"IDR","balance":{"amount":"108000","currency":"IDR"},"createdAt":"2026-09-01T00:00:00Z"},
+  {"id":"wal_save","name":"Tabungan","kind":"savings","provider":"BCA","currency":"IDR","excludeFromTotal":true,"balance":{"amount":"5000000","currency":"IDR"},"createdAt":"2026-08-01T00:00:00Z"}
+]}

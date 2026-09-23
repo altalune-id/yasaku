@@ -1,0 +1,21 @@
+[
+  {
+    "_meta": {
+      "ui": {
+        "resourceUri": "ui://yasaku/app"
+      }
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "description": "list wallets",
+    "inputSchema": {
+      "type": "object"
+    },
+    "name": "wallet_list",
+    "title": "Wallet list"
+  }
+]

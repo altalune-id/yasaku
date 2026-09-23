@@ -8,6 +8,7 @@ import (
 	"connectrpc.com/connect"
 	"github.com/google/uuid"
 
+	"altalune.id/yasaku/civil"
 	yasakuv1 "altalune.id/yasaku/gen/go/yasaku/v1"
 	"altalune.id/yasaku/internal/apperror"
 	"altalune.id/yasaku/internal/category"
@@ -204,7 +205,11 @@ func (s *TransactionService) RecordBatch(ctx context.Context, req *connect.Reque
 		indexOf = append(indexOf, i)
 	}
 	results := s.txs.RecordBatch(sc.ctx, inputs)
-	refs := newRefCache(s.wallets, s.cats, s.periods)
+	loc, err := s.location(sc.ctx)
+	if err != nil {
+		return nil, err
+	}
+	refs := newRefCache(s.wallets, s.cats, s.periods, loc)
 	for _, r := range results {
 		i := indexOf[r.Index]
 		switch {
@@ -243,7 +248,7 @@ func (s *TransactionService) ReviseTransaction(ctx context.Context, req *connect
 	}
 
 	patch := transaction.RevisePatch{}
-	preview := newRefCache(s.wallets, s.cats, s.periods).tx(sc.ctx, stored)
+	preview := newRefCache(s.wallets, s.cats, s.periods, loc).tx(sc.ctx, stored)
 
 	if v := req.Msg.Wallet; v != nil {
 		w, wNd, wErr := resolveWallet(sc.ctx, s.wallets, "wallet", *v)
@@ -309,6 +314,7 @@ func (s *TransactionService) ReviseTransaction(ctx context.Context, req *connect
 		}
 		patch.OccurredAt = &at
 		preview.OccurredAt = toTimestamp(at)
+		preview.Date = civil.DateOf(at, loc).String()
 	}
 	if v := req.Msg.Period; v != nil {
 		if strings.TrimSpace(*v) == "" {
@@ -334,7 +340,7 @@ func (s *TransactionService) ReviseTransaction(ctx context.Context, req *connect
 	if err != nil {
 		return nil, err
 	}
-	refs := newRefCache(s.wallets, s.cats, s.periods)
+	refs := newRefCache(s.wallets, s.cats, s.periods, loc)
 	return connect.NewResponse(&yasakuv1.ReviseTransactionResponse{Result: refs.tx(sc.ctx, revised)}), nil
 }
 
@@ -355,7 +361,11 @@ func (s *TransactionService) DeleteTransaction(ctx context.Context, req *connect
 	if err != nil {
 		return nil, err
 	}
-	row := newRefCache(s.wallets, s.cats, s.periods).tx(sc.ctx, stored)
+	loc, err := s.location(sc.ctx)
+	if err != nil {
+		return nil, err
+	}
+	row := newRefCache(s.wallets, s.cats, s.periods, loc).tx(sc.ctx, stored)
 	if !req.Msg.GetConfirm() {
 		return connect.NewResponse(&yasakuv1.DeleteTransactionResponse{Preview: row}), nil
 	}
@@ -419,7 +429,11 @@ func (s *TransactionService) ListTransactions(ctx context.Context, req *connect.
 	if err != nil {
 		return nil, err
 	}
-	refs := newRefCache(s.wallets, s.cats, s.periods)
+	loc, err := s.location(sc.ctx)
+	if err != nil {
+		return nil, err
+	}
+	refs := newRefCache(s.wallets, s.cats, s.periods, loc)
 	in, out := pageTotals(rows)
 	return connect.NewResponse(&yasakuv1.ListTransactionsResponse{
 		Transactions: refs.txs(sc.ctx, rows),
@@ -469,7 +483,7 @@ func (s *TransactionService) SearchTransactions(ctx context.Context, req *connec
 	if err != nil {
 		return nil, err
 	}
-	refs := newRefCache(s.wallets, s.cats, s.periods)
+	refs := newRefCache(s.wallets, s.cats, s.periods, loc)
 	in, out := pageTotals(rows)
 	return connect.NewResponse(&yasakuv1.SearchTransactionsResponse{
 		Transactions: refs.txs(sc.ctx, rows),
@@ -541,6 +555,7 @@ func (s *TransactionService) planIn(sc scopeResult, spec recordSpec) (*recordPla
 		Wallet:     toWalletRef(w),
 		Note:       in.Note,
 		OccurredAt: toTimestamp(at),
+		Date:       civil.DateOf(at, loc).String(),
 	}
 
 	if spec.kind == transaction.KindTransfer {
@@ -622,7 +637,11 @@ func (s *TransactionService) commit(sc scopeResult, plan *recordPlan) (*yasakuv1
 	if err != nil {
 		return nil, err
 	}
-	refs := newRefCache(s.wallets, s.cats, s.periods)
+	loc, err := s.location(sc.ctx)
+	if err != nil {
+		return nil, err
+	}
+	refs := newRefCache(s.wallets, s.cats, s.periods, loc)
 	return refs.tx(sc.ctx, t), nil
 }
 

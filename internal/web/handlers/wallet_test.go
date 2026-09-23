@@ -32,6 +32,7 @@ import (
 	"altalune.id/yasaku/internal/wallet"
 	"altalune.id/yasaku/internal/web"
 	"altalune.id/yasaku/internal/web/handlers"
+	"altalune.id/yasaku/money"
 	"altalune.id/yasaku/schema"
 )
 
@@ -598,4 +599,30 @@ func (f *walletFixture) follow(t *testing.T, mux *http.ServeMux, rec *httptest.R
 	loc := rec.Header().Get("Location")
 	require.NotEmpty(t, loc, "expected a redirect")
 	return f.do(t, mux, http.MethodGet, strings.TrimPrefix(loc, f.path("")), nil)
+}
+
+func TestWallet_DetailShowsTheProjectDayNotTheUTCDay(t *testing.T) {
+	t.Parallel()
+	f := newWalletFixture(t)
+	mux := f.walletMux(t)
+
+	require.Equal(t, http.StatusSeeOther, f.do(t, mux, http.MethodPost, "/wallets", url.Values{
+		"name": {"BCA"}, "kind": {"bank"},
+	}).Code)
+	w := f.onlyWallet(t)
+
+	_, err := f.Transactions.Record(f.scoped(t), transaction.RecordInput{
+		WalletID:   w.ID,
+		Kind:       transaction.KindExpense,
+		Amount:     money.New(1500000, money.IDR),
+		Note:       "kopi malam",
+		OccurredAt: time.Date(2026, 9, 22, 19, 30, 0, 0, time.UTC),
+	})
+	require.NoError(t, err)
+
+	rec := f.do(t, mux, http.MethodGet, "/wallets/"+w.ID.String(), nil)
+	require.Equal(t, http.StatusOK, rec.Code)
+	body := rec.Body.String()
+	assert.Contains(t, body, "2026-09-23", "the row must carry the project-timezone day")
+	assert.NotContains(t, body, "2026-09-22", "19:30Z is already the 23rd in Asia/Jakarta")
 }

@@ -59,3 +59,56 @@ func TestInitializeCapabilitiesAreFrozen(t *testing.T) {
 	cs := connect(t, wireFreezeServer())
 	checkWireGolden(t, "testdata/golden/initialize.json", cs.InitializeResult().Capabilities)
 }
+
+func wireFreezeUIServer(t *testing.T) *Server {
+	t.Helper()
+	s := NewServer("yasaku", "test", staticScopes(string(ScopeRead), string(ScopeWrite)), WithUI(true))
+	s.Register(uiSpec(), echoHandler)
+	s.AddUIResource(UIResource{
+		URI:           "ui://yasaku/app",
+		Name:          "yasaku",
+		Body:          "<html></html>",
+		PrefersBorder: new(bool),
+	})
+	return s
+}
+
+func TestToolsListWireIsFrozenWithUI(t *testing.T) {
+	cs := connect(t, wireFreezeUIServer(t))
+	res, err := cs.ListTools(t.Context(), &sdk.ListToolsParams{})
+	if err != nil {
+		t.Fatalf("list tools: %v", err)
+	}
+	checkWireGolden(t, "testdata/golden/tools_list_ui.json", res.Tools)
+}
+
+func TestResourcesListWireIsFrozen(t *testing.T) {
+	cs := connect(t, wireFreezeUIServer(t))
+	res, err := cs.ListResources(t.Context(), &sdk.ListResourcesParams{})
+	if err != nil {
+		t.Fatalf("list resources: %v", err)
+	}
+	checkWireGolden(t, "testdata/golden/resources_list.json", res.Resources)
+}
+
+func TestResourceReadWireIsFrozen(t *testing.T) {
+	cs := connect(t, wireFreezeUIServer(t))
+	res, err := cs.ReadResource(t.Context(), &sdk.ReadResourceParams{URI: "ui://yasaku/app"})
+	if err != nil {
+		t.Fatalf("read resource: %v", err)
+	}
+	checkWireGolden(t, "testdata/golden/resource_read.json", res.Contents)
+}
+
+func TestAddUIResourceWithoutMetaEmitsNoMetaKey(t *testing.T) {
+	s := NewServer("yasaku", "test")
+	s.AddUIResource(UIResource{URI: "ui://yasaku/app", Name: "yasaku", Body: "<html></html>"})
+
+	res, err := connect(t, s).ListResources(t.Context(), &sdk.ListResourcesParams{})
+	if err != nil {
+		t.Fatalf("list resources: %v", err)
+	}
+	if res.Resources[0].Meta != nil {
+		t.Errorf("the fork default must publish no _meta, got %v", res.Resources[0].Meta)
+	}
+}

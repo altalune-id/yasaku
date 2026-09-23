@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-// TestDumpPreview renders every view against its fixture into one static page so
+// TestDumpPreview renders every registered view against its fixture into one static page so
 // layout can be checked without a host. Opt in with YASAKU_UI_PREVIEW=<path>.
 func TestDumpPreview(t *testing.T) {
 	path := os.Getenv("YASAKU_UI_PREVIEW")
@@ -19,6 +19,33 @@ func TestDumpPreview(t *testing.T) {
 		{"period_report (sparse)", "period_report_sparse.json"},
 		{"cashflow_report", "cashflow_report.json"},
 		{"preview_close", "preview_close.json"},
+		{"list_recent_tx", "tx_list.json"},
+		{"list_wallets", "wallets_list.json"},
+		{"get_wallet", "wallet_detail.json"},
+		{"wallet_totals", "wallet_totals.json"},
+		{"list_categories", "category_list.json"},
+		{"list_periods", "period_list.json"},
+		{"list_projects", "project_list.json"},
+		{"current_period", "current_period.json"},
+		{"now", "now.json"},
+		{"create_wallet (needs)", "create_wallet_needs.json"},
+		{"create_wallet (preview)", "create_wallet_preview.json"},
+		{"create_wallet (result)", "create_wallet_result.json"},
+		{"record_expense", "record_expense_preview.json"},
+		{"record_transfer", "record_transfer_preview.json"},
+		{"delete_tx", "delete_tx_result.json"},
+		{"close_period (preview)", "close_period_preview.json"},
+		{"close_period (result)", "close_period_result.json"},
+		{"reopen_period", "reopen_period_preview.json"},
+		{"create_category", "create_category_preview.json"},
+		{"adjust_balance (no-op)", "adjust_balance_noop.json"},
+		{"record_batch", "record_batch_preview.json"},
+		{"seed_default_categories", "seed_preview.json"},
+		{"search_tx", "search_tx.json"},
+		{"update_wallet", "update_wallet_preview.json"},
+		{"archive_wallet", "archive_wallet_preview.json"},
+		{"record_income", "record_income_preview.json"},
+		{"revise_tx", "revise_tx_preview.json"},
 	}
 
 	vm := newJSVM(t)

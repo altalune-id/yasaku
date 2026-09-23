@@ -330,8 +330,10 @@ func TestServerAnnotationsReflectMutation(t *testing.T) {
 		if tool.Annotations.DestructiveHint == nil {
 			t.Fatalf("tool %s has no DestructiveHint", tool.Name)
 		}
-		if *tool.Annotations.DestructiveHint != mutation {
-			t.Fatalf("tool %s DestructiveHint = %v, want %v", tool.Name, *tool.Annotations.DestructiveHint, mutation)
+		// destructiveHint reflects ToolSpec.Destructive, not Mutation: the spec
+		// reserves it for writes that overwrite or remove, not additive ones.
+		if *tool.Annotations.DestructiveHint {
+			t.Fatalf("tool %s DestructiveHint = true; neither fixture spec is destructive", tool.Name)
 		}
 		if tool.Description == "" {
 			t.Fatalf("tool %s lost its description", tool.Name)
@@ -707,11 +709,12 @@ func TestAddUIResourceDuplicate(t *testing.T) {
 }
 
 func TestAddUIResourceServesBodyAndDefaultsMIME(t *testing.T) {
+	yes := true
 	s := NewServer("yasaku", "test")
 	s.AddUIResource(UIResource{
-		URI:  "ui://yasaku/app",
-		Body: "<html></html>",
-		Meta: map[string]any{"ui": map[string]any{"prefersBorder": true}},
+		URI:           "ui://yasaku/app",
+		Body:          "<html></html>",
+		PrefersBorder: &yes,
 	})
 
 	cs := connect(t, s)
@@ -834,4 +837,89 @@ func TestNoPanicWhenUIDisabled(t *testing.T) {
 	s.Register(uiSpec(), echoHandler)
 	s.Handler()
 	s.SDK()
+}
+
+func TestTraceLevels(t *testing.T) {
+	var buf bytes.Buffer
+	s := NewServer("yasaku", "test", staticScopes(string(ScopeRead)),
+		WithLogger(slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelInfo}))))
+	s.Register(readSpec(), echoHandler)
+
+	cs := connect(t, s)
+	if _, err := cs.ListTools(t.Context(), &sdk.ListToolsParams{}); err != nil {
+		t.Fatalf("list tools: %v", err)
+	}
+	callTool(t, cs, "wallet_list", map[string]any{})
+
+	out := buf.String()
+	if strings.Contains(out, "tools/list") {
+		t.Errorf("protocol chatter must not reach Info:\n%s", out)
+	}
+	if !strings.Contains(out, `tool=wallet_list`) {
+		t.Errorf("tools/call must log the tool name at Info — the endpoint is one path, so nothing else records it:\n%s", out)
+	}
+}
+
+func TestToolAnnotationsFollowTheSpec(t *testing.T) {
+	s := NewServer("yasaku", "test", staticScopes(string(ScopeRead), string(ScopeWrite)))
+	s.Register(readSpec(), echoHandler)
+	s.Register(writeSpec(), echoHandler)
+	cs := connect(t, s)
+
+	read := toolByName(t, cs, "wallet_list")
+	if read.Title != "Wallet list" {
+		t.Errorf("read Title = %q, want a human-readable title; hosts show Name otherwise", read.Title)
+	}
+	if !read.Annotations.ReadOnlyHint {
+		t.Error("a read tool must set readOnlyHint")
+	}
+	if read.Annotations.OpenWorldHint == nil || *read.Annotations.OpenWorldHint {
+		t.Error("openWorldHint defaults to true; yasaku's tools act on a closed ledger and must set it false")
+	}
+
+	write := toolByName(t, cs, "wallet_create")
+	if write.Annotations.ReadOnlyHint {
+		t.Error("a mutation must not set readOnlyHint")
+	}
+	if write.Annotations.DestructiveHint == nil || *write.Annotations.DestructiveHint {
+		t.Error("an additive mutation must set destructiveHint false; marking every write destructive desensitises the host prompt")
+	}
+}
+
+func TestDestructiveHintTracksTheSpecFlag(t *testing.T) {
+	s := NewServer("yasaku", "test", staticScopes(string(ScopeWrite)))
+	spec := writeSpec()
+	spec.Name = "wallet_delete"
+	spec.Destructive = true
+	s.Register(spec, echoHandler)
+
+	tool := toolByName(t, connect(t, s), "wallet_delete")
+	if tool.Annotations.DestructiveHint == nil || !*tool.Annotations.DestructiveHint {
+		t.Error("a spec marked Destructive must set destructiveHint true")
+	}
+}
+
+func TestAddUIResourceMetaReachesTheListEntry(t *testing.T) {
+	s := NewServer("yasaku", "test")
+	s.AddUIResource(UIResource{
+		URI:           "ui://yasaku/app",
+		Name:          "yasaku",
+		Body:          "<html></html>",
+		PrefersBorder: new(bool),
+	})
+
+	res, err := connect(t, s).ListResources(t.Context(), &sdk.ListResourcesParams{})
+	if err != nil {
+		t.Fatalf("list resources: %v", err)
+	}
+	if len(res.Resources) != 1 {
+		t.Fatalf("resources = %d, want 1", len(res.Resources))
+	}
+	ui, ok := res.Resources[0].Meta[metaKeyUI].(map[string]any)
+	if !ok {
+		t.Fatalf("list entry _meta[%q] = %T, want map — the declaration may carry _meta.ui too; resources/read contents is where a host MUST read it", metaKeyUI, res.Resources[0].Meta[metaKeyUI])
+	}
+	if got := ui["prefersBorder"]; got != false {
+		t.Errorf("prefersBorder = %v, want false", got)
+	}
 }

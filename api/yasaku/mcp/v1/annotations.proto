@@ -25,4 +25,6 @@ message Tool {
   bool mutation = 4;
   // ui names the MCP Apps resource rendering this tool's result; empty means JSON only.
   string ui = 5;
+  // destructive marks a mutation that overwrites or removes existing data, as opposed to an additive write.
+  bool destructive = 6;
 }

@@ -17,9 +17,7 @@ const unexpectedMessage = "unexpected error"
 // MIMEApp is the MCP Apps media type for a single-file HTML UI resource.
 const MIMEApp = "text/html;profile=mcp-app"
 
-const (
-	metaKeyUI = "ui"
-)
+const metaKeyUI = "ui"
 
 // Scope is an authorization scope a caller must hold to invoke a tool.
 type Scope string
@@ -37,6 +35,7 @@ type ToolSpec struct {
 	Description   string
 	Scope         Scope
 	Mutation      bool
+	Destructive   bool
 	InputSchema   json.RawMessage
 	UIResourceURI string
 }
@@ -122,16 +121,27 @@ func NewServer(name, version string, opts ...Option) *Server {
 func (s *Server) trace(next sdk.MethodHandler) sdk.MethodHandler {
 	return func(ctx context.Context, method string, req sdk.Request) (sdk.Result, error) {
 		res, err := next(ctx, method, req)
-		if method != "initialize" {
-			s.logger.InfoContext(ctx, "mcp: request", "method", method)
-			return res, err
+		switch method {
+		case "initialize":
+			attrs := []any{"method", method}
+			if p, ok := req.GetParams().(*sdk.InitializeParams); ok && p != nil {
+				raw, _ := json.Marshal(p.Capabilities)
+				attrs = append(attrs, "client", p.ClientInfo.Name, "client_version", p.ClientInfo.Version, "capabilities", string(raw))
+			}
+			s.logger.InfoContext(ctx, "mcp: request", attrs...)
+		case "tools/call":
+			// NOTE: the endpoint is one path, so an HTTP access log cannot say which tool ran; this is the only per-tool usage record.
+			name := ""
+			switch p := req.GetParams().(type) {
+			case *sdk.CallToolParams:
+				name = p.Name
+			case *sdk.CallToolParamsRaw:
+				name = p.Name
+			}
+			s.logger.InfoContext(ctx, "mcp: request", "method", method, "tool", name)
+		default:
+			s.logger.DebugContext(ctx, "mcp: request", "method", method)
 		}
-		attrs := []any{"method", method}
-		if p, ok := req.GetParams().(*sdk.InitializeParams); ok && p != nil {
-			raw, _ := json.Marshal(p.Capabilities)
-			attrs = append(attrs, "client", p.ClientInfo.Name, "client_version", p.ClientInfo.Version, "capabilities", string(raw))
-		}
-		s.logger.InfoContext(ctx, "mcp: request", attrs...)
 		return res, err
 	}
 }
@@ -158,13 +168,17 @@ func (s *Server) Register(spec ToolSpec, h Handler) {
 		schema = json.RawMessage(`{"type":"object"}`)
 	}
 	mutation := spec.Mutation
+	destructive := spec.Destructive
+	closedWorld := false
 	tool := &sdk.Tool{
 		Name:        spec.Name,
+		Title:       titleOf(spec.Name),
 		Description: spec.Description,
 		InputSchema: schema,
 		Annotations: &sdk.ToolAnnotations{
 			ReadOnlyHint:    !mutation,
-			DestructiveHint: &mutation,
+			DestructiveHint: &destructive,
+			OpenWorldHint:   &closedWorld,
 		},
 	}
 
@@ -194,7 +208,21 @@ type UIResource struct {
 	Name     string
 	MIMEType string
 	Body     string
-	Meta     map[string]any
+	// PrefersBorder asks the host to draw a border and background; nil leaves the host's default.
+	PrefersBorder *bool
+}
+
+// NOTE: McpUiResourceMeta is additionalProperties:false, so the runtime owns the shape and
+// callers pass values; a strict host rejects a _meta carrying anything it does not model.
+func (r UIResource) meta() sdk.Meta {
+	ui := map[string]any{}
+	if r.PrefersBorder != nil {
+		ui["prefersBorder"] = *r.PrefersBorder
+	}
+	if len(ui) == 0 {
+		return nil
+	}
+	return sdk.Meta{metaKeyUI: ui}
 }
 
 // AddUIResource publishes r; it panics on a resource the app should never build.
@@ -218,6 +246,7 @@ func (s *Server) AddUIResource(r UIResource) {
 	s.resources[r.URI] = r
 
 	s.sdk.AddResource(&sdk.Resource{
+		Meta:     r.meta(),
 		URI:      r.URI,
 		Name:     r.Name,
 		MIMEType: r.MIMEType,
@@ -227,7 +256,7 @@ func (s *Server) AddUIResource(r UIResource) {
 				URI:      r.URI,
 				MIMEType: r.MIMEType,
 				Text:     r.Body,
-				Meta:     sdk.Meta(r.Meta),
+				Meta:     r.meta(),
 			}},
 		}, nil
 	})
@@ -249,6 +278,15 @@ func (s *Server) SDK() *sdk.Server {
 	s.mustBuilt()
 	s.mustResolved()
 	return s.sdk
+}
+
+// titleOf turns a snake_case tool name into the human-readable title hosts show in place of the name.
+func titleOf(name string) string {
+	t := strings.ReplaceAll(name, "_", " ")
+	if t == "" {
+		return t
+	}
+	return strings.ToUpper(t[:1]) + t[1:]
 }
 
 func (s *Server) mustResolved() {

@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"connectrpc.com/connect"
+	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 	"google.golang.org/grpc/codes"
 
 	apperrorv1 "altalune.id/yasaku/gen/go/apperror/v1"
@@ -306,5 +307,42 @@ func TestUIResourcePublishedOnlyWhenEnabled(t *testing.T) {
 				t.Fatal("New returned nil")
 			}
 		})
+	}
+}
+
+func TestUIResourceReachesTheWireWithPrefersBorderFalse(t *testing.T) {
+	rt := mcprt.NewServer("yasaku", "test")
+	rt.AddUIResource(uiResource())
+
+	ctx := t.Context()
+	serverTransport, clientTransport := sdk.NewInMemoryTransports()
+	if _, err := rt.SDK().Connect(ctx, serverTransport, nil); err != nil {
+		t.Fatalf("server connect: %v", err)
+	}
+	cs, err := sdk.NewClient(&sdk.Implementation{Name: "test", Version: "test"}, nil).Connect(ctx, clientTransport, nil)
+	if err != nil {
+		t.Fatalf("client connect: %v", err)
+	}
+	t.Cleanup(func() { _ = cs.Close() })
+
+	res, err := cs.ListResources(ctx, &sdk.ListResourcesParams{})
+	if err != nil {
+		t.Fatalf("list resources: %v", err)
+	}
+	if len(res.Resources) != 1 {
+		t.Fatalf("resources = %d, want 1", len(res.Resources))
+	}
+	if res.Resources[0].URI != ui.ResourceURI {
+		t.Errorf("uri = %q, want %q", res.Resources[0].URI, ui.ResourceURI)
+	}
+	meta, ok := res.Resources[0].Meta["ui"].(map[string]any)
+	if !ok {
+		t.Fatalf("_meta[\"ui\"] = %T, want map", res.Resources[0].Meta["ui"])
+	}
+	if got := meta["prefersBorder"]; got != false {
+		t.Errorf("prefersBorder = %v, want false; the bundle draws its own card borders", got)
+	}
+	if len(meta) != 1 {
+		t.Errorf("ui meta = %v, want prefersBorder only", meta)
 	}
 }

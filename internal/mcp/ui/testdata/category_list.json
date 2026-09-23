@@ -1,0 +1,5 @@
+{"categories":[
+  {"id":"cat_food","name":"Makan","kind":"expense","icon":"utensils","color":"chart-1"},
+  {"id":"cat_transport","name":"Transport","kind":"expense","icon":"bus","color":"chart-2"},
+  {"id":"cat_salary","name":"Gaji","kind":"income","color":"chart-3"}
+]}

@@ -1,7 +1,13 @@
 // html.js
+// SECURITY: RAW holds only markup this bundle minted. Server JSON is interpolated
+// verbatim, so a duck-typed {__raw:…} from a tool result must never bypass escaping.
+const RAW = new WeakSet();
+
 function esc(value) {
   if (value === null || value === undefined) return "";
-  if (typeof value === "object" && "__raw" in value) return value.__raw;
+  if (typeof value === "object") {
+    return RAW.has(value) ? value.__raw : "";
+  }
   return String(value).replace(/[&<>"']/g, function (c) {
     return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
   });
@@ -18,6 +24,8 @@ function html(strings, ...values) {
 
 // raw marks already-escaped markup (a nested html`` result) as safe to embed.
 function raw(markup) {
-  if (markup && typeof markup === "object" && "__raw" in markup) return markup;
-  return { __raw: String(markup) };
+  if (markup && typeof markup === "object" && RAW.has(markup)) return markup;
+  const box = { __raw: String(markup) };
+  RAW.add(box);
+  return box;
 }

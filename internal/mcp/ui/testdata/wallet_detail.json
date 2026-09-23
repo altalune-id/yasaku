@@ -1,0 +1,7 @@
+{
+  "wallet":{"id":"wal_bca","name":"Makan Daily Cash","kind":"cash","currency":"IDR","balance":{"amount":"108000","currency":"IDR"},"createdAt":"2026-09-01T00:00:00Z"},
+  "recent":[
+    {"id":"tx_1","kind":"expense","wallet":{"id":"wal_bca","name":"Makan Daily Cash"},"amount":{"amount":"12000","currency":"IDR"},"category":{"id":"cat_food","name":"Food","kind":"expense"},"note":"Nasi goreng","occurredAt":"2026-09-14T21:30:00Z","date":"2026-09-15"},
+    {"id":"tx_2","kind":"income","wallet":{"id":"wal_bca","name":"Makan Daily Cash"},"amount":{"amount":"120000","currency":"IDR"},"category":{"id":"cat_salary","name":"Gaji","kind":"income"},"occurredAt":"2026-08-31T19:00:00Z","date":"2026-09-01"}
+  ]
+}

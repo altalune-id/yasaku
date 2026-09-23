@@ -18,7 +18,7 @@ import (
 func RegisterReportServiceTools(reg mcp.Registry, h yasakuv1connect.ReportServiceHandler) {
 	reg.Register(mcp.ToolSpec{
 		Name:          "period_report",
-		Description:   "Laporan satu periode: pemasukan, pengeluaran, selisih, rincian per kategori dan per dompet. Period must be a period ID from list_periods or current_period, never a period name; leave it empty for the current period. Category slices are largest first and share is a fraction of that direction's total.",
+		Description:   "Report one period's totals: income, expense, net, and the breakdown per category and per wallet. Period must be a period ID from list_periods or current_period, never a period name; leave it empty for the current period. Category slices are largest first and share is a fraction of that direction's total.",
 		Scope:         mcp.ScopeRead,
 		Mutation:      false,
 		InputSchema:   json.RawMessage(`{"type":"object","properties":{"target":{"type":"object","properties":{"org":{"type":"string"},"project":{"type":"string"}},"additionalProperties":false},"period":{"type":"string","description":"Period ID from list_periods or current_period, never a period name. Empty means the current period."}},"additionalProperties":false}`),
@@ -39,7 +39,7 @@ func RegisterReportServiceTools(reg mcp.Registry, h yasakuv1connect.ReportServic
 	})
 	reg.Register(mcp.ToolSpec{
 		Name:          "cashflow_report",
-		Description:   "Tren arus kas beberapa periode terakhir, satu titik per periode. Periods defaults to the last 6 and is capped at 24. Points run oldest to newest so a trend reads left to right.",
+		Description:   "Plot the cashflow trend over the most recent periods, one point per period that has transactions. Periods defaults to the last 6 and is capped at 24. Points run oldest to newest so a trend reads left to right.",
 		Scope:         mcp.ScopeRead,
 		Mutation:      false,
 		InputSchema:   json.RawMessage(`{"type":"object","properties":{"target":{"type":"object","properties":{"org":{"type":"string"},"project":{"type":"string"}},"additionalProperties":false},"periods":{"type":"integer","description":"How many of the most recent periods to plot. Defaults to 6, capped at 24."}},"additionalProperties":false}`),

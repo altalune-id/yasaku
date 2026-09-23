@@ -80,7 +80,9 @@ type Tool struct {
 	Access      Access                 `protobuf:"varint,3,opt,name=access,proto3,enum=yasaku.mcp.v1.Access" json:"access,omitempty"`
 	Mutation    bool                   `protobuf:"varint,4,opt,name=mutation,proto3" json:"mutation,omitempty"`
 	// ui names the MCP Apps resource rendering this tool's result; empty means JSON only.
-	Ui            string `protobuf:"bytes,5,opt,name=ui,proto3" json:"ui,omitempty"`
+	Ui string `protobuf:"bytes,5,opt,name=ui,proto3" json:"ui,omitempty"`
+	// destructive marks a mutation that overwrites or removes existing data, as opposed to an additive write.
+	Destructive   bool `protobuf:"varint,6,opt,name=destructive,proto3" json:"destructive,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -150,6 +152,13 @@ func (x *Tool) GetUi() string {
 	return ""
 }
 
+func (x *Tool) GetDestructive() bool {
+	if x != nil {
+		return x.Destructive
+	}
+	return false
+}
+
 var file_yasaku_mcp_v1_annotations_proto_extTypes = []protoimpl.ExtensionInfo{
 	{
 		ExtendedType:  (*descriptorpb.MethodOptions)(nil),
@@ -171,13 +180,14 @@ var File_yasaku_mcp_v1_annotations_proto protoreflect.FileDescriptor
 
 const file_yasaku_mcp_v1_annotations_proto_rawDesc = "" +
 	"\n" +
-	"\x1fyasaku/mcp/v1/annotations.proto\x12\ryasaku.mcp.v1\x1a google/protobuf/descriptor.proto\"\x97\x01\n" +
+	"\x1fyasaku/mcp/v1/annotations.proto\x12\ryasaku.mcp.v1\x1a google/protobuf/descriptor.proto\"\xb9\x01\n" +
 	"\x04Tool\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12 \n" +
 	"\vdescription\x18\x02 \x01(\tR\vdescription\x12-\n" +
 	"\x06access\x18\x03 \x01(\x0e2\x15.yasaku.mcp.v1.AccessR\x06access\x12\x1a\n" +
 	"\bmutation\x18\x04 \x01(\bR\bmutation\x12\x0e\n" +
-	"\x02ui\x18\x05 \x01(\tR\x02ui*C\n" +
+	"\x02ui\x18\x05 \x01(\tR\x02ui\x12 \n" +
+	"\vdestructive\x18\x06 \x01(\bR\vdestructive*C\n" +
 	"\x06Access\x12\x16\n" +
 	"\x12ACCESS_UNSPECIFIED\x10\x00\x12\x0f\n" +
 	"\vACCESS_READ\x10\x01\x12\x10\n" +

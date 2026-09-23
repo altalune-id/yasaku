@@ -17,11 +17,12 @@ import (
 // RegisterWalletServiceTools registers every MCP-annotated WalletService method on reg.
 func RegisterWalletServiceTools(reg mcp.Registry, h yasakuv1connect.WalletServiceHandler) {
 	reg.Register(mcp.ToolSpec{
-		Name:        "list_wallets",
-		Description: "Daftar dompet beserta saldo terkininya. Balances are derived from transactions, never stored. Archived wallets are hidden unless include_archived is true.",
-		Scope:       mcp.ScopeRead,
-		Mutation:    false,
-		InputSchema: json.RawMessage(`{"type":"object","properties":{"target":{"type":"object","properties":{"org":{"type":"string"},"project":{"type":"string"}},"additionalProperties":false},"includeArchived":{"type":"boolean"}},"additionalProperties":false}`),
+		Name:          "list_wallets",
+		Description:   "List the project's wallets with their current balances. Balances are derived from transactions, never stored. Archived wallets are hidden unless include_archived is true.",
+		Scope:         mcp.ScopeRead,
+		Mutation:      false,
+		InputSchema:   json.RawMessage(`{"type":"object","properties":{"target":{"type":"object","properties":{"org":{"type":"string"},"project":{"type":"string"}},"additionalProperties":false},"includeArchived":{"type":"boolean"}},"additionalProperties":false}`),
+		UIResourceURI: "ui://yasaku/app",
 	}, func(ctx context.Context, input json.RawMessage) (json.RawMessage, error) {
 		if len(input) == 0 {
 			input = json.RawMessage(`{}`)
@@ -37,11 +38,12 @@ func RegisterWalletServiceTools(reg mcp.Registry, h yasakuv1connect.WalletServic
 		return protojson.Marshal(resp.Msg)
 	})
 	reg.Register(mcp.ToolSpec{
-		Name:        "get_wallet",
-		Description: "Detail satu dompet beserta transaksi terakhirnya. The wallet is addressed by name or id; a name that matches more than one wallet is refused with the candidates.",
-		Scope:       mcp.ScopeRead,
-		Mutation:    false,
-		InputSchema: json.RawMessage(`{"type":"object","properties":{"target":{"type":"object","properties":{"org":{"type":"string"},"project":{"type":"string"}},"additionalProperties":false},"wallet":{"type":"string"}},"additionalProperties":false}`),
+		Name:          "get_wallet",
+		Description:   "Show one wallet in detail together with its most recent transactions. The wallet is addressed by name or id; a name that matches more than one wallet is refused with the candidates.",
+		Scope:         mcp.ScopeRead,
+		Mutation:      false,
+		InputSchema:   json.RawMessage(`{"type":"object","properties":{"target":{"type":"object","properties":{"org":{"type":"string"},"project":{"type":"string"}},"additionalProperties":false},"wallet":{"type":"string"}},"additionalProperties":false}`),
+		UIResourceURI: "ui://yasaku/app",
 	}, func(ctx context.Context, input json.RawMessage) (json.RawMessage, error) {
 		if len(input) == 0 {
 			input = json.RawMessage(`{}`)
@@ -57,11 +59,12 @@ func RegisterWalletServiceTools(reg mcp.Registry, h yasakuv1connect.WalletServic
 		return protojson.Marshal(resp.Msg)
 	})
 	reg.Register(mcp.ToolSpec{
-		Name:        "create_wallet",
-		Description: "Buat dompet baru, boleh sekalian dengan saldo awal. Kind is one of cash, bank, ewallet, savings, investment or other; currency is immutable once set. Savings and investment wallets default to being excluded from the spendable total. Call without confirm to preview; call again with confirm=true to save. The preview is the resolved intent, not the saved record: it carries no id and no timestamps, and a concurrent write landing in between can change what is actually saved.",
-		Scope:       mcp.ScopeWrite,
-		Mutation:    true,
-		InputSchema: json.RawMessage(`{"type":"object","properties":{"target":{"type":"object","properties":{"org":{"type":"string"},"project":{"type":"string"}},"additionalProperties":false},"name":{"type":"string"},"kind":{"type":"string","description":"One of cash, bank, ewallet, savings, investment or other."},"provider":{"type":"string"},"currency":{"type":"string"},"excludeFromTotal":{"type":"boolean"},"openingBalance":{"type":"object","properties":{"amount":{"type":"string"},"currency":{"type":"string"}},"additionalProperties":false},"confirm":{"type":"boolean"}},"additionalProperties":false}`),
+		Name:          "create_wallet",
+		Description:   "Create a new wallet, optionally with an opening balance in the same call. Kind is one of cash, bank, ewallet, savings, investment or other; currency is immutable once set. Savings and investment wallets default to being excluded from the spendable total. Call without confirm to preview; call again with confirm=true to save. The preview is the resolved intent, not the saved record: it carries no id and no timestamps, and a concurrent write landing in between can change what is actually saved.",
+		Scope:         mcp.ScopeWrite,
+		Mutation:      true,
+		InputSchema:   json.RawMessage(`{"type":"object","properties":{"target":{"type":"object","properties":{"org":{"type":"string"},"project":{"type":"string"}},"additionalProperties":false},"name":{"type":"string"},"kind":{"type":"string","description":"One of cash, bank, ewallet, savings, investment or other."},"provider":{"type":"string"},"currency":{"type":"string"},"excludeFromTotal":{"type":"boolean"},"openingBalance":{"type":"object","properties":{"amount":{"type":"string"},"currency":{"type":"string"}},"additionalProperties":false},"confirm":{"type":"boolean"}},"additionalProperties":false}`),
+		UIResourceURI: "ui://yasaku/app",
 	}, func(ctx context.Context, input json.RawMessage) (json.RawMessage, error) {
 		if len(input) == 0 {
 			input = json.RawMessage(`{}`)
@@ -77,11 +80,13 @@ func RegisterWalletServiceTools(reg mcp.Registry, h yasakuv1connect.WalletServic
 		return protojson.Marshal(resp.Msg)
 	})
 	reg.Register(mcp.ToolSpec{
-		Name:        "update_wallet",
-		Description: "Ubah nama, jenis, penyedia atau flag exclude_from_total sebuah dompet. Only the fields you send are changed; kind is one of cash, bank, ewallet, savings, investment or other. Currency cannot be changed and an archived wallet must be unarchived first. Call without confirm to preview; call again with confirm=true to save. The preview is the resolved intent, not the saved record: it is the stored row with your changes applied, and a concurrent write landing in between can change what is actually saved.",
-		Scope:       mcp.ScopeWrite,
-		Mutation:    true,
-		InputSchema: json.RawMessage(`{"type":"object","properties":{"target":{"type":"object","properties":{"org":{"type":"string"},"project":{"type":"string"}},"additionalProperties":false},"wallet":{"type":"string"},"name":{"type":"string"},"kind":{"type":"string","description":"One of cash, bank, ewallet, savings, investment or other."},"provider":{"type":"string"},"excludeFromTotal":{"type":"boolean"},"confirm":{"type":"boolean"}},"additionalProperties":false}`),
+		Name:          "update_wallet",
+		Description:   "Change a wallet's name, kind, provider or exclude_from_total flag. Only the fields you send are changed; kind is one of cash, bank, ewallet, savings, investment or other. Currency cannot be changed and an archived wallet must be unarchived first. Call without confirm to preview; call again with confirm=true to save. The preview is the resolved intent, not the saved record: it is the stored row with your changes applied, and a concurrent write landing in between can change what is actually saved.",
+		Scope:         mcp.ScopeWrite,
+		Mutation:      true,
+		Destructive:   true,
+		InputSchema:   json.RawMessage(`{"type":"object","properties":{"target":{"type":"object","properties":{"org":{"type":"string"},"project":{"type":"string"}},"additionalProperties":false},"wallet":{"type":"string"},"name":{"type":"string"},"kind":{"type":"string","description":"One of cash, bank, ewallet, savings, investment or other."},"provider":{"type":"string"},"excludeFromTotal":{"type":"boolean"},"confirm":{"type":"boolean"}},"additionalProperties":false}`),
+		UIResourceURI: "ui://yasaku/app",
 	}, func(ctx context.Context, input json.RawMessage) (json.RawMessage, error) {
 		if len(input) == 0 {
 			input = json.RawMessage(`{}`)
@@ -97,11 +102,13 @@ func RegisterWalletServiceTools(reg mcp.Registry, h yasakuv1connect.WalletServic
 		return protojson.Marshal(resp.Msg)
 	})
 	reg.Register(mcp.ToolSpec{
-		Name:        "archive_wallet",
-		Description: "Arsipkan dompet yang sudah tidak dipakai; riwayat transaksinya tetap utuh dan namanya bebas dipakai ulang. An archived wallet refuses new transactions. Call without confirm to preview; call again with confirm=true to archive. The preview is the wallet as it stands now, read at preview time, so a concurrent write landing in between can change what is actually archived.",
-		Scope:       mcp.ScopeWrite,
-		Mutation:    true,
-		InputSchema: json.RawMessage(`{"type":"object","properties":{"target":{"type":"object","properties":{"org":{"type":"string"},"project":{"type":"string"}},"additionalProperties":false},"wallet":{"type":"string"},"confirm":{"type":"boolean"}},"additionalProperties":false}`),
+		Name:          "archive_wallet",
+		Description:   "Archive a wallet that is no longer in use; its transaction history stays intact and its name becomes free to reuse. An archived wallet refuses new transactions. Call without confirm to preview; call again with confirm=true to archive. The preview is the wallet as it stands now, read at preview time, so a concurrent write landing in between can change what is actually archived.",
+		Scope:         mcp.ScopeWrite,
+		Mutation:      true,
+		Destructive:   true,
+		InputSchema:   json.RawMessage(`{"type":"object","properties":{"target":{"type":"object","properties":{"org":{"type":"string"},"project":{"type":"string"}},"additionalProperties":false},"wallet":{"type":"string"},"confirm":{"type":"boolean"}},"additionalProperties":false}`),
+		UIResourceURI: "ui://yasaku/app",
 	}, func(ctx context.Context, input json.RawMessage) (json.RawMessage, error) {
 		if len(input) == 0 {
 			input = json.RawMessage(`{}`)
@@ -117,11 +124,12 @@ func RegisterWalletServiceTools(reg mcp.Registry, h yasakuv1connect.WalletServic
 		return protojson.Marshal(resp.Msg)
 	})
 	reg.Register(mcp.ToolSpec{
-		Name:        "adjust_balance",
-		Description: "Samakan saldo dompet dengan hitungan sebenarnya dengan menulis satu transaksi penyesuaian. Give the balance the wallet should end up with, in major units of its currency, not the difference. The date is YYYY-MM-DD and empty means today. When the wallet already holds that balance nothing is written and both preview and result come back empty. Call without confirm to preview; call again with confirm=true to save. The preview is the resolved intent, not the saved record: it carries no id and no timestamps, and a concurrent write landing in between can change both the adjustment and the balance it lands on.",
-		Scope:       mcp.ScopeWrite,
-		Mutation:    true,
-		InputSchema: json.RawMessage(`{"type":"object","properties":{"target":{"type":"object","properties":{"org":{"type":"string"},"project":{"type":"string"}},"additionalProperties":false},"wallet":{"type":"string"},"targetBalance":{"type":"object","properties":{"amount":{"type":"string"},"currency":{"type":"string"}},"additionalProperties":false},"date":{"type":"string","description":"YYYY-MM-DD; empty means today in the project timezone."},"confirm":{"type":"boolean"}},"additionalProperties":false}`),
+		Name:          "adjust_balance",
+		Description:   "Reconcile a wallet's balance with the real count by writing one adjustment transaction. Give the balance the wallet should end up with, in major units of its currency, not the difference. The date is YYYY-MM-DD and empty means today. When the wallet already holds that balance nothing is written and both preview and result come back empty. Call without confirm to preview; call again with confirm=true to save. The preview is the resolved intent, not the saved record: it carries no id and no timestamps, and a concurrent write landing in between can change both the adjustment and the balance it lands on.",
+		Scope:         mcp.ScopeWrite,
+		Mutation:      true,
+		InputSchema:   json.RawMessage(`{"type":"object","properties":{"target":{"type":"object","properties":{"org":{"type":"string"},"project":{"type":"string"}},"additionalProperties":false},"wallet":{"type":"string"},"targetBalance":{"type":"object","properties":{"amount":{"type":"string"},"currency":{"type":"string"}},"additionalProperties":false},"date":{"type":"string","description":"YYYY-MM-DD; empty means today in the project timezone."},"confirm":{"type":"boolean"}},"additionalProperties":false}`),
+		UIResourceURI: "ui://yasaku/app",
 	}, func(ctx context.Context, input json.RawMessage) (json.RawMessage, error) {
 		if len(input) == 0 {
 			input = json.RawMessage(`{}`)
@@ -137,11 +145,12 @@ func RegisterWalletServiceTools(reg mcp.Registry, h yasakuv1connect.WalletServic
 		return protojson.Marshal(resp.Msg)
 	})
 	reg.Register(mcp.ToolSpec{
-		Name:        "wallet_totals",
-		Description: "Ringkasan uang: total bisa dipakai, total semua dompet, dan pemasukan, pengeluaran serta selisih periode berjalan. The spendable total leaves out wallets flagged exclude_from_total.",
-		Scope:       mcp.ScopeRead,
-		Mutation:    false,
-		InputSchema: json.RawMessage(`{"type":"object","properties":{"target":{"type":"object","properties":{"org":{"type":"string"},"project":{"type":"string"}},"additionalProperties":false}},"additionalProperties":false}`),
+		Name:          "wallet_totals",
+		Description:   "Summarize the money on hand: the spendable total, the total across all wallets, and the current period's income, expense and net. The spendable total leaves out wallets flagged exclude_from_total.",
+		Scope:         mcp.ScopeRead,
+		Mutation:      false,
+		InputSchema:   json.RawMessage(`{"type":"object","properties":{"target":{"type":"object","properties":{"org":{"type":"string"},"project":{"type":"string"}},"additionalProperties":false}},"additionalProperties":false}`),
+		UIResourceURI: "ui://yasaku/app",
 	}, func(ctx context.Context, input json.RawMessage) (json.RawMessage, error) {
 		if len(input) == 0 {
 			input = json.RawMessage(`{}`)

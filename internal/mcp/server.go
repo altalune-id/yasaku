@@ -53,23 +53,19 @@ func New(d Deps) *Server {
 	if log == nil {
 		log = slog.New(slog.DiscardHandler)
 	}
+	appsUI := d.Cfg != nil && d.Cfg.MCP.AppsUI
 	rt := mcprt.NewServer(serverName, d.Version,
 		mcprt.WithScopes(scopesFrom),
 		mcprt.WithErrorMapper(mapError),
 		mcprt.WithLogger(log),
-		mcprt.WithUI(d.Cfg != nil && d.Cfg.MCP.AppsUI),
+		mcprt.WithUI(appsUI),
 	)
 	if d.Register != nil {
 		d.Register(rt)
 	}
-	appsUI := d.Cfg != nil && d.Cfg.MCP.AppsUI
 	log.Info("mcp: apps ui", "enabled", appsUI, "resource", ui.ResourceURI)
 	if appsUI {
-		rt.AddUIResource(mcprt.UIResource{
-			URI:  ui.ResourceURI,
-			Name: "yasaku",
-			Body: ui.Document(),
-		})
+		rt.AddUIResource(uiResource())
 	}
 	s := &Server{
 		Verifier: d.Verifier,
@@ -79,6 +75,17 @@ func New(d Deps) *Server {
 	}
 	s.initMetadata(d.Cfg)
 	return s
+}
+
+func uiResource() mcprt.UIResource {
+	return mcprt.UIResource{
+		URI:  ui.ResourceURI,
+		Name: "yasaku",
+		Body: ui.Document(),
+		// NOTE: app.css paints a transparent body and .ya-card draws its own border, so a
+		// host-drawn frame would double up on every card.
+		PrefersBorder: new(bool),
+	}
 }
 
 // Handler returns the bearer-authenticated MCP endpoint.

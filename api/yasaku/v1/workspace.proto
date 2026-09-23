@@ -14,15 +14,17 @@ service WorkspaceService {
   rpc ListProjects(ListProjectsRequest) returns (ListProjectsResponse) {
     option (yasaku.mcp.v1.tool) = {
       name: "list_projects"
-      description: "Daftar buku kas yang boleh diakses. Use the returned org and project slugs as the target of every other tool; a caller with exactly one project may leave the target empty."
+      description: "List the ledgers the caller may access. Use the returned org and project slugs as the target of every other tool; a caller with exactly one org and one project inside it may leave the target empty."
       access: ACCESS_READ
+      ui: "app"
     };
   }
   rpc Now(NowRequest) returns (NowResponse) {
     option (yasaku.mcp.v1.tool) = {
       name: "now"
-      description: "Tanggal dan jam sekarang menurut zona waktu buku kas, beserta periode berjalan. Call this before writing a dated transaction so relative words like \"kemarin\" resolve against the ledger's own clock, not the caller's."
+      description: "Report the current date and time in the ledger's timezone, together with the period in progress when one is open. Call this before writing a dated transaction so relative words like \"yesterday\" resolve against the ledger's own clock, not the caller's."
       access: ACCESS_READ
+      ui: "app"
     };
   }
 }

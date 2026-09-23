@@ -169,21 +169,52 @@ field, a tool name that is not lower snake case, a duplicate tool name,
 
 ### The UI link
 
-A tool with `ui` carries both the canonical and the deprecated link, exactly as
-the reference `registerAppTool` does:
+A tool with `ui` carries exactly one key:
 
 ```json
-"_meta": {
-  "ui": { "resourceUri": "ui://yasaku/app" },
-  "ui/resourceUri": "ui://yasaku/app"
-}
+"_meta": { "ui": { "resourceUri": "ui://yasaku/app" } }
 ```
+
+The spec also documents a deprecated flat `"ui/resourceUri"` sibling, and the
+reference `registerAppTool` emits it. yasaku does **not**: `$defs/McpUiToolMeta`
+sets `additionalProperties: false`, so a host validating the whole `_meta`
+object rejects the pair. Emitting the sibling stopped the bundle rendering in
+ChatGPT.
 
 `visibility` is omitted; it defaults to `["model", "app"]`. `csp` and
 `permissions` are forbidden on tool `_meta` and belong on the resource.
 Set `mcp.appsUI=true` to publish the resource; it defaults to false.
 
-`period_report`, `cashflow_report` and `preview_close` carry the link today. The
+## The resource `_meta`
+
+The published resource carries its own `_meta.ui`, on both the `resources/list`
+entry and the `resources/read` contents. `resources/read` is the normative
+location — servers MAY omit UI resources from `resources/list` entirely.
+
+```json
+"_meta": { "ui": { "prefersBorder": false } }
+```
+
+`prefersBorder` is explicit because host defaults vary and the spec recommends
+stating it: `app.css` paints a transparent body and `.ya-card` draws its own
+border, so a host-drawn frame would double up on every card.
+
+`mcp.UIResource` exposes this as a typed `PrefersBorder *bool`, not a raw map —
+`$defs/McpUiResourceMeta` is `additionalProperties: false`, so the runtime owns
+the wire shape and callers pass only values. `nil` leaves the host's default.
+
+**All 27 tools carry the link.** The bundle routes on tool name: reads render a
+card or chart, and the 14 mutations share one phase machine driven by the
+`{needs, preview, result, warning}` envelope — `needs` renders an editable form
+with the server's `candidates` as pickers, `preview` renders the resolved intent
+plus a Confirm control, and `result` renders a receipt.
+
+A commit is never rebuilt from the response. Several previews cannot round-trip
+into their own request — `close_period`'s is a bare `Snapshot` with no period id,
+and `adjust_balance`'s carries the computed delta rather than the target balance.
+The bundle instead merges the original tool arguments (delivered on
+`ui/notifications/tool-input`) with `confirm: true`, which is also how `target`
+survives the round trip. The
 bundle is one resource, `ui://yasaku/app`, assembled in `internal/mcp/ui` from
 ordered source parts and published only when `mcp.appsUI=true`.
 

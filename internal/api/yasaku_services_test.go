@@ -10,6 +10,7 @@ import (
 	"connectrpc.com/connect"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 
 	yasakuv1 "altalune.id/yasaku/gen/go/yasaku/v1"
 	"altalune.id/yasaku/gen/go/yasaku/v1/yasakuv1connect"
@@ -871,4 +872,55 @@ func TestReopenPeriod_EmptyPeriodAsksForAClosedOne(t *testing.T) {
 	resp, err = pc.ReopenPeriod(ctx, connect.NewRequest(&yasakuv1.ReopenPeriodRequest{}))
 	require.NoError(t, err)
 	require.Equal(t, []string{closed.Msg.GetResult().GetId()}, resp.Msg.GetNeeds().GetNeeds()[0].GetCandidates())
+}
+
+func TestTransactionDate_IsTheProjectCivilDayOnEveryPath(t *testing.T) {
+	h := newYasakuHarness(t)
+	ctx := t.Context()
+	h.createWallet(ctx, "BCA", &yasakuv1.Money{Amount: "1000000"})
+	tc := h.txClient()
+
+	const (
+		evening = "2026-09-22T19:30:00Z"
+		wibDay  = "2026-09-23"
+		utcDay  = "2026-09-22"
+	)
+
+	preview, err := tc.RecordExpense(ctx, connect.NewRequest(&yasakuv1.RecordExpenseRequest{
+		Wallet: "BCA", Amount: &yasakuv1.Money{Amount: "15000"}, OccurredAt: evening,
+	}))
+	require.NoError(t, err)
+	require.Equal(t, wibDay, preview.Msg.GetPreview().GetDate(), "the preview a user confirms against carries the project day")
+
+	saved, err := tc.RecordExpense(ctx, connect.NewRequest(&yasakuv1.RecordExpenseRequest{
+		Wallet: "BCA", Amount: &yasakuv1.Money{Amount: "15000"}, OccurredAt: evening, Confirm: true,
+	}))
+	require.NoError(t, err)
+	require.Equal(t, wibDay, saved.Msg.GetResult().GetDate(), "the receipt must not disagree with the preview")
+	require.NotEqual(t, utcDay, saved.Msg.GetResult().GetDate())
+
+	listed, err := tc.ListTransactions(ctx, connect.NewRequest(&yasakuv1.ListTransactionsRequest{}))
+	require.NoError(t, err)
+	require.Equal(t, wibDay, listed.Msg.GetTransactions()[0].GetDate())
+
+	batch, err := tc.RecordBatch(ctx, connect.NewRequest(&yasakuv1.RecordBatchRequest{
+		Items: []*yasakuv1.BatchItem{{
+			Kind: "expense", Wallet: "BCA", Amount: &yasakuv1.Money{Amount: "2000"}, OccurredAt: evening,
+		}},
+	}))
+	require.NoError(t, err)
+	require.Len(t, batch.Msg.GetPreview(), 1)
+	require.Equal(t, wibDay, batch.Msg.GetPreview()[0].GetTransaction().GetDate())
+
+	adjust, err := h.walletClient().AdjustBalance(ctx, connect.NewRequest(&yasakuv1.AdjustBalanceRequest{
+		Wallet: "BCA", TargetBalance: &yasakuv1.Money{Amount: "999000"}, Date: evening,
+	}))
+	require.NoError(t, err)
+	require.Equal(t, wibDay, adjust.Msg.GetPreview().GetDate())
+
+	moved, err := tc.ReviseTransaction(ctx, connect.NewRequest(&yasakuv1.ReviseTransactionRequest{
+		Id: saved.Msg.GetResult().GetId(), OccurredAt: proto.String("2026-09-25T10:00:00Z"),
+	}))
+	require.NoError(t, err)
+	require.Equal(t, "2026-09-25", moved.Msg.GetPreview().GetDate(), "a revise preview must not show the day it is moving away from")
 }

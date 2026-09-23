@@ -8,6 +8,7 @@ import (
 	"connectrpc.com/connect"
 	"github.com/google/uuid"
 
+	"altalune.id/yasaku/civil"
 	yasakuv1 "altalune.id/yasaku/gen/go/yasaku/v1"
 	"altalune.id/yasaku/internal/category"
 	"altalune.id/yasaku/internal/ledger"
@@ -97,7 +98,11 @@ func (s *WalletService) GetWallet(ctx context.Context, req *connect.Request[yasa
 	if err != nil {
 		return nil, err
 	}
-	refs := newRefCache(s.wallets, s.cats, s.periods)
+	loc, err := s.location(sc.ctx)
+	if err != nil {
+		return nil, err
+	}
+	refs := newRefCache(s.wallets, s.cats, s.periods, loc)
 	return connect.NewResponse(&yasakuv1.GetWalletResponse{
 		Wallet: toProtoWallet(w, &balance),
 		Recent: refs.txs(sc.ctx, rows),
@@ -342,6 +347,7 @@ func (s *WalletService) AdjustBalance(ctx context.Context, req *connect.Request[
 				Wallet:     toWalletRef(w),
 				Amount:     toMoney(money.New(delta, w.Currency)),
 				OccurredAt: toTimestamp(at),
+				Date:       civil.DateOf(at, loc).String(),
 			},
 			Warning: "the balance is read again under a lock at confirm time, so a write landing in between changes the adjustment",
 		}), nil
@@ -356,7 +362,7 @@ func (s *WalletService) AdjustBalance(ctx context.Context, req *connect.Request[
 			Warning: "the wallet already held that balance; nothing was written",
 		}), nil
 	}
-	refs := newRefCache(s.wallets, s.cats, s.periods)
+	refs := newRefCache(s.wallets, s.cats, s.periods, loc)
 	return connect.NewResponse(&yasakuv1.AdjustBalanceResponse{Result: refs.tx(sc.ctx, t)}), nil
 }
 

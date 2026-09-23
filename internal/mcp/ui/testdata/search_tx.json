@@ -1,0 +1,1 @@
+{"transactions":[{"id":"tx_1","kind":"expense","wallet":{"id":"w","name":"Makan Daily Cash"},"amount":{"amount":"12000","currency":"IDR"},"note":"Nasi goreng","date":"2026-09-15"}],"nextCursor":"tok","totalOut":{"amount":"12000","currency":"IDR"}}

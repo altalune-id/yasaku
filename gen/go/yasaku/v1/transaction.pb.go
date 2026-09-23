@@ -28,16 +28,18 @@ type Transaction struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	Id    string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	// One of income, expense, transfer, opening, adjustment_in, adjustment_out. The last three are written by the system and never accepted on a write.
-	Kind          string                 `protobuf:"bytes,2,opt,name=kind,proto3" json:"kind,omitempty"`
-	Wallet        *WalletRef             `protobuf:"bytes,3,opt,name=wallet,proto3" json:"wallet,omitempty"`
-	ToWallet      *WalletRef             `protobuf:"bytes,4,opt,name=to_wallet,json=toWallet,proto3" json:"to_wallet,omitempty"`
-	Amount        *Money                 `protobuf:"bytes,5,opt,name=amount,proto3" json:"amount,omitempty"`
-	Category      *Category              `protobuf:"bytes,6,opt,name=category,proto3" json:"category,omitempty"`
-	PeriodId      string                 `protobuf:"bytes,7,opt,name=period_id,json=periodId,proto3" json:"period_id,omitempty"`
-	PeriodName    string                 `protobuf:"bytes,8,opt,name=period_name,json=periodName,proto3" json:"period_name,omitempty"`
-	Note          string                 `protobuf:"bytes,9,opt,name=note,proto3" json:"note,omitempty"`
-	OccurredAt    *timestamppb.Timestamp `protobuf:"bytes,10,opt,name=occurred_at,json=occurredAt,proto3" json:"occurred_at,omitempty"`
-	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,11,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	Kind       string                 `protobuf:"bytes,2,opt,name=kind,proto3" json:"kind,omitempty"`
+	Wallet     *WalletRef             `protobuf:"bytes,3,opt,name=wallet,proto3" json:"wallet,omitempty"`
+	ToWallet   *WalletRef             `protobuf:"bytes,4,opt,name=to_wallet,json=toWallet,proto3" json:"to_wallet,omitempty"`
+	Amount     *Money                 `protobuf:"bytes,5,opt,name=amount,proto3" json:"amount,omitempty"`
+	Category   *Category              `protobuf:"bytes,6,opt,name=category,proto3" json:"category,omitempty"`
+	PeriodId   string                 `protobuf:"bytes,7,opt,name=period_id,json=periodId,proto3" json:"period_id,omitempty"`
+	PeriodName string                 `protobuf:"bytes,8,opt,name=period_name,json=periodName,proto3" json:"period_name,omitempty"`
+	Note       string                 `protobuf:"bytes,9,opt,name=note,proto3" json:"note,omitempty"`
+	OccurredAt *timestamppb.Timestamp `protobuf:"bytes,10,opt,name=occurred_at,json=occurredAt,proto3" json:"occurred_at,omitempty"`
+	CreatedAt  *timestamppb.Timestamp `protobuf:"bytes,11,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	// The transaction's calendar date as YYYY-MM-DD in the project timezone.
+	Date          string `protobuf:"bytes,12,opt,name=date,proto3" json:"date,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -147,6 +149,13 @@ func (x *Transaction) GetCreatedAt() *timestamppb.Timestamp {
 		return x.CreatedAt
 	}
 	return nil
+}
+
+func (x *Transaction) GetDate() string {
+	if x != nil {
+		return x.Date
+	}
+	return ""
 }
 
 // BatchItem is one row of a RecordBatch.
@@ -1705,7 +1714,7 @@ var File_yasaku_v1_transaction_proto protoreflect.FileDescriptor
 
 const file_yasaku_v1_transaction_proto_rawDesc = "" +
 	"\n" +
-	"\x1byasaku/v1/transaction.proto\x12\tyasaku.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1fyasaku/mcp/v1/annotations.proto\x1a\x18yasaku/v1/category.proto\x1a\x16yasaku/v1/common.proto\"\xb7\x03\n" +
+	"\x1byasaku/v1/transaction.proto\x12\tyasaku.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1fyasaku/mcp/v1/annotations.proto\x1a\x18yasaku/v1/category.proto\x1a\x16yasaku/v1/common.proto\"\xcb\x03\n" +
 	"\vTransaction\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04kind\x18\x02 \x01(\tR\x04kind\x12,\n" +
@@ -1721,7 +1730,8 @@ const file_yasaku_v1_transaction_proto_rawDesc = "" +
 	" \x01(\v2\x1a.google.protobuf.TimestampR\n" +
 	"occurredAt\x129\n" +
 	"\n" +
-	"created_at\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"\xe7\x01\n" +
+	"created_at\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12\x12\n" +
+	"\x04date\x18\f \x01(\tR\x04date\"\xe7\x01\n" +
 	"\tBatchItem\x12\x12\n" +
 	"\x04kind\x18\x01 \x01(\tR\x04kind\x12\x16\n" +
 	"\x06wallet\x18\x02 \x01(\tR\x06wallet\x12\x1b\n" +
@@ -1859,24 +1869,24 @@ const file_yasaku_v1_transaction_proto_rawDesc = "" +
 	"\x04note\x18\x02 \x01(\tR\x04note\"`\n" +
 	"\x17SuggestCategoryResponse\x12/\n" +
 	"\bcategory\x18\x01 \x01(\v2\x13.yasaku.v1.CategoryR\bcategory\x12\x14\n" +
-	"\x05found\x18\x02 \x01(\bR\x05found2\xaf%\n" +
-	"\x12TransactionService\x12\xc9\x04\n" +
-	"\rRecordExpense\x12\x1f.yasaku.v1.RecordExpenseRequest\x1a .yasaku.v1.RecordExpenseResponse\"\xf4\x03\xca\xf3\x18\xef\x03\n" +
-	"\x0erecord_expense\x12\xd8\x03Catat pengeluaran (uang keluar) dari sebuah dompet. Amount in major units of the wallet currency. Wallet and category accept a name or an id, but period must be a period ID from list_periods or current_period, never a period name. Call without confirm to preview; call again with confirm=true to save. The preview is the resolved intent, not the saved record: it carries no id and no timestamps, and a concurrent write landing in between can change what is actually saved.\x18\x02 \x01\x12\xc0\x04\n" +
-	"\fRecordIncome\x12\x1e.yasaku.v1.RecordIncomeRequest\x1a\x1f.yasaku.v1.RecordIncomeResponse\"\xee\x03\xca\xf3\x18\xe9\x03\n" +
-	"\rrecord_income\x12\xd3\x03Catat pemasukan (uang masuk) ke sebuah dompet. Amount in major units of the wallet currency. Wallet and category accept a name or an id, but period must be a period ID from list_periods or current_period, never a period name. Call without confirm to preview; call again with confirm=true to save. The preview is the resolved intent, not the saved record: it carries no id and no timestamps, and a concurrent write landing in between can change what is actually saved.\x18\x02 \x01\x12\xee\x04\n" +
-	"\x0eRecordTransfer\x12 .yasaku.v1.RecordTransferRequest\x1a!.yasaku.v1.RecordTransferResponse\"\x96\x04\xca\xf3\x18\x91\x04\n" +
-	"\x0frecord_transfer\x12\xf9\x03Pindahkan uang antar dompet milik sendiri; ini bukan pengeluaran. Both wallets must hold the same currency and a transfer carries no category. Wallets accept a name or an id, but period must be a period ID from list_periods or current_period, never a period name. Call without confirm to preview; call again with confirm=true to save. The preview is the resolved intent, not the saved record: it carries no id and no timestamps, and a concurrent write landing in between can change what is actually saved.\x18\x02 \x01\x12\xa2\x05\n" +
-	"\vRecordBatch\x12\x1d.yasaku.v1.RecordBatchRequest\x1a\x1e.yasaku.v1.RecordBatchResponse\"\xd3\x04\xca\xf3\x18\xce\x04\n" +
-	"\frecord_batch\x12\xb9\x04Catat banyak transaksi sekaligus, misalnya dari satu cerita panjang. Each item is recorded independently, so one bad row does not undo the rest; read the per-item outcomes. Item kind is income, expense or transfer only. Each item's period must be a period ID from list_periods or current_period, never a period name. Call without confirm to preview; call again with confirm=true to save. Each previewed outcome is the resolved intent, not the saved record: it carries no id and no timestamps, and a concurrent write landing in between can change what is actually saved.\x18\x02 \x01\x12\x83\x05\n" +
-	"\x11ReviseTransaction\x12#.yasaku.v1.ReviseTransactionRequest\x1a$.yasaku.v1.ReviseTransactionResponse\"\xa2\x04\xca\xf3\x18\x9d\x04\n" +
-	"\trevise_tx\x12\x8b\x04Perbaiki transaksi yang sudah dicatat. Only the fields you send are changed; an empty category clears it. Period must be a period ID from list_periods or current_period, never a period name. A transaction inside a closed period is refused until the period is reopened. Call without confirm to preview; call again with confirm=true to save. The preview is the resolved intent, not the saved record: its id is real but its timestamps are not final, and a concurrent write landing in between can change what is actually saved.\x18\x02 \x01\x12\xc6\x03\n" +
-	"\x11DeleteTransaction\x12#.yasaku.v1.DeleteTransactionRequest\x1a$.yasaku.v1.DeleteTransactionResponse\"\xe5\x02\xca\xf3\x18\xe0\x02\n" +
-	"\tdelete_tx\x12\xce\x02Hapus transaksi secara permanen. A transaction inside a closed period is refused until the period is reopened. Call without confirm to preview which row would go; call again with confirm=true to delete. The preview is the resolved intent read at preview time; a concurrent write landing in between can change what is actually deleted.\x18\x02 \x01\x12\xbb\x04\n" +
-	"\x10ListTransactions\x12\".yasaku.v1.ListTransactionsRequest\x1a#.yasaku.v1.ListTransactionsResponse\"\xdd\x03\xca\xf3\x18\xd8\x03\n" +
-	"\x0elist_recent_tx\x12\xc3\x03Daftar transaksi terbaru, bisa disaring per dompet, kategori, periode atau jenis. Period must be a period ID from list_periods or current_period, never a period name. Limit defaults to 50 and is capped at 200. Pass the returned next_cursor back as cursor for the following page; an empty next_cursor means the last page. The returned total_in and total_out cover only the rows on this page, and are empty when those rows do not all share one currency.\x18\x01\x12\x8c\x04\n" +
-	"\x12SearchTransactions\x12$.yasaku.v1.SearchTransactionsRequest\x1a%.yasaku.v1.SearchTransactionsResponse\"\xa8\x03\xca\xf3\x18\xa3\x03\n" +
-	"\tsearch_tx\x12\x93\x03Cari transaksi berdasarkan catatannya, dengan rentang tanggal opsional. The query matches the note case-insensitively; from and to are YYYY-MM-DD and inclusive. Limit defaults to 50 and is capped at 200. Pass the returned next_cursor back as cursor for the following page. The returned total_in and total_out cover only the rows on this page, and are empty when those rows do not all share one currency.\x18\x01\x12X\n" +
+	"\x05found\x18\x02 \x01(\bR\x05found2\xc3)\n" +
+	"\x12TransactionService\x12\xb2\x05\n" +
+	"\rRecordExpense\x12\x1f.yasaku.v1.RecordExpenseRequest\x1a .yasaku.v1.RecordExpenseResponse\"\xdd\x04\xca\xf3\x18\xd8\x04\n" +
+	"\x0erecord_expense\x12\xbc\x04Record an expense (money going out) from a wallet. Amount in major units of the wallet currency. Wallet and category accept a name or an id, but period must be a period ID from list_periods or current_period, never a period name. The period must be the one containing occurred_at or one next to it, and a closed period is refused. Call without confirm to preview; call again with confirm=true to save. The preview is the resolved intent, not the saved record: it carries no id and no timestamps, and a concurrent write landing in between can change what is actually saved.\x18\x02 \x01*\x03app\x12\xaa\x05\n" +
+	"\fRecordIncome\x12\x1e.yasaku.v1.RecordIncomeRequest\x1a\x1f.yasaku.v1.RecordIncomeResponse\"\xd8\x04\xca\xf3\x18\xd3\x04\n" +
+	"\rrecord_income\x12\xb8\x04Record income (money coming in) into a wallet. Amount in major units of the wallet currency. Wallet and category accept a name or an id, but period must be a period ID from list_periods or current_period, never a period name. The period must be the one containing occurred_at or one next to it, and a closed period is refused. Call without confirm to preview; call again with confirm=true to save. The preview is the resolved intent, not the saved record: it carries no id and no timestamps, and a concurrent write landing in between can change what is actually saved.\x18\x02 \x01*\x03app\x12\xd9\x05\n" +
+	"\x0eRecordTransfer\x12 .yasaku.v1.RecordTransferRequest\x1a!.yasaku.v1.RecordTransferResponse\"\x81\x05\xca\xf3\x18\xfc\x04\n" +
+	"\x0frecord_transfer\x12\xdf\x04Move money between the user's own wallets; this is not an expense. Both wallets must hold the same currency and a transfer carries no category. Wallets accept a name or an id, but period must be a period ID from list_periods or current_period, never a period name. The period must be the one containing occurred_at or one next to it, and a closed period is refused. Call without confirm to preview; call again with confirm=true to save. The preview is the resolved intent, not the saved record: it carries no id and no timestamps, and a concurrent write landing in between can change what is actually saved.\x18\x02 \x01*\x03app\x12\xd0\x05\n" +
+	"\vRecordBatch\x12\x1d.yasaku.v1.RecordBatchRequest\x1a\x1e.yasaku.v1.RecordBatchResponse\"\x81\x05\xca\xf3\x18\xfc\x04\n" +
+	"\frecord_batch\x12\xe2\x04Record many transactions at once, for example from one long account of a day. Each item is recorded independently, so one bad row does not undo the rest; read the per-item outcomes. Item kind is income, expense or transfer only. Each item's period must be a period ID from list_periods or current_period, never a period name, and a closed period is refused. Call without confirm to preview; call again with confirm=true to save. Each previewed outcome is the resolved intent, not the saved record: it carries no id and no timestamps, and a concurrent write landing in between can change what is actually saved.\x18\x02 \x01*\x03app\x12\xd5\x05\n" +
+	"\x11ReviseTransaction\x12#.yasaku.v1.ReviseTransactionRequest\x1a$.yasaku.v1.ReviseTransactionResponse\"\xf4\x04\xca\xf3\x18\xef\x04\n" +
+	"\trevise_tx\x12\xd6\x04Correct a transaction that is already recorded. Only the fields you send are changed; an empty category clears it. Period must be a period ID from list_periods or current_period, never a period name. A transaction inside a closed period is refused until the period is reopened, and a system-written opening or adjustment row cannot be revised. Call without confirm to preview; call again with confirm=true to save. The preview is the resolved intent, not the saved record: its id is real but its timestamps are not final, and a concurrent write landing in between can change what is actually saved.\x18\x02 \x01*\x03app0\x01\x12\x90\x04\n" +
+	"\x11DeleteTransaction\x12#.yasaku.v1.DeleteTransactionRequest\x1a$.yasaku.v1.DeleteTransactionResponse\"\xaf\x03\xca\xf3\x18\xaa\x03\n" +
+	"\tdelete_tx\x12\x91\x03Delete a transaction permanently. A transaction inside a closed period is refused until the period is reopened, and a system-written opening or adjustment row cannot be deleted. Call without confirm to preview which row would go; call again with confirm=true to delete. The preview is the resolved intent read at preview time; a concurrent write landing in between can change what is actually deleted.\x18\x02 \x01*\x03app0\x01\x12\xca\x04\n" +
+	"\x10ListTransactions\x12\".yasaku.v1.ListTransactionsRequest\x1a#.yasaku.v1.ListTransactionsResponse\"\xec\x03\xca\xf3\x18\xe7\x03\n" +
+	"\x0elist_recent_tx\x12\xcd\x03List the most recent transactions, optionally filtered by wallet, category, period or kind. Period must be a period ID from list_periods or current_period, never a period name. Limit defaults to 50 and is capped at 200. Pass the returned next_cursor back as cursor for the following page; an empty next_cursor means the last page. The returned total_in and total_out cover only the rows on this page, and are empty when those rows do not all share one currency.\x18\x01*\x03app\x12\x89\x04\n" +
+	"\x12SearchTransactions\x12$.yasaku.v1.SearchTransactionsRequest\x1a%.yasaku.v1.SearchTransactionsResponse\"\xa5\x03\xca\xf3\x18\xa0\x03\n" +
+	"\tsearch_tx\x12\x8b\x03Search transactions by their note, with an optional date range. The query matches the note case-insensitively; from and to are YYYY-MM-DD and inclusive. Limit defaults to 50 and is capped at 200. Pass the returned next_cursor back as cursor for the following page. The returned total_in and total_out cover only the rows on this page, and are empty when those rows do not all share one currency.\x18\x01*\x03app\x12X\n" +
 	"\x0fSuggestCategory\x12!.yasaku.v1.SuggestCategoryRequest\x1a\".yasaku.v1.SuggestCategoryResponseB\x94\x01\n" +
 	"\rcom.yasaku.v1B\x10TransactionProtoP\x01Z,altalune.id/yasaku/gen/go/yasaku/v1;yasakuv1\xa2\x02\x03YXX\xaa\x02\tYasaku.V1\xca\x02\tYasaku\\V1\xe2\x02\x15Yasaku\\V1\\GPBMetadata\xea\x02\n" +
 	"Yasaku::V1b\x06proto3"

@@ -1,5 +1,6 @@
 // registry.js
-const VIEWS = {};
+// NOTE: null-prototype, so a tool named like an Object.prototype member cannot resolve to an inherited value.
+const VIEWS = Object.create(null);
 
 function registerView(name, fn) {
   VIEWS[name] = fn;

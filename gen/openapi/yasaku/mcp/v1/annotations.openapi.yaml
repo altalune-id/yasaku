@@ -31,6 +31,10 @@ components:
           type: string
           title: ui
           description: ui names the MCP Apps resource rendering this tool's result; empty means JSON only.
+        destructive:
+          type: boolean
+          title: destructive
+          description: destructive marks a mutation that overwrites or removes existing data, as opposed to an additive write.
       title: Tool
       additionalProperties: false
       description: Tool marks an RPC as an MCP tool. A method with mutation true must carry a bool confirm field in its request.
