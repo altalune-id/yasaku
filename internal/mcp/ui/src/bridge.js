@@ -22,8 +22,11 @@ function createBridge(handlers, loadModule) {
       handlers.onToolInput(params, tool);
     };
     app.ontoolresult = function (result) { handlers.onToolResult(result); };
+    app.ontoolcancelled = function (params) { handlers.onToolCancelled(params); };
     app.onhostcontextchanged = function (ctx) { applyHostStyles(ctx); handlers.onHostContext(ctx); };
     app.onerror = function (e) { console.error(e); };
+    // NOTE: the SDK registers the ui/resource-teardown handler only inside this setter.
+    app.onteardown = function () { return {}; };
     await app.connect();
     applyHostStyles(app.getHostContext());
     return app.getHostContext();

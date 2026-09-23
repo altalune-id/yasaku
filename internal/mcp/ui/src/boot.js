@@ -1,14 +1,27 @@
 // boot.js
 const root = document.getElementById("root");
 let current = { actions: {} };
-let captured = { tool: "", args: {} };
-let pending = false;
+let inflight = null;
+let lastCall = null;
+let lastToolInfo = "";
 
-function capturedArgs() { return captured.args; }
+// SECURITY: ui/notifications/tool-input carries no tool name and no call id, so hostInput is
+// labelled only by hostContext and is never read when answers already names the tool.
+let answers = { tool: "", args: {} };
+let hostInput = { tool: "", args: {} };
 
+function capturedArgs() { return answers.args; }
+
+// NOTE: hostContext names the tool that instantiated the view, never the tool a view-initiated call ran.
 function currentToolName(b) {
   const ctx = b.hostContext();
   return ctx && ctx.toolInfo && ctx.toolInfo.tool ? ctx.toolInfo.tool.name : "";
+}
+
+function toolInfoKey(ctx) {
+  const info = ctx && ctx.toolInfo;
+  if (!info || !info.tool) return "";
+  return String(info.id === undefined ? "" : info.id) + "|" + info.tool.name;
 }
 
 function paint(name, data) {
@@ -19,6 +32,14 @@ function paint(name, data) {
   }
   current = renderTool(name, data || {});
   root.innerHTML = current.html;
+}
+
+function paintCancelled(reason) {
+  if (lastCall) lastCall.done = true;
+  inflight = null;
+  current = { actions: {} };
+  const why = reason ? html`<p class="ya-muted">${reason}</p>` : "";
+  root.innerHTML = html`<div class="ya-root"><p class="ya-muted">The host cancelled that tool call.</p>${raw(why)}</div>`;
 }
 
 function paintResult(name, result) {
@@ -67,40 +88,78 @@ function mergeDeep(target, source) {
   return target;
 }
 
-const bridge = createBridge({
+const hostHandlers = {
   onToolInput: function (params, tool) {
-    captured = { tool: tool || "", args: (params && params.arguments) || {} };
+    hostInput = { tool: tool || "", args: (params && params.arguments) || {} };
   },
-  onToolResult: function (result) { paintResult(currentToolName(bridge), result); },
-  onHostContext: function () {},
-}, function () { return globalThis.__extApps; });
+  onToolResult: function (result) {
+    if (!lastCall) {
+      paintResult(currentToolName(bridge), result);
+      return;
+    }
+    if (lastCall.done) {
+      lastCall = null;
+      return;
+    }
+    lastCall.done = true;
+    paintResult(lastCall.tool, result);
+  },
+  onToolCancelled: function (params) {
+    if (lastCall && lastCall.done) return;
+    paintCancelled(params && params.reason);
+  },
+  onHostContext: function (ctx) {
+    const key = toolInfoKey(ctx);
+    if (!key || key === lastToolInfo) return;
+    lastToolInfo = key;
+    lastCall = null;
+    answers = { tool: "", args: {} };
+    hostInput = { tool: "", args: {} };
+  },
+};
+
+const bridge = createBridge(hostHandlers, function () { return globalThis.__extApps; });
 
 // NOTE: a preview is not round-trippable into its own request — close_period's is a bare
 // Snapshot, adjust_balance's carries the delta. Commits build on the captured tool input.
 // SECURITY: a.args is merged LAST so a form field can never override a declared confirm.
 function dispatchAction(el, form) {
-  if (pending) return;
+  if (inflight) return;
   const id = el.getAttribute("data-action");
   const a = current.actions[id];
   if (!a) return;
   delete current.actions[id];
 
   const args = {};
-  if (captured.tool === a.tool) mergeDeep(args, captured.args);
+  if (answers.tool === a.tool) mergeDeep(args, answers.args);
+  else if (hostInput.tool === a.tool) mergeDeep(args, hostInput.args);
   mergeDeep(args, formValues(form));
   mergeDeep(args, a.args);
-  captured = { tool: a.tool, args: args };
+  answers = { tool: a.tool, args: args };
 
-  pending = true;
+  const call = { tool: a.tool, done: false };
+  inflight = call;
+  lastCall = call;
   el.disabled = true;
   bridge.callTool(a.tool, args)
-    .then(function (res) { paintResult(a.tool, res); })
+    .then(function (res) {
+      if (call.done) {
+        if (lastCall === call) lastCall = null;
+        return;
+      }
+      call.done = true;
+      paintResult(call.tool, res);
+    })
     .catch(function (e) {
+      if (call.done) return;
+      call.done = true;
       current = { actions: {} };
       root.innerHTML = html`<div class="ya-root"><p class="ya-error">That request was not completed.</p></div>`;
       console.error(e);
     })
-    .finally(function () { pending = false; });
+    .finally(function () {
+      if (inflight === call) inflight = null;
+    });
 }
 
 root.addEventListener("click", function (ev) {
@@ -116,7 +175,9 @@ root.addEventListener("submit", function (ev) {
 });
 
 root.innerHTML = html`<div class="ya-root"><p class="ya-muted">Loading…</p></div>`;
-bridge.connect().catch(function (e) {
+bridge.connect().then(function (ctx) {
+  lastToolInfo = toolInfoKey(ctx);
+}).catch(function (e) {
   root.innerHTML = html`<div class="ya-root"><p class="ya-error">Could not reach the host.</p></div>`;
   console.error(e);
 });

@@ -185,6 +185,24 @@ ChatGPT.
 `permissions` are forbidden on tool `_meta` and belong on the resource.
 Set `mcp.appsUI=true` to publish the resource; it defaults to false.
 
+## The resource `_meta`
+
+The published resource carries its own `_meta.ui`, on both the `resources/list`
+entry and the `resources/read` contents. `resources/read` is the normative
+location — servers MAY omit UI resources from `resources/list` entirely.
+
+```json
+"_meta": { "ui": { "prefersBorder": false } }
+```
+
+`prefersBorder` is explicit because host defaults vary and the spec recommends
+stating it: `app.css` paints a transparent body and `.ya-card` draws its own
+border, so a host-drawn frame would double up on every card.
+
+`mcp.UIResource` exposes this as a typed `PrefersBorder *bool`, not a raw map —
+`$defs/McpUiResourceMeta` is `additionalProperties: false`, so the runtime owns
+the wire shape and callers pass only values. `nil` leaves the host's default.
+
 **All 27 tools carry the link.** The bundle routes on tool name: reads render a
 card or chart, and the 14 mutations share one phase machine driven by the
 `{needs, preview, result, warning}` envelope — `needs` renders an editable form

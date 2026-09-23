@@ -17,9 +17,7 @@ const unexpectedMessage = "unexpected error"
 // MIMEApp is the MCP Apps media type for a single-file HTML UI resource.
 const MIMEApp = "text/html;profile=mcp-app"
 
-const (
-	metaKeyUI = "ui"
-)
+const metaKeyUI = "ui"
 
 // Scope is an authorization scope a caller must hold to invoke a tool.
 type Scope string
@@ -210,7 +208,21 @@ type UIResource struct {
 	Name     string
 	MIMEType string
 	Body     string
-	Meta     map[string]any
+	// PrefersBorder asks the host to draw a border and background; nil leaves the host's default.
+	PrefersBorder *bool
+}
+
+// NOTE: McpUiResourceMeta is additionalProperties:false, so the runtime owns the shape and
+// callers pass values; a strict host rejects a _meta carrying anything it does not model.
+func (r UIResource) meta() sdk.Meta {
+	ui := map[string]any{}
+	if r.PrefersBorder != nil {
+		ui["prefersBorder"] = *r.PrefersBorder
+	}
+	if len(ui) == 0 {
+		return nil
+	}
+	return sdk.Meta{metaKeyUI: ui}
 }
 
 // AddUIResource publishes r; it panics on a resource the app should never build.
@@ -234,6 +246,7 @@ func (s *Server) AddUIResource(r UIResource) {
 	s.resources[r.URI] = r
 
 	s.sdk.AddResource(&sdk.Resource{
+		Meta:     r.meta(),
 		URI:      r.URI,
 		Name:     r.Name,
 		MIMEType: r.MIMEType,
@@ -243,7 +256,7 @@ func (s *Server) AddUIResource(r UIResource) {
 				URI:      r.URI,
 				MIMEType: r.MIMEType,
 				Text:     r.Body,
-				Meta:     sdk.Meta(r.Meta),
+				Meta:     r.meta(),
 			}},
 		}, nil
 	})

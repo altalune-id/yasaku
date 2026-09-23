@@ -709,11 +709,12 @@ func TestAddUIResourceDuplicate(t *testing.T) {
 }
 
 func TestAddUIResourceServesBodyAndDefaultsMIME(t *testing.T) {
+	yes := true
 	s := NewServer("yasaku", "test")
 	s.AddUIResource(UIResource{
-		URI:  "ui://yasaku/app",
-		Body: "<html></html>",
-		Meta: map[string]any{"ui": map[string]any{"prefersBorder": true}},
+		URI:           "ui://yasaku/app",
+		Body:          "<html></html>",
+		PrefersBorder: &yes,
 	})
 
 	cs := connect(t, s)
@@ -895,5 +896,30 @@ func TestDestructiveHintTracksTheSpecFlag(t *testing.T) {
 	tool := toolByName(t, connect(t, s), "wallet_delete")
 	if tool.Annotations.DestructiveHint == nil || !*tool.Annotations.DestructiveHint {
 		t.Error("a spec marked Destructive must set destructiveHint true")
+	}
+}
+
+func TestAddUIResourceMetaReachesTheListEntry(t *testing.T) {
+	s := NewServer("yasaku", "test")
+	s.AddUIResource(UIResource{
+		URI:           "ui://yasaku/app",
+		Name:          "yasaku",
+		Body:          "<html></html>",
+		PrefersBorder: new(bool),
+	})
+
+	res, err := connect(t, s).ListResources(t.Context(), &sdk.ListResourcesParams{})
+	if err != nil {
+		t.Fatalf("list resources: %v", err)
+	}
+	if len(res.Resources) != 1 {
+		t.Fatalf("resources = %d, want 1", len(res.Resources))
+	}
+	ui, ok := res.Resources[0].Meta[metaKeyUI].(map[string]any)
+	if !ok {
+		t.Fatalf("list entry _meta[%q] = %T, want map — the declaration may carry _meta.ui too; resources/read contents is where a host MUST read it", metaKeyUI, res.Resources[0].Meta[metaKeyUI])
+	}
+	if got := ui["prefersBorder"]; got != false {
+		t.Errorf("prefersBorder = %v, want false", got)
 	}
 }
