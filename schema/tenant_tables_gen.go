@@ -4,6 +4,8 @@ package schema
 
 // TenantTableSuffixes lists every table (without TablePrefix) that carries an org_id column and therefore participates in RLS.
 var TenantTableSuffixes = []string{
+	"api_key_projects",
+	"api_keys",
 	"blog_categories",
 	"blog_post_tags",
 	"blog_posts",
@@ -13,12 +15,15 @@ var TenantTableSuffixes = []string{
 	"ledger_settings",
 	"memberships",
 	"orgs",
+	"outbox_entries",
 	"period_closings",
 	"periods",
 	"projects",
 	"todos",
 	"transactions",
 	"wallets",
+	"webhook_deliveries",
+	"webhook_endpoints",
 }
 
 // TenantTableNames returns TenantTableSuffixes prefixed with the given TablePrefix.

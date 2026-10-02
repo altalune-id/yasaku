@@ -56,8 +56,12 @@ templ CategoryList(d web.LayoutData, v CategoriesView) {
 						method="post"
 						action={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/categories/"+c.ID+"/rename")) }
 						hx-post={ d.ProjectPath(v.ProjectSlug, "/categories/"+c.ID+"/rename") }
+						hx-nonce={ d.Nonce }
 						hx-target="#category-list"
 						hx-swap="outerHTML"
+						hx-disable="find button, find input"
+						hx-status:4xx="target:#hx-error swap:innerHTML"
+						hx-status:5xx="target:#hx-error swap:innerHTML"
 						class="flex min-w-0 flex-1 items-center gap-2"
 					>
 						<input
@@ -78,8 +82,12 @@ templ CategoryList(d web.LayoutData, v CategoriesView) {
 						method="post"
 						action={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/categories/"+c.ID+"/delete")) }
 						hx-post={ d.ProjectPath(v.ProjectSlug, "/categories/"+c.ID+"/delete") }
+						hx-nonce={ d.Nonce }
 						hx-target="#category-list"
 						hx-swap="outerHTML"
+						hx-disable="find button, find input"
+						hx-status:4xx="target:#hx-error swap:innerHTML"
+						hx-status:5xx="target:#hx-error swap:innerHTML"
 						class="inline"
 					>
 						<button
@@ -106,9 +114,13 @@ templ CategoriesPage(d web.LayoutData, v CategoriesView) {
 			method="post"
 			action={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/categories")) }
 			hx-post={ d.ProjectPath(v.ProjectSlug, "/categories") }
+			hx-nonce={ d.Nonce }
 			hx-target="#category-list"
 			hx-swap="outerHTML"
-			hx-on::after-request="if(event.detail.successful) this.reset()"
+			hx-disable="find button, find input"
+			hx-status:4xx="target:#hx-error swap:innerHTML"
+			hx-status:5xx="target:#hx-error swap:innerHTML"
+			data-reset-on-success
 			class="mt-6 flex flex-wrap gap-2"
 		>
 			<input

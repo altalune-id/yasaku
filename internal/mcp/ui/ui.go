@@ -1,4 +1,4 @@
-// Package ui assembles and serves yasaku's MCP Apps bundle.
+// Package ui assembles this template's MCP Apps bundle: one self-contained HTML document published at ui://yasaku/app.
 package ui
 
 import (
@@ -12,30 +12,64 @@ import (
 // ResourceURI is the ui:// URI the bundle is published at; it must match buf.gen.yaml's ui_prefix plus the proto's ui name.
 const ResourceURI = "ui://yasaku/app"
 
-//go:embed shell.html app.css assets/ext-apps-2.0.0.js
-//go:embed src/html.js src/format.js src/phase.js src/charts.js src/registry.js src/views/report.js src/views/tx.js src/views/wallets.js src/views/lists.js src/views/mutation.js src/views/bulk.js src/bridge.js src/boot.js
+//go:embed shell.html app.css assets/ext-apps-2.0.0.js assets/lit-3.3.3.js
+//go:embed src/lit.js src/styles.js src/format.js src/color.js src/registry.js src/phase.js src/charts_model.js
+//go:embed src/views/yasaku_format.js src/views/yasaku_styles.js src/views/blog_list_model.js src/views/common_model.js src/views/tx_model.js src/views/wallets_model.js
+//go:embed src/views/report_model.js src/views/lists_model.js src/views/mutation_model.js src/views/bulk_model.js
+//go:embed src/charts.js src/views/common.js src/views/blog_list.js src/views/tx.js src/views/wallets.js
+//go:embed src/views/report.js src/views/lists.js src/views/mutation.js src/views/bulk.js
+//go:embed src/app.js src/bridge.js src/boot.js
 var files embed.FS
 
-const vendorPart = "assets/ext-apps-2.0.0.js"
+type vendorPart struct {
+	path   string
+	global string
+}
 
-// NOTE: registry.js must precede every views/ entry — const VIEWS is in the TDZ until it runs, and views call registerView at load. Pinned by TestRegistryLoadsBeforeAnyView.
+// NOTE: each vendored bundle gets its own <script type="module"> — concatenating two minified bundles into one scope collides on their single-letter top-level names.
+//
+//nolint:gochecknoglobals // an ordered embed manifest has to be package level.
+var vendorParts = []vendorPart{
+	{"assets/ext-apps-2.0.0.js", "__extApps"},
+	{"assets/lit-3.3.3.js", "__lit"},
+}
+
+// NOTE: src/lit.js, src/styles.js and src/registry.js must precede what reads them, and src/views/common.js every yasaku view — const and class are in the TDZ until their line runs.
 //
 //nolint:gochecknoglobals // an ordered embed manifest has to be package level.
 var scriptParts = []string{
-	"src/html.js",
+	"src/lit.js",
+	"src/styles.js",
 	"src/format.js",
-	"src/phase.js",
-	"src/charts.js",
+	"src/color.js",
 	"src/registry.js",
-	"src/views/report.js",
+	"src/phase.js",
+	"src/charts_model.js",
+	"src/views/yasaku_format.js",
+	"src/views/blog_list_model.js",
+	"src/views/common_model.js",
+	"src/views/tx_model.js",
+	"src/views/wallets_model.js",
+	"src/views/report_model.js",
+	"src/views/lists_model.js",
+	"src/views/mutation_model.js",
+	"src/views/bulk_model.js",
+	"src/charts.js",
+	"src/views/yasaku_styles.js",
+	"src/views/common.js",
+	"src/views/blog_list.js",
 	"src/views/tx.js",
 	"src/views/wallets.js",
+	"src/views/report.js",
 	"src/views/lists.js",
 	"src/views/mutation.js",
 	"src/views/bulk.js",
+	"src/app.js",
 	"src/bridge.js",
 	"src/boot.js",
 }
+
+const litPart = "assets/lit-3.3.3.js"
 
 //nolint:gochecknoglobals // sync.OnceValue memoises the assembled document.
 var document = sync.OnceValue(build)
@@ -44,9 +78,14 @@ var document = sync.OnceValue(build)
 func Document() string { return document() }
 
 func build() string {
-	// NOTE: text/template, never html/template — the latter escapes inside
-	// <script> and <style> and would mangle the embedded JS and CSS.
+	// NOTE: text/template, never html/template — the latter escapes inside <script> and <style>
+	// and would mangle the embedded JS and CSS.
 	tmpl := template.Must(template.New("shell").Parse(read("shell.html")))
+
+	vendors := make([]string, 0, len(vendorParts))
+	for _, v := range vendorParts {
+		vendors = append(vendors, exposeExports(read(v.path), v.global))
+	}
 
 	var scripts strings.Builder
 	for _, p := range scriptParts {
@@ -55,9 +94,13 @@ func build() string {
 	}
 
 	var out strings.Builder
-	if err := tmpl.Execute(&out, struct{ Style, Vendor, Scripts string }{
+	if err := tmpl.Execute(&out, struct {
+		Style   string
+		Vendors []string
+		Scripts string
+	}{
 		Style:   read("app.css"),
-		Vendor:  exposeExports(read(vendorPart)),
+		Vendors: vendors,
 		Scripts: scripts.String(),
 	}); err != nil {
 		panic("ui: assembling the bundle: " + err.Error())
@@ -68,21 +111,21 @@ func build() string {
 //nolint:gochecknoglobals // compiled once; a package-level regexp is the idiom.
 var exportStmt = regexp.MustCompile(`export\{([^}]*)\};?\s*$`)
 
-// exposeExports appends an assignment binding the bundle's exported names onto globalThis, since an inlined module's exports are unreachable.
-func exposeExports(src string) string {
-	m := exportStmt.FindStringSubmatch(src)
-	if m == nil {
-		panic("ui: vendored ext-apps has no trailing export statement")
+// NOTE: an inlined module's exports are unreachable, so the trailing export statement is rewritten into globalThis bindings.
+func exposeExports(src, global string) string {
+	loc := exportStmt.FindStringSubmatchIndex(src)
+	if loc == nil {
+		panic("ui: vendored bundle has no trailing export statement")
 	}
 	pairs := make([]string, 0, 64)
-	for _, part := range strings.Split(m[1], ",") {
+	for _, part := range strings.Split(src[loc[2]:loc[3]], ",") {
 		local, external, found := strings.Cut(part, " as ")
 		if !found {
 			external = part
 		}
 		pairs = append(pairs, strings.TrimSpace(external)+":"+strings.TrimSpace(local))
 	}
-	return src + "\nglobalThis.__extApps={" + strings.Join(pairs, ",") + "};\n"
+	return src[:loc[0]] + "\nglobalThis." + global + "={" + strings.Join(pairs, ",") + "};\n"
 }
 
 func read(name string) string {

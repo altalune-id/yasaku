@@ -51,7 +51,7 @@ type reportFixture struct {
 
 type reportSnapshotter struct{}
 
-func (reportSnapshotter) Snapshot(context.Context, uuid.UUID, uuid.UUID, uuid.UUID) (period.Snapshot, error) {
+func (reportSnapshotter) Snapshot(context.Context, uuid.UUID, uuid.UUID, uuid.UUID, civil.Date, time.Time) (period.Snapshot, error) {
 	return period.Snapshot{}, nil
 }
 

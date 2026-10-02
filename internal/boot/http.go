@@ -6,12 +6,15 @@ import (
 	stdlog "log"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strings"
 	"sync/atomic"
 
-	"altalune.id/yasaku/internal/api"
 	"altalune.id/yasaku/internal/apperror"
+	"altalune.id/yasaku/internal/controlplane"
+	"altalune.id/yasaku/internal/dataplane"
 	i18npkg "altalune.id/yasaku/internal/i18n"
+	"altalune.id/yasaku/internal/ingest"
 	"altalune.id/yasaku/internal/platform"
 	"altalune.id/yasaku/internal/platform/capabilities"
 	"altalune.id/yasaku/internal/platform/config"
@@ -21,20 +24,13 @@ import (
 	webmw "altalune.id/yasaku/internal/web/middleware"
 )
 
-func buildAPIHandler(cfg *config.Config, k *platform.Kernel, s *Services) (*api.Server, http.Handler) {
-	srv := api.New(cfg, k, api.Deps{
-		Auths:     s.Auth,
-		Users:     s.Users,
-		UserStore: s.UserStore,
-		Orgs:      s.Orgs,
-		Projects:  s.Projects,
-		Todos:     s.Todos,
-		TodoStore: s.TodoStore,
-		Invites:   s.Invites,
-
-		Posts:    s.Posts,
-		BlogCats: s.Categories,
-		Tags:     s.Tags,
+func buildAPIHandler(cfg *config.Config, k *platform.Kernel, s *Services) (*controlplane.Server, http.Handler) {
+	srv := controlplane.New(cfg, k, controlplane.Deps{
+		Auths:    s.Auth,
+		Users:    s.Users,
+		Orgs:     s.Orgs,
+		Projects: s.Projects,
+		Invites:  s.Invites,
 
 		Ledgers:      s.Ledgers,
 		Wallets:      s.Wallets,
@@ -44,6 +40,9 @@ func buildAPIHandler(cfg *config.Config, k *platform.Kernel, s *Services) (*api.
 		Transactions: s.Transactions,
 		Reports:      s.Reports,
 	})
+	srv.Authn = s.Authn
+	srv.KeyPrefix = s.KeyAuthn.Scheme().Prefix()
+	srv.APIKeys = s.APIKeys
 	if !cfg.API.Enabled {
 		return srv, nil
 	}
@@ -51,36 +50,65 @@ func buildAPIHandler(cfg *config.Config, k *platform.Kernel, s *Services) (*api.
 	return srv, h
 }
 
-type webHandlerDeps struct {
-	Cfg        *config.Config
-	Kernel     *platform.Kernel
-	Caps       capabilities.Capabilities
-	Log        *slog.Logger
-	Reporter   *apperror.Reporter
-	HealthOK   func() bool
-	Services   *Services
-	Required   *atomic.Bool
-	SetupToken string
-	APIHandler http.Handler
-	MCPHandler http.Handler
-	WellKnown  map[string]http.Handler
-	Bundle     *i18npkg.Bundle
-	DefaultLoc i18npkg.Locale
+func buildDataHandler(cfg *config.Config, caps capabilities.Capabilities, slogger *slog.Logger, s *Services) http.Handler {
+	if !caps.DataPlaneEnabled || !mountBlog {
+		return nil
+	}
+	return dataplane.NewHandler(dataplane.HandlerParams{
+		BasePath: web.Path(cfg.HTTP.BasePath, "/api") + "/v1",
+		Orgs:     orgServiceForDataplane{svc: s.Orgs},
+		Projects: projectServiceForDataplane{svc: s.Projects},
+		Posts:    blogServiceForDataplane{svc: s.Posts},
+		Authz:    s.KeyAuthn,
+		Caps:     caps,
+		Log:      slogger,
+	})
 }
 
-func buildWebHandler(d webHandlerDeps) http.Handler {
+// NOTE: always mounted, so /hooks/ is reserved rather than reaching the console chain.
+func buildIngestHandler(cfg *config.Config, log *slog.Logger) http.Handler {
+	return ingest.NewHandler(ingest.HandlerParams{
+		BasePath: web.Path(cfg.HTTP.BasePath, "/hooks"),
+		Log:      log,
+	})
+}
+
+type webHandlerDeps struct {
+	Cfg         *config.Config
+	Kernel      *platform.Kernel
+	Caps        capabilities.Capabilities
+	Log         *slog.Logger
+	Reporter    *apperror.Reporter
+	HealthOK    func() bool
+	Services    *Services
+	Required    *atomic.Bool
+	OnComplete  func(ctx context.Context)
+	SetupToken  string
+	APIHandler  http.Handler
+	DataHandler http.Handler
+	MCP         mcpSurface
+	Bundle      *i18npkg.Bundle
+	DefaultLoc  i18npkg.Locale
+}
+
+func buildWebHandler(d webHandlerDeps) (handler http.Handler, routes []string) { //nolint:nonamedreturns // two return values differ in role
 	cfg, kernel, slogger, svcs := d.Cfg, d.Kernel, d.Log, d.Services
 	deps := newWebDeps(cfg, d.Caps, kernel.Sessions, slogger)
 	deps.Orgs = svcs.Orgs
 	deps.Projects = svcs.Projects
 	deps.I18n = d.Bundle
+	deps.ProjectLocation = svcs.Ledgers.Location
 
 	authHandler := webhandlers.NewAuthHandler(deps, svcs.Auth, svcs.Users, svcs.Orgs, svcs.Projects, kernel.AltAuth, d.Required)
 	onboardingHandler := webhandlers.NewOnboardingHandler(deps, svcs.Users)
-	onboardHandler := webhandlers.NewOnboardHandler(deps, svcs.Users, svcs.Orgs, svcs.Projects, svcs.Onboards, d.Required, d.SetupToken)
+	onboardHandler := webhandlers.NewOnboardHandler(deps, svcs.Users, svcs.Orgs, svcs.Projects, svcs.Onboards, d.Required, d.OnComplete, d.SetupToken)
 	homeHandler := webhandlers.NewHomeHandler(deps, svcs.Orgs, svcs.Projects)
 	orgHandler := webhandlers.NewOrgHandler(deps, svcs.Orgs)
 	projectHandler := webhandlers.NewProjectHandler(deps, svcs.Projects)
+	todoHandler := webhandlers.NewTodoHandler(deps, svcs.Projects, svcs.Todos)
+	blogHandler := webhandlers.NewBlogHandler(deps, svcs.Projects, svcs.Posts, svcs.Categories, svcs.Tags)
+	apiKeyHandler := webhandlers.NewAPIKeyHandler(deps, svcs.Projects, svcs.APIKeys)
+	webhookHandler := webhandlers.NewWebhookHandler(deps, svcs.Projects, svcs.Webhooks)
 	inviteHandler := webhandlers.NewInviteHandler(deps, svcs.Orgs, svcs.Invites)
 	localeHandler := webhandlers.NewLocaleHandler(deps, svcs.Users)
 	welcomeHandler := webhandlers.NewWelcomeHandler(deps, svcs.Users)
@@ -97,36 +125,71 @@ func buildWebHandler(d webHandlerDeps) http.Handler {
 
 	errTmpl := webmw.LogError{Log: slogger}
 
-	return web.NewServer(web.ServerOpts{
+	return web.NewServerWithRoutes(web.ServerOpts{
 		BasePath: cfg.HTTP.BasePath,
 		HealthOK: d.HealthOK,
-		AppHandlers: []web.Register{
-			authHandler, onboardingHandler, onboardHandler, homeHandler, orgHandler, projectHandler, inviteHandler, localeHandler, welcomeHandler, signupHandler, legalHandler,
+		AppHandlers: publishedConsoleHandlers([]web.Register{
+			authHandler, onboardingHandler, onboardHandler, homeHandler, orgHandler, projectHandler, todoHandler, blogHandler, apiKeyHandler, webhookHandler, inviteHandler, localeHandler, welcomeHandler, signupHandler, legalHandler,
 			overviewHandler, walletHandler, txCategoryHandler, transactionHandler, periodHandler, reportHandler, settingsHandler,
-		},
-		APIHandler: d.APIHandler,
-		MCPHandler: d.MCPHandler,
-		WellKnown:  d.WellKnown,
-		RobotsCfg:  &struct{ RobotsTxt string }{RobotsTxt: cfg.HTTP.RobotsTxt},
-		Middlewares: []web.Middleware{
-			webmw.RequestID,
-			webmw.RequestLog(slogger),
-			webmw.OTel,
-			webmw.Recover(d.Reporter.Unexpected, errTmpl),
+		}),
+		APIHandler:         d.APIHandler,
+		DataHandler:        d.DataHandler,
+		IngestHandler:      buildIngestHandler(cfg, slogger),
+		MCPHandler:         d.MCP.Handler,
+		MCPMetadataHandler: d.MCP.Metadata,
+		MCPMetadataPath:    d.MCP.MetadataPath,
+		MCPChallengeRoutes: d.MCP.ChallengeRoutes,
+		RobotsCfg:          &struct{ RobotsTxt string }{RobotsTxt: cfg.HTTP.RobotsTxt},
+		Chains:             surfaceChains(cfg, kernel, slogger, d.Reporter, errTmpl, d.Bundle, d.DefaultLoc, d.Required),
+	})
+}
+
+func surfaceChains(
+	cfg *config.Config,
+	kernel *platform.Kernel,
+	slogger *slog.Logger,
+	reporter *apperror.Reporter,
+	errTmpl webmw.ErrorTemplate,
+	bundle *i18npkg.Bundle,
+	defaultLoc i18npkg.Locale,
+	required *atomic.Bool,
+) web.SurfaceChains {
+	edge := []web.Middleware{
+		webmw.RequestID,
+		webmw.RequestLog(slogger),
+		webmw.OTel,
+	}
+	return web.SurfaceChains{
+		Probes: slices.Concat(edge, []web.Middleware{
+			webmw.Recover(reporter.Unexpected, nil),
+		}),
+		Console: slices.Concat(edge, []web.Middleware{
+			webmw.CSP(cspOptions(cfg.HTTP.CSP)),
+			webmw.Recover(reporter.Unexpected, errTmpl),
 			webmw.Session(webmw.SessionConfig{
 				Store:  kernel.Sessions,
 				Secret: []byte(cfg.HTTP.StateSecret),
 			}),
 			webmw.Tenant,
 			i18npkg.Middleware(i18npkg.MiddlewareOpts{
-				Bundle:     d.Bundle,
-				Default:    d.DefaultLoc,
+				Bundle:     bundle,
+				Default:    defaultLoc,
 				UserLookup: sessionLocaleLookup,
 			}),
-			webhandlers.OnboardingGate(cfg.HTTP.BasePath, d.Required),
+			webhandlers.OnboardingGate(cfg.HTTP.BasePath, required),
 			webhandlers.WelcomeGate(cfg.HTTP.BasePath, cfg.Compliance.RequireAcceptance),
-		},
-	})
+		}),
+		Control: edge,
+		Data: slices.Concat(edge, []web.Middleware{
+			webmw.RecoverJSON(reporter.Unexpected),
+		}),
+		Ingest: slices.Concat(edge, []web.Middleware{
+			webmw.RecoverJSON(reporter.Unexpected),
+		}),
+		MCP: slices.Concat(edge, []web.Middleware{
+			webmw.RecoverJSON(reporter.Unexpected),
+		}),
+	}
 }
 
 func healthOnlyHandler(cfg *config.Config, healthOK func() bool) http.Handler {
@@ -170,4 +233,12 @@ func (w logSlogWriter) Write(p []byte) (int, error) {
 		w.log.Info(strings.TrimRight(string(p), "\n"))
 	}
 	return len(p), nil
+}
+
+func cspOptions(cfg config.CSPConfig) webmw.CSPOptions {
+	return webmw.CSPOptions{
+		Enabled:    cfg.Enabled,
+		ReportOnly: cfg.ReportOnly,
+		ReportURI:  cfg.ReportURI,
+	}
 }

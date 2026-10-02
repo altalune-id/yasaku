@@ -16,9 +16,7 @@ import (
 	"altalune.id/yasaku/internal/testutil/pgtest"
 )
 
-// TestAdvisoryKeyIsNamespacedAwayFromSchedulerJobLocks pins that a wallet lock and a scheduler job
-// lock of the same numeric value do not collide. A collision would be silent and asymmetric:
-// db.PgLocker.TryLock would report acquired=false and the job would skip its run.
+// TestAdvisoryKeyIsNamespacedAwayFromSchedulerJobLocks pins that a wallet lock and a scheduler job lock of the same value do not collide.
 func TestAdvisoryKeyIsNamespacedAwayFromSchedulerJobLocks(t *testing.T) {
 	h := pgtest.New(t)
 	sqlDB := h.OpenDB(t)

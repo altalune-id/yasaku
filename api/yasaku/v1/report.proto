@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package yasaku.v1;
 
-import "yasaku/mcp/v1/annotations.proto";
+import "mcp/v1/annotations.proto";
 import "yasaku/v1/common.proto";
 import "yasaku/v1/period.proto";
 
@@ -11,18 +11,16 @@ option go_package = "altalune.id/yasaku/gen/go/yasaku/v1;yasakuv1";
 // ReportService is the read-only reporting surface over a project's transactions.
 service ReportService {
   rpc PeriodReport(PeriodReportRequest) returns (PeriodReportResponse) {
-    option (yasaku.mcp.v1.tool) = {
+    option (mcp.v1.tool) = {
       name: "period_report"
       description: "Report one period's totals: income, expense, net, and the breakdown per category and per wallet. Period must be a period ID from list_periods or current_period, never a period name; leave it empty for the current period. Category slices are largest first and share is a fraction of that direction's total."
-      access: ACCESS_READ
       ui: "app"
     };
   }
   rpc CashflowReport(CashflowReportRequest) returns (CashflowReportResponse) {
-    option (yasaku.mcp.v1.tool) = {
+    option (mcp.v1.tool) = {
       name: "cashflow_report"
       description: "Plot the cashflow trend over the most recent periods, one point per period that has transactions. Periods defaults to the last 6 and is capped at 24. Points run oldest to newest so a trend reads left to right."
-      access: ACCESS_READ
       ui: "app"
     };
   }

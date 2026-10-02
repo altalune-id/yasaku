@@ -75,7 +75,7 @@ func NewTransactionHandler(
 }
 
 // Register wires the transaction routes onto mux.
-func (h *TransactionHandler) Register(mux *http.ServeMux) {
+func (h *TransactionHandler) Register(mux web.Mux) {
 	mux.HandleFunc("GET /orgs/{org}/projects/{project}/transactions", h.GetList)
 	mux.HandleFunc("GET /orgs/{org}/projects/{project}/transactions/new", h.GetNew)
 	mux.HandleFunc("POST /orgs/{org}/projects/{project}/transactions", h.PostCreate)
@@ -85,26 +85,9 @@ func (h *TransactionHandler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /orgs/{org}/projects/{project}/transactions/{id}/delete", h.PostDelete)
 }
 
-func (h *TransactionHandler) requireProject(w http.ResponseWriter, r *http.Request) (projectScope, bool) {
-	p, sid, ok := h.LoadSession(r)
-	if !ok {
-		http.Redirect(w, r, ResolveReturnTo(h.Cfg.HTTP.BasePath, "/login"), http.StatusSeeOther)
-		return projectScope{}, false
-	}
-	o, r, ok := h.OrgScopeFor(w, r, p, r.PathValue("org"))
-	if !ok {
-		return projectScope{}, false
-	}
-	proj, r, ok := h.ProjectScopeFor(w, r, o.ID, r.PathValue("project"))
-	if !ok {
-		return projectScope{}, false
-	}
-	return projectScope{principal: p, sid: sid, org: o, project: proj, req: r}, true
-}
-
 // GetList renders the transactions page, or just the list for an HTMX filter or load-more request.
 func (h *TransactionHandler) GetList(w http.ResponseWriter, r *http.Request) {
-	sc, ok := h.requireProject(w, r)
+	sc, ok := h.RequireProject(w, r)
 	if !ok {
 		return
 	}
@@ -121,7 +104,7 @@ func (h *TransactionHandler) GetList(w http.ResponseWriter, r *http.Request) {
 		Render(w, sc.req, templates.TxRowsPage(d, list))
 		return
 	}
-	if h.isHTMX(sc.req) {
+	if web.IsHTMXRequest(sc.req) {
 		Render(w, sc.req, templates.TransactionList(d, list))
 		return
 	}
@@ -149,7 +132,7 @@ func (h *TransactionHandler) GetList(w http.ResponseWriter, r *http.Request) {
 
 // GetNew renders the standalone quick-add page, amount first.
 func (h *TransactionHandler) GetNew(w http.ResponseWriter, r *http.Request) {
-	sc, ok := h.requireProject(w, r)
+	sc, ok := h.RequireProject(w, r)
 	if !ok {
 		return
 	}
@@ -186,12 +169,13 @@ func (h *TransactionHandler) GetEdit(w http.ResponseWriter, r *http.Request) {
 		h.ErrorPage(w, sc.req, http.StatusInternalServerError, "Load failed", "Could not load that transaction.", err)
 		return
 	}
+	form.RecordedAt, form.UpdatedAt = t.CreatedAt, t.UpdatedAt
 	Render(w, sc.req, templates.TransactionFormLayout(d, form, d.Tr("tx.edit")))
 }
 
 // PostCreate records one transaction and returns the refreshed list plus an out-of-band toast.
 func (h *TransactionHandler) PostCreate(w http.ResponseWriter, r *http.Request) {
-	sc, ok := h.requireProject(w, r)
+	sc, ok := h.RequireProject(w, r)
 	if !ok {
 		return
 	}
@@ -263,7 +247,7 @@ func (h *TransactionHandler) PostDelete(w http.ResponseWriter, r *http.Request) 
 
 // PostSuggest returns the category chips with the category last used for this note preselected.
 func (h *TransactionHandler) PostSuggest(w http.ResponseWriter, r *http.Request) {
-	sc, ok := h.requireProject(w, r)
+	sc, ok := h.RequireProject(w, r)
 	if !ok {
 		return
 	}
@@ -310,14 +294,20 @@ type txInput struct {
 	Note       string
 }
 
-// txDraft carries what the user submitted so a refusal re-renders their own form, not a blank one.
+func txFormTitleKey(id string) string {
+	if id == "" {
+		return "tx.new"
+	}
+	return "tx.edit"
+}
+
 type txDraft struct {
 	in     txInput
 	id     string
 	filled bool
 }
 
-func (h *TransactionHandler) readForm(w http.ResponseWriter, sc projectScope, want transaction.Kind, id string) (txInput, money.Amount, bool) {
+func (h *TransactionHandler) readForm(w http.ResponseWriter, sc ProjectScope, want transaction.Kind, id string) (txInput, money.Amount, bool) {
 	in, err := h.parseForm(sc, want)
 	if err != nil {
 		if errors.Is(err, errBadForm) {
@@ -336,7 +326,7 @@ func (h *TransactionHandler) readForm(w http.ResponseWriter, sc projectScope, wa
 }
 
 // SECURITY: want pins the kind the stored row already has, so a posted kind can never switch it.
-func (h *TransactionHandler) parseForm(sc projectScope, want transaction.Kind) (txInput, error) {
+func (h *TransactionHandler) parseForm(sc ProjectScope, want transaction.Kind) (txInput, error) {
 	if err := sc.req.ParseForm(); err != nil {
 		return txInput{}, errBadForm
 	}
@@ -388,7 +378,7 @@ func (h *TransactionHandler) parseForm(sc projectScope, want transaction.Kind) (
 	return in, nil
 }
 
-func (h *TransactionHandler) amountFor(sc projectScope, in txInput) (money.Amount, error) {
+func (h *TransactionHandler) amountFor(sc ProjectScope, in txInput) (money.Amount, error) {
 	w, err := h.Wallets.ByID(sc.req.Context(), in.WalletID)
 	if err != nil {
 		return money.Amount{}, err
@@ -401,7 +391,7 @@ func (h *TransactionHandler) amountFor(sc projectScope, in txInput) (money.Amoun
 }
 
 // NOTE: local noon keeps a timezone shift from moving the date across a day boundary.
-func (h *TransactionHandler) occurredAt(sc projectScope, in txInput) time.Time {
+func (h *TransactionHandler) occurredAt(sc ProjectScope, in txInput) time.Time {
 	return in.Date.In(h.location(sc)).Add(12 * time.Hour)
 }
 
@@ -415,8 +405,8 @@ func (h *TransactionHandler) rememberWallet(w http.ResponseWriter, id uuid.UUID)
 	})
 }
 
-func (h *TransactionHandler) succeed(w http.ResponseWriter, sc projectScope, t *transaction.Transaction) {
-	if !h.isHTMX(sc.req) {
+func (h *TransactionHandler) succeed(w http.ResponseWriter, sc ProjectScope, t *transaction.Transaction) {
+	if !web.IsHTMXRequest(sc.req) {
 		http.Redirect(w, sc.req, web.Path(h.Cfg.HTTP.BasePath,
 			"/orgs/"+sc.org.Slug+"/projects/"+sc.project.Slug+"/overview"), http.StatusSeeOther)
 		return
@@ -436,7 +426,7 @@ func (h *TransactionHandler) succeed(w http.ResponseWriter, sc projectScope, t *
 	Render(w, sc.req, templates.Toast(d, msg))
 }
 
-func (h *TransactionHandler) refuse(w http.ResponseWriter, sc projectScope, cause error, draft txDraft) {
+func (h *TransactionHandler) refuse(w http.ResponseWriter, sc ProjectScope, cause error, draft txDraft) {
 	ae, ok := apperror.AsAppError(cause)
 	if !ok {
 		h.ErrorPage(w, sc.req, http.StatusInternalServerError, "Save failed", "Could not record that transaction.", cause)
@@ -453,14 +443,14 @@ func (h *TransactionHandler) refuse(w http.ResponseWriter, sc projectScope, caus
 		list.Error = d.Tr("tx.locked")
 	}
 	list.ErrorCode = ae.Code()
-	if h.isHTMX(sc.req) {
-		Render(w, sc.req, templates.TransactionList(d, list))
+	if web.IsHTMXRequest(sc.req) {
+		RenderStatus(w, sc.req, http.StatusUnprocessableEntity, templates.TransactionList(d, list))
 		return
 	}
 	h.refusePage(w, sc, d, list, draft)
 }
 
-func (h *TransactionHandler) refusePage(w http.ResponseWriter, sc projectScope, d web.LayoutData, list templates.TxListView, draft txDraft) {
+func (h *TransactionHandler) refusePage(w http.ResponseWriter, sc ProjectScope, d web.LayoutData, list templates.TxListView, draft txDraft) {
 	in := draft.in
 	if !draft.filled {
 		in = txInput{Kind: transaction.KindExpense}
@@ -469,6 +459,11 @@ func (h *TransactionHandler) refusePage(w http.ResponseWriter, sc projectScope, 
 	if err != nil {
 		h.LogErr("web transaction: form", err)
 		h.ErrorPage(w, sc.req, http.StatusInternalServerError, "Save failed", "Could not record that transaction.", err)
+		return
+	}
+	if draft.filled || draft.id != "" {
+		form.Error, form.ErrorCode = list.Error, list.ErrorCode
+		Render(w, sc.req, templates.TransactionFormLayout(d, form, d.Tr(txFormTitleKey(draft.id))))
 		return
 	}
 	v := templates.TransactionsView{
@@ -485,36 +480,36 @@ func (h *TransactionHandler) refusePage(w http.ResponseWriter, sc projectScope, 
 	Render(w, sc.req, templates.TransactionsLayout(d, v))
 }
 
-func (h *TransactionHandler) requireTransaction(w http.ResponseWriter, r *http.Request) (projectScope, *transaction.Transaction, bool) {
-	sc, ok := h.requireProject(w, r)
+func (h *TransactionHandler) requireTransaction(w http.ResponseWriter, r *http.Request) (ProjectScope, *transaction.Transaction, bool) {
+	sc, ok := h.RequireProject(w, r)
 	if !ok {
-		return projectScope{}, nil, false
+		return ProjectScope{}, nil, false
 	}
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
 		h.ErrorPage(w, sc.req, http.StatusBadRequest, "Bad id", "Malformed transaction id.")
-		return projectScope{}, nil, false
+		return ProjectScope{}, nil, false
 	}
 	t, err := h.Transactions.ByID(sc.req.Context(), id)
 	if err != nil {
 		if transaction.IsNotFoundError(err) {
 			h.ErrorPage(w, sc.req, http.StatusNotFound, "Not found", "That transaction no longer exists.")
-			return projectScope{}, nil, false
+			return ProjectScope{}, nil, false
 		}
 		h.LogErr("web transaction: byID", err)
 		h.ErrorPage(w, sc.req, http.StatusInternalServerError, "Lookup failed", "Could not load that transaction.", err)
-		return projectScope{}, nil, false
+		return ProjectScope{}, nil, false
 	}
 	// SECURITY: opening and adjustment rows are system-written; editing one rewrites a derived wallet balance.
 	if !t.Kind.IsUserRecorded() {
 		h.ErrorPage(w, sc.req, http.StatusNotFound, "Not editable",
 			"That entry was recorded by yasaku, so it cannot be edited here.")
-		return projectScope{}, nil, false
+		return ProjectScope{}, nil, false
 	}
 	return sc, t, true
 }
 
-func (h *TransactionHandler) listView(sc projectScope, d web.LayoutData, q url.Values, limit int) (templates.TxListView, error) {
+func (h *TransactionHandler) listView(sc ProjectScope, d web.LayoutData, q url.Values, limit int) (templates.TxListView, error) {
 	opts := transaction.ListOpts{Limit: limit, Search: strings.TrimSpace(q.Get("q"))}
 	if id, err := uuid.Parse(q.Get("wallet")); err == nil {
 		opts.WalletID = &id
@@ -554,14 +549,14 @@ func (h *TransactionHandler) listView(sc projectScope, d web.LayoutData, q url.V
 	return v, nil
 }
 
-func (h *TransactionHandler) listAfterWrite(sc projectScope, d web.LayoutData) (templates.TxListView, error) {
+func (h *TransactionHandler) listAfterWrite(sc ProjectScope, d web.LayoutData) (templates.TxListView, error) {
 	if sc.req.PostForm.Get("list") == "recent" {
 		return h.recentView(sc, d)
 	}
 	return h.listView(sc, d, h.activeFilters(sc), txPageSize)
 }
 
-func (h *TransactionHandler) activeFilters(sc projectScope) url.Values {
+func (h *TransactionHandler) activeFilters(sc ProjectScope) url.Values {
 	q := sc.req.URL.Query()
 	if len(q) == 0 {
 		if u, err := url.Parse(sc.req.Header.Get("HX-Current-URL")); err == nil {
@@ -577,7 +572,7 @@ func (h *TransactionHandler) activeFilters(sc projectScope) url.Values {
 	return out
 }
 
-func (h *TransactionHandler) recentView(sc projectScope, d web.LayoutData) (templates.TxListView, error) {
+func (h *TransactionHandler) recentView(sc ProjectScope, d web.LayoutData) (templates.TxListView, error) {
 	v, err := h.listView(sc, d, url.Values{}, txRecentLimit)
 	if err != nil {
 		return templates.TxListView{}, err
@@ -587,7 +582,7 @@ func (h *TransactionHandler) recentView(sc projectScope, d web.LayoutData) (temp
 	return v, nil
 }
 
-func (h *TransactionHandler) rows(sc projectScope, d web.LayoutData, items []*transaction.Transaction) ([]templates.TxRow, error) {
+func (h *TransactionHandler) rows(sc ProjectScope, d web.LayoutData, items []*transaction.Transaction) ([]templates.TxRow, error) {
 	if len(items) == 0 {
 		return nil, nil
 	}
@@ -610,7 +605,8 @@ func (h *TransactionHandler) rows(sc projectScope, d web.LayoutData, items []*tr
 			Inflow:     t.Kind.IsInflow(),
 			Note:       t.Note,
 			WalletName: wallets[t.WalletID],
-			DateLabel:  t.OccurredAt.In(loc).Format("02 Jan"),
+			Day:        civil.DateOf(t.OccurredAt, loc),
+			OccurredAt: t.OccurredAt,
 			Editable:   t.Kind.IsUserRecorded(),
 		}
 		if t.ToWalletID != nil {
@@ -628,7 +624,7 @@ func (h *TransactionHandler) rows(sc projectScope, d web.LayoutData, items []*tr
 	return out, nil
 }
 
-func (h *TransactionHandler) formView(sc projectScope, d web.LayoutData, in txInput, id string) (templates.TxFormView, error) {
+func (h *TransactionHandler) formView(sc ProjectScope, d web.LayoutData, in txInput, id string) (templates.TxFormView, error) {
 	loc := h.location(sc)
 	today := civil.DateOf(time.Now(), loc)
 	if in.Date.IsZero() {
@@ -705,7 +701,7 @@ func (h *TransactionHandler) formView(sc projectScope, d web.LayoutData, in txIn
 	return v, nil
 }
 
-func (h *TransactionHandler) preferredWallet(sc projectScope, in txInput, wallets []*wallet.Wallet) uuid.UUID {
+func (h *TransactionHandler) preferredWallet(sc ProjectScope, in txInput, wallets []*wallet.Wallet) uuid.UUID {
 	if in.WalletID != uuid.Nil {
 		return in.WalletID
 	}
@@ -724,7 +720,7 @@ func (h *TransactionHandler) preferredWallet(sc projectScope, in txInput, wallet
 	return uuid.Nil
 }
 
-func (h *TransactionHandler) periodOptions(sc projectScope, in txInput) []templates.TxPeriodOption {
+func (h *TransactionHandler) periodOptions(sc ProjectScope, in txInput) []templates.TxPeriodOption {
 	cur, err := h.Periods.Current(sc.req.Context())
 	if err != nil {
 		if !period.IsNotFoundError(err) {
@@ -750,7 +746,7 @@ func (h *TransactionHandler) periodOptions(sc projectScope, in txInput) []templa
 	return out
 }
 
-func (h *TransactionHandler) fillFilters(sc projectScope, d web.LayoutData, v *templates.TransactionsView, q url.Values) error {
+func (h *TransactionHandler) fillFilters(sc ProjectScope, d web.LayoutData, v *templates.TransactionsView, q url.Values) error {
 	wallets, err := h.Wallets.List(sc.req.Context(), wallet.ListOpts{IncludeArchived: true})
 	if err != nil {
 		return err
@@ -786,7 +782,7 @@ func (h *TransactionHandler) fillFilters(sc projectScope, d web.LayoutData, v *t
 	return nil
 }
 
-func (h *TransactionHandler) walletNames(sc projectScope) (map[uuid.UUID]string, error) {
+func (h *TransactionHandler) walletNames(sc ProjectScope) (map[uuid.UUID]string, error) {
 	items, err := h.Wallets.List(sc.req.Context(), wallet.ListOpts{IncludeArchived: true})
 	if err != nil {
 		return nil, err
@@ -798,7 +794,7 @@ func (h *TransactionHandler) walletNames(sc projectScope) (map[uuid.UUID]string,
 	return out, nil
 }
 
-func (h *TransactionHandler) categoriesByID(sc projectScope) (map[uuid.UUID]*category.Category, error) {
+func (h *TransactionHandler) categoriesByID(sc ProjectScope) (map[uuid.UUID]*category.Category, error) {
 	items, err := h.TxCategories.List(sc.req.Context(), category.ListOpts{IncludeArchived: true})
 	if err != nil {
 		return nil, err
@@ -810,7 +806,10 @@ func (h *TransactionHandler) categoriesByID(sc projectScope) (map[uuid.UUID]*cat
 	return out, nil
 }
 
-func (h *TransactionHandler) location(sc projectScope) *time.Location {
+func (h *TransactionHandler) location(sc ProjectScope) *time.Location {
+	if loc := h.ProjectZone(sc); loc != nil {
+		return loc
+	}
 	s, err := h.Ledgers.Get(sc.req.Context())
 	if err != nil || s == nil {
 		return time.UTC
@@ -822,7 +821,7 @@ func (h *TransactionHandler) location(sc projectScope) *time.Location {
 	return loc
 }
 
-func (h *TransactionHandler) currency(sc projectScope) money.Currency {
+func (h *TransactionHandler) currency(sc ProjectScope) money.Currency {
 	s, err := h.Ledgers.Get(sc.req.Context())
 	if err != nil || s == nil {
 		return money.IDR
@@ -830,11 +829,9 @@ func (h *TransactionHandler) currency(sc projectScope) money.Currency {
 	return s.Currency
 }
 
-func (h *TransactionHandler) title(sc projectScope, key string) string {
+func (h *TransactionHandler) title(sc ProjectScope, key string) string {
 	return h.Base(sc.req, "").Tr(key) + " · " + sc.project.Name
 }
-
-func (h *TransactionHandler) isHTMX(r *http.Request) bool { return r.Header.Get("HX-Request") != "" }
 
 func txCurrencySymbol(d web.LayoutData, c money.Currency) string {
 	return strings.TrimRight(templates.Money(d, money.Zero(c)), "0123456789.,\u00a0\u202f ")
@@ -848,6 +845,11 @@ func parseUserKind(s string) (transaction.Kind, error) {
 	return k, nil
 }
 
+//i18n:use tx.kind_expense
+//i18n:use tx.kind_income
+//i18n:use tx.kind_transfer
+//i18n:use tx.kind_opening
+//i18n:use tx.kind_adjustment
 func transactionKindKey(k transaction.Kind) string {
 	switch k {
 	case transaction.KindIncome:

@@ -3,6 +3,7 @@ package user
 import (
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -207,6 +208,7 @@ func (s *Service) EnsureFromOIDC(ctx context.Context, claims Claims) (*User, err
 	subject := strings.TrimSpace(claims.Subject)
 	email := strings.ToLower(strings.TrimSpace(claims.Email))
 
+	// SECURITY: the subject is the stable identity, not the email; resolving by email first breaks login when the IdP address changes.
 	linked, err := s.store.ByIDP(ctx, issuer, subject)
 	if err == nil {
 		return s.refreshFromClaims(ctx, linked, claims)
@@ -248,7 +250,11 @@ func (s *Service) EnsureFromOIDC(ctx context.Context, claims Claims) (*User, err
 	u.IDPIssuer = issuer
 	u.IDPSubject = subject
 	if err := s.store.Save(ctx, u); err != nil {
-		if IsAlreadyExistsError(err) {
+		var dup *AlreadyExistsError
+		if errors.As(err, &dup) {
+			if dup.Field == "idp_subject" {
+				return s.store.ByIDP(ctx, issuer, subject)
+			}
 			return s.store.ByEmail(ctx, u.Email)
 		}
 		return nil, s.unexpected(ctx, "user.EnsureFromOIDC: save", err)

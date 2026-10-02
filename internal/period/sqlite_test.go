@@ -281,7 +281,6 @@ func TestSQLiteStore_Closings(t *testing.T) {
 	assert.Equal(t, tc.UserID, got[0].ClosedBy)
 }
 
-// failingClosingStore fails the second of Close's three writes.
 type failingClosingStore struct {
 	period.Store
 	err error

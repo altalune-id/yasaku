@@ -58,8 +58,6 @@ type inviteDefinerFixture struct {
 	token   string
 }
 
-// newInviteDefinerFixture migrates under an owner role and returns a store bound to a NOBYPASSRLS
-// app role on a single connection, so a poisoned GUC survives into the next query.
 func newInviteDefinerFixture(t *testing.T) *inviteDefinerFixture {
 	t.Helper()
 	h := pgtest.New(t)
@@ -164,8 +162,6 @@ func (f *inviteDefinerFixture) requireMatches(t *testing.T, got *invite.Invite) 
 	require.WithinDuration(t, f.inv.CreatedAt, got.CreatedAt, time.Second)
 }
 
-// poisonTenantGUC runs a tenant-scoped transaction to completion. A transaction-local set_config
-// resets to ” rather than NULL, which is what made ”::uuid throw 22P02 on the next read.
 func (f *inviteDefinerFixture) poisonTenantGUC(t *testing.T) {
 	t.Helper()
 	pc := tenant.NewPgConn(f.appConn)
@@ -236,8 +232,6 @@ func sortedInviteIDs(t *testing.T, n int) []uuid.UUID {
 	return ids
 }
 
-// seedTiedInvites inserts pending invites that share one byte-identical created_at, in descending
-// id order so heap order is the opposite of the order the wrapper must return.
 func (f *inviteDefinerFixture) seedTiedInvites(t *testing.T, email string, ids []uuid.UUID) {
 	t.Helper()
 	tied := time.Now().UTC().Truncate(time.Microsecond)

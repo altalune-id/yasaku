@@ -182,8 +182,29 @@ func IsNotLatestClosedError(err error) bool {
 	return ok
 }
 
+// AuthorMissingError reports a closing that names neither a user nor an API key as its author.
+type AuthorMissingError struct{}
+
+func (e *AuthorMissingError) Error() string { return "period: author: neither a user nor an API key" }
+
+// ToAppError converts the typed error into the wire envelope.
+func (e *AuthorMissingError) ToAppError() *apperror.AppError {
+	return apperror.New(
+		apperror.CodePeriodAuthorMissing,
+		"This period closing names no author",
+		codes.FailedPrecondition,
+		&apperrorv1.ErrorDetail{Code: apperror.CodePeriodAuthorMissing},
+	)
+}
+
+// IsAuthorMissingError reports whether err's chain contains an *AuthorMissingError.
+func IsAuthorMissingError(err error) bool {
+	_, ok := errors.AsType[*AuthorMissingError](err)
+	return ok
+}
+
 func isDomainError(err error) bool {
 	return IsNotFoundError(err) || IsInvalidNameError(err) || IsInvalidRangeError(err) ||
 		IsOverlapError(err) || IsAlreadyClosedError(err) || IsNotClosedError(err) ||
-		IsNotLatestClosedError(err)
+		IsNotLatestClosedError(err) || IsAuthorMissingError(err)
 }

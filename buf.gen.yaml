@@ -14,7 +14,7 @@ plugins:
     out: gen/openapi
     opt:
       - format=yaml
-  - local: [go, tool, protoc-gen-yasaku-mcp]
+  - local: [go, tool, protoc-gen-mcp]
     out: gen/go
     opt:
       - paths=source_relative

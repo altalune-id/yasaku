@@ -103,8 +103,12 @@ templ PostList(d web.LayoutData, v PostsView) {
 						method="post"
 						action={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/posts/"+p.ID+"/"+postToggleAction(p.Published))) }
 						hx-post={ d.ProjectPath(v.ProjectSlug, "/posts/"+p.ID+"/"+postToggleAction(p.Published)) }
+						hx-nonce={ d.Nonce }
 						hx-target="#post-list"
 						hx-swap="outerHTML"
+						hx-status:4xx="target:#hx-error swap:innerHTML"
+						hx-status:5xx="target:#hx-error swap:innerHTML"
+						hx-disable="find button, find input"
 						class="inline"
 					>
 						<button type="submit" class="shrink-0 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-foreground/90 hover:bg-muted">
@@ -126,8 +130,12 @@ templ PostList(d web.LayoutData, v PostsView) {
 						method="post"
 						action={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/posts/"+p.ID+"/delete")) }
 						hx-post={ d.ProjectPath(v.ProjectSlug, "/posts/"+p.ID+"/delete") }
+						hx-nonce={ d.Nonce }
 						hx-target="#post-list"
 						hx-swap="outerHTML"
+						hx-status:4xx="target:#hx-error swap:innerHTML"
+						hx-status:5xx="target:#hx-error swap:innerHTML"
+						hx-disable="find button, find input"
 						class="inline"
 					>
 						<button

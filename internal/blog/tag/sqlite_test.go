@@ -352,18 +352,13 @@ func TestSQLiteStore_TenantMissing(t *testing.T) {
 	assert.True(t, tenant.IsMissingError(f.store.Delete(bare, tg.ID)))
 }
 
-// seedSecondTenant adds another org, user and project to the same database so a hijack
-// attempt has a genuinely foreign tenant to come from.
 func seedSecondTenant(t *testing.T, sqlDB *sql.DB, prefix string) tenant.Context {
 	t.Helper()
 	userID, orgID, projID, _ := seedProjectTree(t, sqlDB, prefix)
 	return tenant.Context{OrgID: orgID, ProjectID: projID, UserID: userID}
 }
 
-// TestSQLiteStore_Save_RefusesCrossTenantUpsert is the regression detector for the conflict
-// clause's org guard. It has to live on SQLite (or an inert-RLS Postgres fixture): under
-// enforced RLS the database refuses these writes on its own, so the same test would pass with
-// the guard deleted. SQLite has no RLS at all, so here the guard is the only thing saying no.
+// TestSQLiteStore_Save_RefusesCrossTenantUpsert must live on SQLite: with no RLS, the conflict clause's org guard is the only thing refusing the write.
 func TestSQLiteStore_Save_RefusesCrossTenantUpsert(t *testing.T) {
 	t.Run("updates the caller's own row", func(t *testing.T) {
 		f := newSQLiteFixture(t)

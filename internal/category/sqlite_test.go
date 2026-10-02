@@ -20,8 +20,7 @@ import (
 	"altalune.id/yasaku/schema"
 )
 
-// NOTE: a t.TempDir() file DSN through db.Open, never ":memory:" — the foreign_keys pragma
-// must reach every pooled connection or ON DELETE RESTRICT silently no-ops.
+// NOTE: use a t.TempDir() file DSN through db.Open, never ":memory:", or the foreign_keys pragma misses pooled connections and ON DELETE RESTRICT no-ops.
 func newSQLiteFixture(t *testing.T) (category.Store, *sql.DB, string, tenant.Context) {
 	t.Helper()
 	cfg := config.Defaults()
@@ -74,9 +73,6 @@ func seedSQLiteProject(t *testing.T, sqlDB *sql.DB, prefix string, userID, orgID
 	return projID
 }
 
-// seedSQLiteWallet and seedSQLiteTransaction write raw SQL on purpose: internal/transaction
-// is a sibling module, and the only thing these tests need is a referencing row so the
-// ON DELETE RESTRICT foreign key fires.
 func seedSQLiteWallet(t *testing.T, sqlDB *sql.DB, prefix string, tc tenant.Context) uuid.UUID {
 	t.Helper()
 	walletID := uuid.New()
@@ -345,8 +341,6 @@ func TestSQLite_RequiresTenantScope(t *testing.T) {
 	assert.Error(t, store.Delete(context.Background(), c.ID))
 }
 
-// failAfterStore is a real Store that starts failing writes partway through, so a seed can be
-// interrupted mid-flight without stubbing out the database underneath it.
 type failAfterStore struct {
 	category.Store
 	remaining int
@@ -368,10 +362,7 @@ func countCategories(t *testing.T, sqlDB *sql.DB, prefix string) int {
 	return n
 }
 
-// TestSQLite_SeedDefaults_EnrollsInTheCallersUnitOfWork is the reason the SQLite store enrolls
-// in db.CurrentTx: Phase 2 Task 8 runs SeedDefaults inside the project-creation unit of work, so
-// a seed that fails halfway must leave nothing behind. A store that executed against its own
-// *sql.DB would write outside the caller's transaction and those rows would survive the rollback.
+// TestSQLite_SeedDefaults_EnrollsInTheCallersUnitOfWork checks a seed that fails halfway leaves no rows after the caller's rollback.
 func TestSQLite_SeedDefaults_EnrollsInTheCallersUnitOfWork(t *testing.T) {
 	t.Run("a mid-seed failure rolls the whole seed back", func(t *testing.T) {
 		store, sqlDB, prefix, tc := newSQLiteFixture(t)

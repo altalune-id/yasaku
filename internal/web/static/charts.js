@@ -336,7 +336,11 @@
 	} else {
 		renderAll();
 	}
-	document.body.addEventListener('htmx:afterSettle', renderAll);
+	document.body.addEventListener('htmx:after:settle', renderAll);
+	document.addEventListener('change', function (ev) {
+		var el = ev.target;
+		if (el instanceof HTMLSelectElement && el.hasAttribute('data-autosubmit') && el.form) el.form.requestSubmit();
+	});
 	window.addEventListener('resize', resizeAll);
 
 	new MutationObserver(renderAll).observe(document.documentElement, {

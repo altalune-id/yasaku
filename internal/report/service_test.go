@@ -209,7 +209,7 @@ func TestService_SnapshotFor_ForwardsItsArgumentScopeToTheReader(t *testing.T) {
 		},
 	}
 
-	snap, err := f.svc.SnapshotFor(f.ctx(), otherOrg, otherProject, periodID)
+	snap, err := f.svc.SnapshotFor(f.ctx(), otherOrg, otherProject, periodID, start.AddDays(29), time.Now())
 	require.NoError(t, err)
 	assert.Equal(t, money.IDR, snap.Currency)
 	assert.Equal(t, 6, snap.TxCount)
@@ -219,6 +219,59 @@ func TestService_SnapshotFor_ForwardsItsArgumentScopeToTheReader(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, otherOrg, call.OrgID)
 	assert.Equal(t, otherProject, call.ProjectID)
+}
+
+func TestService_Summary_ArchivedCutoff(t *testing.T) {
+	start := civil.Date{Year: 2026, Month: time.August, Day: 1}
+	end := civil.Date{Year: 2026, Month: time.August, Day: 31}
+
+	t.Run("a running period leaves out every archived wallet", func(t *testing.T) {
+		f := newFixture(t)
+		f.reader.Ref = report.PeriodRef{Start: start}
+		_, err := f.svc.Summary(f.ctx(), uuid.New())
+		require.NoError(t, err)
+		call, _ := f.reader.Last("Summary")
+		assert.Nil(t, call.ArchivedBefore)
+	})
+
+	t.Run("an ended period cuts at midnight after its last day in the project timezone", func(t *testing.T) {
+		f := newFixture(t)
+		f.reader.Ref = report.PeriodRef{Start: start, End: &end}
+		_, err := f.svc.Summary(f.ctx(), uuid.New())
+		require.NoError(t, err)
+		call, _ := f.reader.Last("Summary")
+		require.NotNil(t, call.ArchivedBefore)
+		assert.Equal(t, time.Date(2026, time.August, 31, 17, 0, 0, 0, time.UTC), call.ArchivedBefore.UTC())
+	})
+
+	t.Run("a period closed before its last day ended cuts at the close", func(t *testing.T) {
+		f := newFixture(t)
+		closedAt := time.Date(2026, time.August, 31, 3, 0, 0, 0, time.UTC)
+		f.reader.Ref = report.PeriodRef{Start: start, End: &end, ClosedAt: &closedAt}
+		_, err := f.svc.Summary(f.ctx(), uuid.New())
+		require.NoError(t, err)
+		call, _ := f.reader.Last("Summary")
+		require.NotNil(t, call.ArchivedBefore)
+		assert.True(t, closedAt.Equal(*call.ArchivedBefore), "got %s", call.ArchivedBefore)
+	})
+
+	t.Run("a snapshot cuts where the closed period will", func(t *testing.T) {
+		f := newFixture(t)
+		f.reader.Ref = report.PeriodRef{Start: start}
+		at := time.Date(2026, time.September, 3, 3, 0, 0, 0, time.UTC)
+		_, err := f.svc.SnapshotFor(f.ctx(), f.tc.OrgID, f.tc.ProjectID, uuid.New(), end, at)
+		require.NoError(t, err)
+		call, _ := f.reader.Last("Summary")
+		require.NotNil(t, call.ArchivedBefore)
+		assert.Equal(t, time.Date(2026, time.August, 31, 17, 0, 0, 0, time.UTC), call.ArchivedBefore.UTC())
+
+		closedAt := at
+		f.reader.Ref = report.PeriodRef{Start: start, End: &end, ClosedAt: &closedAt}
+		_, err = f.svc.Summary(f.ctx(), uuid.New())
+		require.NoError(t, err)
+		later, _ := f.reader.Last("Summary")
+		assert.True(t, call.ArchivedBefore.Equal(*later.ArchivedBefore), "the report of the closed period must cut where its snapshot did")
+	})
 }
 
 func TestService_Summary_UsesTheSettingsCurrency(t *testing.T) {

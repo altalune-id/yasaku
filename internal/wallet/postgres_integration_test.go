@@ -73,8 +73,7 @@ func seedPgProjectTree(t *testing.T, sqlDB *sql.DB, prefix string) (uuid.UUID, u
 	return userID, orgID, projID
 }
 
-// seedPgTransaction inserts a raw transactions row referencing walletID. NOTE: raw SQL because
-// internal/transaction is a sibling module this package must not import.
+// NOTE: raw SQL because internal/transaction is a sibling module this package must not import.
 func seedPgTransaction(t *testing.T, f pgFixture, walletID uuid.UUID) {
 	t.Helper()
 	now := time.Now().UTC()

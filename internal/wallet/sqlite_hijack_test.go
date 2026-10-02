@@ -16,8 +16,7 @@ import (
 	"altalune.id/yasaku/schema"
 )
 
-// hijackFixture runs on SQLite deliberately: SQLite has no row level security, so the
-// adapter's own tenant predicate is the only thing under test.
+// NOTE: SQLite on purpose — it has no row level security, so the adapter's own tenant predicate is the only guard under test.
 type hijackFixture struct {
 	store wallet.Store
 	orgA  tenant.Context

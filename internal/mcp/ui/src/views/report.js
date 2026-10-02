@@ -1,90 +1,69 @@
-// views/report.js
-function kpi(label, value) {
-  return html`<div><div class="ya-kpi-label">${label}</div><div class="ya-kpi-value ya-num">${value}</div></div>`;
-}
-
-function categoryRows(slices) {
-  const rows = (slices || []).map(function (s) {
-    const cat = s.category || {};
-    const colour = swatchColour(cat.color);
-    return html`<div class="ya-row">
-      <span class="ya-swatch" style="background:${colour}"></span>
-      <span>${cat.name || "Uncategorized"}</span>
-      <span class="ya-bar"><span style="width:${pct(s.share)};background:${colour}"></span></span>
-      <span class="ya-num">${money(s.amount)}</span>
-      <span class="ya-muted ya-num">${pct(s.share)}</span>
+class PeriodReportView extends YasakuView {
+  render() {
+    const m = this.model;
+    if (!m) return nothing;
+    return html`<div class="app-stack">
+      ${heading(m.name, m.sub)}
+      ${kpiCard(m.kpis)}
+      ${m.spendEmpty
+        ? html`<p class="app-muted">No spending recorded in this period.</p>`
+        : html`<div class="app-card">
+            <div class="app-kpi-label">Spend by category</div>
+            ${donutChart(m.donut)}
+            ${m.categories.map((c) => html`<div class="app-row">
+              <span class="app-swatch" style="background:${c.swatch}"></span>
+              <span>${c.name}</span>
+              <span class="app-bar"><span style="width:${c.width};background:${c.swatch}"></span></span>
+              <span class="app-num">${c.amount}</span>
+              <span class="app-muted app-num">${c.share}</span>
+            </div>`)}
+          </div>`}
+      <div>${this.button(m.refresh, "Refresh")}</div>
     </div>`;
-  });
-  return raw(rows.join(""));
-}
-
-registerView("period_report", function (d, action) {
-  const p = d.period || {};
-  const spend = d.spendByCategory || [];
-  const refresh = action("refresh", "period_report", { period: p.id });
-
-  return html`<div class="ya-root">
-    <div>
-      <div class="ya-kpi-value">${p.name || "Period"}</div>
-      <div class="ya-muted">${dateRange(p.startDate, p.endDate)} · ${p.status || "open"}</div>
-    </div>
-    <div class="ya-card ya-kpis">
-      ${raw(kpi("Income", money(d.income)))}
-      ${raw(kpi("Expense", money(d.expense)))}
-      ${raw(kpi("Net", money(d.net)))}
-      ${raw(kpi("Transactions", num(d.txCount || 0)))}
-    </div>
-    ${raw(spend.length ? html`<div class="ya-card">
-      <div class="ya-kpi-label">Spend by category</div>
-      ${raw(donutSVG(spend))}
-      ${categoryRows(spend)}
-    </div>` : html`<p class="ya-muted">No spending recorded in this period.</p>`)}
-    <div><button class="ya-action" data-action="${refresh}">Refresh</button></div>
-  </div>`;
-});
-
-registerView("cashflow_report", function (d) {
-  const points = d.points || [];
-  if (!points.length) {
-    return html`<div class="ya-root"><p class="ya-muted">No periods to plot yet.</p></div>`;
   }
-  const rows = points.map(function (p) {
-    return html`<div class="ya-row">
-      <span>${(p.period || {}).name || "—"}</span>
-      <span class="ya-muted ya-num">in ${money(p.income)}</span>
-      <span class="ya-muted ya-num">out ${money(p.expense)}</span>
-      <span class="ya-num">${money(p.net)}</span>
+}
+
+class CashflowReportView extends YasakuView {
+  render() {
+    const m = this.model;
+    if (!m || m.empty) return html`<p class="app-muted">No periods to plot yet.</p>`;
+    return html`<div class="app-stack">
+      <div class="app-card">
+        <div class="app-kpi-label">${m.label}</div>
+        ${cashflowChart(m.chart)}
+      </div>
+      <div class="app-card">${m.rows.map((r) => html`<div class="app-row">
+        <span>${r.name}</span>
+        <span class="app-muted app-num">${r.income}</span>
+        <span class="app-muted app-num">${r.expense}</span>
+        <span class="app-num">${r.net}</span>
+      </div>`)}</div>
     </div>`;
-  });
-  return html`<div class="ya-root">
-    <div class="ya-card">
-      <div class="ya-kpi-label">Cashflow, last ${num(points.length)} periods</div>
-      ${raw(cashflowSVG(points))}
-    </div>
-    <div class="ya-card">${raw(rows.join(""))}</div>
-  </div>`;
-});
+  }
+}
 
-registerView("preview_close", function (d, action) {
-  const p = d.period || {};
-  const s = d.snapshot || {};
-  const wallets = (s.wallets || []).map(function (w) {
-    return html`<div class="ya-row"><span>${(w.wallet || {}).name || "—"}</span><span class="ya-num">${money(w.closing)}</span></div>`;
-  });
-  const close = action("close-period", "close_period", { period: p.id, confirm: false });
+class PreviewCloseView extends YasakuView {
+  render() {
+    const m = this.model;
+    if (!m) return nothing;
+    return html`<div class="app-stack">
+      ${heading(m.title, m.sub)}
+      ${kpiCard(m.kpis)}
+      ${m.wallets.length
+        ? html`<div class="app-card">
+            <div class="app-kpi-label">Closing balances</div>
+            ${m.wallets.map((w) => html`<div class="app-row"><span>${w.name}</span><span class="app-num">${w.closing}</span></div>`)}
+          </div>`
+        : nothing}
+      <div>${this.button(m.close, "Preview close")}</div>
+    </div>`;
+  }
+}
 
-  return html`<div class="ya-root">
-    <div>
-      <div class="ya-kpi-value">Close ${p.name || "period"}?</div>
-      <div class="ya-muted">${dateRange(p.startDate, p.endDate)} · nothing is saved yet</div>
-    </div>
-    <div class="ya-card ya-kpis">
-      ${raw(kpi("Income", money(s.income)))}
-      ${raw(kpi("Expense", money(s.expense)))}
-      ${raw(kpi("Net", money(s.net)))}
-      ${raw(kpi("Transactions", num(s.txCount || 0)))}
-    </div>
-    ${raw(wallets.length ? html`<div class="ya-card"><div class="ya-kpi-label">Closing balances</div>${raw(wallets.join(""))}</div>` : "")}
-    <div><button class="ya-action" data-action="${close}">Preview close</button></div>
-  </div>`;
-});
+customElements.define("yasaku-period-report", PeriodReportView);
+customElements.define("yasaku-cashflow-report", CashflowReportView);
+customElements.define("yasaku-preview-close", PreviewCloseView);
+
+registerView("period_report", periodReportModel, (m) => html`<yasaku-period-report .model=${m}></yasaku-period-report>`);
+registerView("cashflow_report", cashflowReportModel, (m) => html`<yasaku-cashflow-report .model=${m}></yasaku-cashflow-report>`);
+registerView("preview_close", previewCloseModel, (m) => html`<yasaku-preview-close .model=${m}></yasaku-preview-close>`);

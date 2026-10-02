@@ -6,10 +6,9 @@ import (
 
 	"github.com/google/uuid"
 
-	"altalune.id/yasaku/internal/org"
-	"altalune.id/yasaku/internal/platform/session"
 	"altalune.id/yasaku/internal/project"
 	"altalune.id/yasaku/internal/todo"
+	"altalune.id/yasaku/internal/web"
 	"altalune.id/yasaku/internal/web/templates"
 )
 
@@ -25,35 +24,7 @@ func NewTodoHandler(d Deps, projects *project.Service, todos *todo.Service) *Tod
 	return &TodoHandler{Deps: d, Todos: todos}
 }
 
-// projectScope is the org and project a todo route acts on, with a request already carrying both scopes.
-type projectScope struct {
-	principal session.Principal
-	sid       string
-	org       *org.Org
-	project   *project.Project
-	req       *http.Request
-}
-
-// requireProject resolves the org and project the path names, gating membership before any row is read.
-func (h *TodoHandler) requireProject(w http.ResponseWriter, r *http.Request) (projectScope, bool) {
-	p, sid, ok := h.LoadSession(r)
-	if !ok {
-		http.Redirect(w, r, ResolveReturnTo(h.Cfg.HTTP.BasePath, "/login"), http.StatusSeeOther)
-		return projectScope{}, false
-	}
-	o, r, ok := h.OrgScopeFor(w, r, p, r.PathValue("org"))
-	if !ok {
-		return projectScope{}, false
-	}
-	proj, r, ok := h.ProjectScopeFor(w, r, o.ID, r.PathValue("project"))
-	if !ok {
-		return projectScope{}, false
-	}
-	return projectScope{principal: p, sid: sid, org: o, project: proj, req: r.WithContext(r.Context())}, true
-}
-
-// remember stores the org and project as the session's last-used pair, which only /  reads.
-func (h *TodoHandler) remember(sc projectScope) {
+func (h *TodoHandler) remember(sc ProjectScope) {
 	if sc.principal.ActiveOrgID == sc.org.ID && sc.principal.ActiveProjectID == sc.project.ID {
 		return
 	}
@@ -67,7 +38,7 @@ func (h *TodoHandler) remember(sc projectScope) {
 
 // GetOverview renders the project overview page.
 func (h *TodoHandler) GetOverview(w http.ResponseWriter, r *http.Request) {
-	sc, ok := h.requireProject(w, r)
+	sc, ok := h.RequireProject(w, r)
 	if !ok {
 		return
 	}
@@ -102,7 +73,7 @@ func (h *TodoHandler) GetOverview(w http.ResponseWriter, r *http.Request) {
 
 // GetTodos renders the full page.
 func (h *TodoHandler) GetTodos(w http.ResponseWriter, r *http.Request) {
-	sc, ok := h.requireProject(w, r)
+	sc, ok := h.RequireProject(w, r)
 	if !ok {
 		return
 	}
@@ -127,7 +98,7 @@ func (h *TodoHandler) GetTodos(w http.ResponseWriter, r *http.Request) {
 
 // PostCreate creates a todo and returns the refreshed list fragment.
 func (h *TodoHandler) PostCreate(w http.ResponseWriter, r *http.Request) {
-	sc, ok := h.requireProject(w, r)
+	sc, ok := h.RequireProject(w, r)
 	if !ok {
 		return
 	}
@@ -158,7 +129,7 @@ func (h *TodoHandler) PostToggle(w http.ResponseWriter, r *http.Request) {
 		h.ErrorPage(w, sc.req, http.StatusInternalServerError, "Toggle failed", "Could not update that todo.", err)
 		return
 	}
-	Render(w, sc.req, templates.TodoRowFragment(h.Base(sc.req, ""), todoRow(sc.org.Slug, sc.project.Slug, updated)))
+	Render(w, sc.req, templates.TodoRowFragment(h.ProjectFragmentBase(sc), todoRow(sc.org.Slug, sc.project.Slug, updated)))
 }
 
 // Delete removes the row.
@@ -176,7 +147,7 @@ func (h *TodoHandler) Delete(w http.ResponseWriter, r *http.Request) {
 
 // PostClear removes all done todos and returns the refreshed list fragment.
 func (h *TodoHandler) PostClear(w http.ResponseWriter, r *http.Request) {
-	sc, ok := h.requireProject(w, r)
+	sc, ok := h.RequireProject(w, r)
 	if !ok {
 		return
 	}
@@ -186,42 +157,41 @@ func (h *TodoHandler) PostClear(w http.ResponseWriter, r *http.Request) {
 	h.writeListFragment(w, sc)
 }
 
-// requireTodo resolves the project scope from the path, then the todo inside it.
-func (h *TodoHandler) requireTodo(w http.ResponseWriter, r *http.Request) (projectScope, *todo.Todo, bool) {
-	sc, ok := h.requireProject(w, r)
+func (h *TodoHandler) requireTodo(w http.ResponseWriter, r *http.Request) (ProjectScope, *todo.Todo, bool) {
+	sc, ok := h.RequireProject(w, r)
 	if !ok {
-		return projectScope{}, nil, false
+		return ProjectScope{}, nil, false
 	}
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
 		h.ErrorPage(w, r, http.StatusBadRequest, "Bad id", "Malformed todo id.")
-		return projectScope{}, nil, false
+		return ProjectScope{}, nil, false
 	}
 	t, err := h.Todos.ByID(sc.req.Context(), id)
 	if err != nil {
 		if todo.IsNotFoundError(err) {
 			h.ErrorPage(w, sc.req, http.StatusNotFound, "Not found", "That todo no longer exists.")
-			return projectScope{}, nil, false
+			return ProjectScope{}, nil, false
 		}
 		h.LogErr("web todo: byID", err)
 		h.ErrorPage(w, sc.req, http.StatusInternalServerError, "Lookup failed", "Could not load that todo.", err)
-		return projectScope{}, nil, false
+		return ProjectScope{}, nil, false
 	}
 	return sc, t, true
 }
 
-func (h *TodoHandler) writeListFragment(w http.ResponseWriter, sc projectScope) {
+func (h *TodoHandler) writeListFragment(w http.ResponseWriter, sc ProjectScope) {
 	items, err := h.Todos.List(sc.req.Context(), todo.ListOpts{})
 	if err != nil {
 		h.LogErr("web todo: list", err)
 		h.ErrorPage(w, sc.req, http.StatusInternalServerError, "List failed", "Could not load todos.", err)
 		return
 	}
-	Render(w, sc.req, templates.TodoList(h.Base(sc.req, ""), renderRowsFor(sc.org.Slug, sc.project.Slug, items)))
+	Render(w, sc.req, templates.TodoList(h.ProjectFragmentBase(sc), renderRowsFor(sc.org.Slug, sc.project.Slug, items)))
 }
 
 // Register wires the todo routes onto mux.
-func (h *TodoHandler) Register(mux *http.ServeMux) {
+func (h *TodoHandler) Register(mux web.Mux) {
 	mux.HandleFunc("GET /orgs/{org}/projects/{project}/overview", h.GetOverview)
 	mux.HandleFunc("GET /orgs/{org}/projects/{project}/todos", h.GetTodos)
 	mux.HandleFunc("POST /orgs/{org}/projects/{project}/todos", h.PostCreate)

@@ -4,9 +4,10 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"io/fs"
-	"os"
+	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"altalune.id/yasaku/internal/i18n"
 	"altalune.id/yasaku/internal/platform/capabilities"
@@ -15,8 +16,7 @@ import (
 	"github.com/a-h/templ"
 )
 
-// NOTE: hashing the embedded assets, not the build stamp — a commit hash does not change while an
-// asset is edited, which serves a stale stylesheet from the one-hour static cache.
+// NOTE: hashes the embedded assets, not the build stamp, so an edited asset busts the one-hour static cache.
 var staticFingerprint = sync.OnceValue(computeStaticFingerprint) //nolint:gochecknoglobals // memoized once, not runtime state.
 
 func computeStaticFingerprint() string {
@@ -39,23 +39,17 @@ func computeStaticFingerprint() string {
 	return hex.EncodeToString(sum.Sum(nil))[:12]
 }
 
-// UIMode names the asset delivery strategy.
-type UIMode string
+// IsHTMXRequest reports whether r was issued by htmx rather than a browser navigation.
+func IsHTMXRequest(r *http.Request) bool { return r.Header.Get("HX-Request") == "true" }
 
-const (
-	// UIModeCDN pulls Tailwind/Basecoat/HTMX from public CDNs.
-	UIModeCDN UIMode = "cdn"
-	// UIModeVendored serves them from the embedded /static/* mount.
-	UIModeVendored UIMode = "vendored"
-)
+// HeaderPushURL is the htmx response header that pushes a URL onto the browser history after the swap.
+const HeaderPushURL = "HX-Push-Url"
 
-// ResolveUIMode reads YASAKU_UI_MODE; "vendored" flips to vendored, otherwise CDN.
-func ResolveUIMode() UIMode {
-	if os.Getenv("YASAKU_UI_MODE") == string(UIModeVendored) {
-		return UIModeVendored
-	}
-	return UIModeCDN
-}
+// HeaderRetarget is the htmx response header that replaces the requesting element's swap target.
+const HeaderRetarget = "HX-Retarget"
+
+// HeaderReswap is the htmx response header that replaces the requesting element's swap style.
+const HeaderReswap = "HX-Reswap"
 
 // NavScope selects which sidebars the shell renders.
 type NavScope string
@@ -67,13 +61,16 @@ const (
 	NavScopeOrg NavScope = "org"
 	// NavScopeProject shows sidebar A and sidebar B.
 	NavScopeProject NavScope = "project"
+	// NavScopeSettings shows sidebar A and the personal settings sidebar in sidebar B's slot.
+	NavScopeSettings NavScope = "settings"
 )
 
 // ActiveNav tells the layout which sidebar item to mark selected.
 type ActiveNav struct {
-	Scope      NavScope
-	OrgKey     string
-	ProjectKey string
+	Scope       NavScope
+	OrgKey      string
+	ProjectKey  string
+	SettingsKey string
 }
 
 // ActiveOrg is what the org switcher pill and menu heading show.
@@ -97,7 +94,6 @@ type LayoutData struct {
 	BasePath      string
 	BaseURL       string
 	Version       string
-	UIMode        UIMode
 	Caps          capabilities.Capabilities
 	Principal     *session.Principal
 	Flash         *FlashMessage
@@ -116,6 +112,12 @@ type LayoutData struct {
 	ColorModes    []ColorMode
 	// RequestID is echoed on every user-visible error so a report can be matched to a log line.
 	RequestID string
+	// SECURITY: every <script> the layout renders must carry this, or the browser refuses to run it.
+	Nonce string
+	// SECURITY: gates the hx-csp nonce gate, which strips every htmx attribute when it cannot read the nonce back.
+	CSPEnforced bool
+	// TimeZone is the active project's zone for display; nil outside a project.
+	TimeZone *time.Location
 }
 
 // LocaleOption is one row in the locale-selector dropdown.
@@ -125,7 +127,7 @@ type LocaleOption struct {
 	Active bool
 }
 
-// Tr returns the translation for key. Args are key/value pairs.
+// Tr returns the translation for key, with args as key/value pairs.
 func (d LayoutData) Tr(key string, args ...any) string {
 	if d.Translator == nil {
 		return key
@@ -133,7 +135,7 @@ func (d LayoutData) Tr(key string, args ...any) string {
 	return d.Translator.T(key, args...)
 }
 
-// TrN returns the pluralized translation with Count auto-injected. Extra args are key/value pairs.
+// TrN returns the pluralized translation with Count auto-injected, with extra args as key/value pairs.
 func (d LayoutData) TrN(key string, n int, args ...any) string {
 	if d.Translator == nil {
 		return key
@@ -168,17 +170,15 @@ type FlashMessage struct {
 	Message string
 }
 
-// Static returns a basePath-aware URL for a vendored asset (e.g. static/htmx.min.js).
-// NOTE: the build fingerprint busts the one-hour static cache, so a changed asset reaches
-// returning browsers on the next deploy instead of up to an hour later.
+// Static returns a basePath-aware, fingerprinted URL for a vendored asset (e.g. static/htmx.min.js).
 func (d LayoutData) Static(sub string) string {
 	return Path(d.BasePath, "static/"+sub) + "?v=" + staticFingerprint()
 }
 
-// Href joins BasePath with a subpath. Templates use this so mounts under /app work.
+// Href joins BasePath with a subpath.
 func (d LayoutData) Href(sub string) string { return Path(d.BasePath, sub) }
 
-// OrgPath returns sub under the active org, so the nested URL shape lives in one place.
+// OrgPath returns sub under the active org.
 func (d LayoutData) OrgPath(sub string) string {
 	if d.ActiveOrg == nil {
 		return d.Href("/orgs")

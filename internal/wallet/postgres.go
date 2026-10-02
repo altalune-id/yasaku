@@ -61,8 +61,7 @@ func (r *pgWalletRow) toWallet() *Wallet {
 	return w
 }
 
-// SECURITY: tenancy is resolved before the enrolled-transaction branch; a missing tenant context
-// must fail rather than reach a statement whose org predicate would be the zero uuid.
+// SECURITY: tenancy resolves before the enrolled-transaction branch, so a missing tenant never reaches a zero-uuid org predicate.
 func (s *postgresStore) txAcquire(ctx context.Context) (*sql.Tx, bool, tenant.Context, error) {
 	tc, err := tenant.From(ctx)
 	if err != nil {

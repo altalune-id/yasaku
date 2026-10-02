@@ -145,9 +145,7 @@ func TestService_Create(t *testing.T) {
 	})
 }
 
-// TestService_ByID_RefusesASiblingProject uses a deliberately non-filtering fake: the store
-// hands back any row by id, so the service's own scope check is the only thing standing
-// between the caller and another project's row inside the same org.
+// TestService_ByID_RefusesASiblingProject uses a non-filtering fake, so only the service's scope check stops a sibling project's row.
 func TestService_ByID_RefusesASiblingProject(t *testing.T) {
 	store := fakes.NewTxCategory()
 	svc, unex := newSvc(t, store, nil)

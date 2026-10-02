@@ -222,8 +222,7 @@ func TestPostgres_Category_Delete_InUse(t *testing.T) {
 	assert.Equal(t, c.ID, got.ID)
 }
 
-// TestPostgres_Category_OtherOrgIsInvisible runs on the RLS fixture, not the superuser
-// fixture, so it proves tenant isolation rather than only the store's own org_id predicate.
+// TestPostgres_Category_OtherOrgIsInvisible runs on the RLS fixture, so it proves tenant isolation rather than only the store's own org_id predicate.
 func TestPostgres_Category_OtherOrgIsInvisible(t *testing.T) {
 	store, migDB, prefix := newPgRLSFixture(t)
 	a := seedRLSTenant(t, migDB, prefix)
@@ -250,9 +249,7 @@ func TestPostgres_Category_OtherOrgIsInvisible(t *testing.T) {
 	assert.True(t, category.IsNotFoundError(store.Delete(otherCtx, c.ID)),
 		"org B must not be able to delete org A's category")
 
-	// Two hijack shapes, refused by two different layers. Carrying org A's org_id trips the
-	// policy's WITH CHECK (SQLSTATE 42501); carrying org B's own org_id passes WITH CHECK and
-	// is stopped by Save's conflict-clause org guard instead. Either way the row is untouched.
+	// NOTE: org A's org_id trips the policy's WITH CHECK (SQLSTATE 42501); org B's own org_id passes it and is stopped by Save's conflict-clause org guard.
 	verbatim := *c
 	verbatim.Name = "Hijacked"
 	assert.Error(t, store.Save(otherCtx, &verbatim),
@@ -271,9 +268,7 @@ func TestPostgres_Category_OtherOrgIsInvisible(t *testing.T) {
 	assert.Equal(t, a.OrgID, stillThere.OrgID, "org A's row must still belong to org A")
 }
 
-// newPgRLSFixture migrates under a BYPASSRLS owner with Tenant.RLSEnforce on, then binds
-// the store to a NOBYPASSRLS LOGIN role so the tenant policies actually apply. newPgFixture
-// above connects as the container superuser, which bypasses row level security outright.
+// NOTE: binds the store to a NOBYPASSRLS LOGIN role so tenant policies apply; newPgFixture's superuser bypasses row level security outright.
 func newPgRLSFixture(t *testing.T) (category.Store, *sql.DB, string) {
 	t.Helper()
 	h := pgtest.New(t)
@@ -331,8 +326,7 @@ func newPgRLSFixture(t *testing.T) (category.Store, *sql.DB, string) {
 	return store, migDB, prefix
 }
 
-// requirePoliciesExist fails loudly when RLSEnforce did not actually render, so a
-// cross-org test can never pass merely because no policy was created.
+// NOTE: fails loudly when RLSEnforce did not render, so a cross-org test cannot pass merely because no policy was created.
 func requirePoliciesExist(t *testing.T, migDB *sql.DB, table string) {
 	t.Helper()
 	var relRLS, relForce bool
@@ -397,9 +391,7 @@ func seedRLSTenant(t *testing.T, migDB *sql.DB, prefix string) tenant.Context {
 	return tenant.Context{OrgID: orgID, ProjectID: projID, UserID: userID}
 }
 
-// TestPostgres_Category_Save_CannotUpsertOntoAnotherOrgsRow runs on the plain superuser
-// fixture ON PURPOSE. RLS is bypassed there, so the conflict-clause org guard in Save is the
-// only thing preventing the hijack — which is what makes this test able to detect its removal.
+// TestPostgres_Category_Save_CannotUpsertOntoAnotherOrgsRow uses the superuser fixture on purpose: with RLS bypassed, Save's conflict-clause org guard is the only thing preventing the hijack.
 func TestPostgres_Category_Save_CannotUpsertOntoAnotherOrgsRow(t *testing.T) {
 	f := newPgFixture(t)
 	ownerCtx := tenant.Into(t.Context(), f.tc)
@@ -430,8 +422,7 @@ func TestPostgres_Category_Save_CannotUpsertOntoAnotherOrgsRow(t *testing.T) {
 	assert.Equal(t, f.tc.OrgID, stillThere.OrgID)
 }
 
-// TestPostgres_Category_Save_UpdatesOwnRow guards the other direction: the org guard must not
-// break a legitimate upsert by the owning tenant.
+// TestPostgres_Category_Save_UpdatesOwnRow guards the other direction: the org guard must not break a legitimate upsert by the owning tenant.
 func TestPostgres_Category_Save_UpdatesOwnRow(t *testing.T) {
 	f := newPgFixture(t)
 	ctx := tenant.Into(t.Context(), f.tc)

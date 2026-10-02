@@ -3,7 +3,7 @@ package boot
 import (
 	"log/slog"
 
-	"altalune.id/yasaku/internal/platform/tokens"
+	"altalune.id/yasaku/internal/platform/outbox"
 )
 
 // Option tunes what BootServer wires and starts.
@@ -12,11 +12,14 @@ type Option func(*options)
 type options struct {
 	scheduler     bool
 	schedulerOnly bool
+	consumer      bool
+	consumerOnly  bool
 	logger        *slog.Logger
-	mcpVerifier   tokens.Verifier
+	deliverer     outbox.Deliverer
+	dispatch      outbox.WorkerOpts
 }
 
-func newOptions() *options { return &options{scheduler: true} }
+func newOptions() *options { return &options{scheduler: true, consumer: true} }
 
 // WithScheduler enables or disables the periodic-job runner, overriding scheduler.enabled.
 func WithScheduler(on bool) Option { return func(o *options) { o.scheduler = on } }
@@ -24,9 +27,19 @@ func WithScheduler(on bool) Option { return func(o *options) { o.scheduler = on 
 // WithSchedulerOnly runs the scheduler plus a health-only listener, with no web or API handler.
 func WithSchedulerOnly(on bool) Option { return func(o *options) { o.schedulerOnly = on } }
 
+// WithConsumer enables or disables the queue job consumer on this instance.
+func WithConsumer(on bool) Option { return func(o *options) { o.consumer = on } }
+
+// WithConsumerOnly runs the queue consumer plus a health-only listener, with no scheduler, web or API handler.
+func WithConsumerOnly(on bool) Option { return func(o *options) { o.consumerOnly = on } }
+
 // WithLogger replaces the logger built from log config, so an embedder or test can observe boot and request output.
 func WithLogger(l *slog.Logger) Option { return func(o *options) { o.logger = l } }
 
-// WithMCPVerifier substitutes the MCP bearer-token verifier, so a test can boot with mcp.enabled
-// without minting tokens against a live issuer. Production boot leaves it unset.
-func WithMCPVerifier(v tokens.Verifier) Option { return func(o *options) { o.mcpVerifier = v } }
+// WithDispatch supplies the outbound Deliverer surface S5 drains the outbox through, plus the dispatch worker's tuning.
+func WithDispatch(d outbox.Deliverer, opts outbox.WorkerOpts) Option {
+	return func(o *options) {
+		o.deliverer = d
+		o.dispatch = opts
+	}
+}

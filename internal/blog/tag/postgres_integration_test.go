@@ -298,9 +298,7 @@ func TestPostgres_Tag_Delete_InUse(t *testing.T) {
 	assert.Equal(t, tg.ID, got.ID)
 }
 
-// newPgRLSFixture migrates under a BYPASSRLS owner and returns a store bound to a
-// NOBYPASSRLS app role, so the row level security policies actually apply. The plain
-// fixture above connects as the container superuser, which bypasses RLS outright.
+// NOTE: returns a store bound to a NOBYPASSRLS app role so the policies apply; the plain fixture's superuser bypasses RLS outright.
 func newPgRLSFixture(t *testing.T) (tag.Store, *sql.DB, string) {
 	t.Helper()
 	h := pgtest.New(t)
@@ -439,13 +437,7 @@ func TestPostgres_Tag_OtherOrgIsInvisible(t *testing.T) {
 	assert.Equal(t, tg.ID, stillThere.ID)
 }
 
-// TestPostgres_Tag_OtherOrgIsInvisible_WithoutRLS runs the same isolation checks with row level
-// security inert. The plain fixture connects as the container superuser, which holds BYPASSRLS,
-// so the policies the migration created never filter anything — the same exposure a deployment
-// gets from `tenant.rlsEnforce: false`, or from pointing the app at a BYPASSRLS role. The test
-// proves the database really does hand this connection org A's row, then that every store method
-// still refuses it. What keeps org B out here is only the explicit org_id predicate on each
-// statement.
+// TestPostgres_Tag_OtherOrgIsInvisible_WithoutRLS runs the isolation checks with RLS inert, where only each statement's explicit org_id predicate keeps org B out.
 func TestPostgres_Tag_OtherOrgIsInvisible_WithoutRLS(t *testing.T) {
 	f := newPgFixture(t)
 	ownerCtx := tenant.Into(t.Context(), f.tc)

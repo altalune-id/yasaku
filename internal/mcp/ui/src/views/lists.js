@@ -1,83 +1,66 @@
-// views/lists.js
-function periodRow(p) {
-  return html`<div class="ya-row">
-    <span>${p.name || "—"}</span>
-    <span class="ya-muted">${dateRange(p.startDate, p.endDate)}</span>
-    <span class="ya-muted">${p.status || "open"}</span>
+function listCard(label, m, empty, row) {
+  if (!m || m.empty) return html`<p class="app-muted">${empty}</p>`;
+  return html`<div class="app-card">
+    <div class="app-kpi-label">${label}</div>
+    ${m.rows.map(row)}
   </div>`;
 }
 
-function snapshotKpis(s) {
-  const snap = s || {};
-  return html`<div class="ya-card ya-kpis">
-    ${raw(kpi("Income", money(snap.income)))}
-    ${raw(kpi("Expense", money(snap.expense)))}
-    ${raw(kpi("Net", money(snap.net)))}
-    ${raw(kpi("Transactions", num(snap.txCount || 0)))}
-  </div>`;
-}
-
-function listCard(label, rows, empty) {
-  if (!rows.length) {
-    return html`<div class="ya-root"><p class="ya-muted">${empty}</p></div>`;
+class CategoryListView extends YasakuView {
+  render() {
+    return listCard("Categories", this.model, "No categories yet.", (r) => html`<div class="app-row">
+      <span class="app-swatch" style="background:${r.swatch}"></span>
+      <span>${r.name}</span>
+      <span class="app-muted">${r.kind}</span>
+    </div>`);
   }
-  return html`<div class="ya-root">
-    <div class="ya-card">
-      <div class="ya-kpi-label">${label}</div>
-      ${raw(rows.join(""))}
-    </div>
-  </div>`;
 }
 
-function renderCategoryList(d) {
-  const rows = (d.categories || []).map(function (c) {
-    return html`<div class="ya-row">
-      <span class="ya-swatch" style="background:${swatchColour(c.color)}"></span>
-      <span>${c.name || "—"}</span>
-      <span class="ya-muted">${c.kind || ""}</span>
+class PeriodListView extends YasakuView {
+  render() {
+    return listCard("Periods", this.model, "No periods yet.", periodRow);
+  }
+}
+
+class ProjectListView extends YasakuView {
+  render() {
+    return listCard("Projects", this.model, "No projects reachable.", (r) => html`<div class="app-row">
+      <span>${r.name}</span>
+      <span class="app-muted">${r.org}</span>
+    </div>`);
+  }
+}
+
+class CurrentPeriodView extends YasakuView {
+  render() {
+    const m = this.model;
+    if (!m) return nothing;
+    return html`<div class="app-stack">
+      ${heading(m.name, m.sub)}
+      ${kpiCard(m.kpis)}
     </div>`;
-  });
-  return listCard("Categories", rows, "No categories yet.");
+  }
 }
 
-function renderPeriodList(d) {
-  return listCard("Periods", (d.periods || []).map(periodRow), "No periods yet.");
-}
-
-function renderProjectList(d) {
-  const rows = (d.projects || []).map(function (p) {
-    return html`<div class="ya-row">
-      <span>${p.projectName || p.project || "—"}</span>
-      <span class="ya-muted">${p.orgName || p.org || ""}</span>
+class NowView extends YasakuView {
+  render() {
+    const m = this.model;
+    if (!m) return nothing;
+    return html`<div class="app-stack">
+      ${kpiCard(m.kpis)}
+      ${m.hasPeriod ? html`<div class="app-card">${periodRow(m.period)}</div>` : nothing}
     </div>`;
-  });
-  return listCard("Projects", rows, "No projects reachable.");
+  }
 }
 
-function renderCurrentPeriod(d) {
-  const p = d.period || {};
-  return html`<div class="ya-root">
-    <div>
-      <div class="ya-kpi-value">${p.name || "Current period"}</div>
-      <div class="ya-muted">${dateRange(p.startDate, p.endDate)} · ${p.status || "open"}</div>
-    </div>
-    ${raw(snapshotKpis(d.running))}
-  </div>`;
-}
+customElements.define("yasaku-category-list", CategoryListView);
+customElements.define("yasaku-period-list", PeriodListView);
+customElements.define("yasaku-project-list", ProjectListView);
+customElements.define("yasaku-current-period", CurrentPeriodView);
+customElements.define("yasaku-now", NowView);
 
-function renderNow(d) {
-  const p = d.currentPeriod || {};
-  return html`<div class="ya-root">
-    <div class="ya-card ya-kpis">
-      ${raw(kpi("Today", d.today || "—"))}
-      ${raw(kpi("Timezone", d.timezone || "—"))}
-    </div>
-    ${raw(p.name ? html`<div class="ya-card">${raw(periodRow(p))}</div>` : "")}
-  </div>`;
-}
-
-registerView("list_categories", renderCategoryList);
-registerView("list_periods", renderPeriodList);
-registerView("list_projects", renderProjectList);
-registerView("current_period", renderCurrentPeriod);
-registerView("now", renderNow);
+registerView("list_categories", categoryListModel, (m) => html`<yasaku-category-list .model=${m}></yasaku-category-list>`);
+registerView("list_periods", periodListModel, (m) => html`<yasaku-period-list .model=${m}></yasaku-period-list>`);
+registerView("list_projects", projectListModel, (m) => html`<yasaku-project-list .model=${m}></yasaku-project-list>`);
+registerView("current_period", currentPeriodModel, (m) => html`<yasaku-current-period .model=${m}></yasaku-current-period>`);
+registerView("now", nowModel, (m) => html`<yasaku-now .model=${m}></yasaku-now>`);

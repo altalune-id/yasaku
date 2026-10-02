@@ -23,15 +23,12 @@ import (
 
 const prefix = "yasaku_"
 
-// newBlogStoreForTest returns a store over a temp-file SQLite database seeded with one tenant
-// and one category.
 func newBlogStoreForTest(t *testing.T) (blog.Store, *sql.DB, tenant.Context, uuid.UUID) {
 	t.Helper()
 
 	cfg := config.Defaults()
 	cfg.DB.Driver = db.DriverSQLite
-	// NOTE: a temp-file DSN, not :memory: — every pooled connection must see the same
-	// database with foreign keys on, or the join table's cascades never fire.
+	// NOTE: a temp-file DSN, not :memory:, or pooled connections do not share the database and cascades never fire.
 	cfg.DB.DSN = filepath.Join(t.TempDir(), "blog.db")
 
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -88,8 +85,6 @@ func seedProject(t *testing.T, sqlDB *sql.DB, tc tenant.Context) uuid.UUID {
 	return projID
 }
 
-// seedCategory inserts a category directly; the category store is a separate module and this
-// package only needs a valid foreign key.
 func seedCategory(t *testing.T, sqlDB *sql.DB, tc tenant.Context) uuid.UUID {
 	t.Helper()
 	return seedCategoryIn(t, sqlDB, tc, tc.ProjectID)
@@ -123,7 +118,7 @@ func TestSQLiteStore_SaveAndByID(t *testing.T) {
 
 	p, err := blog.New(tc.OrgID, tc.ProjectID, cat, "Hello World", "", "# body")
 	require.NoError(t, err)
-	require.NoError(t, store.Save(ctx, p))
+	require.NoError(t, store.Save(ctx, p, 0))
 
 	got, err := store.ByID(ctx, p.ID)
 	require.NoError(t, err)
@@ -153,7 +148,7 @@ func TestSQLiteStore_SaveRoundTripsPublication(t *testing.T) {
 	p, err := blog.New(tc.OrgID, tc.ProjectID, cat, "Published", "", "body")
 	require.NoError(t, err)
 	p.Publish()
-	require.NoError(t, store.Save(ctx, p))
+	require.NoError(t, store.Save(ctx, p, 0))
 
 	got, err := store.ByID(ctx, p.ID)
 	require.NoError(t, err)
@@ -164,7 +159,7 @@ func TestSQLiteStore_SaveRoundTripsPublication(t *testing.T) {
 
 	first := *p.FirstPublishedAt
 	p.Unpublish()
-	require.NoError(t, store.Save(ctx, p))
+	require.NoError(t, store.Save(ctx, p, 0))
 
 	got, err = store.ByID(ctx, p.ID)
 	require.NoError(t, err)
@@ -182,10 +177,10 @@ func TestSQLiteStore_SaveReplacesTagSetWithoutOrphans(t *testing.T) {
 	a, b, c := seedTag(t, sqlDB, tc), seedTag(t, sqlDB, tc), seedTag(t, sqlDB, tc)
 
 	p.SetTags([]uuid.UUID{a, b})
-	require.NoError(t, store.Save(ctx, p))
+	require.NoError(t, store.Save(ctx, p, 0))
 
 	p.SetTags([]uuid.UUID{b, c})
-	require.NoError(t, store.Save(ctx, p))
+	require.NoError(t, store.Save(ctx, p, 0))
 
 	got, err := store.ByID(ctx, p.ID)
 	require.NoError(t, err)
@@ -204,10 +199,10 @@ func TestSQLiteStore_SaveClearsTagSet(t *testing.T) {
 	p, err := blog.New(tc.OrgID, tc.ProjectID, cat, "First", "", "body")
 	require.NoError(t, err)
 	p.SetTags([]uuid.UUID{seedTag(t, sqlDB, tc)})
-	require.NoError(t, store.Save(ctx, p))
+	require.NoError(t, store.Save(ctx, p, 0))
 
 	p.SetTags(nil)
-	require.NoError(t, store.Save(ctx, p))
+	require.NoError(t, store.Save(ctx, p, 0))
 
 	got, err := store.ByID(ctx, p.ID)
 	require.NoError(t, err)
@@ -227,10 +222,10 @@ func TestSQLiteStore_SaveWithUnknownTagIsRefusedWhole(t *testing.T) {
 	require.NoError(t, err)
 	good := seedTag(t, sqlDB, tc)
 	p.SetTags([]uuid.UUID{good})
-	require.NoError(t, store.Save(ctx, p))
+	require.NoError(t, store.Save(ctx, p, 0))
 
 	p.SetTags([]uuid.UUID{good, uuid.New()})
-	require.Error(t, store.Save(ctx, p), "an unknown tag id must fail the foreign key")
+	require.Error(t, store.Save(ctx, p, 0), "an unknown tag id must fail the foreign key")
 
 	got, err := store.ByID(ctx, p.ID)
 	require.NoError(t, err)
@@ -244,13 +239,13 @@ func TestSQLiteStore_DuplicateSlugInOneProject(t *testing.T) {
 
 	first, err := blog.New(tc.OrgID, tc.ProjectID, cat, "Hello World", "", "body")
 	require.NoError(t, err)
-	require.NoError(t, store.Save(ctx, first))
+	require.NoError(t, store.Save(ctx, first, 0))
 
 	dup, err := blog.New(tc.OrgID, tc.ProjectID, cat, "hello   world", "", "body")
 	require.NoError(t, err)
 	require.Equal(t, first.Slug, dup.Slug)
 
-	err = store.Save(ctx, dup)
+	err = store.Save(ctx, dup, 0)
 	assert.True(t, blog.IsAlreadyExistsError(err), "got %T: %v", err, err)
 }
 
@@ -262,12 +257,12 @@ func TestSQLiteStore_SameSlugInTwoProjectsIsAllowed(t *testing.T) {
 
 	a, err := blog.New(tc.OrgID, tc.ProjectID, cat, "Hello World", "", "body")
 	require.NoError(t, err)
-	require.NoError(t, store.Save(ctx, a))
+	require.NoError(t, store.Save(ctx, a, 0))
 
 	b, err := blog.New(tc.OrgID, otherProj, otherCat, "Hello World", "", "body")
 	require.NoError(t, err)
 	require.Equal(t, a.Slug, b.Slug)
-	assert.NoError(t, store.Save(ctx, b), "uniqueness is per project, not per org")
+	assert.NoError(t, store.Save(ctx, b, 0), "uniqueness is per project, not per org")
 }
 
 func TestSQLiteStore_List_OrdersByCreatedAtThenID(t *testing.T) {
@@ -280,7 +275,7 @@ func TestSQLiteStore_List_OrdersByCreatedAtThenID(t *testing.T) {
 		require.NoError(t, err)
 		p.CreatedAt = created
 		p.UpdatedAt = created
-		require.NoError(t, store.Save(ctx, p))
+		require.NoError(t, store.Save(ctx, p, 0))
 		return p
 	}
 	oldest := mk("oldest", base.Add(-2*time.Hour))
@@ -307,16 +302,16 @@ func TestSQLiteStore_List_FiltersByStatusAndCategory(t *testing.T) {
 
 	draft, err := blog.New(tc.OrgID, tc.ProjectID, cat, "Draft", "", "body")
 	require.NoError(t, err)
-	require.NoError(t, store.Save(ctx, draft))
+	require.NoError(t, store.Save(ctx, draft, 0))
 
 	published, err := blog.New(tc.OrgID, tc.ProjectID, cat, "Published", "", "body")
 	require.NoError(t, err)
 	published.Publish()
-	require.NoError(t, store.Save(ctx, published))
+	require.NoError(t, store.Save(ctx, published, 0))
 
 	elsewhere, err := blog.New(tc.OrgID, tc.ProjectID, otherCat, "Elsewhere", "", "body")
 	require.NoError(t, err)
-	require.NoError(t, store.Save(ctx, elsewhere))
+	require.NoError(t, store.Save(ctx, elsewhere, 0))
 
 	all, err := store.List(ctx, tc.OrgID, tc.ProjectID, blog.ListOpts{})
 	require.NoError(t, err)
@@ -346,11 +341,11 @@ func TestSQLiteStore_List_AttachesTagsWithoutMultiplyingRows(t *testing.T) {
 	tagged, err := blog.New(tc.OrgID, tc.ProjectID, cat, "Tagged", "", "body")
 	require.NoError(t, err)
 	tagged.SetTags([]uuid.UUID{a, b})
-	require.NoError(t, store.Save(ctx, tagged))
+	require.NoError(t, store.Save(ctx, tagged, 0))
 
 	bare, err := blog.New(tc.OrgID, tc.ProjectID, cat, "Bare", "", "body")
 	require.NoError(t, err)
-	require.NoError(t, store.Save(ctx, bare))
+	require.NoError(t, store.Save(ctx, bare, 0))
 
 	got, err := store.List(ctx, tc.OrgID, tc.ProjectID, blog.ListOpts{})
 	require.NoError(t, err)
@@ -372,11 +367,11 @@ func TestSQLiteStore_List_ScopesToTheProject(t *testing.T) {
 
 	mine, err := blog.New(tc.OrgID, tc.ProjectID, cat, "Mine", "", "body")
 	require.NoError(t, err)
-	require.NoError(t, store.Save(ctx, mine))
+	require.NoError(t, store.Save(ctx, mine, 0))
 
 	theirs, err := blog.New(tc.OrgID, otherProj, otherCat, "Theirs", "", "body")
 	require.NoError(t, err)
-	require.NoError(t, store.Save(ctx, theirs))
+	require.NoError(t, store.Save(ctx, theirs, 0))
 
 	got, err := store.List(ctx, tc.OrgID, tc.ProjectID, blog.ListOpts{})
 	require.NoError(t, err)
@@ -395,13 +390,13 @@ func TestSQLiteStore_Delete(t *testing.T) {
 	p, err := blog.New(tc.OrgID, tc.ProjectID, cat, "Gone", "", "body")
 	require.NoError(t, err)
 	p.SetTags([]uuid.UUID{seedTag(t, sqlDB, tc), seedTag(t, sqlDB, tc)})
-	require.NoError(t, store.Save(ctx, p))
+	require.NoError(t, store.Save(ctx, p, 0))
 
-	require.NoError(t, store.Delete(ctx, p.ID))
+	require.NoError(t, store.Delete(ctx, p.ID, 0))
 
 	_, err = store.ByID(ctx, p.ID)
 	assert.True(t, blog.IsNotFoundError(err), "got %T: %v", err, err)
-	assert.True(t, blog.IsNotFoundError(store.Delete(ctx, p.ID)), "double delete")
+	assert.True(t, blog.IsNotFoundError(store.Delete(ctx, p.ID, 0)), "double delete")
 
 	var rows int
 	require.NoError(t, sqlDB.QueryRow(
@@ -417,7 +412,7 @@ func TestSQLiteStore_CountByCategoryIsOneQueryPerProject(t *testing.T) {
 	for range 3 {
 		p, err := blog.New(tc.OrgID, tc.ProjectID, cat, "T"+uuid.NewString(), "", "b")
 		require.NoError(t, err)
-		require.NoError(t, store.Save(ctx, p))
+		require.NoError(t, store.Save(ctx, p, 0))
 	}
 
 	counts, err := store.CountByCategory(ctx, tc.OrgID, tc.ProjectID)
@@ -435,11 +430,11 @@ func TestSQLiteStore_CountByCategory_ScopesToTheProject(t *testing.T) {
 
 	mine, err := blog.New(tc.OrgID, tc.ProjectID, cat, "Mine", "", "body")
 	require.NoError(t, err)
-	require.NoError(t, store.Save(ctx, mine))
+	require.NoError(t, store.Save(ctx, mine, 0))
 
 	theirs, err := blog.New(tc.OrgID, otherProj, otherCat, "Theirs", "", "body")
 	require.NoError(t, err)
-	require.NoError(t, store.Save(ctx, theirs))
+	require.NoError(t, store.Save(ctx, theirs, 0))
 
 	counts, err := store.CountByCategory(ctx, tc.OrgID, tc.ProjectID)
 	require.NoError(t, err)
@@ -458,12 +453,12 @@ func TestSQLiteStore_CountByTag(t *testing.T) {
 	first, err := blog.New(tc.OrgID, tc.ProjectID, cat, "First", "", "body")
 	require.NoError(t, err)
 	first.SetTags([]uuid.UUID{a, b})
-	require.NoError(t, store.Save(ctx, first))
+	require.NoError(t, store.Save(ctx, first, 0))
 
 	second, err := blog.New(tc.OrgID, tc.ProjectID, cat, "Second", "", "body")
 	require.NoError(t, err)
 	second.SetTags([]uuid.UUID{a})
-	require.NoError(t, store.Save(ctx, second))
+	require.NoError(t, store.Save(ctx, second, 0))
 
 	counts, err := store.CountByTag(ctx, tc.OrgID, tc.ProjectID)
 	require.NoError(t, err)
@@ -484,7 +479,7 @@ func TestSQLiteStore_TenantMissing(t *testing.T) {
 	p, err := blog.New(tc.OrgID, tc.ProjectID, cat, "X", "", "body")
 	require.NoError(t, err)
 
-	assert.True(t, tenant.IsMissingError(store.Save(bare, p)))
+	assert.True(t, tenant.IsMissingError(store.Save(bare, p, 0)))
 
 	_, err = store.ByID(bare, p.ID)
 	assert.True(t, tenant.IsMissingError(err))
@@ -498,13 +493,10 @@ func TestSQLiteStore_TenantMissing(t *testing.T) {
 	_, err = store.CountByTag(bare, tc.OrgID, tc.ProjectID)
 	assert.True(t, tenant.IsMissingError(err))
 
-	assert.True(t, tenant.IsMissingError(store.Delete(bare, p.ID)))
+	assert.True(t, tenant.IsMissingError(store.Delete(bare, p.ID, 0)))
 }
 
-// TestSQLiteStore_Save_RefusesCrossTenantUpsert is the regression detector for the conflict
-// clause's org guard. It has to live on SQLite (or an inert-RLS Postgres fixture): under
-// enforced RLS the database refuses these writes on its own, so the same test would pass with
-// the guard deleted. SQLite has no RLS at all, so here the guard is the only thing saying no.
+// TestSQLiteStore_Save_RefusesCrossTenantUpsert is the regression detector for the conflict clause's org guard, which only SQLite can prove.
 func TestSQLiteStore_Save_RefusesCrossTenantUpsert(t *testing.T) {
 	t.Run("updates the caller's own row", func(t *testing.T) {
 		store, _, tc, cat := newBlogStoreForTest(t)
@@ -512,10 +504,10 @@ func TestSQLiteStore_Save_RefusesCrossTenantUpsert(t *testing.T) {
 
 		p, err := blog.New(tc.OrgID, tc.ProjectID, cat, "Original", "", "body")
 		require.NoError(t, err)
-		require.NoError(t, store.Save(ctx, p))
+		require.NoError(t, store.Save(ctx, p, 0))
 
 		require.NoError(t, p.Update("Renamed", p.Slug, "body", cat))
-		require.NoError(t, store.Save(ctx, p), "the guard must not refuse the caller's own row")
+		require.NoError(t, store.Save(ctx, p, 0), "the guard must not refuse the caller's own row")
 
 		got, err := store.ByID(ctx, p.ID)
 		require.NoError(t, err)
@@ -530,11 +522,11 @@ func TestSQLiteStore_Save_RefusesCrossTenantUpsert(t *testing.T) {
 
 		victim, err := blog.New(tc.OrgID, tc.ProjectID, cat, "Org A Only", "", "body")
 		require.NoError(t, err)
-		require.NoError(t, store.Save(ownerCtx, victim))
+		require.NoError(t, store.Save(ownerCtx, victim, 0))
 
 		hijack := *victim
 		hijack.Title = "Hijacked"
-		require.Error(t, store.Save(otherCtx, &hijack), "org B must not be able to upsert onto org A's row")
+		require.Error(t, store.Save(otherCtx, &hijack, 0), "org B must not be able to upsert onto org A's row")
 
 		got, err := store.ByID(ownerCtx, victim.ID)
 		require.NoError(t, err)
@@ -550,15 +542,14 @@ func TestSQLiteStore_Save_RefusesCrossTenantUpsert(t *testing.T) {
 
 		victim, err := blog.New(tc.OrgID, tc.ProjectID, cat, "Org A Only", "", "body")
 		require.NoError(t, err)
-		require.NoError(t, store.Save(ownerCtx, victim))
+		require.NoError(t, store.Save(ownerCtx, victim, 0))
 
-		// NOTE: the handler-shaped attack — org B posts its own scope with a row id it does
-		// not own, so nothing but the conflict clause's org predicate can catch it.
+		// NOTE: org B posts its own scope with a row id it does not own, so only the conflict clause's org predicate can catch it.
 		hijack, err := blog.New(b.OrgID, b.ProjectID, bCat, "Hijacked", "", "body")
 		require.NoError(t, err)
 		hijack.ID = victim.ID
 
-		err = store.Save(otherCtx, hijack)
+		err = store.Save(otherCtx, hijack, 0)
 		assert.True(t, blog.IsNotFoundError(err),
 			"the conflict guard must refuse this as NotFoundError, got %T: %v", err, err)
 
@@ -582,15 +573,97 @@ func TestSQLiteStore_Save_RefusesCrossTenantUpsert(t *testing.T) {
 		victim, err := blog.New(tc.OrgID, tc.ProjectID, cat, "Org A Only", "", "body")
 		require.NoError(t, err)
 		victim.SetTags([]uuid.UUID{seedTag(t, sqlDB, tc)})
-		require.NoError(t, store.Save(ownerCtx, victim))
+		require.NoError(t, store.Save(ownerCtx, victim, 0))
 
 		hijack, err := blog.New(b.OrgID, b.ProjectID, bCat, "Hijacked", "", "body")
 		require.NoError(t, err)
 		hijack.ID = victim.ID
-		require.Error(t, store.Save(otherCtx, hijack))
+		require.Error(t, store.Save(otherCtx, hijack, 0))
 
 		got, err := store.ByID(ownerCtx, victim.ID)
 		require.NoError(t, err)
 		assert.Equal(t, victim.TagIDs, got.TagIDs, "the refused upsert must not have cleared org A's join rows")
 	})
+}
+
+// TestSQLiteStore_StaleVersionMessageNamesTheStoredVersion pins the operator-facing string: the store must name the version it refused, not a zero it never looked up.
+func TestSQLiteStore_StaleVersionMessageNamesTheStoredVersion(t *testing.T) {
+	cases := []struct {
+		name string
+		call func(t *testing.T, store blog.Store, ctx context.Context, p *blog.Post) error
+	}{
+		{
+			name: "save",
+			call: func(t *testing.T, store blog.Store, ctx context.Context, p *blog.Post) error {
+				t.Helper()
+				return store.Save(ctx, p, 1)
+			},
+		},
+		{
+			name: "delete",
+			call: func(t *testing.T, store blog.Store, ctx context.Context, p *blog.Post) error {
+				t.Helper()
+				return store.Delete(ctx, p.ID, 1)
+			},
+		},
+	}
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			store, _, tc, cat := newBlogStoreForTest(t)
+			ctx := tenant.Into(t.Context(), tc)
+
+			p, err := blog.New(tc.OrgID, tc.ProjectID, cat, "Original", "", "body")
+			require.NoError(t, err)
+			require.NoError(t, store.Save(ctx, p, 0))
+			require.NoError(t, p.Update("Second", p.Slug, "body", cat))
+			require.NoError(t, store.Save(ctx, p, 1), "the first conditional write moves the stored version to 2")
+
+			err = tt.call(t, store, ctx, p)
+			require.True(t, blog.IsStaleVersionError(err), "got %T: %v", err, err)
+			assert.Equal(t, "blog: stale version, have 2 want 1", err.Error())
+		})
+	}
+}
+
+// TestSQLiteStore_CrossTenantConditionalWriteIsNotFound proves the refusal read stays org-scoped, so a stale-version answer never confirms another org's row.
+func TestSQLiteStore_CrossTenantConditionalWriteIsNotFound(t *testing.T) {
+	store, sqlDB, tc, cat := newBlogStoreForTest(t)
+	ownerCtx := tenant.Into(t.Context(), tc)
+	b := seedTenant(t, sqlDB)
+	otherCtx := tenant.Into(t.Context(), b)
+
+	victim, err := blog.New(tc.OrgID, tc.ProjectID, cat, "Org A Only", "", "body")
+	require.NoError(t, err)
+	require.NoError(t, store.Save(ownerCtx, victim, 0))
+
+	hijack := *victim
+	hijack.Title = "Hijacked"
+	err = store.Save(otherCtx, &hijack, 1)
+	assert.True(t, blog.IsNotFoundError(err), "got %T: %v", err, err)
+	assert.False(t, blog.IsStaleVersionError(err), "a stale-version answer would confirm org A's row exists")
+
+	assert.True(t, blog.IsNotFoundError(store.Delete(otherCtx, victim.ID, 1)))
+}
+
+// SECURITY: endTx never rolls back an ambient transaction, so a refused conditional delete must not leave an empty tag set on a live post.
+func TestSQLiteStore_RefusedConditionalDeleteLeavesTagLinksIntact(t *testing.T) {
+	store, sqlDB, tc, cat := newBlogStoreForTest(t)
+	ctx := tenant.Into(t.Context(), tc)
+	tag := seedTag(t, sqlDB, tc)
+
+	p, err := blog.New(tc.OrgID, tc.ProjectID, cat, "Keep", "", "body")
+	require.NoError(t, err)
+	p.SetTags([]uuid.UUID{tag})
+	require.NoError(t, store.Save(ctx, p, 0))
+
+	var delErr error
+	require.NoError(t, db.RunInTx(ctx, db.Pool{W: sqlDB, R: sqlDB}, func(txCtx context.Context) error {
+		delErr = store.Delete(txCtx, p.ID, p.Version+1)
+		return nil
+	}), "a caller that treats a stale version as routine commits the ambient transaction")
+	require.True(t, blog.IsStaleVersionError(delErr), "got %T: %v", delErr, delErr)
+
+	got, err := store.ByID(ctx, p.ID)
+	require.NoError(t, err)
+	assert.Equal(t, []uuid.UUID{tag}, got.TagIDs, "a refused delete must leave the tag set alone")
 }

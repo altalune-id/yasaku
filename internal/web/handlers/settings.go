@@ -46,14 +46,14 @@ func NewSettingsHandler(d Deps, projects *project.Service, ledgers *ledger.Servi
 }
 
 // Register wires the settings routes onto mux.
-func (h *SettingsHandler) Register(mux *http.ServeMux) {
+func (h *SettingsHandler) Register(mux web.Mux) {
 	mux.HandleFunc("GET /orgs/{org}/projects/{project}/settings", h.GetSettings)
 	mux.HandleFunc("POST /orgs/{org}/projects/{project}/settings", h.PostSettings)
 }
 
 // GetSettings renders the stored settings, falling back to the project defaults.
 func (h *SettingsHandler) GetSettings(w http.ResponseWriter, r *http.Request) {
-	sc, ok := h.requireProject(w, r)
+	sc, ok := h.RequireProject(w, r)
 	if !ok {
 		return
 	}
@@ -70,7 +70,7 @@ func (h *SettingsHandler) GetSettings(w http.ResponseWriter, r *http.Request) {
 
 // PostSettings validates and persists the submitted settings, rendering a typed refusal as a banner.
 func (h *SettingsHandler) PostSettings(w http.ResponseWriter, r *http.Request) {
-	sc, ok := h.requireProject(w, r)
+	sc, ok := h.RequireProject(w, r)
 	if !ok {
 		return
 	}
@@ -112,24 +112,7 @@ func (h *SettingsHandler) PostSettings(w http.ResponseWriter, r *http.Request) {
 	Render(w, sc.req, templates.SettingsLayout(h.layout(sc), v))
 }
 
-func (h *SettingsHandler) requireProject(w http.ResponseWriter, r *http.Request) (projectScope, bool) {
-	p, sid, ok := h.LoadSession(r)
-	if !ok {
-		http.Redirect(w, r, ResolveReturnTo(h.Cfg.HTTP.BasePath, "/login"), http.StatusSeeOther)
-		return projectScope{}, false
-	}
-	o, r, ok := h.OrgScopeFor(w, r, p, r.PathValue("org"))
-	if !ok {
-		return projectScope{}, false
-	}
-	proj, r, ok := h.ProjectScopeFor(w, r, o.ID, r.PathValue("project"))
-	if !ok {
-		return projectScope{}, false
-	}
-	return projectScope{principal: p, sid: sid, org: o, project: proj, req: r}, true
-}
-
-func (h *SettingsHandler) storedStartDay(sc projectScope) int {
+func (h *SettingsHandler) storedStartDay(sc ProjectScope) int {
 	st, err := h.Ledgers.Get(sc.req.Context())
 	if err != nil {
 		h.LogErr("web settings: stored start day", err)
@@ -138,13 +121,13 @@ func (h *SettingsHandler) storedStartDay(sc projectScope) int {
 	return st.PeriodStartDay
 }
 
-func (h *SettingsHandler) layout(sc projectScope) web.LayoutData {
+func (h *SettingsHandler) layout(sc ProjectScope) web.LayoutData {
 	d := h.LayoutForProject(sc.req, "", sc.org.Slug, sc.project, settingsNavKey)
 	d.Title = d.Tr("settings.title") + " · " + sc.project.Name
 	return d
 }
 
-func (h *SettingsHandler) view(sc projectScope) templates.SettingsView {
+func (h *SettingsHandler) view(sc ProjectScope) templates.SettingsView {
 	v := templates.SettingsView{
 		OrgSlug:     sc.org.Slug,
 		ProjectSlug: sc.project.Slug,

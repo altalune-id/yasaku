@@ -2,8 +2,8 @@ package postgres
 
 import "github.com/go-jet/jet/v2/postgres"
 
-// NOTE: wrapping jet's shared postgres.NULL singleton races; CAST builds a fresh expression.
-// Each helper must match the target column's declared type — Postgres has no assignment cast.
+// NOTE: wrapping jet's shared NULL singleton races; CAST builds a fresh expression instead.
+// NOTE: each helper must match the column's declared type — Postgres has no assignment cast.
 
 // NullText returns a fresh SQL NULL typed as text.
 func NullText() postgres.StringExpression {
@@ -28,4 +28,9 @@ func NullUUID() postgres.StringExpression {
 // NullJSONB returns a fresh SQL NULL typed as jsonb.
 func NullJSONB() postgres.StringExpression {
 	return postgres.StringExp(postgres.CAST(postgres.NULL).AS("jsonb"))
+}
+
+// NullBytea returns a fresh SQL NULL typed as bytea.
+func NullBytea() postgres.ByteaExpression {
+	return postgres.ByteaExp(postgres.CAST(postgres.NULL).AS("bytea"))
 }

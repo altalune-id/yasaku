@@ -85,8 +85,7 @@ func (r *sqliteCategoryRow) toCategory() (*Category, error) {
 	return c, nil
 }
 
-// txAcquire enrolls in the caller's unit of work when one is active, so a Save never opens a
-// second writer transaction against the same SQLite file.
+// NOTE: enrolls in the caller's unit of work so a Save never opens a second writer transaction on the same SQLite file.
 func (s *sqliteStore) txAcquire(ctx context.Context) (*sql.Tx, bool, tenant.Context, error) {
 	tc, err := tenant.From(ctx)
 	if err != nil {
@@ -155,7 +154,7 @@ func (s *sqliteStore) Save(ctx context.Context, c *Category) error {
 				s.table.SortOrder.SET(sqlite.Int(int64(SortOrder32(c.SortOrder)))),
 				s.table.ArchivedAt.SET(archivedAt),
 				s.table.UpdatedAt.SET(sqlite.String(updatedAt)),
-			).WHERE(s.table.OrgID.EQ(sqlite.String(tc.OrgID.String()))),
+			).WHERE(s.table.OrgID.EQ(sqlite.String(tc.OrgID.String())).AND(s.table.ProjectID.EQ(sqlite.String(tc.ProjectID.String())))),
 		)
 	res, execErr := stmt.ExecContext(ctx, tx)
 	if execErr != nil {
@@ -280,10 +279,11 @@ func (s *sqliteStore) Delete(ctx context.Context, id uuid.UUID) error {
 	if err != nil {
 		return err
 	}
-	// SECURITY: org predicate, not RLS — SQLite has none, so this is the only guard on the delete path.
+	// SECURITY: org and project predicates, not RLS — SQLite has none, so this is the only guard on the delete path.
 	stmt := s.table.DELETE().
 		WHERE(s.table.ID.EQ(sqlite.String(id.String())).
-			AND(s.table.OrgID.EQ(sqlite.String(tc.OrgID.String()))))
+			AND(s.table.OrgID.EQ(sqlite.String(tc.OrgID.String()))).
+			AND(s.table.ProjectID.EQ(sqlite.String(tc.ProjectID.String()))))
 	res, execErr := stmt.ExecContext(ctx, tx)
 	if execErr != nil {
 		if typed := translateSQLiteError(execErr, nil, id.String()); typed != nil {

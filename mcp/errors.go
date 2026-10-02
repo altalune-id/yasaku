@@ -3,12 +3,27 @@ package mcp
 import (
 	"errors"
 	"fmt"
+	"regexp"
+	"strings"
+	"unicode"
+	"unicode/utf8"
 )
 
-// CodeUnexpected is the error code reported when no mapper claims a failure.
-const CodeUnexpected = "GEN900"
+// DefaultUnmappedCode is the ErrorPayload.Code a tool failure no ErrorMapper claimed answers with, unless WithUnmappedCode overrides it.
+const DefaultUnmappedCode = "GEN900"
 
-// ErrorPayload is the JSON body of a failed tool call, mirroring apperror.v1.ErrorDetail.
+const unmappedMessage = "unexpected error"
+
+const decoderPrefix = "proto:"
+
+const (
+	maxDetailBytes = 200
+	ellipsis       = "…"
+)
+
+var decodedField = regexp.MustCompile(`(?:unknown field "([^"]+)"|invalid value for \S+ field (\S+?):)`)
+
+// ErrorPayload is the JSON body of a failed tool call, mirroring the apperror.v1.ErrorDetail envelope every other surface answers with.
 type ErrorPayload struct {
 	Code      string            `json:"code"`
 	Message   string            `json:"message"`
@@ -17,19 +32,73 @@ type ErrorPayload struct {
 	TraceID   string            `json:"trace_id,omitempty"`
 }
 
-// ForbiddenScopeError reports that the caller lacks the scope a tool requires.
-type ForbiddenScopeError struct {
-	Tool string
-	Need Scope
+// ScopeDeniedError reports a tool call whose caller did not carry the tool's required scope.
+type ScopeDeniedError struct {
+	Tool  string
+	Scope string
 }
 
-// Error implements the error interface.
-func (e *ForbiddenScopeError) Error() string {
-	return fmt.Sprintf("tool %s requires scope %s", e.Tool, e.Need)
+func (e *ScopeDeniedError) Error() string {
+	return fmt.Sprintf("mcp: tool %q requires scope %q", e.Tool, e.Scope)
 }
 
-// IsForbiddenScopeError reports whether err is a *ForbiddenScopeError.
-func IsForbiddenScopeError(err error) bool {
-	var target *ForbiddenScopeError
+// IsScopeDeniedError reports whether err is a ScopeDeniedError.
+func IsScopeDeniedError(err error) bool {
+	var target *ScopeDeniedError
 	return errors.As(err, &target)
+}
+
+// ScopeUndeclaredError reports a tool registered without a Scope; such a tool is always denied.
+type ScopeUndeclaredError struct {
+	Tool string
+}
+
+func (e *ScopeUndeclaredError) Error() string {
+	return fmt.Sprintf("mcp: tool %q declares no scope", e.Tool)
+}
+
+// IsScopeUndeclaredError reports whether err is a ScopeUndeclaredError.
+func IsScopeUndeclaredError(err error) bool {
+	var target *ScopeUndeclaredError
+	return errors.As(err, &target)
+}
+
+// InvalidArgumentsError reports tool arguments that do not decode into the tool's input.
+type InvalidArgumentsError struct {
+	Tool   string
+	Field  string
+	Reason string
+}
+
+func (e *InvalidArgumentsError) Error() string {
+	return fmt.Sprintf("mcp: tool %q: invalid arguments: %s", e.Tool, e.Reason)
+}
+
+// IsInvalidArgumentsError reports whether err is an InvalidArgumentsError.
+func IsInvalidArgumentsError(err error) bool {
+	var target *InvalidArgumentsError
+	return errors.As(err, &target)
+}
+
+// NewInvalidArgumentsError builds the InvalidArgumentsError for tool from the decoder's failure.
+func NewInvalidArgumentsError(tool string, cause error) *InvalidArgumentsError {
+	reason := strings.TrimLeftFunc(strings.TrimPrefix(cause.Error(), decoderPrefix), unicode.IsSpace)
+	e := &InvalidArgumentsError{Tool: tool, Reason: capped(reason)}
+	m := decodedField.FindStringSubmatch(reason)
+	if m == nil {
+		return e
+	}
+	e.Field = capped(m[1] + m[2])
+	return e
+}
+
+func capped(s string) string {
+	if len(s) <= maxDetailBytes {
+		return s
+	}
+	cut := maxDetailBytes - len(ellipsis)
+	for cut > 0 && !utf8.RuneStart(s[cut]) {
+		cut--
+	}
+	return s[:cut] + ellipsis
 }

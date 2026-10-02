@@ -305,10 +305,7 @@ func TestErrors_AppErrorCodes(t *testing.T) {
 	assert.Equal(t, codes.FailedPrecondition, (&tag.InUseError{}).ToAppError().GRPCCode())
 }
 
-// TestService_CrossProjectIsInvisible pins the service-level scope check. The Store filters by
-// org, not by project, so within one org a guessed or leaked tag id from a sibling project would
-// otherwise resolve. The fake deliberately does NOT filter ByID by project either — it is a plain
-// map lookup — so what these assertions exercise is the service's own check and nothing else.
+// TestService_CrossProjectIsInvisible pins the service's own project check: the Store and the fake both filter by org only, so a sibling project's tag id would otherwise resolve.
 func TestService_CrossProjectIsInvisible(t *testing.T) {
 	newPair := func(t *testing.T) (*tag.Service, *fakes.Tag, context.Context, *tag.Tag) {
 		t.Helper()

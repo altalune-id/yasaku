@@ -21,7 +21,6 @@ import (
 	"altalune.id/yasaku/internal/web/handlers"
 )
 
-// blogFixture is a handlerFixture plus the three blog services and a mux with the blog routes on it.
 type blogFixture struct {
 	*handlerFixture
 	Posts     *blog.Service
@@ -43,7 +42,7 @@ func newBlogFixture(t *testing.T) *blogFixture {
 	f := newFixture(t)
 
 	postStore := fakes.NewBlog()
-	posts := blog.NewService(postStore, discardLogger(), passthroughUnexpected())
+	posts := blog.NewService(postStore, discardLogger(), passthroughUnexpected(), fakes.UnitOfWork, &fakes.Webhooks{})
 	cats := category.NewService(fakes.NewCategory(), discardLogger(), passthroughUnexpected())
 	tags := tag.NewService(fakes.NewTag(), discardLogger(), passthroughUnexpected())
 
@@ -88,8 +87,7 @@ func (b *blogFixture) tenantCtx() context.Context {
 
 const blogBase = "/orgs/acme/projects/alpha"
 
-// TestBlogHandler_PostLifecycle drives the whole post surface end to end: the form, create with tags,
-// the list, edit, update, publish, unpublish and delete.
+// TestBlogHandler_PostLifecycle drives the whole post surface end to end: the form, create with tags, the list, edit, update, publish, unpublish and delete.
 func TestBlogHandler_PostLifecycle(t *testing.T) {
 	t.Parallel()
 	b := newBlogFixture(t)
@@ -193,8 +191,7 @@ func TestBlogHandler_Preview_IsPostOnly(t *testing.T) {
 	assert.Equal(t, http.StatusMethodNotAllowed, rec.Code)
 }
 
-// TestBlogHandler_UnknownTagIDShowsAFormError covers the pre-validation that stands in for the
-// TagNotFoundError the blog package deliberately does not have.
+// TestBlogHandler_UnknownTagIDShowsAFormError covers the pre-validation that stands in for the TagNotFoundError the blog package deliberately does not have.
 func TestBlogHandler_UnknownTagIDShowsAFormError(t *testing.T) {
 	t.Parallel()
 	b := newBlogFixture(t)
@@ -224,8 +221,7 @@ func TestBlogHandler_MissingCategoryShowsAFormError(t *testing.T) {
 	assert.Equal(t, 0, b.PostStore.Len())
 }
 
-// TestBlogHandler_PostFromAnotherProjectIs404 locks the project half of the scope check: blog.ByID
-// scopes to the org only, so a sibling project's id must not resolve.
+// TestBlogHandler_PostFromAnotherProjectIs404 locks the project half of the scope check: blog.ByID scopes to the org only, so a sibling project's id must not resolve.
 func TestBlogHandler_PostFromAnotherProjectIs404(t *testing.T) {
 	t.Parallel()
 	b := newBlogFixture(t)
@@ -280,8 +276,7 @@ func TestBlogHandler_QuickTagReturnsThePickerWithTheNewTagSelected(t *testing.T)
 	assert.Len(t, items, 3)
 }
 
-// TestBlogHandler_SwappedFragmentsKeepTheirProjectURLs locks the fragment layout data: d.ProjectPath
-// collapses to /orgs when ActiveOrg is nil, which silently breaks every action in a swapped-in list.
+// TestBlogHandler_SwappedFragmentsKeepTheirProjectURLs locks the fragment layout data: d.ProjectPath collapses to /orgs when ActiveOrg is nil, which silently breaks every action in a swapped-in list.
 func TestBlogHandler_SwappedFragmentsKeepTheirProjectURLs(t *testing.T) {
 	t.Parallel()
 	b := newBlogFixture(t)

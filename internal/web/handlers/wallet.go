@@ -3,6 +3,7 @@ package handlers
 import (
 	"errors"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	"altalune.id/yasaku/internal/apperror"
 	"altalune.id/yasaku/internal/ledger"
 	"altalune.id/yasaku/internal/project"
+	"altalune.id/yasaku/internal/report"
 	"altalune.id/yasaku/internal/transaction"
 	"altalune.id/yasaku/internal/wallet"
 	"altalune.id/yasaku/internal/web"
@@ -20,6 +22,11 @@ import (
 )
 
 const walletRecentLimit = 20
+
+const (
+	openingMovedParam  = "opening"
+	openingWalletParam = "wallet"
+)
 
 // WalletHandler owns the project-scoped wallet screens.
 type WalletHandler struct {
@@ -43,26 +50,9 @@ func NewWalletHandler(
 	return &WalletHandler{Deps: d, Wallets: wallets, Open: open, Transactions: txs, Ledgers: ledgers}
 }
 
-func requireYasakuProject(d Deps, w http.ResponseWriter, r *http.Request) (projectScope, bool) {
-	p, sid, ok := d.LoadSession(r)
-	if !ok {
-		http.Redirect(w, r, ResolveReturnTo(d.Cfg.HTTP.BasePath, "/login"), http.StatusSeeOther)
-		return projectScope{}, false
-	}
-	o, r, ok := d.OrgScopeFor(w, r, p, r.PathValue("org"))
-	if !ok {
-		return projectScope{}, false
-	}
-	proj, r, ok := d.ProjectScopeFor(w, r, o.ID, r.PathValue("project"))
-	if !ok {
-		return projectScope{}, false
-	}
-	return projectScope{principal: p, sid: sid, org: o, project: proj, req: r}, true
-}
-
 // GetWallets renders the wallets index.
 func (h *WalletHandler) GetWallets(w http.ResponseWriter, r *http.Request) {
-	sc, ok := requireYasakuProject(h.Deps, w, r)
+	sc, ok := h.RequireProject(w, r)
 	if !ok {
 		return
 	}
@@ -72,12 +62,13 @@ func (h *WalletHandler) GetWallets(w http.ResponseWriter, r *http.Request) {
 		h.ErrorPage(w, sc.req, http.StatusInternalServerError, "List failed", "Could not load wallets.", err)
 		return
 	}
+	v.OpeningMovedTo = h.openingMovedTo(sc)
 	Render(w, sc.req, templates.WalletsLayout(h.walletLayout(sc, "Wallets"), v))
 }
 
 // GetNew renders the empty wallet form.
 func (h *WalletHandler) GetNew(w http.ResponseWriter, r *http.Request) {
-	sc, ok := requireYasakuProject(h.Deps, w, r)
+	sc, ok := h.RequireProject(w, r)
 	if !ok {
 		return
 	}
@@ -97,7 +88,7 @@ func (h *WalletHandler) GetNew(w http.ResponseWriter, r *http.Request) {
 
 // PostCreate opens a wallet, recording any opening balance as its first transaction.
 func (h *WalletHandler) PostCreate(w http.ResponseWriter, r *http.Request) {
-	sc, ok := requireYasakuProject(h.Deps, w, r)
+	sc, ok := h.RequireProject(w, r)
 	if !ok {
 		return
 	}
@@ -145,17 +136,43 @@ func (h *WalletHandler) PostCreate(w http.ResponseWriter, r *http.Request) {
 		Currency:         currency,
 		ExcludeFromTotal: v.Exclude,
 	}
-	if opening != nil {
-		_, err = h.Open.Run(sc.req.Context(), params, opening, time.Now().UTC())
-	} else {
-		_, err = h.Wallets.Create(sc.req.Context(), params)
-	}
+	created, dated, err := h.Open.Run(sc.req.Context(), params, opening, time.Now().UTC())
 	if err != nil {
 		h.LogErr("web wallet: create", err)
 		h.writeWalletForm(w, sc, v, bannerFrom(err), "New wallet")
 		return
 	}
+	if dated.Moved {
+		h.redirectToWalletsWith(w, sc, url.Values{
+			openingWalletParam: {created.ID.String()},
+			openingMovedParam:  {dated.Date.String()},
+		})
+		return
+	}
 	h.redirectToWallets(w, sc)
+}
+
+// SECURITY: the notice comes from the URL, so it is shown only when the named wallet's opening balance really is dated that day.
+func (h *WalletHandler) openingMovedTo(sc ProjectScope) string {
+	q := sc.req.URL.Query()
+	moved, err := civil.ParseDate(q.Get(openingMovedParam))
+	if err != nil {
+		return ""
+	}
+	id, err := uuid.Parse(q.Get(openingWalletParam))
+	if err != nil {
+		return ""
+	}
+	items, _, err := h.Transactions.List(sc.req.Context(), transaction.ListOpts{
+		WalletID: &id, Kinds: []transaction.Kind{transaction.KindOpening}, Limit: 1,
+	})
+	if err != nil || len(items) == 0 {
+		return ""
+	}
+	if civil.DateOf(items[0].OccurredAt, h.location(sc)) != moved {
+		return ""
+	}
+	return moved.String()
 }
 
 // GetDetail renders one wallet with its derived balance and most recent movements.
@@ -301,7 +318,7 @@ func adjustState(q string) string {
 }
 
 // Register wires the wallet routes onto mux.
-func (h *WalletHandler) Register(mux *http.ServeMux) {
+func (h *WalletHandler) Register(mux web.Mux) {
 	mux.HandleFunc("GET /orgs/{org}/projects/{project}/wallets", h.GetWallets)
 	mux.HandleFunc("GET /orgs/{org}/projects/{project}/wallets/new", h.GetNew)
 	mux.HandleFunc("POST /orgs/{org}/projects/{project}/wallets", h.PostCreate)
@@ -321,6 +338,7 @@ type banner struct {
 	Code string
 }
 
+//i18n:use wallet.in_use
 func bannerFrom(err error) banner {
 	if err == nil {
 		return banner{}
@@ -349,34 +367,34 @@ func parseAmount(raw string, cur money.Currency) (money.Amount, error) {
 	return money.Amount{}, err
 }
 
-func (h *WalletHandler) requireWallet(w http.ResponseWriter, r *http.Request) (projectScope, *wallet.Wallet, bool) {
-	sc, ok := requireYasakuProject(h.Deps, w, r)
+func (h *WalletHandler) requireWallet(w http.ResponseWriter, r *http.Request) (ProjectScope, *wallet.Wallet, bool) {
+	sc, ok := h.RequireProject(w, r)
 	if !ok {
-		return projectScope{}, nil, false
+		return ProjectScope{}, nil, false
 	}
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
 		h.ErrorPage(w, sc.req, http.StatusBadRequest, "Bad id", "Malformed wallet id.")
-		return projectScope{}, nil, false
+		return ProjectScope{}, nil, false
 	}
 	wl, err := h.Wallets.ByID(sc.req.Context(), id)
 	if err != nil {
 		if wallet.IsNotFoundError(err) {
 			h.ErrorPage(w, sc.req, http.StatusNotFound, "Not found", "That wallet no longer exists.", err)
-			return projectScope{}, nil, false
+			return ProjectScope{}, nil, false
 		}
 		h.LogErr("web wallet: byID", err)
 		h.ErrorPage(w, sc.req, http.StatusInternalServerError, "Lookup failed", "Could not load that wallet.", err)
-		return projectScope{}, nil, false
+		return ProjectScope{}, nil, false
 	}
 	return sc, wl, true
 }
 
-func (h *WalletHandler) walletLayout(sc projectScope, title string) web.LayoutData {
+func (h *WalletHandler) walletLayout(sc ProjectScope, title string) web.LayoutData {
 	return h.LayoutForProject(sc.req, title+" · "+sc.project.Name, sc.org.Slug, sc.project, "wallets")
 }
 
-func (h *WalletHandler) currency(sc projectScope) (money.Currency, error) {
+func (h *WalletHandler) currency(sc ProjectScope) (money.Currency, error) {
 	settings, err := h.Ledgers.Get(sc.req.Context())
 	if err != nil {
 		return "", err
@@ -384,7 +402,7 @@ func (h *WalletHandler) currency(sc projectScope) (money.Currency, error) {
 	return settings.Currency, nil
 }
 
-func (h *WalletHandler) walletsView(sc projectScope, b banner) (templates.WalletsView, error) {
+func (h *WalletHandler) walletsView(sc ProjectScope, b banner) (templates.WalletsView, error) {
 	ctx := sc.req.Context()
 	items, err := h.Wallets.List(ctx, wallet.ListOpts{IncludeArchived: true})
 	if err != nil {
@@ -407,6 +425,7 @@ func (h *WalletHandler) walletsView(sc projectScope, b banner) (templates.Wallet
 		ErrorMsg:    b.Msg,
 		ErrorCode:   b.Code,
 	}
+	lines := make([]report.WalletLine, 0, len(items))
 	for _, it := range items {
 		row := walletRow(it, balanceOf(balances, it))
 		if it.IsArchived() {
@@ -414,15 +433,18 @@ func (h *WalletHandler) walletsView(sc projectScope, b banner) (templates.Wallet
 			continue
 		}
 		v.Active = append(v.Active, row)
-		if !it.ExcludeFromTotal && row.Balance.Currency == v.Total.Currency {
-			v.Total = v.Total.Add(row.Balance)
-		}
+		lines = append(lines, report.WalletLine{
+			WalletID: it.ID, Name: it.Name, Kind: string(it.Kind),
+			ExcludeFromTotal: it.ExcludeFromTotal, Closing: row.Balance,
+		})
 	}
+	totals := report.TotalsOf(lines, currency)
+	v.Total = totals.Spendable
+	v.Mixed = totals.Mixed
 	return v, nil
 }
 
-// balanceOf reads w's derived balance. NOTE: Balances only carries wallets with at least one
-// transaction, so an absent wallet is a zero in its own currency, never a currency-less money.Amount.
+// NOTE: Balances omits wallets with no transaction, so an absent wallet is a zero in its own currency.
 func balanceOf(balances map[uuid.UUID]money.Amount, w *wallet.Wallet) money.Amount {
 	bal, ok := balances[w.ID]
 	if !ok || bal.Currency == "" {
@@ -443,7 +465,7 @@ func walletRow(w *wallet.Wallet, balance money.Amount) templates.WalletRow {
 	}
 }
 
-func walletFormFrom(sc projectScope, w *wallet.Wallet) templates.WalletFormView {
+func walletFormFrom(sc ProjectScope, w *wallet.Wallet) templates.WalletFormView {
 	return templates.WalletFormView{
 		ProjectSlug: sc.project.Slug,
 		ID:          w.ID.String(),
@@ -455,7 +477,7 @@ func walletFormFrom(sc projectScope, w *wallet.Wallet) templates.WalletFormView 
 	}
 }
 
-func (h *WalletHandler) writeWalletList(w http.ResponseWriter, sc projectScope, b banner) {
+func (h *WalletHandler) writeWalletList(w http.ResponseWriter, sc ProjectScope, b banner) {
 	v, err := h.walletsView(sc, b)
 	if err != nil {
 		h.LogErr("web wallet: list", err)
@@ -465,12 +487,12 @@ func (h *WalletHandler) writeWalletList(w http.ResponseWriter, sc projectScope, 
 	Render(w, sc.req, templates.WalletList(h.walletLayout(sc, "Wallets"), v))
 }
 
-func (h *WalletHandler) writeWalletForm(w http.ResponseWriter, sc projectScope, v templates.WalletFormView, b banner, title string) {
+func (h *WalletHandler) writeWalletForm(w http.ResponseWriter, sc ProjectScope, v templates.WalletFormView, b banner, title string) {
 	v.ErrorKey, v.ErrorMsg, v.ErrorCode = b.Key, b.Msg, b.Code
 	Render(w, sc.req, templates.WalletFormLayout(h.walletLayout(sc, title), v))
 }
 
-func (h *WalletHandler) writeWalletDetail(w http.ResponseWriter, sc projectScope, wl *wallet.Wallet, state string, b banner) {
+func (h *WalletHandler) writeWalletDetail(w http.ResponseWriter, sc ProjectScope, wl *wallet.Wallet, state string, b banner) {
 	ctx := sc.req.Context()
 	balance, err := h.Transactions.Balance(ctx, wl.ID)
 	if err != nil {
@@ -497,7 +519,7 @@ func (h *WalletHandler) writeWalletDetail(w http.ResponseWriter, sc projectScope
 	Render(w, sc.req, templates.WalletDetailLayout(h.walletLayout(sc, wl.Name), v))
 }
 
-func (h *WalletHandler) writeAdjustForm(w http.ResponseWriter, sc projectScope, wl *wallet.Wallet, target string, b banner) {
+func (h *WalletHandler) writeAdjustForm(w http.ResponseWriter, sc ProjectScope, wl *wallet.Wallet, target string, b banner) {
 	balance, err := h.Transactions.Balance(sc.req.Context(), wl.ID)
 	if err != nil {
 		h.LogErr("web wallet: balance", err)
@@ -517,31 +539,39 @@ func (h *WalletHandler) writeAdjustForm(w http.ResponseWriter, sc projectScope, 
 	Render(w, sc.req, templates.WalletAdjustLayout(h.walletLayout(sc, "Adjust balance"), v))
 }
 
-func (h *WalletHandler) redirectToWallet(w http.ResponseWriter, sc projectScope, id uuid.UUID, state string) {
+func (h *WalletHandler) redirectToWallet(w http.ResponseWriter, sc ProjectScope, id uuid.UUID, state string) {
 	target := web.Path(h.Cfg.HTTP.BasePath,
 		projectPath(sc.org.Slug, sc.project.Slug, "/wallets/"+id.String())) + "?adjust=" + state
 	http.Redirect(w, sc.req, target, http.StatusSeeOther) //nolint:gosec // G710: both slugs come from rows already resolved by their own slug patterns
 }
 
-func (h *WalletHandler) redirectToWallets(w http.ResponseWriter, sc projectScope) {
+func (h *WalletHandler) redirectToWallets(w http.ResponseWriter, sc ProjectScope) {
+	h.redirectToWalletsWith(w, sc, nil)
+}
+
+func (h *WalletHandler) redirectToWalletsWith(w http.ResponseWriter, sc ProjectScope, q url.Values) {
 	target := web.Path(h.Cfg.HTTP.BasePath, projectPath(sc.org.Slug, sc.project.Slug, "/wallets"))
-	http.Redirect(w, sc.req, target, http.StatusSeeOther) //nolint:gosec // G710: both slugs come from rows already resolved by their own slug patterns
+	if len(q) > 0 {
+		target += "?" + q.Encode()
+	}
+	http.Redirect(w, sc.req, target, http.StatusSeeOther) //nolint:gosec // G710: both slugs come from rows already resolved by their own slug patterns, and the query is encoded
 }
 
 func walletTxRows(walletID uuid.UUID, items []*transaction.Transaction, loc *time.Location) []templates.WalletTxRow {
 	rows := make([]templates.WalletTxRow, 0, len(items))
 	for _, t := range items {
 		rows = append(rows, templates.WalletTxRow{
-			KindKey: transactionKindKey(t.Kind),
-			Signed:  signedFor(walletID, t),
-			Note:    t.Note,
-			Date:    civil.DateOf(t.OccurredAt, loc).String(),
+			KindKey:    transactionKindKey(t.Kind),
+			Signed:     signedFor(walletID, t),
+			Note:       t.Note,
+			Day:        civil.DateOf(t.OccurredAt, loc),
+			OccurredAt: t.OccurredAt,
 		})
 	}
 	return rows
 }
 
-func (h *WalletHandler) location(sc projectScope) *time.Location {
+func (h *WalletHandler) location(sc ProjectScope) *time.Location {
 	s, err := h.Ledgers.Get(sc.req.Context())
 	if err != nil || s == nil {
 		return time.UTC
@@ -563,6 +593,7 @@ func signedFor(walletID uuid.UUID, t *transaction.Transaction) money.Amount {
 	return t.Amount.Neg()
 }
 
+//i18n:use wallet.kind_*
 func walletKindKey(k wallet.Kind) string {
 	return "wallet.kind_" + string(k)
 }

@@ -3,7 +3,7 @@ syntax = "proto3";
 package yasaku.v1;
 
 import "google/protobuf/timestamp.proto";
-import "yasaku/mcp/v1/annotations.proto";
+import "mcp/v1/annotations.proto";
 import "yasaku/v1/common.proto";
 import "yasaku/v1/period.proto";
 
@@ -12,18 +12,16 @@ option go_package = "altalune.id/yasaku/gen/go/yasaku/v1;yasakuv1";
 // WorkspaceService answers which ledgers the caller may act on and what "today" means in one of them.
 service WorkspaceService {
   rpc ListProjects(ListProjectsRequest) returns (ListProjectsResponse) {
-    option (yasaku.mcp.v1.tool) = {
+    option (mcp.v1.tool) = {
       name: "list_projects"
       description: "List the ledgers the caller may access. Use the returned org and project slugs as the target of every other tool; a caller with exactly one org and one project inside it may leave the target empty."
-      access: ACCESS_READ
       ui: "app"
     };
   }
   rpc Now(NowRequest) returns (NowResponse) {
-    option (yasaku.mcp.v1.tool) = {
+    option (mcp.v1.tool) = {
       name: "now"
       description: "Report the current date and time in the ledger's timezone, together with the period in progress when one is open. Call this before writing a dated transaction so relative words like \"yesterday\" resolve against the ledger's own clock, not the caller's."
-      access: ACCESS_READ
       ui: "app"
     };
   }

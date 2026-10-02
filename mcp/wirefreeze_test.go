@@ -1,4 +1,4 @@
-package mcp
+package mcp_test
 
 import (
 	"encoding/json"
@@ -7,14 +7,18 @@ import (
 	"path/filepath"
 	"testing"
 
-	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
+	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
+
+	"altalune.id/yasaku/mcp"
 )
 
 //nolint:gochecknoglobals // a -update flag for golden files has to be package level.
 var updateGolden = flag.Bool("update", false, "rewrite golden files")
 
+// NOTE: freezes the bytes a host receives; this template is upstream, so a wire change here is one in every fork.
 func checkWireGolden(t *testing.T, path string, v any) {
 	t.Helper()
+
 	got, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
@@ -35,47 +39,64 @@ func checkWireGolden(t *testing.T, path string, v any) {
 		t.Fatalf("read golden: %v", err)
 	}
 	if string(got) != string(want) {
-		t.Errorf("wire changed for %s.\ngot:\n%s\nwant:\n%s", path, got, want)
+		t.Errorf("wire changed for %s; rerun with -update once the change is intended.\ngot:\n%s\nwant:\n%s", path, got, want)
 	}
 }
 
-func wireFreezeServer() *Server {
-	s := NewServer("yasaku", "test", staticScopes(string(ScopeRead), string(ScopeWrite)))
-	s.Register(readSpec(), echoHandler)
-	s.Register(writeSpec(), echoHandler)
-	return s
+func wireFreezeServer(t *testing.T, opts ...mcp.Option) *mcp.Server {
+	t.Helper()
+
+	reg := mcp.NewRegistry()
+	reg.Register(mcp.ToolSpec{
+		Name:        "blog_list",
+		Description: "List a project's blog posts.",
+		Scope:       "posts:read",
+		UI:          "ui://yasaku/app",
+		InputSchema: map[string]any{
+			"type":       "object",
+			"properties": map[string]any{"projectId": map[string]any{"type": "string"}},
+			"required":   []string{"projectId"},
+		},
+		Handler: okHandler,
+	}, nil)
+	reg.Register(mcp.ToolSpec{
+		Name:        "blog_publish",
+		Description: "Publish a draft blog post.",
+		Scope:       "posts:write",
+		Mutation:    true,
+		Handler:     okHandler,
+	}, nil)
+
+	return mcp.NewServer(append(opts,
+		mcp.WithImplementation("yasaku", "wirefreeze"),
+		mcp.WithRegistry(reg),
+		mcp.WithScopes(scopesFromContext),
+	)...)
 }
 
 func TestToolsListWireIsFrozen(t *testing.T) {
-	cs := connect(t, wireFreezeServer())
-	res, err := cs.ListTools(t.Context(), &sdk.ListToolsParams{})
+	res, err := connect(t, wireFreezeServer(t)).ListTools(t.Context(), &sdkmcp.ListToolsParams{})
 	if err != nil {
 		t.Fatalf("list tools: %v", err)
 	}
 	checkWireGolden(t, "testdata/golden/tools_list.json", res.Tools)
 }
 
-func TestInitializeCapabilitiesAreFrozen(t *testing.T) {
-	cs := connect(t, wireFreezeServer())
-	checkWireGolden(t, "testdata/golden/initialize.json", cs.InitializeResult().Capabilities)
-}
-
-func wireFreezeUIServer(t *testing.T) *Server {
+func wireFreezeUIServer(t *testing.T) *mcp.Server {
 	t.Helper()
-	s := NewServer("yasaku", "test", staticScopes(string(ScopeRead), string(ScopeWrite)), WithUI(true))
-	s.Register(uiSpec(), echoHandler)
-	s.AddUIResource(UIResource{
+
+	srv := wireFreezeServer(t, mcp.WithUI(true))
+	srv.AddUIResource(mcp.UIResource{
 		URI:           "ui://yasaku/app",
-		Name:          "yasaku",
-		Body:          "<html></html>",
+		Name:          "yasaku app",
+		Body:          testUIBody,
 		PrefersBorder: new(bool),
 	})
-	return s
+	return srv
 }
 
 func TestToolsListWireIsFrozenWithUI(t *testing.T) {
-	cs := connect(t, wireFreezeUIServer(t))
-	res, err := cs.ListTools(t.Context(), &sdk.ListToolsParams{})
+	res, err := connect(t, wireFreezeUIServer(t)).ListTools(t.Context(), &sdkmcp.ListToolsParams{})
 	if err != nil {
 		t.Fatalf("list tools: %v", err)
 	}
@@ -83,32 +104,35 @@ func TestToolsListWireIsFrozenWithUI(t *testing.T) {
 }
 
 func TestResourcesListWireIsFrozen(t *testing.T) {
-	cs := connect(t, wireFreezeUIServer(t))
-	res, err := cs.ListResources(t.Context(), &sdk.ListResourcesParams{})
+	res, err := connect(t, wireFreezeUIServer(t)).ListResources(t.Context(), &sdkmcp.ListResourcesParams{})
 	if err != nil {
 		t.Fatalf("list resources: %v", err)
 	}
 	checkWireGolden(t, "testdata/golden/resources_list.json", res.Resources)
 }
 
-func TestResourceReadWireIsFrozen(t *testing.T) {
-	cs := connect(t, wireFreezeUIServer(t))
-	res, err := cs.ReadResource(t.Context(), &sdk.ReadResourceParams{URI: "ui://yasaku/app"})
+func TestResourcesReadWireIsFrozen(t *testing.T) {
+	res, err := connect(t, wireFreezeUIServer(t)).ReadResource(t.Context(), &sdkmcp.ReadResourceParams{URI: "ui://yasaku/app"})
 	if err != nil {
 		t.Fatalf("read resource: %v", err)
 	}
-	checkWireGolden(t, "testdata/golden/resource_read.json", res.Contents)
+	checkWireGolden(t, "testdata/golden/resources_read.json", res.Contents)
 }
 
-func TestAddUIResourceWithoutMetaEmitsNoMetaKey(t *testing.T) {
-	s := NewServer("yasaku", "test")
-	s.AddUIResource(UIResource{URI: "ui://yasaku/app", Name: "yasaku", Body: "<html></html>"})
+func TestInitializeCapabilitiesAreFrozen(t *testing.T) {
+	checkWireGolden(t, "testdata/golden/initialize.json", connect(t, wireFreezeServer(t)).InitializeResult().Capabilities)
+}
 
-	res, err := connect(t, s).ListResources(t.Context(), &sdk.ListResourcesParams{})
+// TestInitializeCapabilitiesWithUIAreFrozen pins that publishing a bundle is what advertises the resources capability.
+func TestInitializeCapabilitiesWithUIAreFrozen(t *testing.T) {
+	checkWireGolden(t, "testdata/golden/initialize_ui.json", connect(t, wireFreezeUIServer(t)).InitializeResult().Capabilities)
+}
+
+func TestToolErrorWireIsFrozen(t *testing.T) {
+	session := connect(t, wireFreezeServer(t, mcp.WithErrorMapper(testMapper)), "posts:read")
+	res, err := session.CallTool(t.Context(), &sdkmcp.CallToolParams{Name: "blog_publish", Arguments: map[string]any{}})
 	if err != nil {
-		t.Fatalf("list resources: %v", err)
+		t.Fatalf("call tool: %v", err)
 	}
-	if res.Resources[0].Meta != nil {
-		t.Errorf("the fork default must publish no _meta, got %v", res.Resources[0].Meta)
-	}
+	checkWireGolden(t, "testdata/golden/tool_error.json", res)
 }

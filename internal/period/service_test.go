@@ -41,12 +41,15 @@ type fakeSnapshotter struct {
 	err   error
 	calls int
 	hook  func()
+	end   civil.Date
+	at    time.Time
 }
 
-func (f *fakeSnapshotter) Snapshot(_ context.Context, _, _, _ uuid.UUID) (period.Snapshot, error) {
+func (f *fakeSnapshotter) Snapshot(_ context.Context, _, _, _ uuid.UUID, end civil.Date, at time.Time) (period.Snapshot, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls++
+	f.end, f.at = end, at
 	if f.hook != nil {
 		f.hook()
 	}
@@ -229,6 +232,22 @@ func TestClose_SnapshotsAndOpensTheNextPeriod(t *testing.T) {
 	assert.Equal(t, "Sep 2026", next.Name)
 	assert.Equal(t, 1, f.currentCount(t))
 	assert.Equal(t, 1, f.uowCalls, "close must run inside the injected unit of work")
+	assert.Equal(t, date(2026, 9, 24), f.snap.end, "the snapshot is taken as of the requested end")
+	assert.Equal(t, *closed.ClosedAt, f.snap.at, "and as of the close instant stored on the period")
+}
+
+func TestClose_StoresTheCloseInstantToTheMicrosecond(t *testing.T) {
+	f := newFixture(t)
+	p1, err := f.svc.EnsureCurrent(f.ctx)
+	require.NoError(t, err)
+	f.now = time.Date(2026, 9, 25, 10, 0, 0, 123_456_789, jakarta(t))
+
+	closed, err := f.svc.Close(f.ctx, p1.ID, date(2026, 9, 24), f.tc.UserID)
+	require.NoError(t, err)
+	want := time.Date(2026, 9, 25, 3, 0, 0, 123_456_000, time.UTC)
+	require.NotNil(t, closed.ClosedAt)
+	assert.Equal(t, want, *closed.ClosedAt, "SQLite, Postgres and the snapshot cutoff hold the same instant")
+	assert.Equal(t, want, f.snap.at)
 }
 
 func TestClose_RejectsInvalidRanges(t *testing.T) {
@@ -430,6 +449,69 @@ func TestContaining_UsesProjectTimezone(t *testing.T) {
 	got, err := f.svc.Containing(f.ctx, time.Date(2026, 9, 24, 18, 0, 0, 0, time.UTC))
 	require.NoError(t, err)
 	assert.Equal(t, date(2026, 9, 25), got.StartDate)
+}
+
+func TestOpeningDate_KeepsAnInstantInAnOpenPeriod(t *testing.T) {
+	f := newFixture(t)
+	_, err := f.svc.EnsureCurrent(f.ctx)
+	require.NoError(t, err)
+
+	got, err := f.svc.OpeningDate(f.ctx, f.now)
+	require.NoError(t, err)
+	assert.False(t, got.Moved)
+	assert.Equal(t, f.now, got.At)
+	assert.Equal(t, date(2026, 9, 15), got.Date)
+}
+
+func TestOpeningDate_KeepsAnInstantWithNoPeriodYet(t *testing.T) {
+	f := newFixture(t)
+
+	got, err := f.svc.OpeningDate(f.ctx, f.now)
+	require.NoError(t, err)
+	assert.False(t, got.Moved)
+	assert.Equal(t, f.now, got.At)
+	assert.Zero(t, f.currentCount(t), "dating an opening balance creates no period")
+}
+
+func TestOpeningDate_MovesOutOfAPeriodClosedToday(t *testing.T) {
+	f := newFixture(t)
+	p1, err := f.svc.EnsureCurrent(f.ctx)
+	require.NoError(t, err)
+	f.setNow(t, 2026, 9, 24)
+	_, err = f.svc.Close(f.ctx, p1.ID, date(2026, 9, 24), f.tc.UserID)
+	require.NoError(t, err)
+
+	got, err := f.svc.OpeningDate(f.ctx, f.now)
+	require.NoError(t, err)
+	assert.True(t, got.Moved)
+	assert.Equal(t, date(2026, 9, 25), got.Date)
+	assert.True(t, time.Date(2026, 9, 25, 0, 0, 0, 0, jakarta(t)).Equal(got.At),
+		"the start of the next open period at 00:00 project time; got %s", got.At)
+
+	p, err := f.svc.Containing(f.ctx, got.At)
+	require.NoError(t, err)
+	assert.False(t, p.IsLocked(), "the moved instant falls in an open period")
+}
+
+func TestOpeningDate_WithNoOpenPeriodAheadUsesTheDayAfterTheClose(t *testing.T) {
+	f := newFixture(t)
+	end := date(2026, 9, 15)
+	closed, err := period.New(f.tc.OrgID, f.tc.ProjectID, date(2026, 8, 25), "")
+	require.NoError(t, err)
+	closed.EndDate, closed.Status = &end, period.StatusClosed
+	require.NoError(t, f.store.Save(f.ctx, closed))
+
+	got, err := f.svc.OpeningDate(f.ctx, f.now)
+	require.NoError(t, err)
+	assert.True(t, got.Moved)
+	assert.Equal(t, date(2026, 9, 16), got.Date)
+	assert.True(t, time.Date(2026, 9, 16, 0, 0, 0, 0, jakarta(t)).Equal(got.At))
+}
+
+func TestOpeningDate_RequiresTenantScope(t *testing.T) {
+	f := newFixture(t)
+	_, err := f.svc.OpeningDate(t.Context(), f.now)
+	require.Error(t, err)
 }
 
 // TestClose_ComputesTheSnapshotInsideTheUnitOfWork pins where the totals are frozen relative to the transaction that writes them.

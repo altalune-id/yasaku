@@ -4,8 +4,8 @@ import (
 	"context"
 	"log/slog"
 
-	"altalune.id/yasaku/internal/api"
 	"altalune.id/yasaku/internal/apperror"
+	"altalune.id/yasaku/internal/controlplane"
 	"altalune.id/yasaku/internal/platform/config"
 	"altalune.id/yasaku/logger"
 )
@@ -15,14 +15,14 @@ type Client struct {
 	Cfg      *config.Config
 	Log      *slog.Logger
 	Reporter *apperror.Reporter
-	Conn     *api.Client
+	Conn     *controlplane.Client
 }
 
 // BootClient builds the minimal wired graph for CLI subcommands that talk to a remote yasaku server.
 func BootClient(_ context.Context, cfg *config.Config, token string) (*Client, error) {
 	log := logger.New(cfg.Log)
 	reporter := apperror.NewReporter(log, cfg.Mode.IsProduction())
-	conn := api.NewClient(cfg.HTTP.BaseURL, token)
+	conn := controlplane.NewClient(cfg.HTTP.BaseURL, token)
 	return &Client{
 		Cfg:      cfg,
 		Log:      log,

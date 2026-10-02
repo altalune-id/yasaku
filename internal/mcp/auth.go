@@ -1,117 +1,115 @@
+// Package mcp is the app side of the MCP surface (S7): request authentication, per-tool scope resolution, the RFC 9728 metadata document and the tools the surface publishes.
 package mcp
 
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strings"
 
+	"google.golang.org/grpc/codes"
+
+	apperrorv1 "altalune.id/yasaku/gen/go/apperror/v1"
 	"altalune.id/yasaku/internal/apperror"
+	"altalune.id/yasaku/internal/platform/authn"
 	"altalune.id/yasaku/internal/platform/session"
-	"altalune.id/yasaku/internal/user"
-	mcprt "altalune.id/yasaku/mcp"
+	rootmcp "altalune.id/yasaku/mcp"
 )
 
-const bearerScheme = "bearer"
+const unauthorizedMessage = "unauthorized"
 
-// auth verifies the bearer token, binds the principal to the request context and calls next.
-func (s *Server) auth(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		p, err := s.authenticate(r)
-		if err != nil {
-			s.deny(w, r, err)
-			return
+// ScopesFromContext resolves the scopes the caller's principal carries, for rootmcp.WithScopes. SECURITY: every principal is scope-checked on this surface, a JWT included — see the S7 row of R4 in ../../docs/surfaces/README.md.
+func ScopesFromContext(ctx context.Context) []string {
+	return slices.Clone(session.PrincipalFrom(ctx).Scopes)
+}
+
+// WWWAuthenticate builds the challenge a 401 carries, naming the protected-resource metadata document per RFC 9728.
+func WWWAuthenticate(resourceMetadataURL string) string {
+	return fmt.Sprintf("Bearer resource_metadata=%q", resourceMetadataURL)
+}
+
+// Authenticate authenticates every request reaching the MCP surface and puts the resulting principal in the request context, where ScopesFromContext reads it. SECURITY: a nil authenticator, an absent credential, a credential of an unrecognized shape and a rejected credential all answer the same masked 401, so a caller learns nothing about why.
+func Authenticate(a authn.Authenticator, scheme authn.Scheme, resourceMetadataURL string, log *slog.Logger) func(http.Handler) http.Handler {
+	challenge := WWWAuthenticate(resourceMetadataURL)
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			p, reason, ok := principalFor(r, a, scheme)
+			if !ok {
+				// SECURITY: the reason is logged, never returned — the response stays one masked 401 whatever the cause.
+				if log != nil {
+					log.WarnContext(r.Context(), "mcp: credential rejected", slog.String("reason", reason))
+				}
+				writeUnauthorized(r.Context(), w, challenge)
+				return
+			}
+			next.ServeHTTP(w, r.WithContext(session.PrincipalInto(r.Context(), p)))
+		})
+	}
+}
+
+// TranslateError maps an MCP authentication or scope failure onto the canonical AppError envelope every other surface answers with.
+func TranslateError(err error) error {
+	if err == nil {
+		return nil
+	}
+	if rootmcp.IsScopeDeniedError(err) || rootmcp.IsScopeUndeclaredError(err) || authn.IsInsufficientScopeError(err) {
+		return appError(apperror.CodeForbidden, "credential lacks the required scope", codes.PermissionDenied, err)
+	}
+	if authn.IsUnauthorizedError(err) {
+		return appError(apperror.CodeUnauthenticated, unauthorizedMessage, codes.Unauthenticated, err)
+	}
+	if invalid, ok := errors.AsType[*rootmcp.InvalidArgumentsError](err); ok {
+		return appError(apperror.CodeValidation, "invalid tool arguments: "+invalid.Reason, codes.InvalidArgument, err)
+	}
+	return err
+}
+
+func principalFor(r *http.Request, a authn.Authenticator, scheme authn.Scheme) (session.Principal, string, bool) {
+	if a == nil {
+		return session.Principal{}, "no authenticator configured", false
+	}
+	raw := authn.CredentialFrom(r)
+	if raw == "" {
+		return session.Principal{}, "no bearer credential on the request", false
+	}
+	if scheme.Looks(raw) == authn.ShapeUnknown {
+		return session.Principal{}, "credential matched neither the api key prefix nor the JWT shape", false
+	}
+	p, err := a.Authenticate(r.Context(), raw)
+	if err != nil {
+		return session.Principal{}, "every authenticator rejected the credential: " + chainCauses(err), false
+	}
+	return p, "", true
+}
+
+// chainCauses renders why each authenticator refused. SECURITY: logged only — the caller still receives one masked 401.
+func chainCauses(err error) string {
+	var u *authn.UnauthorizedError
+	if errors.As(err, &u) {
+		if c := u.Causes(); c != nil {
+			return strings.ReplaceAll(c.Error(), "\n", "; ")
 		}
-		next.ServeHTTP(w, r.WithContext(session.PrincipalInto(r.Context(), p)))
-	})
+	}
+	return err.Error()
 }
 
-func (s *Server) authenticate(r *http.Request) (session.Principal, error) {
-	raw, err := bearerToken(r.Header.Get("Authorization"))
-	if err != nil {
-		return session.Principal{}, err
-	}
-	if s.Verifier == nil {
-		return session.Principal{}, &UnauthenticatedError{Reason: "no token verifier is configured"}
-	}
-	ctx := r.Context()
-	p, err := s.Verifier.Verify(ctx, raw)
-	if err != nil {
-		s.log.WarnContext(ctx, "mcp: bearer token rejected", slog.Any("error", err))
-		return session.Principal{}, &UnauthenticatedError{Reason: "the bearer token was rejected"}
-	}
-	u, err := s.users.ByIDP(ctx, p.IDPIssuer, p.IDPSubject)
-	if err != nil {
-		if user.IsNotFoundError(err) {
-			return session.Principal{}, &UnknownUserError{Subject: p.IDPSubject}
-		}
-		return session.Principal{}, err
-	}
-	p.UserID = u.ID
-	p.Source = session.SourceToken
-	if p.Email == "" {
-		p.Email = u.Email
-	}
-	if p.Name == "" {
-		p.Name = u.Name
-	}
-	p.IsAdmin = u.IsAdmin
-	p.Locale = u.Locale
-	return p, nil
+func appError(code, message string, grpcCode codes.Code, cause error) error {
+	return apperror.New(code, message, grpcCode, &apperrorv1.ErrorDetail{Code: code}).WithCause(cause)
 }
 
-func bearerToken(header string) (string, error) {
-	if strings.TrimSpace(header) == "" {
-		return "", &UnauthenticatedError{Reason: "the Authorization header is missing"}
-	}
-	scheme, token, found := strings.Cut(header, " ")
-	if !found || !strings.EqualFold(scheme, bearerScheme) || strings.TrimSpace(token) == "" {
-		return "", &UnauthenticatedError{Reason: "Authorization must use the Bearer scheme"}
-	}
-	return strings.TrimSpace(token), nil
-}
-
-// Challenge writes the RFC 9728 bearer challenge with a 401 MCP001 body.
-func (s *Server) Challenge(w http.ResponseWriter) {
-	s.writeChallenge(context.Background(), w)
-}
-
-func (s *Server) writeChallenge(ctx context.Context, w http.ResponseWriter) {
-	w.Header().Set("WWW-Authenticate", s.challenge)
-	writeError(ctx, w, http.StatusUnauthorized, (&UnauthenticatedError{}).ToAppError())
-}
-
-func (s *Server) deny(w http.ResponseWriter, r *http.Request, err error) {
-	ctx := r.Context()
-	switch {
-	case IsUnauthenticatedError(err):
-		s.writeChallenge(ctx, w)
-	case IsUnknownUserError(err):
-		writeError(ctx, w, http.StatusForbidden, (&UnknownUserError{}).ToAppError())
-	case IsNotMemberError(err):
-		writeError(ctx, w, http.StatusForbidden, (&NotMemberError{}).ToAppError())
-	default:
-		s.log.ErrorContext(ctx, "mcp: authentication failed unexpectedly", slog.Any("error", err))
-		writeError(ctx, w, http.StatusInternalServerError, nil)
-	}
-}
-
-type errorEnvelope struct {
-	Error mcprt.ErrorPayload `json:"error"`
-}
-
-func writeError(ctx context.Context, w http.ResponseWriter, status int, ae *apperror.AppError) {
-	payload := mcprt.ErrorPayload{Code: mcprt.CodeUnexpected, Message: "unexpected error"}
-	if ae != nil {
-		payload = mcprt.ErrorPayload{Code: ae.Code(), Message: ae.Message(), Meta: metaOf(ae)}
-	}
-	body, err := json.Marshal(errorEnvelope{Error: withContext(ctx, payload)})
-	if err != nil {
-		body = []byte(`{"error":{"code":"` + mcprt.CodeUnexpected + `","message":"unexpected error"}}`)
-	}
-	w.Header().Set("Content-Type", "application/json")
+// NOTE: the body is rootmcp.ErrorPayload, the same struct an in-result tool failure carries, so one client parser reads both.
+func writeUnauthorized(ctx context.Context, w http.ResponseWriter, challenge string) {
+	w.Header().Set("WWW-Authenticate", challenge)
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
-	w.WriteHeader(status)
-	_, _ = w.Write(body)
+	w.WriteHeader(http.StatusUnauthorized)
+	payload := AttachContext(ctx, rootmcp.ErrorPayload{
+		Code:    apperror.CodeMCPUnauthenticated,
+		Message: unauthorizedMessage,
+	})
+	_ = json.NewEncoder(w).Encode(payload)
 }

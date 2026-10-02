@@ -28,9 +28,6 @@ func newSQLiteStore(db *sql.DB, tablePrefix string) *sqliteStore {
 	return &sqliteStore{db: db, table: sqliteent.NewWallets(tablePrefix)}
 }
 
-// txAcquire enrolls in the caller's unit of work when one is active, so a write inside
-// db.RunInTx rolls back with it and a multi-statement write never opens a second SQLite
-// writer transaction against the same file.
 func (s *sqliteStore) txAcquire(ctx context.Context) (*sql.Tx, bool, tenant.Context, error) {
 	tc, err := tenant.From(ctx)
 	if err != nil {
@@ -154,7 +151,7 @@ func (s *sqliteStore) Save(ctx context.Context, w *Wallet) error {
 				s.table.ExcludeFromTotal.SET(sqlite.Int(exclude)),
 				s.table.ArchivedAt.SET(sqliteNullableTimeExpr(w.ArchivedAt)),
 				s.table.UpdatedAt.SET(sqlite.String(updatedAt)),
-			).WHERE(s.table.OrgID.EQ(sqlite.String(tc.OrgID.String()))),
+			).WHERE(s.table.OrgID.EQ(sqlite.String(tc.OrgID.String())).AND(s.table.ProjectID.EQ(sqlite.String(tc.ProjectID.String())))),
 		)
 	res, execErr := stmt.ExecContext(ctx, tx)
 	if execErr != nil {
@@ -237,10 +234,11 @@ func (s *sqliteStore) Delete(ctx context.Context, id uuid.UUID) error {
 	if err != nil {
 		return err
 	}
-	// SECURITY: org predicate; SQLite has no row level security at all.
+	// SECURITY: org and project predicates; SQLite has no row level security at all.
 	stmt := s.table.DELETE().
 		WHERE(s.table.ID.EQ(sqlite.String(id.String())).
-			AND(s.table.OrgID.EQ(sqlite.String(tc.OrgID.String()))))
+			AND(s.table.OrgID.EQ(sqlite.String(tc.OrgID.String()))).
+			AND(s.table.ProjectID.EQ(sqlite.String(tc.ProjectID.String()))))
 	res, execErr := stmt.ExecContext(ctx, tx)
 	if execErr != nil {
 		if typed := translateSQLiteDeleteError(execErr, id.String()); typed != nil {
@@ -291,8 +289,7 @@ func translateSQLiteSaveError(err error, name string) error {
 	return nil
 }
 
-// NOTE: SQLite raises an ON DELETE RESTRICT violation as SQLITE_CONSTRAINT_TRIGGER
-// (FK actions run as internal triggers); only insert-side violations use FOREIGNKEY.
+// NOTE: SQLite raises an ON DELETE RESTRICT violation as SQLITE_CONSTRAINT_TRIGGER, not FOREIGNKEY.
 func translateSQLiteDeleteError(err error, id string) error {
 	code, ok := sqliteCode(err)
 	if !ok {

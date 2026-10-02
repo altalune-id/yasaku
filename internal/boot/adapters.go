@@ -6,11 +6,10 @@ import (
 
 	"github.com/google/uuid"
 
+	"altalune.id/yasaku/civil"
 	"altalune.id/yasaku/internal/category"
 	"altalune.id/yasaku/internal/i18n"
 	"altalune.id/yasaku/internal/period"
-	pdb "altalune.id/yasaku/internal/platform/db"
-	"altalune.id/yasaku/internal/platform/tenant"
 	"altalune.id/yasaku/internal/report"
 	"altalune.id/yasaku/internal/transaction"
 	"altalune.id/yasaku/internal/wallet"
@@ -24,8 +23,8 @@ type snapshotterAdapter struct {
 var _ period.Snapshotter = snapshotterAdapter{}
 
 // Snapshot stamps ComputedAt here because period.Close persists the document verbatim into both the period row and its immutable closing record.
-func (a snapshotterAdapter) Snapshot(ctx context.Context, orgID, projectID, periodID uuid.UUID) (period.Snapshot, error) {
-	sum, err := a.reports.SnapshotFor(ctx, orgID, projectID, periodID)
+func (a snapshotterAdapter) Snapshot(ctx context.Context, orgID, projectID, periodID uuid.UUID, end civil.Date, at time.Time) (period.Snapshot, error) {
+	sum, err := a.reports.SnapshotFor(ctx, orgID, projectID, periodID, end, at)
 	if err != nil {
 		return period.Snapshot{}, err
 	}
@@ -58,14 +57,17 @@ type periodResolverAdapter struct{ periods *period.Service }
 
 var _ transaction.PeriodResolver = periodResolverAdapter{}
 
-// Containing reports the period covering at; a project with no such period yields ok == false, not an error.
-func (a periodResolverAdapter) Containing(ctx context.Context, _, _ uuid.UUID, at time.Time) (transaction.PeriodInfo, bool, error) {
+// Containing reports the period covering at; no such period yields ok == false, and one outside orgID and projectID a NotFoundError.
+func (a periodResolverAdapter) Containing(ctx context.Context, orgID, projectID uuid.UUID, at time.Time) (transaction.PeriodInfo, bool, error) {
 	p, err := a.periods.Containing(ctx, at)
 	if err != nil {
 		if period.IsNotFoundError(err) {
 			return transaction.PeriodInfo{}, false, nil
 		}
 		return transaction.PeriodInfo{}, false, err
+	}
+	if p.OrgID != orgID || p.ProjectID != projectID {
+		return transaction.PeriodInfo{}, false, &period.NotFoundError{ID: p.ID.String()}
 	}
 	info, err := a.info(ctx, p)
 	if err != nil {
@@ -74,10 +76,14 @@ func (a periodResolverAdapter) Containing(ctx context.Context, _, _ uuid.UUID, a
 	return info, true, nil
 }
 
-func (a periodResolverAdapter) ByID(ctx context.Context, _, _, id uuid.UUID) (transaction.PeriodInfo, error) {
+// SECURITY: the adapter never fabricates tenant scope; it asserts the caller's scope matches the row and reports a mismatch as absent.
+func (a periodResolverAdapter) ByID(ctx context.Context, orgID, projectID, id uuid.UUID) (transaction.PeriodInfo, error) {
 	p, err := a.periods.ByID(ctx, id)
 	if err != nil {
 		return transaction.PeriodInfo{}, err
+	}
+	if p.OrgID != orgID || p.ProjectID != projectID {
+		return transaction.PeriodInfo{}, &period.NotFoundError{ID: id.String()}
 	}
 	return a.info(ctx, p)
 }
@@ -99,6 +105,17 @@ func (a periodResolverAdapter) info(ctx context.Context, p *period.Period) (tran
 	return info, nil
 }
 
+// SECURITY: the adapter takes its scope from ctx through period.Service, which reads the request's tenant, never from an argument.
+func openingDaterFor(periods *period.Service) wallet.OpeningDaterFunc {
+	return func(ctx context.Context, at time.Time) (wallet.OpeningDate, error) {
+		d, err := periods.OpeningDate(ctx, at)
+		if err != nil {
+			return wallet.OpeningDate{}, err
+		}
+		return wallet.OpeningDate{At: d.At, Date: d.Date, Moved: d.Moved}, nil
+	}
+}
+
 type namerAdapter struct{}
 
 var _ category.Namer = namerAdapter{}
@@ -112,7 +129,6 @@ func (namerAdapter) DefaultName(ctx context.Context, key string) string {
 	return t.T(key)
 }
 
-// walletReaderFor resolves a wallet through the wallet service on the caller's already-scoped context.
 // SECURITY: the adapter never fabricates tenant scope; it asserts the caller's scope matches the row and reports a mismatch as absent.
 func walletReaderFor(wallets *wallet.Service) transaction.WalletReaderFunc {
 	return func(ctx context.Context, orgID, projectID, id uuid.UUID) (transaction.WalletInfo, error) {
@@ -127,7 +143,6 @@ func walletReaderFor(wallets *wallet.Service) transaction.WalletReaderFunc {
 	}
 }
 
-// categoryReaderFor resolves a category through the category service on the caller's already-scoped context.
 // SECURITY: the adapter never fabricates tenant scope; it asserts the caller's scope matches the row and reports a mismatch as absent.
 func categoryReaderFor(categories *category.Service) transaction.CategoryReaderFunc {
 	return func(ctx context.Context, orgID, projectID, id uuid.UUID) (transaction.CategoryInfo, error) {
@@ -139,21 +154,5 @@ func categoryReaderFor(categories *category.Service) transaction.CategoryReaderF
 			return transaction.CategoryInfo{}, &category.NotFoundError{ID: id.String()}
 		}
 		return transaction.CategoryInfo{ID: c.ID, Kind: string(c.Kind), Archived: c.IsArchived()}, nil
-	}
-}
-
-// unitOfWork builds the real transaction boundary the wallet, period and transaction modules share.
-func unitOfWork(cfg pdb.DBConfig, pool pdb.Pool, pc *tenant.PgConn) func(context.Context, func(context.Context) error) error {
-	if cfg.Driver == pdb.DriverPostgres {
-		return func(ctx context.Context, fn func(context.Context) error) error {
-			tc, err := tenant.From(ctx)
-			if err != nil {
-				return err
-			}
-			return tenant.RunInTx(ctx, pc, tc, fn)
-		}
-	}
-	return func(ctx context.Context, fn func(context.Context) error) error {
-		return pdb.RunInTx(ctx, pool, fn)
 	}
 }

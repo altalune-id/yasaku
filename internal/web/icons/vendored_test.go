@@ -1,19 +1,21 @@
 package icons
 
 import (
+	"encoding/xml"
+	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
-	"sort"
+	"slices"
 	"strings"
 	"testing"
 )
 
-// NOTE: scraping the sources keeps this self-maintaining — icons.Icon renders an invisible
-// <span data-missing-icon> for an unknown name, so an un-vendored icon otherwise ships as a gap.
+// NOTE: Icon renders an invisible <span data-missing-icon> for an unknown name, so nothing else catches a missing icon.
 var (
 	reTemplIcon   = regexp.MustCompile(`icons\.Icon\(\s*"([a-z0-9-]+)"`)
-	reIconFunc    = regexp.MustCompile(`(?s)func \w*[Ii]con\([^)]*\) string \{(.*?)\n\}`)
+	reIconFunc    = regexp.MustCompile(`(?s)func \w*[Ii]con\w*\([^)]*\) string \{(.*?)\n\}`)
 	reIconReturn  = regexp.MustCompile(`return "([a-z0-9-]+)"`)
 	reAllowedList = regexp.MustCompile(`(?s)var AllowedIcons = \[\]string\{(.*?)\}`)
 	reQuoted      = regexp.MustCompile(`"([a-z0-9-]+)"`)
@@ -29,63 +31,100 @@ func repoRoot(t *testing.T) string {
 	return root
 }
 
+func globAll(t *testing.T, root string, patterns ...string) []string {
+	t.Helper()
+
+	var out []string
+	for _, p := range patterns {
+		matches, err := filepath.Glob(filepath.Join(root, p))
+		if err != nil {
+			t.Fatalf("glob %s: %v", p, err)
+		}
+		out = append(out, matches...)
+	}
+	return out
+}
+
 func referencedIcons(t *testing.T) map[string]string {
 	t.Helper()
 
 	root := repoRoot(t)
 	out := map[string]string{}
 
-	templates, err := filepath.Glob(filepath.Join(root, "internal/web/templates/*.templ"))
-	if err != nil {
-		t.Fatalf("glob templates: %v", err)
-	}
-	for _, f := range templates {
-		b, rErr := os.ReadFile(f)
-		if rErr != nil {
-			t.Fatalf("read %s: %v", f, rErr)
+	for _, f := range globAll(t, root, "internal/web/templates/*.templ") {
+		b, err := os.ReadFile(f) //nolint:gosec // G304: path comes from a repo-local glob
+		if err != nil {
+			t.Fatalf("read %s: %v", f, err)
 		}
 		for _, m := range reTemplIcon.FindAllStringSubmatch(string(b), -1) {
 			out[m[1]] = filepath.Base(f)
 		}
 	}
-
-	// NOTE: handlers pick icons in Go, so template literals alone miss them (txRowIcon and friends).
-	helpers, err := filepath.Glob(filepath.Join(root, "internal/web/templates/*.templ"))
-	if err != nil {
-		t.Fatalf("glob template helpers: %v", err)
+	if len(out) == 0 {
+		t.Fatal("found no icons.Icon literal in any template — the scraper pattern has gone stale")
 	}
-	sawIconFunc := false
-	for _, f := range helpers {
-		b, rErr := os.ReadFile(f)
-		if rErr != nil {
-			t.Fatalf("read %s: %v", f, rErr)
+
+	// NOTE: handlers and template helpers pick icon names in Go, so template literals alone miss them.
+	goSources := globAll(t, root,
+		"internal/web/templates/*.templ",
+		"internal/web/handlers/*.go",
+		"internal/web/*.go",
+	)
+	for _, f := range goSources {
+		if strings.HasSuffix(f, "_test.go") {
+			continue
+		}
+		b, err := os.ReadFile(f) //nolint:gosec // G304: path comes from a repo-local glob
+		if err != nil {
+			t.Fatalf("read %s: %v", f, err)
 		}
 		for _, fn := range reIconFunc.FindAllStringSubmatch(string(b), -1) {
-			sawIconFunc = true
 			for _, m := range reIconReturn.FindAllStringSubmatch(fn[1], -1) {
 				out[m[1]] = filepath.Base(f)
 			}
 		}
 	}
-	if !sawIconFunc {
-		t.Fatal("found no icon-returning helper — the scraper pattern has gone stale")
+
+	// NOTE: a fork declares its user-pickable set as `var AllowedIcons = []string{…}`; every name must be vendored.
+	for _, f := range allowedIconLists(t, root) {
+		b, err := os.ReadFile(f) //nolint:gosec // G304: path comes from a repo-local walk
+		if err != nil {
+			t.Fatalf("read %s: %v", f, err)
+		}
+		block := reAllowedList.FindSubmatch(b)
+		if block == nil {
+			continue
+		}
+		for _, m := range reQuoted.FindAllStringSubmatch(string(block[1]), -1) {
+			out[m[1]] = filepath.Base(f) + ":AllowedIcons"
+		}
 	}
 
-	categoryFile := filepath.Join(root, "internal/category/category.go")
-	b, err := os.ReadFile(categoryFile)
+	return out
+}
+
+func allowedIconLists(t *testing.T, root string) []string {
+	t.Helper()
+
+	var out []string
+	err := filepath.WalkDir(filepath.Join(root, "internal"), func(path string, d os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		b, err := os.ReadFile(path) //nolint:gosec // G304: path comes from a repo-local walk
+		if err != nil {
+			return err
+		}
+		if reAllowedList.Match(b) {
+			out = append(out, path)
+		}
+		return nil
+	})
 	if err != nil {
-		t.Fatalf("read %s: %v", categoryFile, err)
-	}
-	block := reAllowedList.FindSubmatch(b)
-	if block == nil {
-		t.Fatal("category.AllowedIcons not found — the scraper pattern has gone stale")
-	}
-	for _, m := range reQuoted.FindAllStringSubmatch(string(block[1]), -1) {
-		out[m[1]] = "category.AllowedIcons"
-	}
-
-	if len(out) == 0 {
-		t.Fatal("found no icon references — the scraper patterns have gone stale")
+		t.Fatalf("walk internal/: %v", err)
 	}
 	return out
 }
@@ -98,7 +137,7 @@ func TestEveryReferencedIconIsVendored(t *testing.T) {
 	for n := range refs {
 		names = append(names, n)
 	}
-	sort.Strings(names)
+	slices.Sort(names)
 
 	for _, n := range names {
 		t.Run(n, func(t *testing.T) {
@@ -112,8 +151,20 @@ func TestEveryReferencedIconIsVendored(t *testing.T) {
 	}
 }
 
-// SECURITY: every vendored body is injected with templ.Raw, so a script or handler attribute would execute.
-func TestVendoredIconsCarryNoExecutableMarkup(t *testing.T) {
+// NOTE: an allowlist, not a denylist — bodies are injected with templ.Raw, so anything unrecognized is refused.
+//
+//nolint:gochecknoglobals // Immutable manifest; not runtime state.
+var (
+	allowedSVGElements = []string{"circle", "ellipse", "g", "line", "path", "polygon", "polyline", "rect"}
+	allowedSVGAttrs    = []string{
+		"cx", "cy", "d", "fill", "height", "opacity", "points", "r", "rx", "ry",
+		"stroke", "stroke-dasharray", "stroke-linecap", "stroke-linejoin", "stroke-width",
+		"transform", "width", "x", "x1", "x2", "y", "y1", "y2",
+	}
+)
+
+// SECURITY: bodies are injected with templ.Raw, so a script element or handler attribute would execute.
+func TestVendoredIconsCarryOnlyAllowedMarkup(t *testing.T) {
 	t.Parallel()
 
 	for _, n := range Names() {
@@ -122,10 +173,29 @@ func TestVendoredIconsCarryNoExecutableMarkup(t *testing.T) {
 			if !ok {
 				t.Fatalf("icon %q vanished between Names and InnerFor", n)
 			}
-			lower := strings.ToLower(inner)
-			for _, bad := range []string{"<script", "javascript:", "onload=", "onerror=", "onclick=", "<foreignobject"} {
-				if strings.Contains(lower, bad) {
-					t.Fatalf("icon %q contains %q", n, bad)
+			dec := xml.NewDecoder(strings.NewReader("<root>" + inner + "</root>"))
+			for {
+				tok, err := dec.Token()
+				if errors.Is(err, io.EOF) {
+					break
+				}
+				if err != nil {
+					t.Fatalf("icon %q is not well-formed XML: %v", n, err)
+				}
+				el, isStart := tok.(xml.StartElement)
+				if !isStart || el.Name.Local == "root" {
+					continue
+				}
+				if !slices.Contains(allowedSVGElements, el.Name.Local) {
+					t.Fatalf("icon %q uses element <%s>, which is not on the allowlist", n, el.Name.Local)
+				}
+				for _, a := range el.Attr {
+					if !slices.Contains(allowedSVGAttrs, a.Name.Local) {
+						t.Fatalf("icon %q sets attribute %q on <%s>, which is not on the allowlist", n, a.Name.Local, el.Name.Local)
+					}
+					if strings.Contains(strings.ToLower(a.Value), "javascript:") {
+						t.Fatalf("icon %q sets %s to a javascript: URL", n, a.Name.Local)
+					}
 				}
 			}
 		})

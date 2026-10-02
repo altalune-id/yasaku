@@ -13,7 +13,6 @@ import (
 
 const storeRoot = "../internal"
 
-// storeFileNames are the adapter file names MODULE_TEMPLATE.md mandates; a new module inherits this guard by using them.
 var storeFileNames = map[string]bool{ //nolint:gochecknoglobals // Immutable manifest; not runtime state.
 	"postgres.go": true,
 	"sqlite.go":   true,
@@ -23,9 +22,9 @@ var storeFileNames = map[string]bool{ //nolint:gochecknoglobals // Immutable man
 
 const unguardedConflictConsequence = "an ON_CONFLICT ... DO_UPDATE with no tenant predicate is a cross-tenant write: a Save carrying an attacker-supplied row id from another org takes the UPDATE branch and rewrites that org's row. Postgres RLS refuses it, but SQLite has no RLS at all and a BYPASSRLS role bypasses it, so the predicate in the conflict clause is the only protection on those paths. Fix it by qualifying the action — DO_UPDATE(SET(...).WHERE(table.OrgID.EQ(<tenant org>))) — plus a RowsAffected() == 0 branch returning a NotFoundError, not by widening the exemption list"
 
-// upsertGuardExemptions lists DO_UPDATE sites whose table carries no org_id column, keyed by "<path under internal/>:<func>".
 var upsertGuardExemptions = map[string]string{ //nolint:gochecknoglobals // Immutable manifest; not runtime state.
 	"user/pgwriter.go:Save":             "users is global — a user exists before and across every org, so the table has no org_id column",
+	"user/sqlite.go:Save":               "users is global — a user exists before and across every org, so the table has no org_id column",
 	"platform/session/postgres.go:Save": "sessions carries no org_id by design; a session is resolved before any tenant scope exists (see schema.RequiredTableSuffixes and migrations/postgres/001_init.sql)",
 	"platform/session/sqlite.go:Save":   "sessions carries no org_id by design; a session is resolved before any tenant scope exists (see schema.RequiredTableSuffixes and migrations/postgres/001_init.sql)",
 	"org/pgwriter.go:Save":              "the orgs table has no org_id column — its own id is the tenant id, and org.Service.Create writes a row for an org that does not exist yet",
@@ -111,7 +110,6 @@ func collectConflictSites(t *testing.T) []conflictSite {
 	return out
 }
 
-// conflictTargetArgs returns the ON_CONFLICT(...) arguments of the chain the DO_UPDATE call hangs off. A composite conflict target that includes org_id is itself a tenant predicate: the matched row shares the inserted org.
 func conflictTargetArgs(doUpdate *ast.CallExpr) []ast.Expr {
 	sel, ok := doUpdate.Fun.(*ast.SelectorExpr)
 	if !ok {

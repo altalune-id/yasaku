@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/go-jet/jet/v2/qrm"
@@ -85,6 +86,9 @@ func (s *sqliteStore) Save(ctx context.Context, p *Project) error {
 		)
 	res, err := stmt.ExecContext(ctx, s.db)
 	if err != nil {
+		if isSQLiteOneSystemViolation(err) {
+			return &SystemProjectExistsError{OrgID: p.OrgID.String(), Slug: p.Slug}
+		}
 		if isSQLiteUniqueViolation(err) {
 			return &AlreadyExistsError{Field: "slug", Value: p.Slug}
 		}
@@ -163,6 +167,14 @@ func (s *sqliteStore) queryOne(ctx context.Context, cond sqlite.BoolExpression, 
 		return nil, fmt.Errorf("project.sqlite.queryOne: %w", err)
 	}
 	return row.toProject()
+}
+
+func isSQLiteOneSystemViolation(err error) bool {
+	if !isSQLiteUniqueViolation(err) {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "projects.org_id") && !strings.Contains(msg, "projects.slug")
 }
 
 func isSQLiteUniqueViolation(err error) bool {

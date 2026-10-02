@@ -18,8 +18,8 @@ func (s *postgresStore) Save(ctx context.Context, t *Todo) error {
 	}
 	stmt := s.table.INSERT(s.table.AllColumns).
 		VALUES(
-			t.ID, t.OrgID, t.ProjectID, tc.UserID, t.Title, t.Done,
-			t.CreatedAt.UTC(), t.UpdatedAt.UTC(),
+			t.ID, t.OrgID, t.ProjectID, pgNullableUUID(t.Author.UserID), pgNullableUUID(t.Author.KeyID),
+			t.Title, t.Done, t.CreatedAt.UTC(), t.UpdatedAt.UTC(),
 		).
 		ON_CONFLICT(s.table.ID).
 		// SECURITY: the conflict clause carries the tenant predicate; without it an attacker-supplied row id updates another org's row.
@@ -140,4 +140,12 @@ func (s *postgresStore) markDoneBatch(ctx context.Context, orgID uuid.UUID, cuto
 		return 0, fmt.Errorf("todo.postgres.MarkDoneOlderThan: commit: %w", err)
 	}
 	return int(n), nil
+}
+
+// NOTE: safe only in a VALUES tuple; a dynamic SET() expression needs the CAST-typed Null* helpers in entity/postgres.
+func pgNullableUUID(id uuid.UUID) any {
+	if id == uuid.Nil {
+		return nil
+	}
+	return id
 }

@@ -35,8 +35,7 @@ func (f sqliteFixture) ctx(t *testing.T) context.Context {
 	return tenant.Into(t.Context(), f.tc)
 }
 
-// newSQLiteFixture opens a file-backed database through db.Open so every connection carries
-// foreign_keys(1) and a caller-held transaction is visible to a second statement.
+// NOTE: opens a file-backed database through db.Open so every connection carries foreign_keys(1).
 func newSQLiteFixture(t *testing.T) sqliteFixture {
 	t.Helper()
 	cfg := config.Defaults()
@@ -83,8 +82,7 @@ func seedSQLiteTenant(t *testing.T, sqlDB *sql.DB, prefix string) (userID, orgID
 	return
 }
 
-// seedSQLiteTransaction inserts a raw transactions row referencing walletID. NOTE: raw SQL because
-// internal/transaction is a sibling module this package must not import.
+// NOTE: raw SQL because internal/transaction is a sibling module this package must not import.
 func seedSQLiteTransaction(t *testing.T, f sqliteFixture, walletID uuid.UUID) {
 	t.Helper()
 	now := sqliteent.SQLiteTime(time.Now())
@@ -192,8 +190,7 @@ func TestSQLiteStore_ArchivingFreesTheName(t *testing.T) {
 	assert.True(t, wallet.IsAlreadyExistsError(err), "unarchiving onto a taken name must collide, got %T: %v", err, err)
 }
 
-// TestSQLiteStore_RenamingArchivedEscapesCollision proves the escape against the real partial
-// unique index, not just the aggregate: renaming the archived row frees the unarchive.
+// TestSQLiteStore_RenamingArchivedEscapesCollision proves against the real partial unique index that renaming the archived row frees the unarchive.
 func TestSQLiteStore_RenamingArchivedEscapesCollision(t *testing.T) {
 	f := newSQLiteFixture(t)
 	ctx := f.ctx(t)
@@ -276,10 +273,7 @@ func TestSQLiteStore_Delete(t *testing.T) {
 	})
 }
 
-// TestSQLiteStore_RollsBackWithCallerTransaction is the atomicity OpenWorkflow.Run depends on:
-// a wallet written inside a real db.RunInTx must vanish when a later write in that unit of work
-// fails. A store that ignores db.CurrentTx commits the insert on its own connection and passes
-// every pass-through-fake test while failing this one.
+// TestSQLiteStore_RollsBackWithCallerTransaction pins that a wallet written inside db.RunInTx vanishes when a later write in that unit of work fails.
 func TestSQLiteStore_RollsBackWithCallerTransaction(t *testing.T) {
 	f := newSQLiteFixture(t)
 	ctx := f.ctx(t)
@@ -303,8 +297,7 @@ func TestSQLiteStore_RollsBackWithCallerTransaction(t *testing.T) {
 		"the wallet must roll back with its unit of work, got %T: %v", err, err)
 }
 
-// TestSQLiteStore_CommitsWithCallerTransaction is the positive control: a store that always
-// failed inside a unit of work would satisfy the rollback test on its own.
+// TestSQLiteStore_CommitsWithCallerTransaction is the positive control for the rollback test.
 func TestSQLiteStore_CommitsWithCallerTransaction(t *testing.T) {
 	f := newSQLiteFixture(t)
 	ctx := f.ctx(t)
@@ -323,8 +316,7 @@ func TestSQLiteStore_CommitsWithCallerTransaction(t *testing.T) {
 	assert.Equal(t, "BCA", got.Name)
 }
 
-// TestSQLiteStore_ReadsEnrollInCallerTransaction pins that reads use the caller's transaction too,
-// so a workflow can read back what it just wrote before the unit of work commits.
+// TestSQLiteStore_ReadsEnrollInCallerTransaction pins that a workflow reads back its own write before the unit of work commits.
 func TestSQLiteStore_ReadsEnrollInCallerTransaction(t *testing.T) {
 	f := newSQLiteFixture(t)
 	ctx := f.ctx(t)

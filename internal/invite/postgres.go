@@ -63,8 +63,8 @@ func (r *pgInviteRow) toInvite() *Invite {
 		Email:     r.Email,
 		Role:      Role(r.Role),
 		TokenHash: r.TokenHash,
-		ExpiresAt: r.ExpiresAt,
-		CreatedAt: r.CreatedAt,
+		ExpiresAt: r.ExpiresAt.UTC(),
+		CreatedAt: r.CreatedAt.UTC(),
 	}
 	if r.AcceptedAt != nil {
 		t := r.AcceptedAt.UTC()

@@ -17,12 +17,13 @@ func (s *postgresStore) Save(ctx context.Context, t *Transaction) error {
 		return err
 	}
 	noteNorm := NormalizeNote(t.Note)
+	createdBy, createdByKey := pgAuthorArgs(t.CreatedBy, t.CreatedByKeyID)
 	stmt := s.table.INSERT(s.table.AllColumns).
 		VALUES(
 			t.ID, t.OrgID, t.ProjectID, t.WalletID, pgUUIDArg(t.ToWalletID),
 			string(t.Kind), t.Amount.Minor, string(t.Amount.Currency),
 			pgUUIDArg(t.CategoryID), pgUUIDArg(t.PeriodID),
-			t.Note, noteNorm, t.OccurredAt.UTC(), t.CreatedBy,
+			t.Note, noteNorm, t.OccurredAt.UTC(), createdBy, createdByKey,
 			t.CreatedAt.UTC(), t.UpdatedAt.UTC(),
 		).
 		ON_CONFLICT(s.table.ID).
@@ -40,7 +41,7 @@ func (s *postgresStore) Save(ctx context.Context, t *Transaction) error {
 				s.table.NoteNorm.SET(postgres.String(noteNorm)),
 				s.table.OccurredAt.SET(postgres.TimestampzT(t.OccurredAt.UTC())),
 				s.table.UpdatedAt.SET(postgres.TimestampzT(t.UpdatedAt.UTC())),
-			).WHERE(s.table.OrgID.EQ(postgres.UUID(tc.OrgID))),
+			).WHERE(s.table.OrgID.EQ(postgres.UUID(tc.OrgID)).AND(s.table.ProjectID.EQ(postgres.UUID(tc.ProjectID)))),
 		)
 
 	res, execErr := stmt.ExecContext(ctx, tx)
@@ -65,9 +66,10 @@ func (s *postgresStore) Delete(ctx context.Context, id uuid.UUID) error {
 	if err != nil {
 		return err
 	}
-	// SECURITY: org predicate, not RLS alone — a BYPASSRLS role would otherwise delete another org's row.
+	// SECURITY: org and project predicates, not RLS alone — a BYPASSRLS role would otherwise delete another tenant's row.
 	stmt := s.table.DELETE().WHERE(s.table.ID.EQ(postgres.UUID(id)).
-		AND(s.table.OrgID.EQ(postgres.UUID(tc.OrgID))))
+		AND(s.table.OrgID.EQ(postgres.UUID(tc.OrgID))).
+		AND(s.table.ProjectID.EQ(postgres.UUID(tc.ProjectID))))
 	res, execErr := stmt.ExecContext(ctx, tx)
 	if execErr != nil {
 		return s.endTx(tx, owned, fmt.Errorf("transaction.postgres.Delete: %w", execErr))

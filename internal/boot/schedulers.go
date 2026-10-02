@@ -15,8 +15,6 @@ import (
 	"altalune.id/yasaku/scheduler"
 )
 
-// schedulerDomains names each slot in schedulerProviders, in order.
-//
 //nolint:gochecknoglobals // Immutable wiring manifest; not runtime state.
 var schedulerDomains = []string{"todo", "session"}
 
@@ -64,7 +62,7 @@ func buildScheduler(
 		Logger:        log,
 		Reporter:      reporterAdapter{report: k.Reporter.Unexpected, log: log},
 		Meter:         k.Meter,
-		Tenants:       tenant.NewEnumerator(tenant.NewOrgReader(k.Pool, cfg.DB.Driver, cfg.DB.Schema, cfg.DB.TablePrefix), log),
+		Tenants:       orgEnumerator(cfg, k, log),
 		Locker:        db.NewLocker(cfg.DB, k.Pool, log),
 		ShutdownGrace: cfg.Scheduler.ShutdownGrace,
 	})
@@ -73,7 +71,7 @@ func buildScheduler(
 	}
 
 	wallClock := map[string]bool{}
-	for _, p := range providers {
+	for _, p := range publishedSchedulers(providers) {
 		for _, j := range p.SchedulerJobs() {
 			if rErr := runner.Register(j); rErr != nil {
 				return nil, fmt.Errorf("boot: register job %q: %w", j.Name, rErr)
@@ -140,4 +138,9 @@ func alreadyReported(err error) bool {
 		}
 	}
 	return true
+}
+
+func orgEnumerator(cfg *config.Config, k *platform.Kernel, log *slog.Logger) *tenant.Enumerator {
+	return tenant.NewEnumerator(
+		tenant.NewOrgReader(k.Pool, cfg.DB.Driver, cfg.DB.Schema, cfg.DB.TablePrefix), log)
 }

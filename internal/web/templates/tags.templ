@@ -48,8 +48,12 @@ templ TagList(d web.LayoutData, v TagsView) {
 						method="post"
 						action={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/tags/" + t.ID + "/rename")) }
 						hx-post={ d.ProjectPath(v.ProjectSlug, "/tags/" + t.ID + "/rename") }
+						hx-nonce={ d.Nonce }
 						hx-target="#tag-list"
 						hx-swap="outerHTML"
+						hx-disable="find button, find input"
+						hx-status:4xx="target:#hx-error swap:innerHTML"
+						hx-status:5xx="target:#hx-error swap:innerHTML"
 						class="flex min-w-0 flex-1 items-center gap-2"
 					>
 						<input
@@ -70,8 +74,12 @@ templ TagList(d web.LayoutData, v TagsView) {
 						method="post"
 						action={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/tags/" + t.ID + "/delete")) }
 						hx-post={ d.ProjectPath(v.ProjectSlug, "/tags/" + t.ID + "/delete") }
+						hx-nonce={ d.Nonce }
 						hx-target="#tag-list"
 						hx-swap="outerHTML"
+						hx-disable="find button, find input"
+						hx-status:4xx="target:#hx-error swap:innerHTML"
+						hx-status:5xx="target:#hx-error swap:innerHTML"
 						class="inline"
 					>
 						<button
@@ -98,9 +106,13 @@ templ TagsPage(d web.LayoutData, v TagsView) {
 			method="post"
 			action={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/tags")) }
 			hx-post={ d.ProjectPath(v.ProjectSlug, "/tags") }
+			hx-nonce={ d.Nonce }
 			hx-target="#tag-list"
 			hx-swap="outerHTML"
-			hx-on::after-request="if(event.detail.successful) this.reset()"
+			hx-disable="find button, find input"
+			hx-status:4xx="target:#hx-error swap:innerHTML"
+			hx-status:5xx="target:#hx-error swap:innerHTML"
+			data-reset-on-success
 			class="mt-6 flex flex-wrap gap-2"
 		>
 			<input

@@ -16,9 +16,7 @@ import (
 	"altalune.id/yasaku/schema"
 )
 
-// hijackFixture puts two tenants on one SQLite database. SQLite has no row level security,
-// so the store's own org predicates are the only thing standing between org B and org A's
-// rows — which is what makes these tests able to detect their removal.
+// NOTE: SQLite has no row level security, so the store's org predicates are the only guard between the two tenants here.
 type hijackFixture struct {
 	store category.Store
 	sqlDB *sql.DB
@@ -68,8 +66,7 @@ func (f hijackFixture) requireName(t *testing.T, id uuid.UUID, want string) {
 	require.Equal(t, f.orgA.OrgID, got.OrgID, "org A's row must still belong to org A")
 }
 
-// TestSQLite_Save_RejectsReskinnedHijack covers the handler-shaped attack: the attacker's own
-// org and project on the struct, carrying the victim's row id.
+// TestSQLite_Save_RejectsReskinnedHijack sends the attacker's own org and project carrying the victim's row id.
 func TestSQLite_Save_RejectsReskinnedHijack(t *testing.T) {
 	f := newHijackFixture(t)
 	victim := f.seedVictim(t)
@@ -83,8 +80,7 @@ func TestSQLite_Save_RejectsReskinnedHijack(t *testing.T) {
 	f.requireName(t, victim.ID, "org A's category")
 }
 
-// TestSQLite_Save_RejectsVerbatimHijack covers the copied-row shape: the victim's org, project
-// and row id replayed under the attacker's tenant scope.
+// TestSQLite_Save_RejectsVerbatimHijack replays the victim's org, project and row id under the attacker's tenant scope.
 func TestSQLite_Save_RejectsVerbatimHijack(t *testing.T) {
 	f := newHijackFixture(t)
 	victim := f.seedVictim(t)
@@ -97,8 +93,7 @@ func TestSQLite_Save_RejectsVerbatimHijack(t *testing.T) {
 	f.requireName(t, victim.ID, "org A's category")
 }
 
-// TestSQLite_Save_UpdatesOwnRow pins the other direction: a WHERE(false) guard would pass
-// every hijack test above without it.
+// TestSQLite_Save_UpdatesOwnRow checks the owning tenant can still save, so a WHERE(false) guard cannot pass the hijack tests.
 func TestSQLite_Save_UpdatesOwnRow(t *testing.T) {
 	f := newHijackFixture(t)
 	victim := f.seedVictim(t)

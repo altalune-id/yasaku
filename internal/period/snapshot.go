@@ -36,8 +36,11 @@ type Closing struct {
 	ProjectID uuid.UUID
 	PeriodID  uuid.UUID
 	ClosedAt  time.Time
-	ClosedBy  uuid.UUID
-	Snapshot  Snapshot
+	// ClosedBy is the closing user, or uuid.Nil when an API key closed the period.
+	ClosedBy uuid.UUID
+	// ClosedByKeyID is the closing API key, or uuid.Nil when a user closed the period.
+	ClosedByKeyID uuid.UUID
+	Snapshot      Snapshot
 }
 
 func marshalSnapshot(s *Snapshot) (*string, error) {
@@ -63,7 +66,6 @@ func unmarshalSnapshot(raw []byte) (*Snapshot, error) {
 	return &s, nil
 }
 
-// jsonDoc scans a JSON column from either driver: pgx hands back string or []byte, SQLite a TEXT string.
 type jsonDoc struct{ raw []byte }
 
 func (j *jsonDoc) Scan(src any) error {

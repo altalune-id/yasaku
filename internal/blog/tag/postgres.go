@@ -44,8 +44,8 @@ func (r *pgTagRow) toTag() *Tag {
 		ProjectID: r.ProjectID,
 		Name:      r.Name,
 		Slug:      r.Slug,
-		CreatedAt: r.CreatedAt,
-		UpdatedAt: r.UpdatedAt,
+		CreatedAt: r.CreatedAt.UTC(),
+		UpdatedAt: r.UpdatedAt.UTC(),
 	}
 }
 
@@ -222,8 +222,7 @@ func (s *postgresStore) Delete(ctx context.Context, id uuid.UUID) error {
 	return s.endTx(tx, owned, nil)
 }
 
-// queryMany pins every multi-row read to the caller's tenant on top of the caller-supplied
-// scope, so a mismatched orgID argument reads nothing even where RLS is not enforced.
+// NOTE: pins every multi-row read to the caller's tenant on top of the supplied scope, so a mismatched orgID reads nothing even where RLS is inert.
 func (s *postgresStore) queryMany(ctx context.Context, cond postgres.BoolExpression, op string) ([]*Tag, error) {
 	tx, owned, tc, err := s.txAcquire(ctx)
 	if err != nil {

@@ -39,40 +39,42 @@ func newPostgresStore(pool pdb.Pool, pc *tenant.PgConn, schema, tablePrefix stri
 }
 
 type pgTxnRow struct {
-	ID          uuid.UUID  `alias:"transactions.id"`
-	OrgID       uuid.UUID  `alias:"transactions.org_id"`
-	ProjectID   uuid.UUID  `alias:"transactions.project_id"`
-	WalletID    uuid.UUID  `alias:"transactions.wallet_id"`
-	ToWalletID  *uuid.UUID `alias:"transactions.to_wallet_id"`
-	Kind        string     `alias:"transactions.kind"`
-	AmountMinor int64      `alias:"transactions.amount_minor"`
-	Currency    string     `alias:"transactions.currency"`
-	CategoryID  *uuid.UUID `alias:"transactions.category_id"`
-	PeriodID    *uuid.UUID `alias:"transactions.period_id"`
-	Note        string     `alias:"transactions.note"`
-	NoteNorm    string     `alias:"transactions.note_norm"`
-	OccurredAt  time.Time  `alias:"transactions.occurred_at"`
-	CreatedBy   uuid.UUID  `alias:"transactions.created_by"`
-	CreatedAt   time.Time  `alias:"transactions.created_at"`
-	UpdatedAt   time.Time  `alias:"transactions.updated_at"`
+	ID             uuid.UUID  `alias:"transactions.id"`
+	OrgID          uuid.UUID  `alias:"transactions.org_id"`
+	ProjectID      uuid.UUID  `alias:"transactions.project_id"`
+	WalletID       uuid.UUID  `alias:"transactions.wallet_id"`
+	ToWalletID     *uuid.UUID `alias:"transactions.to_wallet_id"`
+	Kind           string     `alias:"transactions.kind"`
+	AmountMinor    int64      `alias:"transactions.amount_minor"`
+	Currency       string     `alias:"transactions.currency"`
+	CategoryID     *uuid.UUID `alias:"transactions.category_id"`
+	PeriodID       *uuid.UUID `alias:"transactions.period_id"`
+	Note           string     `alias:"transactions.note"`
+	NoteNorm       string     `alias:"transactions.note_norm"`
+	OccurredAt     time.Time  `alias:"transactions.occurred_at"`
+	CreatedBy      *uuid.UUID `alias:"transactions.created_by"`
+	CreatedByKeyID *uuid.UUID `alias:"transactions.created_by_key_id"`
+	CreatedAt      time.Time  `alias:"transactions.created_at"`
+	UpdatedAt      time.Time  `alias:"transactions.updated_at"`
 }
 
 func (r *pgTxnRow) toTransaction() *Transaction {
 	return &Transaction{
-		ID:         r.ID,
-		OrgID:      r.OrgID,
-		ProjectID:  r.ProjectID,
-		WalletID:   r.WalletID,
-		ToWalletID: r.ToWalletID,
-		Kind:       Kind(r.Kind),
-		Amount:     money.New(r.AmountMinor, money.Currency(r.Currency)),
-		CategoryID: r.CategoryID,
-		PeriodID:   r.PeriodID,
-		Note:       r.Note,
-		OccurredAt: r.OccurredAt.UTC(),
-		CreatedBy:  r.CreatedBy,
-		CreatedAt:  r.CreatedAt.UTC(),
-		UpdatedAt:  r.UpdatedAt.UTC(),
+		ID:             r.ID,
+		OrgID:          r.OrgID,
+		ProjectID:      r.ProjectID,
+		WalletID:       r.WalletID,
+		ToWalletID:     r.ToWalletID,
+		Kind:           Kind(r.Kind),
+		Amount:         money.New(r.AmountMinor, money.Currency(r.Currency)),
+		CategoryID:     r.CategoryID,
+		PeriodID:       r.PeriodID,
+		Note:           r.Note,
+		OccurredAt:     r.OccurredAt.UTC(),
+		CreatedBy:      derefUUID(r.CreatedBy),
+		CreatedByKeyID: derefUUID(r.CreatedByKeyID),
+		CreatedAt:      r.CreatedAt.UTC(),
+		UpdatedAt:      r.UpdatedAt.UTC(),
 	}
 }
 
@@ -122,6 +124,21 @@ func pgUUIDArg(id *uuid.UUID) any {
 	return *id
 }
 
+// NOTE: only a key-authored row writes created_by as NULL; a legacy row stored with the nil uuid keeps it, so a re-save passes the author CHECK.
+func pgAuthorArgs(user, key uuid.UUID) (userArg, keyArg any) {
+	if key != uuid.Nil {
+		return nil, key
+	}
+	return user, nil
+}
+
+func derefUUID(id *uuid.UUID) uuid.UUID {
+	if id == nil {
+		return uuid.Nil
+	}
+	return *id
+}
+
 func pgUUIDExpr(id *uuid.UUID) postgres.StringExpression {
 	if id == nil {
 		return pgent.NullUUID()
@@ -131,7 +148,13 @@ func pgUUIDExpr(id *uuid.UUID) postgres.StringExpression {
 
 func translatePgConstraint(err error, t *Transaction) error {
 	var pgErr *pgconn.PgError
-	if !errors.As(err, &pgErr) || pgErr.Code != "23503" {
+	if !errors.As(err, &pgErr) {
+		return nil
+	}
+	if pgErr.Code == "23514" && strings.Contains(pgErr.ConstraintName, "author_one") {
+		return &AuthorMissingError{}
+	}
+	if pgErr.Code != "23503" {
 		return nil
 	}
 	switch {

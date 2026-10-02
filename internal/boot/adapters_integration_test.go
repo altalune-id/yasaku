@@ -61,7 +61,7 @@ func newPgUowFixture(t *testing.T) pgUowFixture {
 
 	pool := db.Pool{W: sqlDB, R: sqlDB}
 	return pgUowFixture{
-		uow:    unitOfWork(cfg.DB, pool, tenant.NewPgConn(sqlDB)),
+		uow:    tenant.NewUnitOfWork(cfg.DB, pool, tenant.NewPgConn(sqlDB)),
 		db:     sqlDB,
 		prefix: prefix,
 		tc:     tenant.Context{OrgID: orgID, ProjectID: projID, UserID: userID},

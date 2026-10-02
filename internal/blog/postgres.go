@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/go-jet/jet/v2/postgres"
@@ -45,6 +46,7 @@ type pgPostRow struct {
 	FirstPublishedAt *time.Time `alias:"blog_posts.first_published_at"`
 	CreatedAt        time.Time  `alias:"blog_posts.created_at"`
 	UpdatedAt        time.Time  `alias:"blog_posts.updated_at"`
+	Version          int        `alias:"blog_posts.version"`
 }
 
 func (r *pgPostRow) toPost() *Post {
@@ -58,8 +60,9 @@ func (r *pgPostRow) toPost() *Post {
 		Slug:         r.Slug,
 		BodyMarkdown: r.BodyMarkdown,
 		Status:       Status(r.Status),
-		CreatedAt:    r.CreatedAt,
-		UpdatedAt:    r.UpdatedAt,
+		CreatedAt:    r.CreatedAt.UTC(),
+		UpdatedAt:    r.UpdatedAt.UTC(),
+		Version:      r.Version,
 	}
 	if r.FirstPublishedAt != nil {
 		t := r.FirstPublishedAt.UTC()
@@ -76,6 +79,10 @@ type pgLinkRow struct {
 type pgCountRow struct {
 	Key   uuid.UUID `alias:"counts.key"`
 	Total int64     `alias:"counts.total"`
+}
+
+type pgVersionRow struct {
+	Version int `alias:"blog_posts.version"`
 }
 
 func (s *postgresStore) txAcquire(ctx context.Context) (*sql.Tx, bool, tenant.Context, error) {
@@ -111,25 +118,25 @@ func (s *postgresStore) endTx(tx *sql.Tx, owned bool, err error) error {
 	return nil
 }
 
-func (s *postgresStore) Save(ctx context.Context, p *Post) error {
+func (s *postgresStore) Save(ctx context.Context, p *Post, ifVersion int) error {
 	tx, owned, tc, err := s.txAcquire(ctx)
 	if err != nil {
 		return err
 	}
-	return s.endTx(tx, owned, s.save(ctx, tx, tc, p))
+	return s.endTx(tx, owned, s.save(ctx, tx, tc, p, ifVersion))
 }
 
-func (s *postgresStore) save(ctx context.Context, tx *sql.Tx, tc tenant.Context, p *Post) error {
-	// SECURITY: the conflict clause is guarded by org, or an upsert carrying another
-	// tenant's row id would rewrite that row wherever RLS is inert.
+func (s *postgresStore) save(ctx context.Context, tx *sql.Tx, tc tenant.Context, p *Post, ifVersion int) error {
 	stmt := s.posts.INSERT(s.posts.AllColumns).
 		VALUES(
 			p.ID, p.OrgID, p.ProjectID, p.CategoryID,
 			p.Title, p.Slug, p.BodyMarkdown, string(p.Status),
 			pgNullableTime(p.FirstPublishedAt),
-			p.CreatedAt.UTC(), p.UpdatedAt.UTC(),
+			p.CreatedAt.UTC(), p.UpdatedAt.UTC(), p.Version,
 		).
 		ON_CONFLICT(s.posts.ID).
+		// SECURITY: the conflict clause is guarded by org, or an upsert carrying another
+		// tenant's row id would rewrite that row wherever RLS is inert.
 		DO_UPDATE(
 			postgres.SET(
 				s.posts.CategoryID.SET(postgres.UUID(p.CategoryID)),
@@ -139,7 +146,8 @@ func (s *postgresStore) save(ctx context.Context, tx *sql.Tx, tc tenant.Context,
 				s.posts.Status.SET(postgres.String(string(p.Status))),
 				s.posts.FirstPublishedAt.SET(pgNullableTimeExpr(p.FirstPublishedAt)),
 				s.posts.UpdatedAt.SET(postgres.TimestampzT(p.UpdatedAt.UTC())),
-			).WHERE(s.posts.OrgID.EQ(postgres.UUID(tc.OrgID))),
+				s.posts.Version.SET(s.posts.Version.ADD(postgres.Int32(1))),
+			).WHERE(s.posts.OrgID.EQ(postgres.UUID(tc.OrgID)).AND(pgVersionGuard(ifVersion, s.posts.Version))),
 		)
 	res, execErr := stmt.ExecContext(ctx, tx)
 	if execErr != nil {
@@ -152,16 +160,13 @@ func (s *postgresStore) save(ctx context.Context, tx *sql.Tx, tc tenant.Context,
 	if raErr != nil {
 		return fmt.Errorf("blog.postgres.Save: rows affected: %w", raErr)
 	}
-	// NOTE: an insert affects one row and so does a conflicting update the caller owns; zero
-	// means the conflict-clause guard refused an upsert onto a row outside the caller's org.
+	// NOTE: zero rows means the conflict clause's org guard refused, or the stored version has moved on.
 	if n == 0 {
-		return &NotFoundError{ID: p.ID.String()}
+		return s.refusalError(ctx, tx, tc, p.ID, ifVersion, "Save")
 	}
 	return s.replaceLinks(ctx, tx, tc, p)
 }
 
-// replaceLinks swaps the post's join rows wholesale inside the caller's transaction, so a
-// partially applied tag set can never be observed.
 func (s *postgresStore) replaceLinks(ctx context.Context, tx *sql.Tx, tc tenant.Context, p *Post) error {
 	del := s.links.DELETE().
 		WHERE(s.links.PostID.EQ(postgres.UUID(p.ID)).
@@ -211,6 +216,36 @@ func (s *postgresStore) ByID(ctx context.Context, id uuid.UUID) (*Post, error) {
 	return p, nil
 }
 
+func (s *postgresStore) BySlug(ctx context.Context, projectID uuid.UUID, slug string) (*Post, error) {
+	tx, owned, tc, err := s.txAcquire(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if owned {
+		defer func() { _ = tx.Rollback() }()
+	}
+	stmt := postgres.SELECT(s.posts.AllColumns).
+		FROM(s.posts).
+		WHERE(s.posts.OrgID.EQ(postgres.UUID(tc.OrgID)).
+			AND(s.posts.ProjectID.EQ(postgres.UUID(projectID))).
+			AND(s.posts.Slug.EQ(postgres.String(slug)))).
+		LIMIT(1)
+	var row pgPostRow
+	if qErr := stmt.QueryContext(ctx, tx, &row); qErr != nil {
+		if errors.Is(qErr, qrm.ErrNoRows) || errors.Is(qErr, sql.ErrNoRows) {
+			return nil, &NotFoundError{ID: slug}
+		}
+		return nil, fmt.Errorf("blog.postgres.BySlug: %w", qErr)
+	}
+	p := row.toPost()
+	byPost, err := s.loadLinks(ctx, tx, tc, []uuid.UUID{p.ID}, "BySlug")
+	if err != nil {
+		return nil, err
+	}
+	p.TagIDs = byPost[p.ID]
+	return p, nil
+}
+
 func (s *postgresStore) List(ctx context.Context, orgID, projectID uuid.UUID, opts ListOpts) ([]*Post, error) {
 	tx, owned, tc, err := s.txAcquire(ctx)
 	if err != nil {
@@ -253,24 +288,21 @@ func (s *postgresStore) List(ctx context.Context, orgID, projectID uuid.UUID, op
 	return out, nil
 }
 
-func (s *postgresStore) Delete(ctx context.Context, id uuid.UUID) error {
+func (s *postgresStore) Delete(ctx context.Context, id uuid.UUID, ifVersion int) error {
 	tx, owned, tc, err := s.txAcquire(ctx)
 	if err != nil {
 		return err
 	}
-	return s.endTx(tx, owned, s.deletePost(ctx, tx, tc, id))
+	return s.endTx(tx, owned, s.deletePost(ctx, tx, tc, id, ifVersion))
 }
 
-func (s *postgresStore) deletePost(ctx context.Context, tx *sql.Tx, tc tenant.Context, id uuid.UUID) error {
-	del := s.links.DELETE().
-		WHERE(s.links.PostID.EQ(postgres.UUID(id)).
-			AND(s.links.OrgID.EQ(postgres.UUID(tc.OrgID))))
-	if _, err := del.ExecContext(ctx, tx); err != nil {
-		return fmt.Errorf("blog.postgres.Delete: clear tags: %w", err)
+func (s *postgresStore) deletePost(ctx context.Context, tx *sql.Tx, tc tenant.Context, id uuid.UUID, ifVersion int) error {
+	cond := s.posts.ID.EQ(postgres.UUID(id)).
+		AND(s.posts.OrgID.EQ(postgres.UUID(tc.OrgID)))
+	if ifVersion != 0 {
+		cond = cond.AND(pgVersionGuard(ifVersion, s.posts.Version))
 	}
-	stmt := s.posts.DELETE().
-		WHERE(s.posts.ID.EQ(postgres.UUID(id)).
-			AND(s.posts.OrgID.EQ(postgres.UUID(tc.OrgID))))
+	stmt := s.posts.DELETE().WHERE(cond)
 	res, err := stmt.ExecContext(ctx, tx)
 	if err != nil {
 		return fmt.Errorf("blog.postgres.Delete: %w", err)
@@ -280,9 +312,37 @@ func (s *postgresStore) deletePost(ctx context.Context, tx *sql.Tx, tc tenant.Co
 		return fmt.Errorf("blog.postgres.Delete: rows affected: %w", raErr)
 	}
 	if n == 0 {
-		return &NotFoundError{ID: id.String()}
+		return s.refusalError(ctx, tx, tc, id, ifVersion, "Delete")
+	}
+	// NOTE: clearing the join rows must follow the guarded delete — under an ambient transaction
+	// endTx does not roll back, so a refusal after the clear would commit an empty tag set.
+	del := s.links.DELETE().
+		WHERE(s.links.PostID.EQ(postgres.UUID(id)).
+			AND(s.links.OrgID.EQ(postgres.UUID(tc.OrgID))))
+	if _, err := del.ExecContext(ctx, tx); err != nil {
+		return fmt.Errorf("blog.postgres.Delete: clear tags: %w", err)
 	}
 	return nil
+}
+
+// SECURITY: the read is org-scoped — another org's row reports not-found, since a stale-version answer would confirm it exists.
+func (s *postgresStore) refusalError(ctx context.Context, tx *sql.Tx, tc tenant.Context, id uuid.UUID, ifVersion int, op string) error {
+	stmt := postgres.SELECT(s.posts.Version).
+		FROM(s.posts).
+		WHERE(s.posts.ID.EQ(postgres.UUID(id)).
+			AND(s.posts.OrgID.EQ(postgres.UUID(tc.OrgID)))).
+		LIMIT(1)
+	var row pgVersionRow
+	if qErr := stmt.QueryContext(ctx, tx, &row); qErr != nil {
+		if errors.Is(qErr, qrm.ErrNoRows) || errors.Is(qErr, sql.ErrNoRows) {
+			return &NotFoundError{ID: id.String()}
+		}
+		return fmt.Errorf("blog.postgres.%s: current version: %w", op, qErr)
+	}
+	if ifVersion != 0 {
+		return &StaleVersionError{Want: ifVersion, Got: row.Version}
+	}
+	return &NotFoundError{ID: id.String()}
 }
 
 func (s *postgresStore) CountByCategory(ctx context.Context, orgID, projectID uuid.UUID) (map[uuid.UUID]int, error) {
@@ -339,8 +399,6 @@ func (s *postgresStore) scanCounts(ctx context.Context, tx *sql.Tx, stmt postgre
 	return out, nil
 }
 
-// loadLinks reads the tag ids of the given posts in one keyed query, so a post's tags never
-// multiply its row in the parent select.
 func (s *postgresStore) loadLinks(ctx context.Context, tx *sql.Tx, tc tenant.Context, ids []uuid.UUID, op string) (map[uuid.UUID][]uuid.UUID, error) {
 	out := map[uuid.UUID][]uuid.UUID{}
 	if len(ids) == 0 {
@@ -363,6 +421,18 @@ func (s *postgresStore) loadLinks(ctx context.Context, tx *sql.Tx, tc tenant.Con
 		out[r.PostID] = append(out[r.PostID], r.TagID)
 	}
 	return out, nil
+}
+
+func pgVersionGuard(ifVersion int, col postgres.ColumnInteger) postgres.BoolExpression {
+	if ifVersion == 0 {
+		return postgres.Bool(true)
+	}
+	// SECURITY: a version outside the column's range must match no row. Narrowing it would
+	// wrap and could match a live version, turning a conditional write unconditional.
+	if ifVersion < 0 || ifVersion > math.MaxInt32 {
+		return postgres.Bool(false)
+	}
+	return col.EQ(postgres.Int32(int32(ifVersion)))
 }
 
 func pgNullableTime(t *time.Time) any {

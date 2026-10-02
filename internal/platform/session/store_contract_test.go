@@ -11,8 +11,7 @@ import (
 	"altalune.id/yasaku/internal/platform/session"
 )
 
-// NOTE: newPrincipal is a seam because sessions.user_id has a foreign key to users: a hardcoded
-// Principal{} (uuid.Nil) fails with SQLSTATE 23503 on the Postgres backend.
+// NOTE: newPrincipal is a seam because sessions.user_id has a foreign key to users: a hardcoded Principal{} (uuid.Nil) fails with SQLSTATE 23503 on the Postgres backend.
 func runStoreContract(
 	t *testing.T,
 	newStore func(t *testing.T) session.Store,

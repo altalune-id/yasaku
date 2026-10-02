@@ -141,6 +141,29 @@ func IsInvalidBodyError(err error) bool {
 	return ok
 }
 
+// StaleVersionError reports a conditional write whose expected version no longer matches.
+type StaleVersionError struct{ Want, Got int }
+
+func (e *StaleVersionError) Error() string {
+	return fmt.Sprintf("blog: stale version, have %d want %d", e.Got, e.Want)
+}
+
+// ToAppError converts the typed error into the wire envelope.
+func (e *StaleVersionError) ToAppError() *apperror.AppError {
+	return apperror.New(
+		apperror.CodePostStaleVersion,
+		"The post changed since the version you sent",
+		codes.FailedPrecondition,
+		&apperrorv1.ErrorDetail{Code: apperror.CodePostStaleVersion},
+	)
+}
+
+// IsStaleVersionError reports whether err's tree contains a *StaleVersionError.
+func IsStaleVersionError(err error) bool {
+	_, ok := errors.AsType[*StaleVersionError](err)
+	return ok
+}
+
 // CategoryRequiredError reports that the post names no category.
 type CategoryRequiredError struct{}
 

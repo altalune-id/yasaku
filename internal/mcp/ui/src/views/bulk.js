@@ -1,73 +1,56 @@
-// views/bulk.js
-// NOTE: BatchOutcome.index is omitted for row 0, and a refused row may carry error with no errorCode.
-function batchRow(o, i) {
-  const idx = (o.index === undefined ? i : o.index) + 1;
-  const failed = o.error || o.errorCode;
-  if (failed) {
-    return html`<div class="ya-row">
-      <span class="ya-muted">Row ${num(idx)}</span>
-      <span class="ya-error">${o.errorCode || "refused"}</span>
-      <span class="ya-error">${o.error || ""}</span>
-    </div>`;
-  }
-  return html`<div class="ya-row">
-    <span class="ya-muted">Row ${num(idx)}</span>
-    ${raw(txRow(o.transaction || {}))}
+function batchCard(b) {
+  return html`<div class="app-card">
+    <div class="app-kpi-label">${b.label}</div>
+    ${b.rows.map((r) => r.failed
+      ? html`<div class="app-row">
+          <span class="app-muted">${r.row}</span>
+          <span class="app-error">${r.code}</span>
+          <span class="app-error">${r.error}</span>
+        </div>`
+      : html`<div class="app-row">
+          <span class="app-muted">${r.row}</span>
+          ${txRow(r.tx)}
+        </div>`)}
   </div>`;
 }
 
-function batchCard(maybeRows) {
-  const rows = Array.isArray(maybeRows) ? maybeRows : [];
-  const clean = rows.filter(function (o) { return !(o.error || o.errorCode); }).length;
-  return html`<div class="ya-card">
-    <div class="ya-kpi-label">${num(clean)} of ${num(rows.length)} rows are writable</div>
-    ${raw(rows.map(batchRow).join(""))}
-  </div>`;
+class RecordBatchView extends YasakuView {
+  render() {
+    const m = this.model;
+    if (!m) return nothing;
+    if (m.phase === "needs") return this.needsForm(m);
+    if (m.phase === "result") {
+      return html`<div class="app-stack"><div class="app-kpi-value">${m.title}</div>${batchCard(m.batch)}</div>`;
+    }
+    if (m.phase === "preview") {
+      return html`<div class="app-stack">
+        ${heading(m.title, m.note)}
+        ${batchCard(m.batch)}
+        <div>${this.button(m.commit, "Save batch")}</div>
+      </div>`;
+    }
+    return html`<p class="app-muted">${m.message}</p>`;
+  }
 }
 
-registerView("record_batch", function (d, action) {
-  const phase = phaseOf(d);
-  if (phase === "needs") {
-    return needsForm(d, action, "record_batch", "Record batch");
+class SeedCategoriesView extends YasakuView {
+  render() {
+    const m = this.model;
+    if (!m) return nothing;
+    if (m.phase === "needs") return this.needsForm(m);
+    if (m.phase === "result") return heading(m.title, m.note);
+    if (m.phase === "preview") {
+      return html`<div class="app-stack">
+        ${heading(m.title, m.note)}
+        <div>${this.button(m.commit, "Add them")}</div>
+      </div>`;
+    }
+    return html`<p class="app-muted">${m.message}</p>`;
   }
-  if (phase === "result") {
-    return html`<div class="ya-root">
-      <div class="ya-kpi-value">Batch recorded</div>
-      ${raw(batchCard(d.results || []))}
-    </div>`;
-  }
-  if (phase === "preview") {
-    const commit = action("commit", "record_batch", { confirm: true });
-    return html`<div class="ya-root">
-      <div>
-        <div class="ya-kpi-value">Record batch</div>
-        <div class="ya-muted">nothing is saved yet</div>
-      </div>
-      ${raw(batchCard(d.preview || []))}
-      <div><button class="ya-action" type="button" data-action="${commit}">Save batch</button></div>
-    </div>`;
-  }
-  return html`<div class="ya-root"><p class="ya-muted">${d.warning || "Nothing to record."}</p></div>`;
-});
+}
 
-// NOTE: at zero, previewed and committed are byte-identical {} on the wire — they cannot be told apart.
-registerView("seed_default_categories", function (d, action) {
-  if (needsList(d).length > 0) {
-    return needsForm(d, action, "seed_default_categories", "Seed default categories");
-  }
-  if (d.inserted !== undefined) {
-    return html`<div class="ya-root">
-      <div class="ya-kpi-value">Defaults added</div>
-      <div class="ya-muted">${num(d.inserted)} categories inserted.</div>
-    </div>`;
-  }
-  if (d.previewCount !== undefined) {
-    const commit = action("commit", "seed_default_categories", { confirm: true });
-    return html`<div class="ya-root">
-      <div class="ya-kpi-value">Seed default categories</div>
-      <div class="ya-muted">${num(d.previewCount)} would be added. Nothing is saved yet.</div>
-      <div><button class="ya-action" type="button" data-action="${commit}">Add them</button></div>
-    </div>`;
-  }
-  return html`<div class="ya-root"><p class="ya-muted">${d.warning || "Nothing to do — the project already has every default."}</p></div>`;
-});
+customElements.define("yasaku-record-batch", RecordBatchView);
+customElements.define("yasaku-seed-categories", SeedCategoriesView);
+
+registerView("record_batch", recordBatchModel, (m) => html`<yasaku-record-batch .model=${m}></yasaku-record-batch>`);
+registerView("seed_default_categories", seedCategoriesModel, (m) => html`<yasaku-seed-categories .model=${m}></yasaku-seed-categories>`);

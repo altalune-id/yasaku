@@ -228,7 +228,7 @@ func TestValidate_ModeInvariants(t *testing.T) {
 			wantSub: "requires genesis.email",
 		},
 		{
-			name: "cloud without singleton org slug fails",
+			name: "cloud without singleton org slug is allowed: the slug is prefill only",
 			mutate: func(c *Config) {
 				c.Mode = ModeCloud
 				c.OIDC = OIDCConfig{Issuer: "https://iss.example.com", ClientID: "c", ClientSecret: "s"}
@@ -236,7 +236,7 @@ func TestValidate_ModeInvariants(t *testing.T) {
 				c.Genesis = GenesisConfig{Email: "root@example.com", Password: "s3cret", BreakGlass: true}
 				c.Tenant.SingletonOrg.Slug = ""
 			},
-			wantSub: "singletonOrg.slug",
+			wantSub: "",
 		},
 		{
 			name: "cloud without singleton org name fails",
@@ -262,6 +262,22 @@ func TestValidate_ModeInvariants(t *testing.T) {
 				c.Genesis = GenesisConfig{Password: "x"}
 			},
 			wantSub: "genesis.password without genesis.email",
+		},
+		{
+			name: "queue enabled without url fails",
+			mutate: func(c *Config) {
+				c.Queue.Enabled = true
+				c.Queue.URL = ""
+			},
+			wantSub: "queue.url",
+		},
+		{
+			name: "queue enabled with url is allowed",
+			mutate: func(c *Config) {
+				c.Queue.Enabled = true
+				c.Queue.URL = "nats://127.0.0.1:4222"
+			},
+			wantSub: "",
 		},
 		{
 			name: "cloud with genesis password alone fails",
@@ -342,6 +358,12 @@ func TestDefaults_SchedulerAndDBKeys(t *testing.T) {
 	}
 	if cfg.DB.Health.Timeout != 2*time.Second {
 		t.Errorf("db.health.timeout = %s, want 2s", cfg.DB.Health.Timeout)
+	}
+	if cfg.Queue.Enabled {
+		t.Error("queue.enabled must default false")
+	}
+	if cfg.Queue.ConnectTimeout != 10*time.Second {
+		t.Errorf("queue.connectTimeout = %s, want 10s", cfg.Queue.ConnectTimeout)
 	}
 }
 
@@ -481,4 +503,20 @@ func TestSchedulerConfig_Locations_NilReceiverIsUTC(t *testing.T) {
 	loc, err := cfg.Locations()
 	require.NoError(t, err)
 	require.Equal(t, "UTC", loc("any").String())
+}
+
+func TestDefaults_FirstRunSlugsAreGenerated(t *testing.T) {
+	cfg := Defaults()
+	require.Empty(t, cfg.Tenant.SingletonOrg.Slug, "a blank tenant.singletonOrg.slug means generate one at first run")
+	require.Empty(t, cfg.Tenant.PersonalProjectSlug, "a blank tenant.personalProjectSlug means generate one at first run")
+}
+
+func TestLoad_FirstRunSlugsHonourEnv(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("YASAKU_TENANT_SINGLETON_ORG_SLUG", "acme")
+	t.Setenv("YASAKU_TENANT_PERSONAL_PROJECT_SLUG", "web")
+	cfg, err := Load("", withCwdOverride(t, t.TempDir()), withGenesisFallback(t))
+	require.NoError(t, err)
+	require.Equal(t, "acme", cfg.Tenant.SingletonOrg.Slug, "a configured slug still wins over generation")
+	require.Equal(t, "web", cfg.Tenant.PersonalProjectSlug)
 }

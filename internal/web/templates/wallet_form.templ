@@ -1,6 +1,9 @@
 package templates
 
 import (
+	"time"
+
+	"altalune.id/yasaku/civil"
 	"altalune.id/yasaku/internal/web"
 	"altalune.id/yasaku/internal/web/icons"
 	"altalune.id/yasaku/money"
@@ -40,8 +43,9 @@ func (v WalletFormView) Action() string {
 type WalletTxRow struct {
 	KindKey string
 	Signed  money.Amount
-	Note    string
-	Date    string
+	Note       string
+	Day        civil.Date
+	OccurredAt time.Time
 }
 
 // Adjust outcomes the wallet detail page reports after POST /wallets/{id}/adjust.
@@ -232,7 +236,10 @@ templ walletDetailTxRow(d web.LayoutData, r WalletTxRow) {
 					{ d.Tr(r.KindKey) }
 				}
 			</span>
-			<span class="mt-0.5 block text-xs text-muted-foreground">{ r.Date + " · " + d.Tr(r.KindKey) }</span>
+			<span class="mt-0.5 block text-xs text-muted-foreground">
+				@LedgerDate(d, r.Day, &r.OccurredAt)
+				{ " · " + d.Tr(r.KindKey) }
+			</span>
 		</span>
 		<span class="shrink-0 text-sm font-medium tabular-nums text-foreground">{ SignedMoney(d, r.Signed) }</span>
 	</li>

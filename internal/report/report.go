@@ -2,6 +2,8 @@
 package report
 
 import (
+	"time"
+
 	"github.com/google/uuid"
 
 	"altalune.id/yasaku/civil"
@@ -14,6 +16,20 @@ type PeriodRef struct {
 	Name  string
 	Start civil.Date
 	End   *civil.Date
+	// ClosedAt is set only while the period is closed.
+	ClosedAt *time.Time
+}
+
+// ArchivedBefore is the instant an archived wallet must predate to be left out of the period's balances: midnight after its last day in loc, or its close when that came first. Nil means the period is still running, so every archived wallet is left out.
+func (r PeriodRef) ArchivedBefore(loc *time.Location) *time.Time {
+	if r.End == nil {
+		return nil
+	}
+	cut := r.End.AddDays(1).In(loc)
+	if r.ClosedAt != nil && r.ClosedAt.Before(cut) {
+		cut = *r.ClosedAt
+	}
+	return &cut
 }
 
 // WalletLine is one wallet's movement across a period, or its live balance when the report is not period-keyed.
@@ -26,6 +42,13 @@ type WalletLine struct {
 	In               money.Amount
 	Out              money.Amount
 	Closing          money.Amount
+}
+
+// WalletTotals is the headline over a set of wallet lines in one currency; Mixed reports that a line in another currency was left out.
+type WalletTotals struct {
+	Spendable money.Amount
+	Total     money.Amount
+	Mixed     bool
 }
 
 // PeriodSummary is one period's headline totals in a single currency.

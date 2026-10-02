@@ -13,8 +13,7 @@ import (
 func TestNullHelpersCarryTheColumnType(t *testing.T) {
 	t.Parallel()
 
-	// NOTE: Postgres has no assignment cast, so a helper whose cast does not match the column's
-	// declared type fails the statement at analyze time, even on a plain insert.
+	// NOTE: Postgres has no assignment cast, so a mistyped null fails at analyze time.
 	cases := []struct {
 		name string
 		expr jetpg.Expression
@@ -25,6 +24,7 @@ func TestNullHelpersCarryTheColumnType(t *testing.T) {
 		{"NullTimestampz", pgent.NullTimestampz(), `SELECT NULL::timestamp with time zone AS "v";`},
 		{"NullUUID", pgent.NullUUID(), `SELECT NULL::uuid AS "v";`},
 		{"NullJSONB", pgent.NullJSONB(), `SELECT NULL::jsonb AS "v";`},
+		{"NullBytea", pgent.NullBytea(), `SELECT NULL::bytea AS "v";`},
 	}
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
@@ -48,13 +48,12 @@ func TestNullHelpersAreConcurrencySafe(t *testing.T) {
 		func() jetpg.Expression { return pgent.NullTimestampz() },
 		func() jetpg.Expression { return pgent.NullUUID() },
 		func() jetpg.Expression { return pgent.NullJSONB() },
+		func() jetpg.Expression { return pgent.NullBytea() },
 	}
 
 	var wg sync.WaitGroup
 	for i := range goroutines {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			build := builders[i%len(builders)]
 			for range iterations {
 				query, _ := jetpg.SELECT(build().AS("v")).Sql()
@@ -63,7 +62,7 @@ func TestNullHelpersAreConcurrencySafe(t *testing.T) {
 					return
 				}
 			}
-		}()
+		})
 	}
 	wg.Wait()
 }

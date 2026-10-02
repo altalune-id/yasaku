@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"altalune.id/yasaku/internal/apikey"
 	"altalune.id/yasaku/internal/auth"
 	"altalune.id/yasaku/internal/blog"
 	blogcategory "altalune.id/yasaku/internal/blog/category"
@@ -18,15 +19,21 @@ import (
 	"altalune.id/yasaku/internal/password"
 	"altalune.id/yasaku/internal/period"
 	"altalune.id/yasaku/internal/platform"
+	"altalune.id/yasaku/internal/platform/authn"
 	"altalune.id/yasaku/internal/platform/capabilities"
 	"altalune.id/yasaku/internal/platform/config"
+	"altalune.id/yasaku/internal/platform/tenant"
+	"altalune.id/yasaku/internal/platform/tokens"
 	"altalune.id/yasaku/internal/project"
 	"altalune.id/yasaku/internal/report"
 	"altalune.id/yasaku/internal/todo"
 	"altalune.id/yasaku/internal/transaction"
 	"altalune.id/yasaku/internal/user"
 	"altalune.id/yasaku/internal/wallet"
+	"altalune.id/yasaku/internal/webhook"
 )
+
+const apiKeyUsageFlushInterval = 30 * time.Second
 
 // Services is every domain store, service and workflow the composition root wires.
 type Services struct {
@@ -36,6 +43,7 @@ type Services struct {
 	TodoStore    todo.Store
 	InviteStore  invite.Store
 	OnboardStore onboard.Store
+	WebhookStore webhook.Store
 
 	LedgerStore      ledger.Store
 	WalletStore      wallet.Store
@@ -53,6 +61,7 @@ type Services struct {
 	Posts      *blog.Service
 	Categories *blogcategory.Service
 	Tags       *tag.Service
+	Webhooks   *webhook.Service
 
 	Ledgers      *ledger.Service
 	Wallets      *wallet.Service
@@ -63,6 +72,11 @@ type Services struct {
 
 	Onboard    *user.OnboardWorkflow
 	WalletOpen *wallet.OpenWorkflow
+
+	Authn       authn.Chain
+	KeyAuthn    *apikey.Authenticator
+	APIKeys     *apikey.Service
+	APIKeyUsage *apikey.UsageWorker
 }
 
 func buildServices(cfg *config.Config, k *platform.Kernel, caps capabilities.Capabilities) (*Services, error) {
@@ -81,9 +95,12 @@ func buildServices(cfg *config.Config, k *platform.Kernel, caps capabilities.Cap
 
 	orgs := org.NewService(orgStore, caps, log, reporter.Unexpected)
 	projects := project.NewService(projectStore, log, reporter.Unexpected)
-	todos := todo.NewService(todoStore, log, reporter.Unexpected)
+	todos := todo.NewService(todoStore, log, reporter.Unexpected, k.Queue)
 	onboards := onboard.NewService(onboardStore, log, reporter.Unexpected)
-	posts := blog.NewService(blog.NewStore(cfg.DB, pool, pgConn), log, reporter.Unexpected)
+	uow := tenant.NewUnitOfWork(cfg.DB, pool, pgConn)
+	webhookStore := webhook.NewStore(cfg.DB, pool, pgConn)
+	webhooks := webhook.NewService(webhookStore, log, reporter.Unexpected, k.Sealer, k.Outbox, projectSlugs{svc: projects})
+	posts := blog.NewService(blog.NewStore(cfg.DB, pool, pgConn), log, reporter.Unexpected, uow, webhooks)
 	categories := blogcategory.NewService(blogcategory.NewStore(cfg.DB, pool, pgConn), log, reporter.Unexpected)
 	tags := tag.NewService(tag.NewStore(cfg.DB, pool, pgConn), log, reporter.Unexpected)
 
@@ -92,8 +109,6 @@ func buildServices(cfg *config.Config, k *platform.Kernel, caps capabilities.Cap
 	txCategoryStore := category.NewStore(cfg.DB, pool, pgConn)
 	periodStore := period.NewStore(cfg.DB, pool, pgConn)
 	transactionStore := transaction.NewStore(cfg.DB, pool, pgConn)
-
-	uow := unitOfWork(cfg.DB, pool, pgConn)
 
 	ledgers := ledger.NewService(ledgerStore, log, reporter.Unexpected)
 	wallets := wallet.NewService(walletStore, log, reporter.Unexpected)
@@ -104,7 +119,7 @@ func buildServices(cfg *config.Config, k *platform.Kernel, caps capabilities.Cap
 	transactions := transaction.NewService(transactionStore, log, reporter.Unexpected,
 		walletReaderFor(wallets), categoryReaderFor(txCategories),
 		periodResolverAdapter{periods: periods}, transaction.UnitOfWork(uow))
-	walletOpen := wallet.NewOpenWorkflow(wallets, transactions, wallet.UnitOfWork(uow), log, reporter.Unexpected)
+	walletOpen := wallet.NewOpenWorkflow(wallets, transactions, openingDaterFor(periods), wallet.UnitOfWork(uow), log, reporter.Unexpected)
 
 	invitesEnabled := cfg.Mode == config.ModeCloud || cfg.OIDC.Issuer != ""
 
@@ -191,6 +206,19 @@ func buildServices(cfg *config.Config, k *platform.Kernel, caps capabilities.Cap
 
 	auths := auth.NewService(local, oidcLogin, log, reporter.Unexpected)
 
+	keyStore := apikey.NewStore(cfg.DB, pool, pgConn)
+	keyUsage := apikey.NewUsageWorker(keyStore, apiKeyUsageFlushInterval, log)
+	keyScheme := apikey.NewScheme(cfg.API.KeyPrefix)
+	keyAuthn := apikey.NewAuthenticator(keyStore, keyUsage, keyScheme, orgs)
+	keys := apikey.NewService(keyStore, keyScheme, orgs, projectServiceForAPIKeys{svc: projects}, log, reporter.Unexpected)
+	orgs.OnMemberRemoved(keys.RevokePersonalOf)
+	// SECURITY: key first, so its shape gate rejects a non-key credential without a DB call.
+	tenantResolution := user.WithTenantResolution(
+		orgStoreForOnboard{store: orgStore},
+		projectStoreForOnboard{store: projectStore},
+	)
+	chain := authn.Chain{keyAuthn, user.NewAuthenticator(tokens.NewAuthenticator(k.Verifier), userStore, tenantResolution)}
+
 	return &Services{
 		UserStore:    userStore,
 		OrgStore:     orgStore,
@@ -198,6 +226,7 @@ func buildServices(cfg *config.Config, k *platform.Kernel, caps capabilities.Cap
 		TodoStore:    todoStore,
 		InviteStore:  inviteStore,
 		OnboardStore: onboardStore,
+		WebhookStore: webhookStore,
 
 		LedgerStore:      ledgerStore,
 		WalletStore:      walletStore,
@@ -215,6 +244,7 @@ func buildServices(cfg *config.Config, k *platform.Kernel, caps capabilities.Cap
 		Posts:      posts,
 		Categories: categories,
 		Tags:       tags,
+		Webhooks:   webhooks,
 
 		Ledgers:      ledgers,
 		Wallets:      wallets,
@@ -225,6 +255,11 @@ func buildServices(cfg *config.Config, k *platform.Kernel, caps capabilities.Cap
 
 		Onboard:    onboardWorkflow,
 		WalletOpen: walletOpen,
+
+		Authn:       chain,
+		KeyAuthn:    keyAuthn,
+		APIKeys:     keys,
+		APIKeyUsage: keyUsage,
 	}, nil
 }
 
@@ -233,10 +268,7 @@ func onboardPolicyFrom(cfg *config.Config) user.Policy {
 	if cfg.Mode == config.ModeSelfhosted {
 		policyMode = user.PolicyModeSelfhosted
 	}
-	return user.Policy{
-		Mode:             policyMode,
-		SingletonOrgSlug: cfg.Tenant.SingletonOrg.Slug,
-	}
+	return user.Policy{Mode: policyMode}
 }
 
 func hashGenesisPassword(plain string) (string, error) {

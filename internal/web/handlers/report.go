@@ -22,6 +22,7 @@ const reportPeriodWindow = 6
 
 const reportMaxSlices = 5
 
+//i18n:use report.other
 const reportOtherKey = "report.other"
 
 // ReportHandler renders the read-only reporting page for one project.
@@ -38,30 +39,13 @@ func NewReportHandler(d Deps, projects *project.Service, reports *report.Service
 }
 
 // Register wires the report routes onto mux.
-func (h *ReportHandler) Register(mux *http.ServeMux) {
+func (h *ReportHandler) Register(mux web.Mux) {
 	mux.HandleFunc("GET /orgs/{org}/projects/{project}/reports", h.GetReports)
-}
-
-func (h *ReportHandler) requireProject(w http.ResponseWriter, r *http.Request) (projectScope, bool) {
-	p, sid, ok := h.LoadSession(r)
-	if !ok {
-		http.Redirect(w, r, ResolveReturnTo(h.Cfg.HTTP.BasePath, "/login"), http.StatusSeeOther)
-		return projectScope{}, false
-	}
-	o, r, ok := h.OrgScopeFor(w, r, p, r.PathValue("org"))
-	if !ok {
-		return projectScope{}, false
-	}
-	proj, r, ok := h.ProjectScopeFor(w, r, o.ID, r.PathValue("project"))
-	if !ok {
-		return projectScope{}, false
-	}
-	return projectScope{principal: p, sid: sid, org: o, project: proj, req: r}, true
 }
 
 // GetReports renders the summary table and the three charts for one period.
 func (h *ReportHandler) GetReports(w http.ResponseWriter, r *http.Request) {
-	sc, ok := h.requireProject(w, r)
+	sc, ok := h.RequireProject(w, r)
 	if !ok {
 		return
 	}
@@ -101,7 +85,7 @@ func (h *ReportHandler) GetReports(w http.ResponseWriter, r *http.Request) {
 }
 
 // selectPeriod resolves ?period=, falling back to the current period and then to the newest in scope. SECURITY: ByID is scope-checked, so a foreign period id renders as a 404 rather than another project's totals.
-func (h *ReportHandler) selectPeriod(w http.ResponseWriter, sc projectScope, recent []*period.Period) (*period.Period, bool) {
+func (h *ReportHandler) selectPeriod(w http.ResponseWriter, sc ProjectScope, recent []*period.Period) (*period.Period, bool) {
 	if raw := strings.TrimSpace(sc.req.URL.Query().Get("period")); raw != "" {
 		id, parseErr := uuid.Parse(raw)
 		if parseErr != nil {
@@ -134,7 +118,7 @@ func (h *ReportHandler) selectPeriod(w http.ResponseWriter, sc projectScope, rec
 	return recent[0], true
 }
 
-func (h *ReportHandler) cashflowWindow(sc projectScope, recent []*period.Period, selected *period.Period) ([]*period.Period, error) {
+func (h *ReportHandler) cashflowWindow(sc ProjectScope, recent []*period.Period, selected *period.Period) ([]*period.Period, error) {
 	if len(recent) > 0 && recent[0].ID == selected.ID {
 		return recent, nil
 	}
@@ -143,7 +127,7 @@ func (h *ReportHandler) cashflowWindow(sc projectScope, recent []*period.Period,
 }
 
 func (h *ReportHandler) fill(
-	w http.ResponseWriter, sc projectScope, d web.LayoutData,
+	w http.ResponseWriter, sc ProjectScope, d web.LayoutData,
 	selected *period.Period, window []*period.Period, v *templates.ReportsView,
 ) bool {
 	ctx := sc.req.Context()
@@ -190,7 +174,7 @@ func (h *ReportHandler) fill(
 	return true
 }
 
-func (h *ReportHandler) reportFailed(w http.ResponseWriter, sc projectScope, what string, err error) {
+func (h *ReportHandler) reportFailed(w http.ResponseWriter, sc ProjectScope, what string, err error) {
 	h.LogErr("web report: "+what, err)
 	h.ErrorPage(w, sc.req, http.StatusInternalServerError, "Report failed", "Could not load this report.", err)
 }

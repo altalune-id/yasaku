@@ -14,6 +14,8 @@
 api:
   # env: YASAKU_API_ENABLED
   enabled: true
+  # env: YASAKU_API_KEY_PREFIX
+  keyPrefix: key_
   openapi:
     # [secret] env: YASAKU_API_OPENAPI_BASIC_AUTH_PASSWORD
     basicAuthPassword: ""
@@ -24,6 +26,10 @@ api:
     # env: YASAKU_API_OPENAPI_REQUIRE_BASIC_AUTH
     requireBasicAuth: true
 
+blog:
+  # env: YASAKU_BLOG_PUBLIC_READS
+  publicReads: ""
+
 compliance:
   # env: YASAKU_COMPLIANCE_PRIVACY_URL
   privacyURL: ""
@@ -31,6 +37,10 @@ compliance:
   requireAcceptance: ""
   # env: YASAKU_COMPLIANCE_TERMS_URL
   termsURL: ""
+
+dataplane:
+  # env: YASAKU_DATAPLANE_ENABLED
+  enabled: true
 
 db:
   # [bootstrap] env: YASAKU_DB_ALLOW_BYPASS_RLS
@@ -100,6 +110,13 @@ http:
   baseURL: ""
   # env: YASAKU_HTTP_COOKIE_SECURE
   cookieSecure: false
+  csp:
+    # [required] env: YASAKU_HTTP_CSP_ENABLED
+    enabled: true
+    # env: YASAKU_HTTP_CSP_REPORT_ONLY
+    reportOnly: false
+    # env: YASAKU_HTTP_CSP_REPORT_URI
+    reportURI: ""
   # env: YASAKU_HTTP_ROBOTS_TXT
   robotsTxt: ""
   # [required, secret, bootstrap] env: YASAKU_HTTP_STATE_SECRET
@@ -145,15 +162,17 @@ mail:
 
 mcp:
   # env: YASAKU_MCP_APPS_UI
-  appsUI: false
-  # [bootstrap] env: YASAKU_MCP_AUDIENCE
+  appsUI: ""
+  # env: YASAKU_MCP_AUDIENCE
   audience: ""
   # env: YASAKU_MCP_AUDIENCE_OVERRIDE
   audienceOverride: ""
+  # env: YASAKU_MCP_CHALLENGE_PREFIX
+  challengePrefix: ""
   # env: YASAKU_MCP_CHALLENGE_TOKEN
   challengeToken: ""
-  # [bootstrap] env: YASAKU_MCP_ENABLED
-  enabled: false
+  # env: YASAKU_MCP_ENABLED
+  enabled: ""
 
 # [required, bootstrap] env: YASAKU_MODE
 mode: selfhosted
@@ -188,6 +207,16 @@ oidc:
 onboard:
   # [secret] env: YASAKU_ONBOARD_SETUP_TOKEN
   setupToken: ""
+
+queue:
+  # env: YASAKU_QUEUE_CONNECT_TIMEOUT
+  connectTimeout: 10s
+  # env: YASAKU_QUEUE_ENABLED
+  enabled: false
+  # [secret] env: YASAKU_QUEUE_TOKEN
+  token: ""
+  # [secret] env: YASAKU_QUEUE_URL
+  url: ""
 
 scheduler:
   # [bootstrap] env: YASAKU_SCHEDULER_ENABLED
@@ -237,14 +266,14 @@ tenant:
   # env: YASAKU_TENANT_PERSONAL_ORG_SLUG_FALLBACK
   personalOrgSlugFallback: personal
   # env: YASAKU_TENANT_PERSONAL_PROJECT_SLUG
-  personalProjectSlug: default
+  personalProjectSlug: ""
   # [bootstrap] env: YASAKU_TENANT_RLS_ENFORCE
   rlsEnforce: true
   singletonOrg:
     # [bootstrap] env: YASAKU_TENANT_SINGLETON_ORG_NAME
     name: Default Organization
     # [bootstrap] env: YASAKU_TENANT_SINGLETON_ORG_SLUG
-    slug: default
+    slug: ""
   # [bootstrap] env: YASAKU_TENANT_TENANT_SCOPED_TABLES
   tenantScopedTables: ""
 

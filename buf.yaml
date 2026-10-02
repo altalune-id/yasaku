@@ -7,3 +7,11 @@ lint:
 breaking:
   use:
     - FILE
+  # TODO: remove after the template sync lands on main; the codegen-only tool option moved from yasaku.mcp.v1 to the template's mcp.v1 (same extension 51001).
+  ignore_only:
+    FILE_NO_DELETE:
+      - api/yasaku/mcp/v1/annotations.proto
+    FIELD_SAME_TYPE:
+      - api/mcp/v1/annotations.proto
+    FIELD_SAME_NAME:
+      - api/mcp/v1/annotations.proto

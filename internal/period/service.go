@@ -13,6 +13,7 @@ import (
 
 	"altalune.id/yasaku/civil"
 	"altalune.id/yasaku/internal/apperror"
+	"altalune.id/yasaku/internal/platform/session"
 	"altalune.id/yasaku/internal/platform/tenant"
 )
 
@@ -239,7 +240,7 @@ func (s *Service) PreviewClose(ctx context.Context, id uuid.UUID, end civil.Date
 	if err != nil {
 		return Snapshot{}, err
 	}
-	snap, err := s.snap.Snapshot(ctx, tc.OrgID, tc.ProjectID, p.ID)
+	snap, err := s.snap.Snapshot(ctx, tc.OrgID, tc.ProjectID, p.ID, end, s.now().UTC())
 	if err != nil {
 		span.RecordError(err)
 		return Snapshot{}, s.unexpected(ctx, "period.PreviewClose: snapshot", err, "period_id", id)
@@ -261,7 +262,7 @@ func (s *Service) Close(ctx context.Context, id uuid.UUID, end civil.Date, by uu
 		span.RecordError(err)
 		return nil, err
 	}
-	closedAt := s.now().UTC()
+	closedAt := s.now().UTC().Truncate(time.Microsecond)
 	var closed *Period
 	var snapErr error
 	txErr := s.uow(ctx, func(ctx context.Context) error {
@@ -272,7 +273,7 @@ func (s *Service) Close(ctx context.Context, id uuid.UUID, end civil.Date, by uu
 		}
 		firstClose := p.EndDate == nil
 		// NOTE: computed inside the unit of work so the window between freezing the totals and committing the close is the transaction's width, not unbounded; READ COMMITTED does not close it.
-		snap, err := s.snap.Snapshot(ctx, tc.OrgID, tc.ProjectID, p.ID)
+		snap, err := s.snap.Snapshot(ctx, tc.OrgID, tc.ProjectID, p.ID, end, closedAt)
 		if err != nil {
 			snapErr = err
 			return err
@@ -289,14 +290,19 @@ func (s *Service) Close(ctx context.Context, id uuid.UUID, end civil.Date, by uu
 		if err := s.store.Save(ctx, p); err != nil {
 			return err
 		}
+		closedBy, closedByKey, err := author(ctx, by)
+		if err != nil {
+			return err
+		}
 		closing := &Closing{
-			ID:        uuid.Must(uuid.NewV7()),
-			OrgID:     p.OrgID,
-			ProjectID: p.ProjectID,
-			PeriodID:  p.ID,
-			ClosedAt:  closedAt,
-			ClosedBy:  by,
-			Snapshot:  snap,
+			ID:            uuid.Must(uuid.NewV7()),
+			OrgID:         p.OrgID,
+			ProjectID:     p.ProjectID,
+			PeriodID:      p.ID,
+			ClosedAt:      closedAt,
+			ClosedBy:      closedBy,
+			ClosedByKeyID: closedByKey,
+			Snapshot:      snap,
 		}
 		if err := s.store.SaveClosing(ctx, closing); err != nil {
 			return err
@@ -388,6 +394,44 @@ func (s *Service) Containing(ctx context.Context, at time.Time) (*Period, error)
 			"org_id", tc.OrgID, "project_id", tc.ProjectID)
 	}
 	return p, nil
+}
+
+// OpeningDate dates an opening balance recorded at at: at itself, or 00:00 project time on the start of the earliest open period after it when at falls in a closed one.
+func (s *Service) OpeningDate(ctx context.Context, at time.Time) (OpeningDate, error) {
+	ctx, span := tracer.Start(ctx, "period.OpeningDate")
+	defer span.End()
+
+	tc, err := tenant.From(ctx)
+	if err != nil {
+		return OpeningDate{}, err
+	}
+	loc, err := s.location(ctx, tc)
+	if err != nil {
+		return OpeningDate{}, err
+	}
+	today := civil.DateOf(at, loc)
+	kept := OpeningDate{At: at, Date: today}
+	p, err := s.store.Containing(ctx, tc.OrgID, tc.ProjectID, today)
+	if err != nil {
+		if IsNotFoundError(err) {
+			return kept, nil
+		}
+		span.RecordError(err)
+		return OpeningDate{}, s.unexpected(ctx, "period.OpeningDate: containing", err,
+			"org_id", tc.OrgID, "project_id", tc.ProjectID)
+	}
+	if !p.IsLocked() {
+		return kept, nil
+	}
+	items, err := s.store.List(ctx, tc.OrgID, tc.ProjectID, ListOpts{})
+	if err != nil {
+		span.RecordError(err)
+		return OpeningDate{}, s.unexpected(ctx, "period.OpeningDate: list", err,
+			"org_id", tc.OrgID, "project_id", tc.ProjectID)
+	}
+	start := NextOpenStart(items, p, today)
+	span.SetAttributes(attribute.String("period.opening_date", start.String()))
+	return OpeningDate{At: start.In(loc), Date: start, Moved: true}, nil
 }
 
 // Neighbors returns the periods immediately before and after the identified one.
@@ -542,4 +586,15 @@ func (s *Service) currentAfterRace(ctx context.Context, tc tenant.Context) (*Per
 			"org_id", tc.OrgID, "project_id", tc.ProjectID)
 	}
 	return cur, nil
+}
+
+func author(ctx context.Context, by uuid.UUID) (userID, keyID uuid.UUID, err error) {
+	if by != uuid.Nil {
+		return by, uuid.Nil, nil
+	}
+	p := session.PrincipalFrom(ctx)
+	if p.UserID == uuid.Nil && p.KeyID != uuid.Nil {
+		return uuid.Nil, p.KeyID, nil
+	}
+	return uuid.Nil, uuid.Nil, &AuthorMissingError{}
 }

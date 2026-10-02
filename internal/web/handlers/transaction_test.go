@@ -32,6 +32,7 @@ import (
 	"altalune.id/yasaku/internal/wallet"
 	"altalune.id/yasaku/internal/web"
 	"altalune.id/yasaku/internal/web/handlers"
+	"altalune.id/yasaku/internal/web/middleware"
 	"altalune.id/yasaku/money"
 )
 
@@ -105,7 +106,7 @@ func (a txPeriodResolver) info(ctx context.Context, p *period.Period) (transacti
 
 type txSnapshotter struct{}
 
-func (txSnapshotter) Snapshot(context.Context, uuid.UUID, uuid.UUID, uuid.UUID) (period.Snapshot, error) {
+func (txSnapshotter) Snapshot(context.Context, uuid.UUID, uuid.UUID, uuid.UUID, civil.Date, time.Time) (period.Snapshot, error) {
 	return period.Snapshot{Currency: money.IDR}, nil
 }
 
@@ -156,7 +157,7 @@ func newTxFixture(t *testing.T) *txFixture {
 	}
 	f.Deps = handlers.Deps{
 		Cfg: cfg, Caps: caps, Sessions: sessions, Logger: discardStdLogger(),
-		Orgs: orgs, Projects: projects, I18n: bundle,
+		Orgs: orgs, Projects: projects, I18n: bundle, ProjectLocation: ledgers.Location,
 	}
 
 	pctx := f.scoped(o.ID, proj.ID, u.ID)
@@ -355,7 +356,7 @@ func TestTransactionHandler_PostCreate_ClosedPeriodRendersBannerAndWritesNothing
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, f.request(t, http.MethodPost, f.path("/transactions"), form, true))
 
-	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, http.StatusUnprocessableEntity, rec.Code)
 	body := rec.Body.String()
 	assert.Contains(t, body, `id="tx-list"`)
 	assert.Contains(t, body, "TXN008")
@@ -394,6 +395,31 @@ func TestTransactionHandler_PostSuggest_PreselectsSuggestedCategory(t *testing.T
 	i := strings.Index(body, f.Food.String())
 	require.Positive(t, i)
 	assert.Contains(t, body[i:min(i+240, len(body))], "checked")
+}
+
+var txNoteTag = regexp.MustCompile(`(?s)<input[^>]*id="tx-note"[^>]*>`)
+
+func TestTransactionHandler_GetNew_NoteSuggestsWhileTypingAndKeepsAManualPick(t *testing.T) {
+	t.Parallel()
+	f := newTxFixture(t)
+	mux := http.NewServeMux()
+	f.txHandler().Register(mux)
+
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, f.request(t, http.MethodGet, f.path("/transactions/new"), nil, false))
+	require.Equal(t, http.StatusOK, rec.Code)
+	body := rec.Body.String()
+
+	tag := txNoteTag.FindString(body)
+	require.NotEmpty(t, tag, "no note input rendered")
+	assert.Contains(t, tag, `hx-trigger="input changed delay:400ms"`)
+	assert.NotContains(t, tag, "blur", "a blur trigger fires before a chip click and sends the old category")
+	assert.Contains(t, tag, `hx-target="#tx-category"`)
+	assert.Contains(t, tag, `hx-include="[name='kind'],[name='category_id']"`)
+
+	assert.Contains(t, body, `"data-category-picked"`)
+	assert.Contains(t, body, `"htmx:before:request"`)
+	assert.Contains(t, body, `"htmx:before:swap"`)
 }
 
 func TestTransactionHandler_GetList_FiltersByWallet(t *testing.T) {
@@ -613,6 +639,37 @@ func TestTransactionHandler_GetEdit_LocksTheKind(t *testing.T) {
 	assert.Contains(t, body, `value="income" disabled`)
 }
 
+func TestTransactionHandler_GetEdit_SavedCategoryCountsAsAManualPick(t *testing.T) {
+	t.Parallel()
+	f := newTxFixture(t)
+	ctx := f.projectCtx(t)
+	catID := f.Food
+	withCat, err := f.Transactions.Record(ctx, transaction.RecordInput{
+		WalletID: f.Cash, Kind: transaction.KindExpense, Amount: money.New(1000000, money.IDR),
+		CategoryID: &catID, Note: "Kopi pagi", OccurredAt: time.Now(),
+	})
+	require.NoError(t, err)
+	without, err := f.Transactions.Record(ctx, transaction.RecordInput{
+		WalletID: f.Cash, Kind: transaction.KindExpense, Amount: money.New(1000000, money.IDR),
+		Note: "Parkir", OccurredAt: time.Now(),
+	})
+	require.NoError(t, err)
+
+	mux := http.NewServeMux()
+	f.txHandler().Register(mux)
+	edit := func(id uuid.UUID) string {
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, f.request(t, http.MethodGet, f.path("/transactions/"+id.String()+"/edit"), nil, false))
+		require.Equal(t, http.StatusOK, rec.Code)
+		tag := quickAddTag.FindString(rec.Body.String())
+		require.NotEmpty(t, tag, "no transaction <form> rendered")
+		return tag
+	}
+
+	assert.Contains(t, edit(withCat.ID), "data-category-picked", "a note edit must never replace the saved category")
+	assert.NotContains(t, edit(without.ID), "data-category-picked", "an uncategorised row still takes a suggestion")
+}
+
 func TestTransactionHandler_PostUpdate_RevisesAmountAndKeepsTheStoredKind(t *testing.T) {
 	t.Parallel()
 	f := newTxFixture(t)
@@ -794,7 +851,7 @@ func TestOverviewHandler_Get_MixedCurrencyWalletsQualifyTheHeadline(t *testing.T
 	assert.Contains(t, head, `data-mixed-currency="1"`)
 }
 
-func TestOverviewHandler_Get_SingleForeignCurrencyStillTotals(t *testing.T) {
+func TestOverviewHandler_Get_ForeignCurrencyOnlyHeadlinesTheLedgerCurrency(t *testing.T) {
 	t.Parallel()
 	f := newTxFixture(t)
 	f.ReportReader.Balances = []report.WalletLine{
@@ -808,11 +865,11 @@ func TestOverviewHandler_Get_SingleForeignCurrencyStillTotals(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, rec.Code)
 	head := txHeadline(t, rec.Body.String())
-	assert.Contains(t, head, "$1.200,00")
-	assert.NotContains(t, head, `data-mixed-currency="1"`)
+	assert.Contains(t, head, "Rp0", "the headline stays in the ledger currency, like the Wallets page and WalletTotals")
+	assert.NotContains(t, head, "$1.200,00")
+	assert.Contains(t, head, `data-mixed-currency="1"`)
 }
 
-// seedOpening writes a system-recorded opening row and returns its id.
 func (f *txFixture) seedOpening(t *testing.T) uuid.UUID {
 	t.Helper()
 	ctx := f.projectCtx(t)
@@ -912,4 +969,135 @@ func TestTransactionHandler_RefusedUpdateKeepsTheUsersInputOnTheEditForm(t *test
 	assert.Contains(t, body, "Nasi Padang", "the note the user typed must survive the refusal")
 	assert.Contains(t, body, f.path("/transactions/"+id.String()),
 		"the form must still post back to the transaction being edited, not to create")
+}
+
+func TestTransactionQuickAddRefusalIs422(t *testing.T) {
+	t.Parallel()
+	f := newTxFixture(t)
+	mux := http.NewServeMux()
+	f.txHandler().Register(mux)
+
+	form := url.Values{
+		"kind":      {"expense"},
+		"amount":    {"not-a-number"},
+		"wallet_id": {f.Cash.String()},
+		"date":      {civil.DateOf(time.Now(), time.UTC).String()},
+	}
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, f.request(t, http.MethodPost, f.path("/transactions"), form, true))
+
+	require.Equal(t, http.StatusUnprocessableEntity, rec.Code,
+		"a refusal under 400 would fire data-clear-on-success and wipe what the user typed")
+	assert.Contains(t, rec.Body.String(), "data-tx-error")
+
+	items, _, err := f.Transactions.List(f.projectCtx(t), transaction.ListOpts{})
+	require.NoError(t, err)
+	assert.Empty(t, items)
+}
+
+var (
+	cspNonceRe  = regexp.MustCompile(`'nonce-([^']+)'`)
+	quickAddTag = regexp.MustCompile(`<form[^>]*id="tx-quick-add"[^>]*>`)
+)
+
+// SECURITY: the quick-add form spreads its htmx attributes from Go, which the templ source scan cannot see.
+func TestTransactionFormRendersANonce(t *testing.T) {
+	t.Parallel()
+	f := newTxFixture(t)
+	mux := http.NewServeMux()
+	f.txHandler().Register(mux)
+	h := middleware.CSP(middleware.CSPOptions{Enabled: true})(mux)
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, f.request(t, http.MethodGet, f.path("/transactions"), nil, false))
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	m := cspNonceRe.FindStringSubmatch(rec.Header().Get("Content-Security-Policy"))
+	require.NotNil(t, m, "CSP header carries no nonce")
+	tag := quickAddTag.FindString(rec.Body.String())
+	require.NotEmpty(t, tag, "no quick-add <form> rendered")
+	assert.Contains(t, tag, `hx-post=`)
+	assert.Contains(t, tag, `hx-nonce="`+m[1]+`"`)
+	assert.Contains(t, tag, `hx-status:422="target:#tx-form-errors`)
+	assert.Contains(t, tag, `data-clear-on-success="#tx-amount, #tx-note"`)
+}
+
+var (
+	txDialogRe = regexp.MustCompile(`(?s)<dialog id="tx-add-dialog"[^>]*>.*?</dialog>`)
+	txOpenerRe = regexp.MustCompile(`<a[^>]*data-dialog-open="tx-add-dialog"[^>]*>`)
+)
+
+func TestTransactionsPageHasNoInlineForm(t *testing.T) {
+	t.Parallel()
+	f := newTxFixture(t)
+	mux := http.NewServeMux()
+	f.txHandler().Register(mux)
+
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, f.request(t, http.MethodGet, f.path("/transactions"), nil, false))
+	require.Equal(t, http.StatusOK, rec.Code)
+	body := rec.Body.String()
+
+	opener := txOpenerRe.FindString(body)
+	require.NotEmpty(t, opener, "no Add transaction opener")
+	assert.Contains(t, opener, `href="`+f.path("/transactions/new")+`"`)
+
+	dialog := txDialogRe.FindString(body)
+	require.NotEmpty(t, dialog, "no tx-add-dialog")
+	assert.Contains(t, dialog, `id="tx-quick-add"`)
+	assert.Contains(t, dialog, "data-keep-open")
+	assert.Contains(t, dialog, "data-dialog-close-on-success")
+	assert.Equal(t, 1, strings.Count(body, `id="tx-quick-add"`))
+	assert.NotContains(t, strings.Replace(body, dialog, "", 1), `id="tx-quick-add"`,
+		"the quick-add form must live only inside the dialog")
+}
+
+func TestTransactionsPageDialogFormKeepsTheNonceAndErrorRouting(t *testing.T) {
+	t.Parallel()
+	f := newTxFixture(t)
+	mux := http.NewServeMux()
+	f.txHandler().Register(mux)
+	h := middleware.CSP(middleware.CSPOptions{Enabled: true})(mux)
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, f.request(t, http.MethodGet, f.path("/transactions"), nil, false))
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	m := cspNonceRe.FindStringSubmatch(rec.Header().Get("Content-Security-Policy"))
+	require.NotNil(t, m, "CSP header carries no nonce")
+	dialog := txDialogRe.FindString(rec.Body.String())
+	require.NotEmpty(t, dialog, "no tx-add-dialog")
+	tag := quickAddTag.FindString(dialog)
+	require.NotEmpty(t, tag, "no quick-add <form> inside the dialog")
+	assert.Contains(t, tag, `hx-nonce="`+m[1]+`"`)
+	assert.Contains(t, tag, `hx-status:422="target:#tx-form-errors`)
+	assert.Contains(t, tag, `hx-disable=`)
+	assert.Contains(t, tag, `data-clear-on-success="#tx-amount, #tx-note"`)
+	assert.Contains(t, dialog, `id="tx-form-errors"`)
+	assert.Contains(t, rec.Body.String(), `/static/dialog.js`)
+}
+
+func TestTransactionCreateRefusalWithoutHTMXRendersTheFormPage(t *testing.T) {
+	t.Parallel()
+	f := newTxFixture(t)
+	mux := http.NewServeMux()
+	f.txHandler().Register(mux)
+
+	form := url.Values{
+		"kind":      {"expense"},
+		"amount":    {"not-a-number"},
+		"wallet_id": {f.Cash.String()},
+		"note":      {"Nasi Padang"},
+		"date":      {civil.DateOf(time.Now(), time.UTC).String()},
+	}
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, f.request(t, http.MethodPost, f.path("/transactions"), form, false))
+
+	body := rec.Body.String()
+	require.Less(t, rec.Code, 500)
+	assert.Contains(t, body, "<html")
+	assert.Contains(t, body, "data-tx-error")
+	assert.Contains(t, body, "Nasi Padang")
+	assert.Empty(t, txDialogRe.FindString(body),
+		"without JS a dialog never opens, so the typed values must not hide in one")
 }

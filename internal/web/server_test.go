@@ -14,12 +14,11 @@ import (
 	webhandlers "altalune.id/yasaku/internal/web/handlers"
 )
 
-// stubRegister is a minimal Register that answers a fixed route.
 type stubRegister struct {
 	path, body string
 }
 
-func (s stubRegister) Register(mux *http.ServeMux) {
+func (s stubRegister) Register(mux web.Mux) {
 	mux.HandleFunc(s.path, func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(s.body))
 	})
@@ -120,7 +119,7 @@ func TestServer_MiddlewareChain_OuterFirst(t *testing.T) {
 	handler := web.NewServer(web.ServerOpts{
 		BasePath:    "",
 		AppHandlers: []web.Register{stubRegister{path: "GET /x", body: "ok"}},
-		Middlewares: []web.Middleware{mw("outer"), mw("inner")},
+		Chains:      web.SurfaceChains{Console: []web.Middleware{mw("outer"), mw("inner")}},
 	})
 	ts := httptest.NewServer(handler)
 	defer ts.Close()
@@ -179,15 +178,32 @@ func TestServer_StaticCarriesCacheControl(t *testing.T) {
 	require.Equal(t, "public, max-age=3600", resp.Header.Get("Cache-Control"))
 }
 
+func TestServer_StaticRefusesDirectoryListings(t *testing.T) {
+	t.Parallel()
+	ts := httptest.NewServer(web.NewServer(web.ServerOpts{}))
+	t.Cleanup(ts.Close)
+
+	for _, path := range []string{"/static/", "/static/sub/", "/static/missing.css"} {
+		resp, err := http.Get(ts.URL + path)
+		require.NoError(t, err)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.NoError(t, resp.Body.Close())
+		require.Equal(t, http.StatusNotFound, resp.StatusCode, "path=%s", path)
+		require.NotContains(t, string(body), "themes.css", "path=%s listed the static directory", path)
+		require.NotContains(t, resp.Header.Get("Cache-Control"), "public", "path=%s: a 404 must not be cached publicly", path)
+	}
+}
+
 func TestServer_MountsMCPHandler(t *testing.T) {
 	t.Parallel()
 	mcp := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("mcp-ok")) })
 	required := &atomic.Bool{}
 	required.Store(true)
 	ts := httptest.NewServer(web.NewServer(web.ServerOpts{
-		BasePath:    "/app",
-		MCPHandler:  mcp,
-		Middlewares: []web.Middleware{webhandlers.OnboardingGate("/app", required)},
+		BasePath:   "/app",
+		MCPHandler: mcp,
+		Chains:     web.SurfaceChains{Console: []web.Middleware{webhandlers.OnboardingGate("/app", required)}},
 	}))
 	t.Cleanup(ts.Close)
 
@@ -201,15 +217,16 @@ func TestServer_MountsMCPHandler(t *testing.T) {
 	require.Equal(t, "mcp-ok", string(body))
 }
 
-func TestServer_MountsWellKnownOnOuterMux(t *testing.T) {
+func TestServer_MountsMCPMetadataOutsideBasePath(t *testing.T) {
 	t.Parallel()
 	prm := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("prm")) })
 	required := &atomic.Bool{}
 	required.Store(true)
 	ts := httptest.NewServer(web.NewServer(web.ServerOpts{
-		BasePath:    "/app",
-		WellKnown:   map[string]http.Handler{"/.well-known/oauth-protected-resource": prm},
-		Middlewares: []web.Middleware{webhandlers.OnboardingGate("/app", required)},
+		BasePath:           "/app",
+		MCPMetadataHandler: prm,
+		MCPMetadataPath:    "/.well-known/oauth-protected-resource",
+		Chains:             web.SurfaceChains{Console: []web.Middleware{webhandlers.OnboardingGate("/app", required)}},
 	}))
 	t.Cleanup(ts.Close)
 

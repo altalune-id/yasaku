@@ -11,15 +11,10 @@ import (
 )
 
 // SingletonOrgMissingError signals the selfhosted singleton org has not been provisioned yet — the caller (typically OnboardWorkflow) should treat it as "onboarding still needs to run".
-type SingletonOrgMissingError struct {
-	Slug string
-}
+type SingletonOrgMissingError struct{}
 
 func (e *SingletonOrgMissingError) Error() string {
-	if e == nil || e.Slug == "" {
-		return "user: singleton org not provisioned"
-	}
-	return fmt.Sprintf("user: singleton org not provisioned: slug=%q", e.Slug)
+	return "user: singleton org not provisioned"
 }
 
 // IsSingletonOrgMissingError reports whether err's tree contains a *SingletonOrgMissingError.
@@ -56,14 +51,6 @@ func (e *NotFoundError) ToAppError() *apperror.AppError {
 		codes.NotFound,
 		&apperrorv1.ErrorDetail{Code: apperror.CodeUserNotFound},
 	)
-}
-
-func emailConflict(u *User) error {
-	return &AlreadyExistsError{Field: "email", Value: u.Email}
-}
-
-func idpConflict(u *User) error {
-	return &AlreadyExistsError{Field: "idp_subject", Value: u.IDPSubject}
 }
 
 // IsNotFoundError reports whether err's tree contains a *NotFoundError.

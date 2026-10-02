@@ -5,23 +5,26 @@ import "altalune.id/yasaku/internal/platform/config"
 
 // Capabilities is the read-only feature-flag snapshot derived from Config.
 type Capabilities struct {
-	Mode               config.Mode
-	LocalIdentity      bool
-	ExternalIdentity   bool
-	OIDCButtonLabel    string
-	OIDCButtonLogoURL  string
-	PublicSignup       bool
-	Signup             bool
-	OrgCreation        bool
-	InvitesEnabled     bool
-	APIEnabled         bool
-	MCPEnabled         bool
-	TokenAuth          bool
-	MailEnabled        bool
-	OnboardingRequired bool
-	IsProduction       bool
-	BasePath           string
-	BaseURL            string
+	Mode                   config.Mode
+	LocalIdentity          bool
+	ExternalIdentity       bool
+	OIDCButtonLabel        string
+	OIDCButtonLogoURL      string
+	PublicSignup           bool
+	Signup                 bool
+	OrgCreation            bool
+	InvitesEnabled         bool
+	APIEnabled             bool
+	DataPlaneEnabled       bool
+	MCPEnabled             bool
+	TokenAuth              bool
+	MailEnabled            bool
+	OnboardingRequired     bool
+	PublicReads            bool
+	IsProduction           bool
+	EphemeralEncryptionKey bool
+	BasePath               string
+	BaseURL                string
 }
 
 // From derives Capabilities from a fully-loaded Config.
@@ -29,18 +32,21 @@ func From(c *config.Config) Capabilities {
 	localCredentials := c.Genesis.Email != "" && c.Genesis.Password != ""
 	localAllowed := c.Mode != config.ModeCloud || c.Genesis.BreakGlass
 	caps := Capabilities{
-		Mode:              c.Mode,
-		LocalIdentity:     localCredentials && localAllowed,
-		ExternalIdentity:  c.OIDC.Issuer != "",
-		OIDCButtonLabel:   c.OIDC.ButtonLabel,
-		OIDCButtonLogoURL: c.OIDC.ButtonLogoURL,
-		APIEnabled:        c.API.Enabled,
-		MCPEnabled:        c.MCP.Enabled,
-		TokenAuth:         c.Tokens.Issuer != "",
-		MailEnabled:       c.Mail.Driver != "" && (c.Mail.Driver != "console" || c.Mail.SMTP.Host != ""),
-		IsProduction:      c.Mode.IsProduction(),
-		BasePath:          c.HTTP.BasePath,
-		BaseURL:           c.HTTP.BaseURL,
+		Mode:                   c.Mode,
+		LocalIdentity:          localCredentials && localAllowed,
+		ExternalIdentity:       c.OIDC.Issuer != "",
+		OIDCButtonLabel:        c.OIDC.ButtonLabel,
+		OIDCButtonLogoURL:      c.OIDC.ButtonLogoURL,
+		APIEnabled:             c.API.Enabled,
+		DataPlaneEnabled:       c.DataPlane.Enabled,
+		MCPEnabled:             c.MCP.Enabled,
+		PublicReads:            c.Blog.PublicReads,
+		TokenAuth:              c.Tokens.Issuer != "",
+		MailEnabled:            c.Mail.Driver != "" && (c.Mail.Driver != "console" || c.Mail.SMTP.Host != ""),
+		IsProduction:           c.Mode.IsProduction(),
+		EphemeralEncryptionKey: c.Security.EncryptionKey == "",
+		BasePath:               c.HTTP.BasePath,
+		BaseURL:                c.HTTP.BaseURL,
 	}
 	caps.PublicSignup = caps.Mode == config.ModeCloud && caps.ExternalIdentity
 	caps.Signup = caps.PublicSignup

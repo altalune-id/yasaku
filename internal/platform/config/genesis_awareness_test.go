@@ -43,3 +43,40 @@ func TestLoad_OnboardSetupTokenFromEnv(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "pinned-token", cfg.Onboard.SetupToken)
 }
+
+func TestEnvKeys_QueueTokenIsSecret(t *testing.T) {
+	keys := WalkEnvKeys(EnvPrefix)
+	var found bool
+	for _, k := range keys {
+		if k.YAML != "queue.token" {
+			continue
+		}
+		found = true
+		require.Contains(t, k.Awareness, "secret")
+	}
+	require.True(t, found, "queue.token must be a known env key")
+}
+
+func TestEnvKeys_QueueURLIsSecret(t *testing.T) {
+	keys := WalkEnvKeys(EnvPrefix)
+	var found bool
+	for _, k := range keys {
+		if k.YAML != "queue.url" {
+			continue
+		}
+		found = true
+		require.Contains(t, k.Awareness, "secret",
+			"a NATS URL can carry user:pass@ credentials")
+	}
+	require.True(t, found, "queue.url must be a known env key")
+}
+
+func TestLoad_QueueTokenFromEnv(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("YASAKU_QUEUE_TOKEN", "pinned-nats-token")
+	t.Chdir(t.TempDir())
+
+	cfg, err := Load("")
+	require.NoError(t, err)
+	require.Equal(t, "pinned-nats-token", cfg.Queue.Token)
+}

@@ -13,13 +13,14 @@ import (
 
 // ReportCall records the scope one Reader method was invoked with.
 type ReportCall struct {
-	Method    string
-	OrgID     uuid.UUID
-	ProjectID uuid.UUID
-	PeriodID  uuid.UUID
-	PeriodIDs []uuid.UUID
-	Currency  money.Currency
-	StartUTC  time.Time
+	Method         string
+	OrgID          uuid.UUID
+	ProjectID      uuid.UUID
+	PeriodID       uuid.UUID
+	PeriodIDs      []uuid.UUID
+	Currency       money.Currency
+	StartUTC       time.Time
+	ArchivedBefore *time.Time
 }
 
 // ReportReader is an in-memory report.Reader returning canned data and recording every call.
@@ -77,10 +78,10 @@ func (f *ReportReader) Period(_ context.Context, orgID, projectID, periodID uuid
 	return f.Ref, nil
 }
 
-func (f *ReportReader) Summary(_ context.Context, orgID, projectID, periodID uuid.UUID, currency money.Currency, startUTC time.Time) (report.PeriodSummary, error) {
+func (f *ReportReader) Summary(_ context.Context, orgID, projectID, periodID uuid.UUID, currency money.Currency, startUTC time.Time, archivedBefore *time.Time) (report.PeriodSummary, error) {
 	f.record(ReportCall{
 		Method: "Summary", OrgID: orgID, ProjectID: projectID, PeriodID: periodID,
-		Currency: currency, StartUTC: startUTC,
+		Currency: currency, StartUTC: startUTC, ArchivedBefore: archivedBefore,
 	})
 	if err := firstErr(f.SummaryErr, f.Err); err != nil {
 		return report.PeriodSummary{}, err

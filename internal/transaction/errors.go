@@ -302,3 +302,26 @@ func IsInvalidNoteError(err error) bool {
 	_, ok := errors.AsType[*InvalidNoteError](err)
 	return ok
 }
+
+// AuthorMissingError reports a write that names neither a user nor an API key as its author.
+type AuthorMissingError struct{}
+
+func (e *AuthorMissingError) Error() string {
+	return "transaction: author: neither a user nor an API key"
+}
+
+// ToAppError converts the typed error into the wire envelope.
+func (e *AuthorMissingError) ToAppError() *apperror.AppError {
+	return apperror.New(
+		apperror.CodeTransactionAuthorMissing,
+		"This transaction names no author",
+		codes.FailedPrecondition,
+		&apperrorv1.ErrorDetail{Code: apperror.CodeTransactionAuthorMissing},
+	)
+}
+
+// IsAuthorMissingError reports whether err's chain contains an *AuthorMissingError.
+func IsAuthorMissingError(err error) bool {
+	_, ok := errors.AsType[*AuthorMissingError](err)
+	return ok
+}

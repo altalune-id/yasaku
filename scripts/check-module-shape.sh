@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# check-module-shape.sh — verify each internal domain module carries its canonical file set per docs/MODULE_TEMPLATE.md.
+# check-module-shape.sh — verify each internal domain module carries its canonical file set per ../docs/modules/README.md.
 #
 # Canonical set for a store-backed module <name> under internal/<name>/:
 #   <name>.go     aggregate types + package doc

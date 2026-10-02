@@ -37,8 +37,7 @@ import (
 	"altalune.id/yasaku/schema"
 )
 
-// NOTE: these tests are deliberately not t.Parallel — go-jet v2.13.0 mutates a package-global
-// expression singleton, so two concurrent SQLite writers trip the race detector (docs/BACKLOG.md).
+// NOTE: not t.Parallel — go-jet v2.13.0 mutates a package-global singleton, so concurrent SQLite writers trip the race detector.
 type periodFixture struct {
 	Deps      handlers.Deps
 	Cfg       *config.Config
@@ -61,8 +60,8 @@ type periodFixture struct {
 
 type periodSnapshotter struct{ reports *report.Service }
 
-func (a periodSnapshotter) Snapshot(ctx context.Context, orgID, projectID, periodID uuid.UUID) (period.Snapshot, error) {
-	sum, err := a.reports.SnapshotFor(ctx, orgID, projectID, periodID)
+func (a periodSnapshotter) Snapshot(ctx context.Context, orgID, projectID, periodID uuid.UUID, end civil.Date, at time.Time) (period.Snapshot, error) {
+	sum, err := a.reports.SnapshotFor(ctx, orgID, projectID, periodID, end, at)
 	if err != nil {
 		return period.Snapshot{}, err
 	}

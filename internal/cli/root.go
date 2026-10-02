@@ -29,6 +29,7 @@ const (
 func NewRootCmd(bootServer ServerBootFn, bootClient ClientBootFn) *cobra.Command {
 	var (
 		configPath    string
+		url           string
 		token         string
 		tokenFile     string
 		output        string
@@ -50,6 +51,7 @@ func NewRootCmd(bootServer ServerBootFn, bootClient ClientBootFn) *cobra.Command
 
 	p := root.PersistentFlags()
 	p.StringVarP(&configPath, "config", "c", "", "config file (yaml). Env (YASAKU_*) still applies; -c makes yaml explicit.")
+	p.StringVar(&url, "url", "", "base URL of the yasaku instance to talk to (also: YASAKU_URL)")
 	p.StringVar(&token, "token", "", "bearer token (also: YASAKU_TOKEN)")
 	p.StringVar(&tokenFile, "token-file", "", "path to file containing the bearer token (0600) (also: YASAKU_TOKEN_FILE)")
 	p.StringVar(&output, "output", "", "output format: text|json|ndjson (also: YASAKU_OUTPUT)")
@@ -90,11 +92,12 @@ func NewRootCmd(bootServer ServerBootFn, bootClient ClientBootFn) *cobra.Command
 		newOrgCmd(bootServer, bootClient),
 		newProjectCmd(bootServer, bootClient),
 		newInviteCmd(bootServer, bootClient),
-		newTodoCmd(bootServer, bootClient),
 		newVersionCmd(),
 		newHealthzCmd(),
 		newCompletionCmd(),
 	)
+	root.AddCommand(publishedDomainCmds(bootServer, bootClient)...)
+	registerURLFlagCompletion(root)
 	return root
 }
 

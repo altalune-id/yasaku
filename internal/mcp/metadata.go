@@ -2,65 +2,86 @@ package mcp
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
+	"net/url"
+	"strconv"
 	"strings"
-
-	"altalune.id/yasaku/internal/platform/config"
-	mcprt "altalune.id/yasaku/mcp"
 )
 
-const (
-	wellKnownPath        = "/.well-known/oauth-protected-resource"
-	metadataCacheControl = "public, max-age=300"
-)
+// WellKnownPrefix is the RFC 9728 well-known URI, inserted between a resource identifier's host and its path. https://www.rfc-editor.org/rfc/rfc9728.html#section-3
+const WellKnownPrefix = "/.well-known/oauth-protected-resource"
 
-// protectedResource is the RFC 9728 protected-resource metadata document.
-type protectedResource struct {
-	Resource               string   `json:"resource"`
-	AuthorizationServers   []string `json:"authorization_servers"`
-	ScopesSupported        []string `json:"scopes_supported"`
-	BearerMethodsSupported []string `json:"bearer_methods_supported"`
+// ResourceInvalidError reports an MCP resource identifier that cannot address a metadata document.
+type ResourceInvalidError struct {
+	Resource string
+	Reason   string
 }
 
-func (s *Server) initMetadata(cfg *config.Config) {
-	if cfg == nil {
-		cfg = &config.Config{}
-	}
-	basePath := strings.TrimRight(cfg.HTTP.BasePath, "/")
-	// NOTE: RFC 9728 §3.1 inserts the resource's path before the well-known suffix, so an
-	// unprefixed deployment still answers at /.well-known/oauth-protected-resource/mcp.
-	pathScoped := wellKnownPath + basePath + "/mcp"
-	s.routes = []string{wellKnownPath, pathScoped}
-	s.challenge = `Bearer resource_metadata="` + strings.TrimRight(cfg.HTTP.BaseURL, "/") + pathScoped + `"`
+func (e *ResourceInvalidError) Error() string {
+	return "mcp: resource identifier " + strconv.Quote(e.Resource) + " is " + e.Reason
+}
 
-	doc := protectedResource{
-		Resource:               cfg.MCP.Audience,
-		AuthorizationServers:   []string{cfg.Tokens.Issuer},
-		ScopesSupported:        []string{string(mcprt.ScopeRead), string(mcprt.ScopeWrite)},
-		BearerMethodsSupported: []string{"header"},
-	}
-	body, err := json.Marshal(doc)
+// IsResourceInvalidError reports whether err is a *ResourceInvalidError.
+func IsResourceInvalidError(err error) bool {
+	var target *ResourceInvalidError
+	return errors.As(err, &target)
+}
+
+// Surface carries the identifiers the MCP mount, its token verifier and its 401 challenge must all agree on. https://www.rfc-editor.org/rfc/rfc9728.html#section-3
+type Surface struct {
+	Resource     string
+	MetadataPath string
+	MetadataURL  string
+}
+
+// NewSurface derives the RFC 9728 metadata location from an MCP resource identifier.
+func NewSurface(resource string) (Surface, error) {
+	u, err := url.Parse(resource)
 	if err != nil {
-		panic("mcp: marshalling protected-resource metadata: " + err.Error())
+		return Surface{}, &ResourceInvalidError{Resource: resource, Reason: "not a URL"}
 	}
-	s.metadata = body
+	if !u.IsAbs() || u.Host == "" {
+		return Surface{}, &ResourceInvalidError{Resource: resource, Reason: "not absolute"}
+	}
+	if u.Fragment != "" || strings.Contains(resource, "#") {
+		return Surface{}, &ResourceInvalidError{Resource: resource, Reason: "carrying a fragment"}
+	}
+	path := WellKnownPrefix + strings.TrimSuffix(u.EscapedPath(), "/")
+	suffix := path
+	if u.RawQuery != "" {
+		suffix += "?" + u.RawQuery
+	}
+	return Surface{
+		Resource:     resource,
+		MetadataPath: path,
+		MetadataURL:  u.Scheme + "://" + u.Host + suffix,
+	}, nil
 }
 
-// Metadata serves the RFC 9728 protected-resource document.
-func (s *Server) Metadata() http.Handler {
+type protectedResourceMetadata struct {
+	Resource               string   `json:"resource"`
+	AuthorizationServers   []string `json:"authorization_servers,omitempty"`
+	ScopesSupported        []string `json:"scopes_supported,omitempty"`
+	BearerMethodsSupported []string `json:"bearer_methods_supported,omitempty"`
+}
+
+// MetadataHandler serves the RFC 9728 protected-resource metadata document. SECURITY: unauthenticated by design — a client reads it precisely because it holds no token yet — so the body carries only the deployment-wide identifiers RFC 9728 defines and never a tenant identifier, an internal hostname or a per-caller scope list.
+func MetadataHandler(resource string, authorizationServers, scopesSupported []string) http.Handler {
+	body, err := json.Marshal(protectedResourceMetadata{
+		Resource:               resource,
+		AuthorizationServers:   authorizationServers,
+		ScopesSupported:        scopesSupported,
+		BearerMethodsSupported: []string{"header"},
+	})
+	if err != nil {
+		return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			http.Error(w, "metadata unavailable", http.StatusInternalServerError)
+		})
+	}
 	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("Cache-Control", metadataCacheControl)
-		_, _ = w.Write(s.metadata)
+		w.Header().Set("Cache-Control", "public, max-age=3600")
+		_, _ = w.Write(body)
 	})
-}
-
-// WellKnown returns the outer-mux patterns the metadata document answers on.
-func (s *Server) WellKnown() map[string]http.Handler {
-	h := s.Metadata()
-	out := make(map[string]http.Handler, len(s.routes))
-	for _, path := range s.routes {
-		out["GET "+path] = h
-	}
-	return out
 }

@@ -32,7 +32,7 @@ func (s stubSettings) StartDay(_ context.Context, _, _ uuid.UUID) (int, error) {
 
 type stubSnapshotter struct{}
 
-func (stubSnapshotter) Snapshot(_ context.Context, _, _, _ uuid.UUID) (period.Snapshot, error) {
+func (stubSnapshotter) Snapshot(_ context.Context, _, _, _ uuid.UUID, _ civil.Date, _ time.Time) (period.Snapshot, error) {
 	return period.Snapshot{}, nil
 }
 
@@ -191,8 +191,13 @@ func TestSnapshotterAdapter_StampsComputedAt(t *testing.T) {
 	adapter := snapshotterAdapter{reports: reports, now: func() time.Time { return frozen }}
 
 	tc := tenant.Context{OrgID: uuid.New(), ProjectID: uuid.New(), UserID: uuid.New()}
-	snap, err := adapter.Snapshot(tenant.Into(context.Background(), tc), tc.OrgID, tc.ProjectID, uuid.New())
+	end := civil.Date{Year: 2026, Month: time.September, Day: 14}
+	snap, err := adapter.Snapshot(tenant.Into(context.Background(), tc), tc.OrgID, tc.ProjectID, uuid.New(), end, frozen)
 	require.NoError(t, err)
+	call, ok := reader.Last("Summary")
+	require.True(t, ok)
+	require.NotNil(t, call.ArchivedBefore, "the snapshot is taken as of the close, not as a running period")
+	assert.True(t, end.AddDays(1).In(time.UTC).Equal(*call.ArchivedBefore), "got %s", call.ArchivedBefore)
 
 	assert.False(t, snap.ComputedAt.IsZero(), "a persisted snapshot must carry when it was computed")
 	assert.True(t, snap.ComputedAt.Equal(frozen), "ComputedAt = %s", snap.ComputedAt)
@@ -215,7 +220,7 @@ func TestSnapshotterAdapter_StampsComputedAtWithoutAnInjectedClock(t *testing.T)
 	adapter := snapshotterAdapter{reports: reports}
 
 	tc := tenant.Context{OrgID: uuid.New(), ProjectID: uuid.New(), UserID: uuid.New()}
-	snap, err := adapter.Snapshot(tenant.Into(context.Background(), tc), tc.OrgID, tc.ProjectID, uuid.New())
+	snap, err := adapter.Snapshot(tenant.Into(context.Background(), tc), tc.OrgID, tc.ProjectID, uuid.New(), civil.Date{Year: 2026, Month: time.September, Day: 14}, time.Now())
 	require.NoError(t, err)
 	assert.False(t, snap.ComputedAt.IsZero(), "the zero clock must not leave ComputedAt unset")
 }
@@ -239,4 +244,31 @@ func TestNamerAdapter_UsesTheTranslatorOnTheContext(t *testing.T) {
 
 	got := namerAdapter{}.DefaultName(ctx, "category.default.food")
 	assert.Equal(t, "Food & Drinks", got)
+}
+
+func TestPeriodResolverAdapter_ByID_RefusesAMismatchedScopeArgument(t *testing.T) {
+	f := newResolverFixture(t)
+
+	_, err := f.adapter.ByID(f.ctx(), f.tc.OrgID, uuid.New(), f.august)
+	require.Error(t, err)
+	assert.True(t, period.IsNotFoundError(err), "a project argument that does not own the row is reported absent, got %T: %v", err, err)
+
+	_, err = f.adapter.ByID(f.ctx(), uuid.New(), f.tc.ProjectID, f.august)
+	require.Error(t, err)
+	assert.True(t, period.IsNotFoundError(err), "an org argument that does not own the row is reported absent, got %T: %v", err, err)
+}
+
+func TestPeriodResolverAdapter_Containing_RefusesAMismatchedScopeArgument(t *testing.T) {
+	f := newResolverFixture(t)
+	at := time.Date(2026, time.August, 15, 9, 0, 0, 0, time.UTC)
+
+	_, ok, err := f.adapter.Containing(f.ctx(), f.tc.OrgID, uuid.New(), at)
+	require.Error(t, err)
+	assert.False(t, ok)
+	assert.True(t, period.IsNotFoundError(err), "got %T: %v", err, err)
+
+	_, ok, err = f.adapter.Containing(f.ctx(), uuid.New(), f.tc.ProjectID, at)
+	require.Error(t, err)
+	assert.False(t, ok)
+	assert.True(t, period.IsNotFoundError(err), "got %T: %v", err, err)
 }

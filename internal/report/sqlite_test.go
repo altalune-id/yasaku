@@ -21,11 +21,11 @@ import (
 	"altalune.id/yasaku/schema"
 )
 
-// seed is the fixture every reader test shares: two IDR wallets, two categories, two periods and
-// nine transactions covering every kind, one carried to the next period and one left unassigned.
 type seed struct {
-	reader report.Reader
-	tc     tenant.Context
+	reader  report.Reader
+	tc      tenant.Context
+	archive func(t *testing.T, walletID uuid.UUID, at time.Time)
+	closeAs func(t *testing.T, periodID uuid.UUID, status string, at time.Time)
 
 	walletCash uuid.UUID
 	walletBank uuid.UUID
@@ -39,7 +39,6 @@ type seed struct {
 	foreign neighbour
 }
 
-// neighbour is a full set of rows the reader must never return for the fixture's own scope.
 type neighbour struct {
 	orgID     uuid.UUID
 	projectID uuid.UUID
@@ -82,6 +81,14 @@ func newSQLiteSeed(t *testing.T) seed {
 	prefix := cfg.DB.TablePrefix
 
 	s := seedRows(t, sqlDB, prefix)
+	s.archive = func(t *testing.T, walletID uuid.UUID, at time.Time) {
+		t.Helper()
+		mustExec(t, sqlDB, "UPDATE "+prefix+"wallets SET archived_at = ? WHERE id = ?", sqliteent.SQLiteTime(at), walletID.String())
+	}
+	s.closeAs = func(t *testing.T, periodID uuid.UUID, status string, at time.Time) {
+		t.Helper()
+		mustExec(t, sqlDB, "UPDATE "+prefix+"periods SET status = ?, closed_at = ? WHERE id = ?", status, sqliteent.SQLiteTime(at), periodID.String())
+	}
 	s.reader = report.NewReader(
 		db.DBConfig{Driver: db.DriverSQLite, TablePrefix: prefix},
 		db.Pool{W: sqlDB, R: sqlDB},
@@ -114,7 +121,7 @@ func TestSQLiteReader_Period_RefusesAnotherProject(t *testing.T) {
 
 func TestSQLiteReader_Summary_FirstPeriod(t *testing.T) {
 	s := newSQLiteSeed(t)
-	got, err := s.reader.Summary(s.ctx(), s.tc.OrgID, s.tc.ProjectID, s.periodAug, money.IDR, s.augStartUTC(t))
+	got, err := s.reader.Summary(s.ctx(), s.tc.OrgID, s.tc.ProjectID, s.periodAug, money.IDR, s.augStartUTC(t), nil)
 	require.NoError(t, err)
 
 	assert.Equal(t, money.IDR, got.Currency)
@@ -146,7 +153,7 @@ func TestSQLiteReader_Summary_FirstPeriod(t *testing.T) {
 
 func TestSQLiteReader_Summary_SecondPeriodCarriesOpening(t *testing.T) {
 	s := newSQLiteSeed(t)
-	got, err := s.reader.Summary(s.ctx(), s.tc.OrgID, s.tc.ProjectID, s.periodSep, money.IDR, s.sepStartUTC(t))
+	got, err := s.reader.Summary(s.ctx(), s.tc.OrgID, s.tc.ProjectID, s.periodSep, money.IDR, s.sepStartUTC(t), nil)
 	require.NoError(t, err)
 
 	assert.Equal(t, idr(5_000), got.Income, "the adjustment in")
@@ -173,9 +180,9 @@ func TestSQLiteReader_Summary_SecondPeriodCarriesOpening(t *testing.T) {
 
 func TestSQLiteReader_Summary_OpeningOfTheNextPeriodEqualsTheClosingOfThePrevious(t *testing.T) {
 	s := newSQLiteSeed(t)
-	aug, err := s.reader.Summary(s.ctx(), s.tc.OrgID, s.tc.ProjectID, s.periodAug, money.IDR, s.augStartUTC(t))
+	aug, err := s.reader.Summary(s.ctx(), s.tc.OrgID, s.tc.ProjectID, s.periodAug, money.IDR, s.augStartUTC(t), nil)
 	require.NoError(t, err)
-	sep, err := s.reader.Summary(s.ctx(), s.tc.OrgID, s.tc.ProjectID, s.periodSep, money.IDR, s.sepStartUTC(t))
+	sep, err := s.reader.Summary(s.ctx(), s.tc.OrgID, s.tc.ProjectID, s.periodSep, money.IDR, s.sepStartUTC(t), nil)
 	require.NoError(t, err)
 
 	augLines, sepLines := byWallet(t, aug.Wallets), byWallet(t, sep.Wallets)
@@ -190,7 +197,7 @@ func TestSQLiteReader_Summary_OpeningOfTheNextPeriodEqualsTheClosingOfThePreviou
 
 func TestSQLiteReader_Summary_OtherCurrencyIsEmpty(t *testing.T) {
 	s := newSQLiteSeed(t)
-	got, err := s.reader.Summary(s.ctx(), s.tc.OrgID, s.tc.ProjectID, s.periodAug, "USD", s.augStartUTC(t))
+	got, err := s.reader.Summary(s.ctx(), s.tc.OrgID, s.tc.ProjectID, s.periodAug, "USD", s.augStartUTC(t), nil)
 	require.NoError(t, err)
 
 	assert.Equal(t, money.New(0, "USD"), got.Income)
@@ -201,13 +208,11 @@ func TestSQLiteReader_Summary_OtherCurrencyIsEmpty(t *testing.T) {
 
 func TestSQLiteReader_Summary_RefusesAnotherOrg(t *testing.T) {
 	s := newSQLiteSeed(t)
-	_, err := s.reader.Summary(s.ctx(), uuid.New(), s.tc.ProjectID, s.periodAug, money.IDR, s.augStartUTC(t))
+	_, err := s.reader.Summary(s.ctx(), uuid.New(), s.tc.ProjectID, s.periodAug, money.IDR, s.augStartUTC(t), nil)
 	require.Error(t, err, "an org that disagrees with the request scope must match no period")
 }
 
-// SECURITY: SQLite has no RLS, so the explicit org and project predicates are the only protection.
-// Every period-keyed read takes the period id from its caller, so a caller naming a neighbour's
-// period must still come back empty.
+// SECURITY: SQLite has no RLS, so a caller naming a neighbour's period must still come back empty.
 func TestSQLiteReader_PeriodKeyedReads_RefuseANeighboursPeriod(t *testing.T) {
 	s := newSQLiteSeed(t)
 	for name, n := range map[string]neighbour{"sibling project": s.sibling, "foreign org": s.foreign} {
@@ -215,7 +220,7 @@ func TestSQLiteReader_PeriodKeyedReads_RefuseANeighboursPeriod(t *testing.T) {
 			_, err := s.reader.Period(s.ctx(), s.tc.OrgID, s.tc.ProjectID, n.periodID)
 			require.Error(t, err)
 
-			_, err = s.reader.Summary(s.ctx(), s.tc.OrgID, s.tc.ProjectID, n.periodID, money.IDR, s.augStartUTC(t))
+			_, err = s.reader.Summary(s.ctx(), s.tc.OrgID, s.tc.ProjectID, n.periodID, money.IDR, s.augStartUTC(t), nil)
 			require.Error(t, err)
 
 			spend, err := s.reader.SpendByCategory(s.ctx(), s.tc.OrgID, s.tc.ProjectID, n.periodID, money.IDR)
@@ -255,8 +260,7 @@ func TestSQLiteReader_WalletBalances_ExcludeNeighbours(t *testing.T) {
 	assert.NotContains(t, lines, s.foreign.walletID, "another org's wallet must not appear")
 }
 
-// SECURITY: the request's tenant scope is layered on top of the caller's arguments, so a caller
-// asking for a scope it is not bound to matches nothing even when that scope really exists.
+// SECURITY: a caller asking for a scope outside the request's tenant matches nothing, even when it exists.
 func TestSQLiteReader_RefusesAScopeOutsideTheRequestsTenant(t *testing.T) {
 	s := newSQLiteSeed(t)
 	n := s.foreign
@@ -264,7 +268,7 @@ func TestSQLiteReader_RefusesAScopeOutsideTheRequestsTenant(t *testing.T) {
 	_, err := s.reader.Period(s.ctx(), n.orgID, n.projectID, n.periodID)
 	require.Error(t, err)
 
-	_, err = s.reader.Summary(s.ctx(), n.orgID, n.projectID, n.periodID, money.IDR, s.augStartUTC(t))
+	_, err = s.reader.Summary(s.ctx(), n.orgID, n.projectID, n.periodID, money.IDR, s.augStartUTC(t), nil)
 	require.Error(t, err)
 
 	spend, err := s.reader.SpendByCategory(s.ctx(), n.orgID, n.projectID, n.periodID, money.IDR)
@@ -382,6 +386,84 @@ func TestSQLiteReader_WalletBalances(t *testing.T) {
 	assert.Equal(t, "bank", bank.Kind)
 }
 
+func TestSQLiteReader_ArchivedWallets(t *testing.T) {
+	assertArchivedWallets(t, newSQLiteSeed)
+}
+
+func (s seed) augEndUTC(t *testing.T) *time.Time {
+	t.Helper()
+	end := civil.Date{Year: 2026, Month: time.September, Day: 1}.In(jakarta(t))
+	return &end
+}
+
+func assertArchivedWallets(t *testing.T, newSeed func(t *testing.T) seed) {
+	t.Helper()
+	t.Run("archived after the period ended keeps its row and share", func(t *testing.T) {
+		s := newSeed(t)
+		s.archive(t, s.walletCash, time.Date(2026, time.September, 5, 3, 0, 0, 0, time.UTC))
+
+		sum, err := s.reader.Summary(s.ctx(), s.tc.OrgID, s.tc.ProjectID, s.periodAug, money.IDR, s.augStartUTC(t), s.augEndUTC(t))
+		require.NoError(t, err)
+		require.Len(t, sum.Wallets, 2)
+		assert.Equal(t, idr(950_000), byWallet(t, sum.Wallets)[s.walletCash].Closing)
+		assert.Equal(t, idr(950_000), sum.SpendableTotal)
+		assert.Equal(t, idr(1_240_000), sum.Total)
+	})
+
+	t.Run("archived exactly at the cutoff is kept", func(t *testing.T) {
+		s := newSeed(t)
+		s.archive(t, s.walletCash, *s.augEndUTC(t))
+
+		sum, err := s.reader.Summary(s.ctx(), s.tc.OrgID, s.tc.ProjectID, s.periodAug, money.IDR, s.augStartUTC(t), s.augEndUTC(t))
+		require.NoError(t, err)
+		require.Len(t, sum.Wallets, 2, "the cutoff is exclusive: archived at it means archived after the period")
+	})
+
+	t.Run("the close instant is reported only while the period is closed", func(t *testing.T) {
+		s := newSeed(t)
+		at := time.Date(2026, time.August, 31, 3, 0, 0, 0, time.UTC)
+
+		s.closeAs(t, s.periodAug, "closed", at)
+		ref, err := s.reader.Period(s.ctx(), s.tc.OrgID, s.tc.ProjectID, s.periodAug)
+		require.NoError(t, err)
+		require.NotNil(t, ref.ClosedAt)
+		assert.True(t, at.Equal(*ref.ClosedAt), "got %s", ref.ClosedAt)
+
+		s.closeAs(t, s.periodAug, "open", at)
+		ref, err = s.reader.Period(s.ctx(), s.tc.OrgID, s.tc.ProjectID, s.periodAug)
+		require.NoError(t, err)
+		assert.Nil(t, ref.ClosedAt, "a reopened period cuts at its end until it is closed again")
+	})
+
+	t.Run("archived before the period ended is left out", func(t *testing.T) {
+		s := newSeed(t)
+		s.archive(t, s.walletCash, civil.Date{Year: 2026, Month: time.August, Day: 31}.In(jakarta(t)).Add(23*time.Hour))
+
+		sum, err := s.reader.Summary(s.ctx(), s.tc.OrgID, s.tc.ProjectID, s.periodAug, money.IDR, s.augStartUTC(t), s.augEndUTC(t))
+		require.NoError(t, err)
+		require.Len(t, sum.Wallets, 1)
+		assert.Equal(t, s.walletBank, sum.Wallets[0].WalletID)
+		assert.Equal(t, idr(0), sum.SpendableTotal, "the bank is excluded from the total")
+		assert.Equal(t, idr(290_000), sum.Total)
+		assert.Equal(t, idr(500_000), sum.Income, "flows keep the archived wallet's transactions")
+	})
+
+	t.Run("a running period and live balances leave out every archived wallet", func(t *testing.T) {
+		s := newSeed(t)
+		s.archive(t, s.walletCash, time.Now())
+
+		live, err := s.reader.WalletBalances(s.ctx(), s.tc.OrgID, s.tc.ProjectID)
+		require.NoError(t, err)
+		require.Len(t, live, 1)
+		assert.Equal(t, s.walletBank, live[0].WalletID)
+
+		sum, err := s.reader.Summary(s.ctx(), s.tc.OrgID, s.tc.ProjectID, s.periodSep, money.IDR, s.sepStartUTC(t), nil)
+		require.NoError(t, err)
+		require.Len(t, sum.Wallets, 1)
+		assert.Equal(t, s.walletBank, sum.Wallets[0].WalletID)
+	})
+}
+
 func byWallet(t *testing.T, lines []report.WalletLine) map[uuid.UUID]report.WalletLine {
 	t.Helper()
 	out := make(map[uuid.UUID]report.WalletLine, len(lines))
@@ -438,8 +520,7 @@ func seedRows(t *testing.T, sqlDB *sql.DB, prefix string) seed {
 	return s
 }
 
-// seedNeighbour builds a whole project the fixture's scope must never see. A zero orgID means a new org;
-// otherwise the project is a sibling inside the given org, so only the project predicate can exclude it.
+// NOTE: a zero orgID seeds a new org; otherwise a sibling project only the project predicate excludes.
 func seedNeighbour(t *testing.T, sqlDB *sql.DB, prefix string, orgID, userID uuid.UUID, minor int64) neighbour {
 	t.Helper()
 	now := sqliteent.SQLiteTime(time.Now())

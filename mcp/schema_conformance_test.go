@@ -1,4 +1,4 @@
-package mcp
+package mcp_test
 
 import (
 	"encoding/json"
@@ -6,13 +6,19 @@ import (
 	"testing"
 
 	"github.com/google/jsonschema-go/jsonschema"
-	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
+	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
+
+	"altalune.id/yasaku/mcp"
 )
 
+// Vendored from the MCP Apps ext-apps bundle: https://modelcontextprotocol.io/specification/ (apps.mdx).
 const extAppsSchemaPath = "testdata/ext-apps-schema-2.0.0.json"
+
+const metaKeyUI = "ui"
 
 func extAppsSchema(t *testing.T, def string) *jsonschema.Resolved {
 	t.Helper()
+
 	bundleRaw, err := os.ReadFile(extAppsSchemaPath) //nolint:gosec // fixed test path
 	if err != nil {
 		t.Fatalf("read vendored schema: %v", err)
@@ -31,23 +37,16 @@ func extAppsSchema(t *testing.T, def string) *jsonschema.Resolved {
 	if err := json.Unmarshal(raw, &s); err != nil {
 		t.Fatalf("unmarshal %s: %v", def, err)
 	}
-	rs, err := s.Resolve(nil)
+	resolved, err := s.Resolve(nil)
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
-	return rs
-}
-
-func uiMetaTool(t *testing.T) *sdk.Tool {
-	t.Helper()
-	s := NewServer("yasaku", "test", WithUI(true))
-	s.AddUIResource(UIResource{URI: "ui://yasaku/app", Body: "<html></html>"})
-	s.Register(uiSpec(), echoHandler)
-	return toolByName(t, connect(t, s), "wallet_list")
+	return resolved
 }
 
 func roundTrip(t *testing.T, v any) any {
 	t.Helper()
+
 	raw, err := json.Marshal(v)
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
@@ -60,62 +59,98 @@ func roundTrip(t *testing.T, v any) any {
 }
 
 func TestEmittedUIMetaMatchesOfficialSchema(t *testing.T) {
-	tool := uiMetaTool(t)
+	tool := uiTool(t, mcp.WithUI(true))
 	if err := extAppsSchema(t, "McpUiToolMeta").Validate(roundTrip(t, tool.Meta[metaKeyUI])); err != nil {
 		t.Errorf("emitted _meta[%q] violates McpUiToolMeta: %v", metaKeyUI, err)
 	}
 }
 
-// TestWholeMetaAlsoValidates guards the reason the deprecated flat sibling key is
-// not emitted: McpUiToolMeta sets additionalProperties:false, so a host validating
-// the whole _meta object must still accept what we send.
+// TestWholeMetaAlsoValidates pins that the whole _meta object still passes an additionalProperties:false host.
 func TestWholeMetaAlsoValidates(t *testing.T) {
-	tool := uiMetaTool(t)
-	whole := roundTrip(t, map[string]any(tool.Meta))
-	inner, ok := whole.(map[string]any)["ui"]
+	whole, ok := roundTrip(t, map[string]any(uiTool(t, mcp.WithUI(true)).Meta)).(map[string]any)
 	if !ok {
-		t.Fatalf("_meta has no ui key: %v", whole)
-	}
-	if err := extAppsSchema(t, "McpUiToolMeta").Validate(inner); err != nil {
-		t.Errorf("_meta.ui violates McpUiToolMeta: %v", err)
-	}
-	if len(whole.(map[string]any)) != 1 {
-		t.Errorf("_meta carries %d keys; a sibling of ui breaks strict hosts", len(whole.(map[string]any)))
-	}
-}
-
-func uiMetaResource(t *testing.T) *sdk.Resource {
-	t.Helper()
-	s := NewServer("yasaku", "test", WithUI(true))
-	s.AddUIResource(UIResource{
-		URI:           "ui://yasaku/app",
-		Name:          "yasaku",
-		Body:          "<html></html>",
-		PrefersBorder: new(bool),
-	})
-	res, err := connect(t, s).ListResources(t.Context(), &sdk.ListResourcesParams{})
-	if err != nil {
-		t.Fatalf("list resources: %v", err)
-	}
-	if len(res.Resources) != 1 {
-		t.Fatalf("resources = %d, want 1", len(res.Resources))
-	}
-	return res.Resources[0]
-}
-
-func TestEmittedResourceMetaMatchesOfficialSchema(t *testing.T) {
-	whole, ok := roundTrip(t, map[string]any(uiMetaResource(t).Meta)).(map[string]any)
-	if !ok {
-		t.Fatalf("resource _meta is not an object")
+		t.Fatal("_meta is not an object")
 	}
 	inner, ok := whole[metaKeyUI]
 	if !ok {
-		t.Fatalf("resource _meta has no %q key: %v", metaKeyUI, whole)
+		t.Fatalf("_meta has no %q key: %v", metaKeyUI, whole)
 	}
-	if err := extAppsSchema(t, "McpUiResourceMeta").Validate(inner); err != nil {
-		t.Errorf("_meta.%s violates McpUiResourceMeta: %v", metaKeyUI, err)
+	if err := extAppsSchema(t, "McpUiToolMeta").Validate(inner); err != nil {
+		t.Errorf("_meta.%s violates McpUiToolMeta: %v", metaKeyUI, err)
 	}
 	if len(whole) != 1 {
-		t.Errorf("resource _meta carries %d keys; a sibling of %q breaks strict hosts", len(whole), metaKeyUI)
+		t.Errorf("_meta carries %d keys; a sibling of %q breaks strict hosts", len(whole), metaKeyUI)
+	}
+}
+
+func TestPublishedResourceMetaMatchesOfficialSchema(t *testing.T) {
+	r := testUIResource()
+	r.PrefersBorder = new(bool)
+	session := connect(t, uiServer(t, r, mcp.WithUI(true)))
+
+	list, err := session.ListResources(t.Context(), &sdkmcp.ListResourcesParams{})
+	if err != nil {
+		t.Fatalf("ListResources: %v", err)
+	}
+	read, err := session.ReadResource(t.Context(), &sdkmcp.ReadResourceParams{URI: "ui://blog/list"})
+	if err != nil {
+		t.Fatalf("ReadResource: %v", err)
+	}
+	schema := extAppsSchema(t, "McpUiResourceMeta")
+	for name, meta := range map[string]sdkmcp.Meta{
+		"resources/list": list.Resources[0].Meta,
+		"resources/read": read.Contents[0].Meta,
+	} {
+		if err := schema.Validate(roundTrip(t, meta[metaKeyUI])); err != nil {
+			t.Errorf("%s: _meta[%q] violates McpUiResourceMeta: %v", name, metaKeyUI, err)
+		}
+		whole, ok := roundTrip(t, map[string]any(meta)).(map[string]any)
+		if !ok {
+			t.Fatalf("%s: _meta is not an object", name)
+		}
+		if len(whole) != 1 {
+			t.Errorf("%s: _meta carries %d keys; a sibling of %q breaks strict hosts", name, len(whole), metaKeyUI)
+		}
+	}
+}
+
+// TestResourceMetaRejectsAnUnmodelledKey pins that McpUiResourceMeta is additionalProperties:false, which is why UIResource carries typed fields rather than a raw map.
+func TestResourceMetaRejectsAnUnmodelledKey(t *testing.T) {
+	if err := extAppsSchema(t, "McpUiResourceMeta").Validate(map[string]any{"prefersBorder": false, "theme": "dark"}); err == nil {
+		t.Error("McpUiResourceMeta accepted an unmodelled key; a raw map would have shipped it to strict hosts")
+	}
+}
+
+// TestNoDeprecatedFlatUIKeyIsEmitted asserts the deprecated flat "ui/resourceUri" key is absent, since McpUiToolMeta is additionalProperties:false.
+func TestNoDeprecatedFlatUIKeyIsEmitted(t *testing.T) {
+	const flat = "ui/resourceUri"
+
+	r := testUIResource()
+	r.PrefersBorder = new(bool)
+	session := connect(t, uiServer(t, r, mcp.WithUI(true)))
+
+	list, err := session.ListResources(t.Context(), &sdkmcp.ListResourcesParams{})
+	if err != nil {
+		t.Fatalf("ListResources: %v", err)
+	}
+	read, err := session.ReadResource(t.Context(), &sdkmcp.ReadResourceParams{URI: r.URI})
+	if err != nil {
+		t.Fatalf("ReadResource: %v", err)
+	}
+
+	for name, meta := range map[string]sdkmcp.Meta{
+		"tools/list":     uiTool(t, mcp.WithUI(true)).Meta,
+		"resources/list": list.Resources[0].Meta,
+		"resources/read": read.Contents[0].Meta,
+	} {
+		if _, bad := meta[flat]; bad {
+			t.Errorf("%s: _meta carries the deprecated %q sibling; a strict host rejects the pair", name, flat)
+		}
+		if _, ok := meta[metaKeyUI]; !ok {
+			t.Errorf("%s: _meta has no %q key", name, metaKeyUI)
+		}
+		if len(meta) != 1 {
+			t.Errorf("%s: _meta carries %d keys, want exactly 1 (%q)", name, len(meta), metaKeyUI)
+		}
 	}
 }

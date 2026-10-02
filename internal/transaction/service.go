@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 
 	"altalune.id/yasaku/internal/apperror"
+	"altalune.id/yasaku/internal/platform/session"
 	"altalune.id/yasaku/internal/platform/tenant"
 	"altalune.id/yasaku/money"
 )
@@ -131,23 +132,28 @@ func (s *Service) record(ctx context.Context, tc tenant.Context, in RecordInput,
 	if err != nil {
 		return nil, err
 	}
+	createdBy, createdByKey, err := author(ctx, by)
+	if err != nil {
+		return nil, err
+	}
 
 	t, err := New(tc.OrgID, tc.ProjectID, NewParams{
-		WalletID:   in.WalletID,
-		ToWalletID: in.ToWalletID,
-		Kind:       in.Kind,
-		Amount:     money.New(in.Amount.Minor, currency),
-		CategoryID: in.CategoryID,
-		PeriodID:   periodID,
-		Note:       in.Note,
-		OccurredAt: in.OccurredAt,
-		CreatedBy:  by,
+		WalletID:       in.WalletID,
+		ToWalletID:     in.ToWalletID,
+		Kind:           in.Kind,
+		Amount:         money.New(in.Amount.Minor, currency),
+		CategoryID:     in.CategoryID,
+		PeriodID:       periodID,
+		Note:           in.Note,
+		OccurredAt:     in.OccurredAt,
+		CreatedBy:      createdBy,
+		CreatedByKeyID: createdByKey,
 	})
 	if err != nil {
 		return nil, err
 	}
 	if err := s.store.Save(ctx, t); err != nil {
-		if IsNotFoundError(err) {
+		if IsNotFoundError(err) || IsAuthorMissingError(err) {
 			return nil, err
 		}
 		return nil, s.unexpected(ctx, "transaction.Record: save", err,
@@ -236,7 +242,7 @@ func (s *Service) Revise(ctx context.Context, id uuid.UUID, p RevisePatch) (*Tra
 	}
 
 	if err := s.store.Save(ctx, &next); err != nil {
-		if IsNotFoundError(err) {
+		if IsNotFoundError(err) || IsAuthorMissingError(err) {
 			return nil, err
 		}
 		return nil, s.unexpected(ctx, "transaction.Revise: save", err, "transaction_id", id)
@@ -310,8 +316,7 @@ func (s *Service) List(ctx context.Context, opts ListOpts) ([]*Transaction, *Cur
 	return items, &Cursor{OccurredAt: last.OccurredAt, CreatedAt: last.CreatedAt, ID: last.ID}, nil
 }
 
-// Balances returns the derived balance of each wallet in the caller's project that has at least one transaction.
-// NOTE: an untouched wallet is absent rather than zero, so callers merge the map against their own wallet list instead of indexing it blind.
+// Balances returns the derived balance of each wallet in the caller's project that has a transaction. NOTE: an untouched wallet is absent, not zero.
 func (s *Service) Balances(ctx context.Context) (map[uuid.UUID]money.Amount, error) {
 	ctx, span := tracer.Start(ctx, "transaction.Balances")
 	defer span.End()
@@ -389,8 +394,7 @@ func (s *Service) RecordOpening(ctx context.Context, walletID uuid.UUID, amount 
 	return err
 }
 
-// Adjust writes the adjustment that brings walletID's derived balance to target, or nothing when it already matches.
-// NOTE: the read and the write need a real UnitOfWork and are serialized only against other Adjust calls on the same wallet; a concurrent Record, Revise or Delete takes no lock and can still land between them, so the final balance is not guaranteed to equal target.
+// Adjust writes the adjustment that brings walletID's derived balance to target. NOTE: needs a real UnitOfWork and locks only against other Adjust calls, so a concurrent Record, Revise or Delete can still move the final balance off target.
 func (s *Service) Adjust(ctx context.Context, walletID uuid.UUID, target money.Amount, at time.Time, by uuid.UUID) (*Transaction, error) {
 	ctx, span := tracer.Start(ctx, "transaction.Adjust",
 		trace.WithAttributes(attribute.String("wallet.id", walletID.String())))
@@ -598,4 +602,15 @@ func adjacent(info PeriodInfo, id uuid.UUID) bool {
 		return true
 	}
 	return info.NextID != nil && id == *info.NextID
+}
+
+func author(ctx context.Context, by uuid.UUID) (userID, keyID uuid.UUID, err error) {
+	if by != uuid.Nil {
+		return by, uuid.Nil, nil
+	}
+	p := session.PrincipalFrom(ctx)
+	if p.UserID == uuid.Nil && p.KeyID != uuid.Nil {
+		return uuid.Nil, p.KeyID, nil
+	}
+	return uuid.Nil, uuid.Nil, &AuthorMissingError{}
 }

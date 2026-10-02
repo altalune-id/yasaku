@@ -45,10 +45,11 @@ func (r *sqliteReader) txAcquire(ctx context.Context) (*sql.Tx, bool, tenant.Con
 }
 
 type sqlitePeriodRow struct {
-	ID    string  `alias:"period.id"`
-	Name  string  `alias:"period.name"`
-	Start string  `alias:"period.start"`
-	End   *string `alias:"period.end"`
+	ID       string  `alias:"period.id"`
+	Name     string  `alias:"period.name"`
+	Start    string  `alias:"period.start"`
+	End      *string `alias:"period.end"`
+	ClosedAt *string `alias:"period.closed_at"`
 }
 
 func (r *sqliteReader) Period(ctx context.Context, orgID, projectID, periodID uuid.UUID) (PeriodRef, error) {
@@ -63,7 +64,8 @@ func (r *sqliteReader) Period(ctx context.Context, orgID, projectID, periodID uu
 SELECT id         AS "period.id",
        name       AS "period.name",
        start_date AS "period.start",
-       end_date   AS "period.end"
+       end_date   AS "period.end",
+       CASE WHEN status = 'closed' THEN closed_at END AS "period.closed_at"
   FROM %s
  WHERE id = #periodID AND org_id = #orgID AND org_id = #scopeOrg AND project_id = #projectID
  LIMIT 1`, r.tables.periods)
@@ -81,7 +83,16 @@ SELECT id         AS "period.id",
 		}
 		return PeriodRef{}, fmt.Errorf("report.sqlite.Period: %w", qErr)
 	}
-	return periodRef(row.ID, row.Name, row.Start, row.End)
+	ref, err := periodRef(row.ID, row.Name, row.Start, row.End)
+	if err != nil || row.ClosedAt == nil || *row.ClosedAt == "" {
+		return ref, err
+	}
+	closedAt, err := time.Parse(time.RFC3339Nano, *row.ClosedAt)
+	if err != nil {
+		return PeriodRef{}, fmt.Errorf("report.sqlite.Period: parse closed_at: %w", err)
+	}
+	ref.ClosedAt = &closedAt
+	return ref, nil
 }
 
 type sqliteTotalsRow struct {
@@ -100,7 +111,7 @@ type sqliteWalletRow struct {
 	Out      int64  `alias:"line.out"`
 }
 
-func (r *sqliteReader) Summary(ctx context.Context, orgID, projectID, periodID uuid.UUID, currency money.Currency, startUTC time.Time) (PeriodSummary, error) {
+func (r *sqliteReader) Summary(ctx context.Context, orgID, projectID, periodID uuid.UUID, currency money.Currency, startUTC time.Time, archivedBefore *time.Time) (PeriodSummary, error) {
 	ref, err := r.Period(ctx, orgID, projectID, periodID)
 	if err != nil {
 		return PeriodSummary{}, err
@@ -128,11 +139,14 @@ func (r *sqliteReader) Summary(ctx context.Context, orgID, projectID, periodID u
 	}
 
 	lineArgs := sqlite.RawArgs{"#startUTC": sqliteent.SQLiteTime(startUTC)}
+	if archivedBefore != nil {
+		lineArgs["#archivedBefore"] = sqliteent.SQLiteTime(*archivedBefore)
+	}
 	for k, v := range args {
 		lineArgs[k] = v
 	}
 	var rows []sqliteWalletRow
-	if qErr := sqlite.RawStatement(walletLinesSQL(r.tables, false), lineArgs).QueryContext(ctx, tx, &rows); qErr != nil {
+	if qErr := sqlite.RawStatement(walletLinesSQL(r.tables, false, archivedBefore != nil), lineArgs).QueryContext(ctx, tx, &rows); qErr != nil {
 		return PeriodSummary{}, fmt.Errorf("report.sqlite.Summary: wallets: %w", qErr)
 	}
 	moves := make([]walletMovement, 0, len(rows))

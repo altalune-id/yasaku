@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/dop251/goja"
@@ -34,9 +33,7 @@ func TestBridgeDeclaresInlineDisplayModeAndForwardsCalls(t *testing.T) {
 	if _, err := vm.RunString(mustRead(t, "src/bridge.js")); err != nil {
 		t.Fatalf("eval bridge.js: %v", err)
 	}
-	// connect() is what constructs App, so the test must await it before calling
-	// a tool. goja drains the microtask queue at the end of RunString, so the Go
-	// assertions below observe the settled result.
+	// NOTE: connect() constructs App, so the call must wait for it; RunString drains microtasks before the asserts.
 	if _, err := vm.RunString(`
 		const b = createBridge({ onToolInput(){}, onToolResult(){}, onHostContext(){} }, fakeExtApps);
 		b.connect().then(function () { b.callTool("period_report", { period: "per_1" }); });
@@ -53,15 +50,6 @@ func TestBridgeDeclaresInlineDisplayModeAndForwardsCalls(t *testing.T) {
 	}
 	if got := jsString(t, vm, `JSON.stringify(recorded.call)`); got != `{"name":"period_report","arguments":{"period":"per_1"}}` {
 		t.Errorf("callServerTool received %s", got)
-	}
-}
-
-func TestVendorExportsEveryNameTheBridgeUses(t *testing.T) {
-	src := mustRead(t, vendorPart)
-	for _, name := range []string{"App", "applyDocumentTheme", "applyHostStyleVariables", "applyHostFonts"} {
-		if !strings.Contains(src, " as "+name+",") && !strings.Contains(src, " as "+name+"}") {
-			t.Errorf("ext-apps no longer exports %q — the bridge will throw at runtime", name)
-		}
 	}
 }
 

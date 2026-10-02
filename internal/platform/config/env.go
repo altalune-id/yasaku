@@ -7,8 +7,7 @@ import (
 	"github.com/spf13/viper"
 )
 
-// EnvPrefix is the environment variable namespace. NOTE: keep it here only — a fork that renames
-// the binary must rename this too, and repeating the literal is how the rename gets missed.
+// EnvPrefix is the environment variable namespace. NOTE: a fork that renames the binary renames it here only.
 const EnvPrefix = "YASAKU"
 
 func bindEnv(v *viper.Viper, prefix string, t reflect.Type) {
