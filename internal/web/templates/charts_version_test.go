@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// TestEChartsVersionMatchesVendorScript keeps the CDN and vendored modes on one ECharts build.
+// TestEChartsVersionMatchesVendorScript keeps charts.templ and scripts/ui-vendor.sh on one ECharts build.
 func TestEChartsVersionMatchesVendorScript(t *testing.T) {
 	t.Parallel()
 

@@ -25,13 +25,15 @@ func newSQLiteStore(db *sql.DB, tablePrefix string) *sqliteStore {
 }
 
 type sqliteTodoRow struct {
-	ID        string `alias:"todos.id"`
-	OrgID     string `alias:"todos.org_id"`
-	ProjectID string `alias:"todos.project_id"`
-	Title     string `alias:"todos.title"`
-	Done      int64  `alias:"todos.done"`
-	CreatedAt string `alias:"todos.created_at"`
-	UpdatedAt string `alias:"todos.updated_at"`
+	ID             string  `alias:"todos.id"`
+	OrgID          string  `alias:"todos.org_id"`
+	ProjectID      string  `alias:"todos.project_id"`
+	UserID         *string `alias:"todos.user_id"`
+	CreatedByKeyID *string `alias:"todos.created_by_key_id"`
+	Title          string  `alias:"todos.title"`
+	Done           int64   `alias:"todos.done"`
+	CreatedAt      string  `alias:"todos.created_at"`
+	UpdatedAt      string  `alias:"todos.updated_at"`
 }
 
 func (r *sqliteTodoRow) toTodo() (*Todo, error) {
@@ -55,7 +57,7 @@ func (r *sqliteTodoRow) toTodo() (*Todo, error) {
 	if err != nil {
 		return nil, fmt.Errorf("todo.sqlite: parse updated_at: %w", err)
 	}
-	return &Todo{
+	t := &Todo{
 		ID:        id,
 		OrgID:     oid,
 		ProjectID: pid,
@@ -63,7 +65,22 @@ func (r *sqliteTodoRow) toTodo() (*Todo, error) {
 		Done:      r.Done == 1,
 		CreatedAt: ca,
 		UpdatedAt: ua,
-	}, nil
+	}
+	if r.UserID != nil {
+		uid, err := uuid.Parse(*r.UserID)
+		if err != nil {
+			return nil, fmt.Errorf("todo.sqlite: parse user_id: %w", err)
+		}
+		t.Author.UserID = uid
+	}
+	if r.CreatedByKeyID != nil {
+		kid, err := uuid.Parse(*r.CreatedByKeyID)
+		if err != nil {
+			return nil, fmt.Errorf("todo.sqlite: parse created_by_key_id: %w", err)
+		}
+		t.Author.KeyID = kid
+	}
+	return t, nil
 }
 
 func (s *sqliteStore) Save(ctx context.Context, t *Todo) error {
@@ -81,7 +98,8 @@ func (s *sqliteStore) Save(ctx context.Context, t *Todo) error {
 			t.ID.String(),
 			t.OrgID.String(),
 			t.ProjectID.String(),
-			tc.UserID.String(),
+			sqliteNullableUUID(t.Author.UserID),
+			sqliteNullableUUID(t.Author.KeyID),
 			t.Title,
 			done,
 			sqliteent.SQLiteTime(t.CreatedAt),
@@ -246,4 +264,11 @@ func (s *sqliteStore) MarkDoneOlderThan(ctx context.Context, orgID uuid.UUID, cu
 			return total, nil
 		}
 	}
+}
+
+func sqliteNullableUUID(id uuid.UUID) any {
+	if id == uuid.Nil {
+		return nil
+	}
+	return id.String()
 }

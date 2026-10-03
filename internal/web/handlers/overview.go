@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"net/http"
-	"slices"
 
 	"altalune.id/yasaku/internal/category"
 	"altalune.id/yasaku/internal/ledger"
@@ -54,28 +53,11 @@ func NewOverviewHandler(
 }
 
 // Register wires the overview route onto mux.
-func (h *OverviewHandler) Register(mux *http.ServeMux) {
+func (h *OverviewHandler) Register(mux web.Mux) {
 	mux.HandleFunc("GET /orgs/{org}/projects/{project}/overview", h.GetOverview)
 }
 
-func (h *OverviewHandler) requireProject(w http.ResponseWriter, r *http.Request) (projectScope, bool) {
-	p, sid, ok := h.LoadSession(r)
-	if !ok {
-		http.Redirect(w, r, ResolveReturnTo(h.Cfg.HTTP.BasePath, "/login"), http.StatusSeeOther)
-		return projectScope{}, false
-	}
-	o, r, ok := h.OrgScopeFor(w, r, p, r.PathValue("org"))
-	if !ok {
-		return projectScope{}, false
-	}
-	proj, r, ok := h.ProjectScopeFor(w, r, o.ID, r.PathValue("project"))
-	if !ok {
-		return projectScope{}, false
-	}
-	return projectScope{principal: p, sid: sid, org: o, project: proj, req: r}, true
-}
-
-func (h *OverviewHandler) remember(sc projectScope) {
+func (h *OverviewHandler) remember(sc ProjectScope) {
 	if sc.principal.ActiveOrgID == sc.org.ID && sc.principal.ActiveProjectID == sc.project.ID {
 		return
 	}
@@ -89,7 +71,7 @@ func (h *OverviewHandler) remember(sc projectScope) {
 
 // GetOverview renders the project overview. SECURITY: every read is pure — the first period is created by the first write, never by opening this page.
 func (h *OverviewHandler) GetOverview(w http.ResponseWriter, r *http.Request) {
-	sc, ok := h.requireProject(w, r)
+	sc, ok := h.RequireProject(w, r)
 	if !ok {
 		return
 	}
@@ -105,7 +87,7 @@ func (h *OverviewHandler) GetOverview(w http.ResponseWriter, r *http.Request) {
 	Render(w, sc.req, templates.YasakuOverviewLayout(d, v))
 }
 
-func (h *OverviewHandler) view(sc projectScope, d web.LayoutData) (templates.YasakuOverviewView, error) {
+func (h *OverviewHandler) view(sc ProjectScope, d web.LayoutData) (templates.YasakuOverviewView, error) {
 	cur := h.tx.currency(sc)
 	v := templates.YasakuOverviewView{
 		ProjectSlug: sc.project.Slug,
@@ -128,7 +110,8 @@ func (h *OverviewHandler) view(sc projectScope, d web.LayoutData) (templates.Yas
 			Excluded: l.ExcludeFromTotal,
 		})
 	}
-	v.Spendable, v.Total, v.Mixed = headlineTotals(lines, cur)
+	totals := report.TotalsOf(lines, cur)
+	v.Spendable, v.Total, v.Mixed = totals.Spendable, totals.Total, totals.Mixed
 
 	if err := h.fillPeriod(sc, &v); err != nil {
 		return templates.YasakuOverviewView{}, err
@@ -143,7 +126,7 @@ func (h *OverviewHandler) view(sc projectScope, d web.LayoutData) (templates.Yas
 	return v, nil
 }
 
-func (h *OverviewHandler) fillPeriod(sc projectScope, v *templates.YasakuOverviewView) error {
+func (h *OverviewHandler) fillPeriod(sc ProjectScope, v *templates.YasakuOverviewView) error {
 	cur, err := h.Periods.Current(sc.req.Context())
 	if err != nil {
 		if period.IsNotFoundError(err) {
@@ -165,31 +148,6 @@ func (h *OverviewHandler) fillPeriod(sc projectScope, v *templates.YasakuOvervie
 	return nil
 }
 
-// NOTE: nothing here converts between currencies, so a wallet in another one is left out of the headline and reported as mixed.
-func headlineTotals(lines []report.WalletLine, fallback money.Currency) (spendable, total money.Amount, mixed bool) { //nolint:nonamedreturns // three return values differ in role
-	seen := make([]money.Currency, 0, 2)
-	for _, l := range lines {
-		if !slices.Contains(seen, l.Closing.Currency) {
-			seen = append(seen, l.Closing.Currency)
-		}
-	}
-	cur := fallback
-	if len(seen) == 1 {
-		cur = seen[0]
-	}
-	spendable, total = money.Zero(cur), money.Zero(cur)
-	for _, l := range lines {
-		if l.Closing.Currency != cur {
-			continue
-		}
-		total = total.Add(l.Closing)
-		if !l.ExcludeFromTotal {
-			spendable = spendable.Add(l.Closing)
-		}
-	}
-	return spendable, total, len(seen) > 1
-}
-
-func (h *OverviewHandler) title(sc projectScope) string {
+func (h *OverviewHandler) title(sc ProjectScope) string {
 	return h.Base(sc.req, "").Tr("nav.overview") + " · " + sc.project.Name
 }

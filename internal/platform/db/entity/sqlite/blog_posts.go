@@ -17,6 +17,7 @@ type BlogPosts struct {
 	FirstPublishedAt sqlite.ColumnString
 	CreatedAt        sqlite.ColumnString
 	UpdatedAt        sqlite.ColumnString
+	Version          sqlite.ColumnInteger
 
 	AllColumns sqlite.ColumnList
 }
@@ -35,7 +36,8 @@ func NewBlogPosts(tablePrefix string) *BlogPosts {
 		firstPublishedAt = sqlite.StringColumn("first_published_at")
 		createdAt        = sqlite.StringColumn("created_at")
 		updatedAt        = sqlite.StringColumn("updated_at")
-		all              = sqlite.ColumnList{id, orgID, projectID, categoryID, title, slug, bodyMarkdown, status, firstPublishedAt, createdAt, updatedAt}
+		version          = sqlite.IntegerColumn("version")
+		all              = sqlite.ColumnList{id, orgID, projectID, categoryID, title, slug, bodyMarkdown, status, firstPublishedAt, createdAt, updatedAt, version}
 	)
 	return &BlogPosts{
 		Table:            sqlite.NewTable("", tablePrefix+"blog_posts", "blog_posts", all...),
@@ -50,6 +52,7 @@ func NewBlogPosts(tablePrefix string) *BlogPosts {
 		FirstPublishedAt: firstPublishedAt,
 		CreatedAt:        createdAt,
 		UpdatedAt:        updatedAt,
+		Version:          version,
 		AllColumns:       all,
 	}
 }

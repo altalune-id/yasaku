@@ -5,8 +5,11 @@ package blog_test
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -25,6 +28,7 @@ import (
 
 type pgFixture struct {
 	store  blog.Store
+	uow    tenant.UnitOfWork
 	sqlDB  *sql.DB
 	prefix string
 	tc     tenant.Context
@@ -46,13 +50,12 @@ func newPgFixture(t *testing.T) pgFixture {
 
 	pfx := cfg.DB.TablePrefix
 	tc := seedPgTenant(t, sqlDB, pfx)
-	store := blog.NewStore(
-		db.DBConfig{Driver: db.DriverPostgres, Schema: h.Schema, TablePrefix: pfx},
-		db.Pool{W: sqlDB, R: sqlDB},
-		tenant.NewPgConn(sqlDB),
-	)
+	dbCfg := db.DBConfig{Driver: db.DriverPostgres, Schema: h.Schema, TablePrefix: pfx}
+	pool := db.Pool{W: sqlDB, R: sqlDB}
+	pc := tenant.NewPgConn(sqlDB)
 	return pgFixture{
-		store:  store,
+		store:  blog.NewStore(dbCfg, pool, pc),
+		uow:    tenant.NewUnitOfWork(dbCfg, pool, pc),
 		sqlDB:  sqlDB,
 		prefix: pfx,
 		tc:     tc,
@@ -124,7 +127,7 @@ func TestPostgres_Post_SaveAndByID(t *testing.T) {
 
 	p, err := blog.New(f.tc.OrgID, f.tc.ProjectID, f.cat, "Hello World", "", "# body")
 	require.NoError(t, err)
-	require.NoError(t, f.store.Save(ctx, p))
+	require.NoError(t, f.store.Save(ctx, p, 0))
 
 	got, err := f.store.ByID(ctx, p.ID)
 	require.NoError(t, err)
@@ -134,9 +137,7 @@ func TestPostgres_Post_SaveAndByID(t *testing.T) {
 	assert.Equal(t, blog.StatusDraft, got.Status)
 	assert.Nil(t, got.FirstPublishedAt)
 	assert.Empty(t, got.TagIDs)
-	// NOTE: postgres timestamptz is microsecond precision, so a nanosecond-precision
-	// time.Now() does not survive the round trip. On macOS the nanoseconds are often
-	// already zero, which hides this locally; linux CI fails it.
+	// NOTE: postgres timestamptz is microsecond precision, so a nanosecond-precision time.Now() does not survive the round trip.
 	assert.True(t, got.CreatedAt.Equal(p.CreatedAt.Truncate(time.Microsecond)),
 		"CreatedAt round-trip: got=%v want=%v", got.CreatedAt, p.CreatedAt.Truncate(time.Microsecond))
 }
@@ -156,7 +157,7 @@ func TestPostgres_Post_RoundTripsPublication(t *testing.T) {
 	p, err := blog.New(f.tc.OrgID, f.tc.ProjectID, f.cat, "Published", "", "body")
 	require.NoError(t, err)
 	p.Publish()
-	require.NoError(t, f.store.Save(ctx, p))
+	require.NoError(t, f.store.Save(ctx, p, 0))
 
 	got, err := f.store.ByID(ctx, p.ID)
 	require.NoError(t, err)
@@ -166,7 +167,7 @@ func TestPostgres_Post_RoundTripsPublication(t *testing.T) {
 
 	first := *p.FirstPublishedAt
 	p.Unpublish()
-	require.NoError(t, f.store.Save(ctx, p))
+	require.NoError(t, f.store.Save(ctx, p, 0))
 
 	got, err = f.store.ByID(ctx, p.ID)
 	require.NoError(t, err)
@@ -186,10 +187,10 @@ func TestPostgres_Post_SaveReplacesTagSetWithoutOrphans(t *testing.T) {
 	c := seedPgTag(t, f.sqlDB, f.prefix, f.tc)
 
 	p.SetTags([]uuid.UUID{a, b})
-	require.NoError(t, f.store.Save(ctx, p))
+	require.NoError(t, f.store.Save(ctx, p, 0))
 
 	p.SetTags([]uuid.UUID{b, c})
-	require.NoError(t, f.store.Save(ctx, p))
+	require.NoError(t, f.store.Save(ctx, p, 0))
 
 	got, err := f.store.ByID(ctx, p.ID)
 	require.NoError(t, err)
@@ -209,11 +210,11 @@ func TestPostgres_Post_SaveWithUnknownTagIsRefusedWhole(t *testing.T) {
 	require.NoError(t, err)
 	good := seedPgTag(t, f.sqlDB, f.prefix, f.tc)
 	p.SetTags([]uuid.UUID{good})
-	require.NoError(t, f.store.Save(ctx, p))
+	require.NoError(t, f.store.Save(ctx, p, 0))
 
 	p.Title = "Edited"
 	p.SetTags([]uuid.UUID{good, uuid.New()})
-	require.Error(t, f.store.Save(ctx, p), "an unknown tag id must fail the foreign key")
+	require.Error(t, f.store.Save(ctx, p, 0), "an unknown tag id must fail the foreign key")
 
 	got, err := f.store.ByID(ctx, p.ID)
 	require.NoError(t, err)
@@ -228,13 +229,13 @@ func TestPostgres_Post_DuplicateSlugInOneProject(t *testing.T) {
 
 	first, err := blog.New(f.tc.OrgID, f.tc.ProjectID, f.cat, "Hello World", "", "body")
 	require.NoError(t, err)
-	require.NoError(t, f.store.Save(ctx, first))
+	require.NoError(t, f.store.Save(ctx, first, 0))
 
 	dup, err := blog.New(f.tc.OrgID, f.tc.ProjectID, f.cat, "hello   world", "", "body")
 	require.NoError(t, err)
 	require.Equal(t, first.Slug, dup.Slug)
 
-	err = f.store.Save(ctx, dup)
+	err = f.store.Save(ctx, dup, 0)
 	assert.True(t, blog.IsAlreadyExistsError(err), "got %T: %v", err, err)
 }
 
@@ -246,11 +247,11 @@ func TestPostgres_Post_SameSlugInTwoProjectsIsAllowed(t *testing.T) {
 
 	a, err := blog.New(f.tc.OrgID, f.tc.ProjectID, f.cat, "Hello World", "", "body")
 	require.NoError(t, err)
-	require.NoError(t, f.store.Save(ctx, a))
+	require.NoError(t, f.store.Save(ctx, a, 0))
 
 	b, err := blog.New(f.tc.OrgID, otherProj, otherCat, "Hello World", "", "body")
 	require.NoError(t, err)
-	assert.NoError(t, f.store.Save(ctx, b), "uniqueness is per project, not per org")
+	assert.NoError(t, f.store.Save(ctx, b, 0), "uniqueness is per project, not per org")
 }
 
 func TestPostgres_Post_List_OrdersAndFilters(t *testing.T) {
@@ -264,7 +265,7 @@ func TestPostgres_Post_List_OrdersAndFilters(t *testing.T) {
 		require.NoError(t, err)
 		p.CreatedAt = created
 		p.UpdatedAt = created
-		require.NoError(t, f.store.Save(ctx, p))
+		require.NoError(t, f.store.Save(ctx, p, 0))
 		return p
 	}
 	oldest := mk("oldest", base.Add(-2*time.Hour), f.cat)
@@ -294,7 +295,7 @@ func TestPostgres_Post_List_OrdersAndFilters(t *testing.T) {
 	assert.Empty(t, byStatus, "nothing has been published yet")
 
 	tieA.Publish()
-	require.NoError(t, f.store.Save(ctx, tieA))
+	require.NoError(t, f.store.Save(ctx, tieA, 0))
 	byStatus, err = f.store.List(ctx, f.tc.OrgID, f.tc.ProjectID, blog.ListOpts{Status: &published})
 	require.NoError(t, err)
 	require.Len(t, byStatus, 1)
@@ -310,11 +311,11 @@ func TestPostgres_Post_List_AttachesTagsWithoutMultiplyingRows(t *testing.T) {
 	tagged, err := blog.New(f.tc.OrgID, f.tc.ProjectID, f.cat, "Tagged", "", "body")
 	require.NoError(t, err)
 	tagged.SetTags([]uuid.UUID{a, b})
-	require.NoError(t, f.store.Save(ctx, tagged))
+	require.NoError(t, f.store.Save(ctx, tagged, 0))
 
 	bare, err := blog.New(f.tc.OrgID, f.tc.ProjectID, f.cat, "Bare", "", "body")
 	require.NoError(t, err)
-	require.NoError(t, f.store.Save(ctx, bare))
+	require.NoError(t, f.store.Save(ctx, bare, 0))
 
 	got, err := f.store.List(ctx, f.tc.OrgID, f.tc.ProjectID, blog.ListOpts{})
 	require.NoError(t, err)
@@ -335,13 +336,13 @@ func TestPostgres_Post_Delete(t *testing.T) {
 	p, err := blog.New(f.tc.OrgID, f.tc.ProjectID, f.cat, "Gone", "", "body")
 	require.NoError(t, err)
 	p.SetTags([]uuid.UUID{seedPgTag(t, f.sqlDB, f.prefix, f.tc)})
-	require.NoError(t, f.store.Save(ctx, p))
+	require.NoError(t, f.store.Save(ctx, p, 0))
 
-	require.NoError(t, f.store.Delete(ctx, p.ID))
+	require.NoError(t, f.store.Delete(ctx, p.ID, 0))
 
 	_, err = f.store.ByID(ctx, p.ID)
 	assert.True(t, blog.IsNotFoundError(err), "got %T: %v", err, err)
-	assert.True(t, blog.IsNotFoundError(f.store.Delete(ctx, p.ID)), "double delete")
+	assert.True(t, blog.IsNotFoundError(f.store.Delete(ctx, p.ID, 0)), "double delete")
 
 	var rows int
 	require.NoError(t, f.sqlDB.QueryRowContext(t.Context(),
@@ -360,12 +361,12 @@ func TestPostgres_Post_Counts(t *testing.T) {
 	first, err := blog.New(f.tc.OrgID, f.tc.ProjectID, f.cat, "First", "", "body")
 	require.NoError(t, err)
 	first.SetTags([]uuid.UUID{a, b})
-	require.NoError(t, f.store.Save(ctx, first))
+	require.NoError(t, f.store.Save(ctx, first, 0))
 
 	second, err := blog.New(f.tc.OrgID, f.tc.ProjectID, f.cat, "Second", "", "body")
 	require.NoError(t, err)
 	second.SetTags([]uuid.UUID{a})
-	require.NoError(t, f.store.Save(ctx, second))
+	require.NoError(t, f.store.Save(ctx, second, 0))
 
 	byCategory, err := f.store.CountByCategory(ctx, f.tc.OrgID, f.tc.ProjectID)
 	require.NoError(t, err)
@@ -381,9 +382,7 @@ func TestPostgres_Post_Counts(t *testing.T) {
 	assert.False(t, present, "a tag with no posts is absent, not zero-valued")
 }
 
-// newPgRLSFixture migrates under a BYPASSRLS owner and returns a store bound to a
-// NOBYPASSRLS app role, so the row level security policies actually apply. The plain
-// fixture above connects as the container superuser, which bypasses RLS outright.
+// NOTE: binds the store to a NOBYPASSRLS app role, so the RLS policies actually apply.
 func newPgRLSFixture(t *testing.T) (blog.Store, *sql.DB, *sql.DB, string) {
 	t.Helper()
 	h := pgtest.New(t)
@@ -501,9 +500,7 @@ func seedRLSTenant(t *testing.T, migDB *sql.DB, prefix string) (tenant.Context, 
 	return tc, catID, tagID
 }
 
-// TestPostgres_Post_OtherOrgIsInvisible runs under enforced row level security: the app role
-// holds NOBYPASSRLS, so the policies created by the migration actually filter. It covers both
-// the store surface and a direct read of the join table as that same role.
+// TestPostgres_Post_OtherOrgIsInvisible runs the isolation checks under enforced row level security.
 func TestPostgres_Post_OtherOrgIsInvisible(t *testing.T) {
 	store, migDB, appConn, prefix := newPgRLSFixture(t)
 	a, aCat, aTag := seedRLSTenant(t, migDB, prefix)
@@ -515,7 +512,7 @@ func TestPostgres_Post_OtherOrgIsInvisible(t *testing.T) {
 	p, err := blog.New(a.OrgID, a.ProjectID, aCat, "Org A Only", "", "secret body")
 	require.NoError(t, err)
 	p.SetTags([]uuid.UUID{aTag})
-	require.NoError(t, store.Save(ownerCtx, p))
+	require.NoError(t, store.Save(ownerCtx, p, 0))
 
 	_, err = store.ByID(otherCtx, p.ID)
 	assert.True(t, blog.IsNotFoundError(err), "org B must not see org A's post, got %T: %v", err, err)
@@ -536,11 +533,10 @@ func TestPostgres_Post_OtherOrgIsInvisible(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, tagCounts, "org B must not count org A's join rows")
 
-	assert.True(t, blog.IsNotFoundError(store.Delete(otherCtx, p.ID)),
+	assert.True(t, blog.IsNotFoundError(store.Delete(otherCtx, p.ID, 0)),
 		"org B must not be able to delete org A's post")
 
-	// SECURITY: the join table carries its own org_id and its own policy; read it directly as
-	// the app role under org B's scope to prove the rows are invisible there too.
+	// SECURITY: the join table carries its own org_id and policy, so read it directly under org B's scope.
 	tx, err := tenant.NewPgConn(appConn).BeginTenanted(t.Context(), b)
 	require.NoError(t, err)
 	defer func() { _ = tx.Rollback() }()
@@ -561,12 +557,7 @@ func TestPostgres_Post_OtherOrgIsInvisible(t *testing.T) {
 	assert.Equal(t, []uuid.UUID{aTag}, stillThere.TagIDs)
 }
 
-// TestPostgres_Post_OtherOrgIsInvisible_WithoutRLS runs the same isolation checks with row level
-// security inert. The plain fixture connects as the container superuser, which holds BYPASSRLS,
-// so the policies the migration created never filter anything — the same exposure a deployment
-// gets from `tenant.rlsEnforce: false`, or from pointing the app at a BYPASSRLS role. What keeps
-// org B out here is only the explicit org_id predicate on each statement plus the conflict
-// clause's guard.
+// TestPostgres_Post_OtherOrgIsInvisible_WithoutRLS runs the same isolation checks with row level security inert, leaving only the explicit org_id predicates.
 func TestPostgres_Post_OtherOrgIsInvisible_WithoutRLS(t *testing.T) {
 	f := newPgFixture(t)
 	ownerCtx := tenant.Into(t.Context(), f.tc)
@@ -580,7 +571,7 @@ func TestPostgres_Post_OtherOrgIsInvisible_WithoutRLS(t *testing.T) {
 	p, err := blog.New(f.tc.OrgID, f.tc.ProjectID, f.cat, "Org A Only", "", "body")
 	require.NoError(t, err)
 	p.SetTags([]uuid.UUID{tagID})
-	require.NoError(t, f.store.Save(ownerCtx, p))
+	require.NoError(t, f.store.Save(ownerCtx, p, 0))
 
 	var visible int
 	require.NoError(t, f.sqlDB.QueryRowContext(t.Context(),
@@ -606,15 +597,14 @@ func TestPostgres_Post_OtherOrgIsInvisible_WithoutRLS(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, tagCounts, "org B must not count org A's join rows")
 
-	assert.True(t, blog.IsNotFoundError(f.store.Delete(otherCtx, p.ID)),
+	assert.True(t, blog.IsNotFoundError(f.store.Delete(otherCtx, p.ID, 0)),
 		"org B must not be able to delete org A's post")
 
-	// NOTE: the handler-shaped attack — org B posts its own scope with a row id it does not
-	// own, so nothing but the conflict clause's org predicate can catch it.
+	// NOTE: org B posts its own scope with a row id it does not own, so only the conflict clause's org predicate can catch it.
 	hijack, err := blog.New(b.OrgID, b.ProjectID, bCat, "Hijacked", "", "body")
 	require.NoError(t, err)
 	hijack.ID = p.ID
-	assert.True(t, blog.IsNotFoundError(f.store.Save(otherCtx, hijack)),
+	assert.True(t, blog.IsNotFoundError(f.store.Save(otherCtx, hijack, 0)),
 		"the conflict guard must refuse this as NotFoundError")
 
 	stillThere, err := f.store.ByID(ownerCtx, p.ID)
@@ -622,4 +612,201 @@ func TestPostgres_Post_OtherOrgIsInvisible_WithoutRLS(t *testing.T) {
 	assert.Equal(t, "Org A Only", stillThere.Title, "org A's row must be untouched")
 	assert.Equal(t, f.tc.OrgID, stillThere.OrgID, "org A's row must not have changed hands")
 	assert.Equal(t, []uuid.UUID{tagID}, stillThere.TagIDs, "org A's join rows must be untouched")
+}
+
+// TestPostgres_StaleVersionMessageNamesTheStoredVersion pins the operator-facing string: the store must name the version it refused, not a zero it never looked up.
+func TestPostgres_StaleVersionMessageNamesTheStoredVersion(t *testing.T) {
+	cases := []struct {
+		name string
+		call func(t *testing.T, store blog.Store, ctx context.Context, p *blog.Post) error
+	}{
+		{
+			name: "save",
+			call: func(t *testing.T, store blog.Store, ctx context.Context, p *blog.Post) error {
+				t.Helper()
+				return store.Save(ctx, p, 1)
+			},
+		},
+		{
+			name: "delete",
+			call: func(t *testing.T, store blog.Store, ctx context.Context, p *blog.Post) error {
+				t.Helper()
+				return store.Delete(ctx, p.ID, 1)
+			},
+		},
+	}
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newPgFixture(t)
+			ctx := tenant.Into(t.Context(), f.tc)
+
+			p, err := blog.New(f.tc.OrgID, f.tc.ProjectID, f.cat, "Original", "", "body")
+			require.NoError(t, err)
+			require.NoError(t, f.store.Save(ctx, p, 0))
+			require.NoError(t, p.Update("Second", p.Slug, "body", f.cat))
+			require.NoError(t, f.store.Save(ctx, p, 1), "the first conditional write moves the stored version to 2")
+
+			err = tt.call(t, f.store, ctx, p)
+			require.True(t, blog.IsStaleVersionError(err), "got %T: %v", err, err)
+			assert.Equal(t, "blog: stale version, have 2 want 1", err.Error())
+		})
+	}
+}
+
+// TestPostgres_CrossTenantConditionalWriteIsNotFound proves the refusal read stays org-scoped, so a stale-version answer never confirms another org's row.
+func TestPostgres_CrossTenantConditionalWriteIsNotFound(t *testing.T) {
+	f := newPgFixture(t)
+	ownerCtx := tenant.Into(t.Context(), f.tc)
+	b := seedPgTenant(t, f.sqlDB, f.prefix)
+	otherCtx := tenant.Into(t.Context(), b)
+
+	victim, err := blog.New(f.tc.OrgID, f.tc.ProjectID, f.cat, "Org A Only", "", "body")
+	require.NoError(t, err)
+	require.NoError(t, f.store.Save(ownerCtx, victim, 0))
+
+	hijack := *victim
+	hijack.Title = "Hijacked"
+	err = f.store.Save(otherCtx, &hijack, 1)
+	assert.True(t, blog.IsNotFoundError(err), "got %T: %v", err, err)
+	assert.False(t, blog.IsStaleVersionError(err), "a stale-version answer would confirm org A's row exists")
+
+	assert.True(t, blog.IsNotFoundError(f.store.Delete(otherCtx, victim.ID, 1)))
+}
+
+func TestPostgres_UpdateWithTagsHonoursThePreconditionWhole(t *testing.T) {
+	f := newPgFixture(t)
+	ctx := tenant.Into(t.Context(), f.tc)
+	svc, _, _ := newHooked(t, f.store, f.uow)
+	tagA := seedPgTag(t, f.sqlDB, f.prefix, f.tc)
+	tagB := seedPgTag(t, f.sqlDB, f.prefix, f.tc)
+
+	p, err := svc.Create(ctx, f.cat, "Original", "original", "body")
+	require.NoError(t, err)
+	n := p.Version
+
+	winner, err := svc.UpdateWithTags(ctx, p.ID, "A body", "original", "a", f.cat, []uuid.UUID{tagA}, n)
+	require.NoError(t, err, "the first conditional write must win")
+	assert.Equal(t, n+1, winner.Version, "one update must be one write; a second write would advance the version twice")
+
+	_, err = svc.UpdateWithTags(ctx, p.ID, "B body", "original", "b", f.cat, []uuid.UUID{tagB}, n)
+	require.True(t, blog.IsStaleVersionError(err), "got %T: %v", err, err)
+
+	got, err := svc.ByID(ctx, p.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "A body", got.Title)
+	assert.Equal(t, []uuid.UUID{tagA}, got.TagIDs, "the refused writer's tags must not have landed")
+
+	var rows int
+	require.NoError(t, f.sqlDB.QueryRowContext(t.Context(),
+		"SELECT count(*) FROM "+f.prefix+"blog_post_tags WHERE post_id = $1 AND org_id = $2",
+		p.ID, f.tc.OrgID).Scan(&rows))
+	assert.Equal(t, 1, rows, "the refused writer must leave no join rows behind")
+}
+
+// SECURITY: an ifVersion above int32 wraps when narrowed, turning a conditional write unconditional.
+func TestPostgres_OutOfRangeVersionIsRefused(t *testing.T) {
+	wrapped, ok := wrappingVersion()
+	if !ok {
+		t.Skip("no int on this GOARCH exceeds MaxInt32")
+	}
+	f := newPgFixture(t)
+	ctx := tenant.Into(t.Context(), f.tc)
+
+	p, err := blog.New(f.tc.OrgID, f.tc.ProjectID, f.cat, "Original", "", "body")
+	require.NoError(t, err)
+	require.NoError(t, f.store.Save(ctx, p, 0))
+	require.Equal(t, 1, p.Version)
+
+	hijack := *p
+	hijack.Title = "Hijacked"
+	err = f.store.Save(ctx, &hijack, wrapped)
+	require.True(t, blog.IsStaleVersionError(err), "Save(ifVersion=%d) got %T: %v", wrapped, err, err)
+
+	err = f.store.Delete(ctx, p.ID, wrapped)
+	require.True(t, blog.IsStaleVersionError(err), "Delete(ifVersion=%d) got %T: %v", wrapped, err, err)
+
+	got, err := f.store.ByID(ctx, p.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "Original", got.Title, "the out-of-range write was applied")
+	assert.Equal(t, 1, got.Version)
+}
+
+// SECURITY: endTx never rolls back an ambient transaction, so a refused conditional delete must not leave an empty tag set on a live post.
+func TestPostgres_RefusedConditionalDeleteLeavesTagLinksIntact(t *testing.T) {
+	f := newPgFixture(t)
+	ctx := tenant.Into(t.Context(), f.tc)
+	tag := seedPgTag(t, f.sqlDB, f.prefix, f.tc)
+
+	p, err := blog.New(f.tc.OrgID, f.tc.ProjectID, f.cat, "Keep", "", "body")
+	require.NoError(t, err)
+	p.SetTags([]uuid.UUID{tag})
+	require.NoError(t, f.store.Save(ctx, p, 0))
+
+	var delErr error
+	require.NoError(t, tenant.RunInTx(ctx, tenant.NewPgConn(f.sqlDB), f.tc, func(txCtx context.Context) error {
+		delErr = f.store.Delete(txCtx, p.ID, p.Version+1)
+		return nil
+	}), "a caller that treats a stale version as routine commits the ambient transaction")
+	require.True(t, blog.IsStaleVersionError(delErr), "got %T: %v", delErr, delErr)
+
+	got, err := f.store.ByID(ctx, p.ID)
+	require.NoError(t, err)
+	assert.Equal(t, []uuid.UUID{tag}, got.TagIDs, "a refused delete must leave the tag set alone")
+
+	var rows int
+	require.NoError(t, f.sqlDB.QueryRowContext(t.Context(),
+		"SELECT count(*) FROM "+f.prefix+"blog_post_tags WHERE post_id = $1 AND org_id = $2",
+		p.ID, f.tc.OrgID).Scan(&rows))
+	assert.Equal(t, 1, rows)
+}
+
+type loadBarrier struct {
+	blog.Store
+	arrived atomic.Int32
+	both    chan struct{}
+}
+
+func (b *loadBarrier) ByID(ctx context.Context, id uuid.UUID) (*blog.Post, error) {
+	p, err := b.Store.ByID(ctx, id)
+	if n := b.arrived.Add(1); n <= 2 {
+		if n == 2 {
+			close(b.both)
+		}
+		select {
+		case <-b.both:
+		case <-time.After(5 * time.Second):
+			return nil, errors.New("loadBarrier: the second publisher never loaded")
+		}
+	}
+	return p, err
+}
+
+func TestPostgres_ConcurrentPublishesEmitOnce(t *testing.T) {
+	f := newPgFixture(t)
+	ctx := tenant.Into(t.Context(), f.tc)
+	draft, err := blog.New(f.tc.OrgID, f.tc.ProjectID, f.cat, "Race", "", "body")
+	require.NoError(t, err)
+	require.NoError(t, f.store.Save(ctx, draft, 0))
+
+	barrier := &loadBarrier{Store: f.store, both: make(chan struct{})}
+	svc, unex, hooks := newHooked(t, barrier, f.uow)
+
+	var wg sync.WaitGroup
+	errs := make([]error, 2)
+	for i := range errs {
+		wg.Go(func() {
+			_, errs[i] = svc.Publish(ctx, draft.ID, 0)
+		})
+	}
+	wg.Wait()
+
+	for _, err := range errs {
+		require.NoError(t, err)
+	}
+	assert.Len(t, hooks.Recorded(), 1, "two concurrent publishes must emit exactly one event")
+	got, err := f.store.ByID(ctx, draft.ID)
+	require.NoError(t, err)
+	assert.Equal(t, blog.StatusPublished, got.Status)
+	assert.Equal(t, draft.Version+1, got.Version, "the losing publisher must not write")
+	assert.Zero(t, *unex)
 }

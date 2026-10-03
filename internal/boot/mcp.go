@@ -2,117 +2,142 @@ package boot
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"net/http"
+	"slices"
 
-	"altalune.id/yasaku/gen/go/yasaku/v1/yasakuv1mcp"
-	"altalune.id/yasaku/internal/api"
-	mcpsrv "altalune.id/yasaku/internal/mcp"
+	"altalune.id/yasaku/internal/apperror"
+	"altalune.id/yasaku/internal/controlplane"
+	mcpinternal "altalune.id/yasaku/internal/mcp"
+	"altalune.id/yasaku/internal/platform/authn"
 	"altalune.id/yasaku/internal/platform/config"
 	"altalune.id/yasaku/internal/platform/tokens"
 	"altalune.id/yasaku/internal/user"
-	mcprt "altalune.id/yasaku/mcp"
+	rootmcp "altalune.id/yasaku/mcp"
 	"altalune.id/yasaku/version"
 )
 
-// mcpDomains names each slot in mcpRegistrars, in order.
-//
-//nolint:gochecknoglobals // Immutable wiring manifest; not runtime state.
-var mcpDomains = []string{"workspace", "wallet", "category", "transaction", "period", "report"}
+const mcpServerName = "yasaku"
 
-func mcpRegistrars(apiSrv *api.Server) []func(mcprt.Registry) {
-	return []func(mcprt.Registry){
-		func(reg mcprt.Registry) { yasakuv1mcp.RegisterWorkspaceServiceTools(reg, apiSrv.WorkspaceSvc) },
-		func(reg mcprt.Registry) { yasakuv1mcp.RegisterWalletServiceTools(reg, apiSrv.WalletSvc) },
-		func(reg mcprt.Registry) { yasakuv1mcp.RegisterCategoryServiceTools(reg, apiSrv.CategorySvc) },
-		func(reg mcprt.Registry) { yasakuv1mcp.RegisterTransactionServiceTools(reg, apiSrv.TransactionSvc) },
-		func(reg mcprt.Registry) { yasakuv1mcp.RegisterPeriodServiceTools(reg, apiSrv.PeriodSvc) },
-		func(reg mcprt.Registry) { yasakuv1mcp.RegisterReportServiceTools(reg, apiSrv.ReportSvc) },
-	}
+type mcpSurface struct {
+	Handler         http.Handler
+	Metadata        http.Handler
+	MetadataPath    string
+	ChallengeRoutes map[string]http.Handler
+	Server          *rootmcp.Server
 }
 
-func assertMCPWiring(rs []func(mcprt.Registry)) error {
-	if len(rs) != len(mcpDomains) {
-		return fmt.Errorf("mcp wiring: %d registrars for %d domains %v",
-			len(rs), len(mcpDomains), mcpDomains)
-	}
-	missing := make([]string, 0, len(rs))
-	for i, r := range rs {
-		if r == nil {
-			missing = append(missing, mcpDomains[i])
-		}
-	}
-	if len(missing) > 0 {
-		return fmt.Errorf("mcp wiring: domains missing a registrar: %v", missing)
-	}
-	return nil
-}
-
-// buildMCP wires the MCP endpoint and its protected-resource metadata, or nothing when mcp.enabled is false.
-func buildMCP(
-	ctx context.Context,
-	cfg *config.Config,
-	apiSrv *api.Server,
-	users user.Store,
-	log *slog.Logger,
-	override tokens.Verifier,
-) (http.Handler, map[string]http.Handler, error) {
+// SECURITY: the JWT link is built on a second tokens.Verifier pinned to mcp.audience, never the kernel's control-plane verifier, so a token minted for one resource is refused at the other (RFC 8707).
+func buildMCPSurface(ctx context.Context, cfg *config.Config, log *slog.Logger, s *Services, apiSrv *controlplane.Server) (mcpSurface, error) {
 	if !cfg.MCP.Enabled {
-		return nil, nil, nil
+		return mcpSurface{}, nil
 	}
-	registrars := mcpRegistrars(apiSrv)
-	if err := assertMCPWiring(registrars); err != nil {
-		return nil, nil, err
+	surface, err := mcpinternal.NewSurface(cfg.MCP.Audience)
+	if err != nil {
+		return mcpSurface{}, fmt.Errorf("boot: mcp surface: %w", err)
 	}
-
-	verifier := override
-	if verifier == nil {
-		// NOTE: a second verifier — the API surface keeps tokens.audience, while MCP tokens must
-		// name the MCP endpoint itself (RFC 8707), so the two audiences never coincide.
-		v, err := tokens.NewVerifier(ctx, tokens.Config{
-			Issuer:        cfg.Tokens.Issuer,
-			JWKSURL:       cfg.Tokens.JWKSURL,
-			Audience:      cfg.MCP.Audience,
-			JWKSCacheTTL:  cfg.Tokens.JWKSCacheTTL,
-			ClockSkew:     cfg.Tokens.ClockSkew,
-			SupportedAlgs: cfg.Tokens.SupportedAlgs,
-			AcceptRS256:   cfg.Tokens.AcceptRS256,
-		})
-		if err != nil {
-			return nil, nil, fmt.Errorf("boot: mcp tokens: %w", err)
-		}
-		verifier = v
+	verifier, err := tokens.NewVerifier(ctx, mcpTokensConfig(cfg))
+	if err != nil {
+		return mcpSurface{}, fmt.Errorf("boot: mcp verifier: %w", err)
+	}
+	chain := authn.Chain{
+		s.KeyAuthn,
+		user.NewAuthenticator(
+			tokens.NewAuthenticator(verifier),
+			s.UserStore,
+			user.WithTenantResolution(
+				orgStoreForOnboard{store: s.OrgStore},
+				projectStoreForOnboard{store: s.ProjectStore},
+			),
+		),
 	}
 
-	srv := mcpsrv.New(mcpsrv.Deps{
-		Cfg:      cfg,
-		Verifier: verifier,
-		Users:    users,
-		Log:      log,
-		Version:  version.Default(),
-		Register: func(reg mcprt.Registry) {
-			for _, r := range registrars {
-				r(reg)
-			}
-		},
-	})
-	wellKnown := srv.WellKnown()
-	challenge := mcpsrv.ChallengeRoutes(cfg.HTTP.BasePath, cfg.MCP.ChallengeToken)
-	for pattern, h := range challenge {
-		wellKnown[pattern] = h
+	registry := rootmcp.NewRegistry()
+	if err := registerTools(registry, apiSrv); err != nil {
+		return mcpSurface{}, fmt.Errorf("boot: mcp tools: %w", err)
+	}
+
+	opts := []rootmcp.Option{
+		rootmcp.WithImplementation(mcpServerName, version.Default()),
+		rootmcp.WithRegistry(registry),
+		rootmcp.WithScopes(mcpinternal.ScopesFromContext),
+		rootmcp.WithErrorMapper(mcpErrorPayload),
+		rootmcp.WithLogger(log),
+		rootmcp.WithUI(cfg.MCP.AppsUI),
+	}
+	srv := rootmcp.NewServer(opts...)
+	if cfg.MCP.AppsUI {
+		srv.AddUIResource(yasakuAppResource())
+	}
+
+	challenge, err := mcpinternal.ChallengeRoutes(cfg.HTTP.BasePath, cfg.MCP.ChallengePrefix, cfg.MCP.ChallengeToken)
+	if err != nil {
+		return mcpSurface{}, fmt.Errorf("boot: mcp challenge: %w", err)
 	}
 	if len(challenge) == 0 {
-		// NOTE: authl re-checks the proof on a schedule, so a missing token fails admission long
-		// after boot looks healthy; say so now rather than leave it to a support ticket.
-		log.Warn("boot: mcp challenge token unset — authl cannot verify host control",
+		// NOTE: the authorization server re-checks the proof on a schedule, so a missing token
+		// fails admission long after boot looks healthy; say so now rather than at a support desk.
+		log.Warn("boot: mcp challenge token unset — host control cannot be verified",
 			slog.String("set", "YASAKU_MCP_CHALLENGE_TOKEN"))
 	}
 
-	log.Info("boot: mcp enabled",
-		slog.String("endpoint", cfg.MCPEndpoint()),
+	log.Info("boot: mcp surface mounted",
 		slog.String("audience", cfg.MCP.Audience),
-		slog.Int("domains", len(mcpDomains)),
-		slog.Int("challenge_routes", len(challenge)))
-	return srv.Handler(), wellKnown, nil
+		slog.String("metadata", surface.MetadataPath),
+		slog.Int("tools", len(registry.Names())),
+		slog.Bool("ui", cfg.MCP.AppsUI))
+
+	guard := mcpinternal.Authenticate(chain, s.KeyAuthn.Scheme().Authn(), surface.MetadataURL, log)
+	return mcpSurface{
+		Handler:         guard(srv.Handler()),
+		Metadata:        mcpinternal.MetadataHandler(surface.Resource, []string{cfg.Tokens.Issuer}, registeredScopes(registry)),
+		MetadataPath:    surface.MetadataPath,
+		ChallengeRoutes: challenge,
+		Server:          srv,
+	}, nil
+}
+
+func mcpTokensConfig(cfg *config.Config) tokens.Config {
+	c := cfg.Tokens
+	c.Audience = cfg.MCP.Audience
+	return c
+}
+
+func registeredScopes(reg *rootmcp.Registry) []string {
+	scopes := map[string]struct{}{}
+	for _, name := range reg.Names() {
+		spec, ok := reg.Spec(name)
+		if !ok || spec.Scope == "" {
+			continue
+		}
+		scopes[spec.Scope] = struct{}{}
+	}
+	return slices.Sorted(maps.Keys(scopes))
+}
+
+// SECURITY: anything TranslateError does not claim stays unmapped, so the root server logs the cause and answers a generic payload instead of handing the caller a raw Go error.
+func mcpErrorPayload(ctx context.Context, err error) rootmcp.ErrorPayload {
+	appErr, ok := apperror.AsAppError(mcpinternal.TranslateError(err))
+	if !ok {
+		return rootmcp.ErrorPayload{}
+	}
+	payload := rootmcp.ErrorPayload{Code: appErr.Code(), Message: appErr.Message()}
+	if denied, ok := errors.AsType[*rootmcp.ScopeDeniedError](err); ok {
+		payload.Meta = map[string]string{"tool": denied.Tool, "scope": denied.Scope}
+	}
+	if invalid, ok := errors.AsType[*rootmcp.InvalidArgumentsError](err); ok {
+		payload.Meta = invalidArgumentsMeta(invalid)
+	}
+	return mcpinternal.AttachContext(ctx, payload)
+}
+
+func invalidArgumentsMeta(e *rootmcp.InvalidArgumentsError) map[string]string {
+	meta := map[string]string{"tool": e.Tool}
+	if e.Field != "" {
+		meta["field"] = e.Field
+	}
+	return meta
 }

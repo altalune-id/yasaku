@@ -27,9 +27,7 @@ func TestNullTextIsConcurrencySafe(t *testing.T) {
 
 	var wg sync.WaitGroup
 	for range goroutines {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			for range iterations {
 				query, _ := jetsqlite.SELECT(sqliteent.NullText().AS("v")).Sql()
 				if !strings.Contains(query, "CAST(NULL AS TEXT)") {
@@ -37,7 +35,37 @@ func TestNullTextIsConcurrencySafe(t *testing.T) {
 					return
 				}
 			}
-		}()
+		})
+	}
+	wg.Wait()
+}
+
+func TestNullBlobSerializesAsNull(t *testing.T) {
+	t.Parallel()
+
+	query, _ := jetsqlite.SELECT(sqliteent.NullBlob().AS("v")).Sql()
+	if !strings.Contains(query, "CAST(NULL AS BLOB)") {
+		t.Fatalf("NullBlob did not serialize to a NULL cast: %q", query)
+	}
+}
+
+func TestNullBlobIsConcurrencySafe(t *testing.T) {
+	t.Parallel()
+
+	const goroutines = 8
+	const iterations = 200
+
+	var wg sync.WaitGroup
+	for range goroutines {
+		wg.Go(func() {
+			for range iterations {
+				query, _ := jetsqlite.SELECT(sqliteent.NullBlob().AS("v")).Sql()
+				if !strings.Contains(query, "CAST(NULL AS BLOB)") {
+					t.Errorf("unstable serialization: %q", query)
+					return
+				}
+			}
+		})
 	}
 	wg.Wait()
 }

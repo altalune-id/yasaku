@@ -19,8 +19,7 @@ import (
 	"altalune.id/yasaku/schema"
 )
 
-// NOTE: a t.TempDir() file DSN through db.Open, never ":memory:" — the pragma must
-// reach every pooled connection or ON DELETE RESTRICT silently no-ops.
+// NOTE: a t.TempDir() file DSN, never ":memory:" — the pragma must reach every pooled connection or ON DELETE RESTRICT silently no-ops.
 func newSQLiteStoreForTest(t *testing.T) (category.Store, *sql.DB, string, tenant.Context) {
 	t.Helper()
 	cfg := config.Defaults()
@@ -263,9 +262,7 @@ func TestSQLite_RequiresTenantScope(t *testing.T) {
 	assert.Error(t, store.Delete(context.Background(), c.ID))
 }
 
-// TestSQLite_Save_CannotUpsertOntoAnotherOrgsRow is the hijack shape: org B calls Save with a
-// Category carrying org A's row id. SQLite has no row level security, so the conflict-clause
-// org guard in Save is the only thing standing between org B and org A's row.
+// TestSQLite_Save_CannotUpsertOntoAnotherOrgsRow is the hijack shape: SQLite has no row level security, so Save's conflict-clause org guard is the only defense.
 func TestSQLite_Save_CannotUpsertOntoAnotherOrgsRow(t *testing.T) {
 	store, sqlDB, prefix, tc := newSQLiteStoreForTest(t)
 	ownerCtx := tenant.Into(t.Context(), tc)
@@ -289,8 +286,7 @@ func TestSQLite_Save_CannotUpsertOntoAnotherOrgsRow(t *testing.T) {
 	assert.Equal(t, tc.OrgID, stillThere.OrgID)
 }
 
-// TestSQLite_Save_UpdatesOwnRow guards the other direction: the org guard must not break a
-// legitimate upsert by the owning tenant.
+// TestSQLite_Save_UpdatesOwnRow guards the other direction: the org guard must not break a legitimate upsert by the owning tenant.
 func TestSQLite_Save_UpdatesOwnRow(t *testing.T) {
 	store, _, _, tc := newSQLiteStoreForTest(t)
 	ctx := tenant.Into(t.Context(), tc)

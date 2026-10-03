@@ -20,28 +20,18 @@ func render(t *testing.T, c templ.Component) string {
 	return sb.String()
 }
 
-func TestChartAssets(t *testing.T) {
-	tests := []struct {
-		name string
-		mode web.UIMode
-		want string
-	}{
-		{"cdn", web.UIModeCDN, "https://cdn.jsdelivr.net/npm/echarts@" + echartsVersion + "/dist/echarts.min.js"},
-		{"vendored", web.UIModeVendored, "/static/echarts.min.js"},
+func TestChartAssets_LoadsSameOriginScriptsWithTheNonce(t *testing.T) {
+	got := render(t, chartAssets(web.LayoutData{Nonce: "n0nce"}))
+	for _, want := range []string{"/static/echarts.min.js", "/static/charts.js"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("chartAssets() = %q, want it to contain %q", got, want)
+		}
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := render(t, chartAssets(web.LayoutData{UIMode: tt.mode}))
-			if !strings.Contains(got, tt.want) {
-				t.Fatalf("chartAssets() = %q, want it to contain %q", got, tt.want)
-			}
-			if !strings.Contains(got, "/static/charts.js") {
-				t.Fatalf("chartAssets() must always load charts.js, got %q", got)
-			}
-			if n := strings.Count(got, "<script defer"); n != 2 {
-				t.Fatalf("chartAssets() emitted %d deferred scripts, want 2: %q", n, got)
-			}
-		})
+	if strings.Contains(got, "https://") {
+		t.Fatalf("chartAssets() must load nothing cross-origin, got %q", got)
+	}
+	if n := strings.Count(got, `nonce="n0nce"`); n != 2 {
+		t.Fatalf("chartAssets() emitted %d nonced scripts, want 2: %q", n, got)
 	}
 }
 

@@ -14,7 +14,7 @@ const (
 	kindIncome  = "income"
 )
 
-// maxCashflowPeriods bounds the generated IN list so every bind token stays the same width and cannot prefix another.
+// NOTE: bounds the IN list so every bind token has the same width and none prefixes another.
 const maxCashflowPeriods = 9999
 
 type tableNames struct {
@@ -54,7 +54,6 @@ SELECT COALESCE(SUM(CASE WHEN kind IN ('income','adjustment_in')   THEN amount_m
 		t.txn, bigintCast(pg), intCast(pg))
 }
 
-// priorPredicate matches rows keyed to an earlier period, plus unassigned rows before the period's local start.
 const priorPredicate = `(
         t.period_id IN (
           SELECT p.id FROM %[2]s p
@@ -65,7 +64,11 @@ const priorPredicate = `(
         OR (t.period_id IS NULL AND t.occurred_at < #startUTC)
       )`
 
-func walletLinesSQL(t tableNames, pg bool) string {
+func walletLinesSQL(t tableNames, pg, cut bool) string {
+	archived := `w.archived_at IS NULL`
+	if cut {
+		archived = `(w.archived_at IS NULL OR w.archived_at >= #archivedBefore)`
+	}
 	return fmt.Sprintf(`
 SELECT w.id                 AS "line.wallet_id",
        w.name               AS "line.name",
@@ -96,6 +99,7 @@ SELECT w.id                 AS "line.wallet_id",
        AND t.kind = 'transfer' AND t.to_wallet_id IS NOT NULL
   ) m ON m.wallet_id = w.id
  WHERE w.org_id = #orgID AND w.org_id = #scopeOrg AND w.project_id = #projectID AND w.currency = #currency
+   AND `+archived+`
  GROUP BY w.id, w.name, w.kind, w.exclude_from_total
  ORDER BY LOWER(w.name), w.id`,
 		t.txn, t.periods, t.wallets, bigintCast(pg))
@@ -173,6 +177,7 @@ SELECT w.id                 AS "line.wallet_id",
      WHERE `+scopePredicateT+` AND t.kind = 'transfer' AND t.to_wallet_id IS NOT NULL
   ) m ON m.wallet_id = w.id
  WHERE w.org_id = #orgID AND w.org_id = #scopeOrg AND w.project_id = #projectID
+   AND w.archived_at IS NULL
  GROUP BY w.id, w.name, w.kind, w.exclude_from_total, w.currency
  ORDER BY LOWER(w.name), w.id`,
 		t.txn, t.wallets, bigintCast(pg))
@@ -207,7 +212,6 @@ func cashflowPoint(ref PeriodRef, income, expense int64, currency money.Currency
 	}
 }
 
-// bigintCast keeps Postgres SUM() out of numeric; SQLite needs no cast at all.
 func bigintCast(pg bool) string {
 	if pg {
 		return "::bigint"

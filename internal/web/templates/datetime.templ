@@ -1,0 +1,123 @@
+package templates
+
+import (
+	"time"
+
+	"altalune.id/yasaku/civil"
+	"altalune.id/yasaku/internal/web"
+)
+
+// DateOption changes how LedgerDate renders.
+type DateOption func(*dateOpts)
+
+type dateOpts struct {
+	compact bool
+}
+
+// Compact drops the year from a ledger date.
+func Compact() DateOption { return func(o *dateOpts) { o.compact = true } }
+
+func applyDateOpts(opts []DateOption) dateOpts {
+	var o dateOpts
+	for _, fn := range opts {
+		fn(&o)
+	}
+	return o
+}
+
+func dtInstant(t time.Time) string { return t.UTC().Format(time.RFC3339) }
+
+func dtLedgerZone(d web.LayoutData) string {
+	if d.TimeZone == nil {
+		return ""
+	}
+	return d.TimeZone.String()
+}
+
+func dtFallback(d web.LayoutData, t time.Time) string {
+	loc := d.TimeZone
+	if loc == nil {
+		loc = time.UTC
+	}
+	return t.In(loc).Format("2 Jan 2006 15:04 MST")
+}
+
+func ledgerDayText(day civil.Date, o dateOpts) string {
+	if o.compact {
+		return day.In(time.UTC).Format("2 Jan")
+	}
+	return day.In(time.UTC).Format("2 Jan 2006")
+}
+
+func ledgerDayStyle(o dateOpts) string {
+	if o.compact {
+		return "compact"
+	}
+	return "medium"
+}
+
+// DateTime renders an instant; localtime.js shows it in the browser zone and, when the zones differ, the ledger time in a popover.
+templ DateTime(d web.LayoutData, t time.Time) {
+	if d.TimeZone == nil {
+		<time datetime={ dtInstant(t) } data-datetime>{ dtFallback(d, t) }</time>
+	} else {
+		<time
+			datetime={ dtInstant(t) }
+			data-datetime
+			data-ledger-tz={ dtLedgerZone(d) }
+			data-dt-alt-label={ d.Tr("datetime.ledger_time", "Time", "{time}", "Zone", dtLedgerZone(d), "Offset", "{offset}") }
+		>{ dtFallback(d, t) }</time>
+	}
+}
+
+// LedgerDate renders a ledger day in the project zone; with a moment, a popover shows when it was recorded in the browser zone.
+templ LedgerDate(d web.LayoutData, day civil.Date, moment *time.Time, opts ...DateOption) {
+	if moment == nil || d.TimeZone == nil {
+		<time datetime={ day.String() } data-ledger-date data-date-style={ ledgerDayStyle(applyDateOpts(opts)) }>{ ledgerDayText(day, applyDateOpts(opts)) }</time>
+	} else {
+		<time
+			datetime={ day.String() }
+			data-ledger-date
+			data-date-style={ ledgerDayStyle(applyDateOpts(opts)) }
+			data-datetime-alt={ dtInstant(*moment) }
+			data-ledger-tz={ dtLedgerZone(d) }
+			data-dt-alt-label={ d.Tr("datetime.recorded", "Time", "{time}", "Offset", "{offset}") }
+		>{ ledgerDayText(day, applyDateOpts(opts)) }</time>
+	}
+}
+
+// LedgerTimeFooter loads localtime.js with the popover markup it clones and, in a project, carries the hint shown when the browser and ledger zones differ.
+templ LedgerTimeFooter(d web.LayoutData) {
+	if d.TimeZone != nil {
+		<p
+			hidden
+			data-tz-hint
+			data-ledger-tz={ dtLedgerZone(d) }
+			class="mt-8 text-center text-xs text-muted-foreground"
+		>{ d.Tr("datetime.footer_hint", "Offset", "{offset}", "Zone", dtLedgerZone(d), "LedgerOffset", "{ledgerOffset}") }</p>
+	}
+	<template data-dt-template>
+		<span class="relative z-10">
+			<button
+				type="button"
+				data-dt-trigger
+				class="cursor-help rounded-sm text-inherit underline decoration-dotted underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+			></button>
+			<span
+				popover
+				data-dt-pop
+				class="m-0 inset-auto max-w-[calc(100vw-2rem)] rounded-md border border-border bg-popover px-3 py-2 text-xs font-normal text-popover-foreground shadow-md"
+			></span>
+		</span>
+	</template>
+	<script defer src={ d.Static("localtime.js") } nonce={ d.Nonce }></script>
+}
+
+// DateInputHint tells a date field's user that dates are ledger days, when the browser and ledger zones differ.
+templ DateInputHint(d web.LayoutData) {
+	if d.TimeZone != nil {
+		<p hidden data-tz-hint data-ledger-tz={ dtLedgerZone(d) } class="mt-1 text-xs text-muted-foreground">
+			{ d.Tr("datetime.input_hint", "Zone", dtLedgerZone(d)) }
+		</p>
+	}
+}

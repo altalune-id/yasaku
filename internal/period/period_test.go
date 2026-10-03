@@ -146,6 +146,24 @@ func TestLatestClosed(t *testing.T) {
 		"an already reopened period blocks every reopen")
 }
 
+func TestNextOpenStart(t *testing.T) {
+	today := civil.Date{Year: 2026, Month: 10, Day: 2}
+	closed := closedAt(t, civil.Date{Year: 2026, Month: 10, Day: 1}, today)
+	next := mustPeriod(t, civil.Date{Year: 2026, Month: 10, Day: 3})
+	later := mustPeriod(t, civil.Date{Year: 2026, Month: 11, Day: 1})
+	earlier := mustPeriod(t, civil.Date{Year: 2026, Month: 9, Day: 1})
+
+	assert.Equal(t, next.StartDate, period.NextOpenStart([]*period.Period{later, closed, next, earlier}, closed, today),
+		"the earliest open period that begins after today")
+
+	lockedNext := closedAt(t, next.StartDate, civil.Date{Year: 2026, Month: 10, Day: 31})
+	assert.Equal(t, later.StartDate, period.NextOpenStart([]*period.Period{closed, lockedNext, later}, closed, today),
+		"a closed period is never a target")
+
+	assert.Equal(t, civil.Date{Year: 2026, Month: 10, Day: 3}, period.NextOpenStart([]*period.Period{closed, earlier}, closed, today),
+		"with no open period ahead, the day after the closed one ends, where Close opens the next")
+}
+
 func TestParseEnd_ReportsATypedRefusal(t *testing.T) {
 	got, err := period.ParseEnd(" 2026-09-24 ")
 	require.NoError(t, err)

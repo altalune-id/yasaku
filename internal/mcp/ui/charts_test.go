@@ -5,50 +5,71 @@ import (
 	"testing"
 )
 
-func TestDonutSVGGeometry(t *testing.T) {
+func TestDonutModelGeometry(t *testing.T) {
 	vm := newJSVM(t)
-	got := jsString(t, vm, `donutSVG([{share:0.5},{share:0.25},{share:0.25}])`)
-	if !strings.HasPrefix(got, "<svg") {
-		t.Fatalf("donutSVG did not return svg: %q", got)
+	got := jsString(t, vm, `JSON.stringify(donutModel([{share:0.5},{share:0.25},{share:0.25}]))`)
+	if n := strings.Count(got, `"stroke"`); n != 3 {
+		t.Errorf("donutModel drew %d slices, want 3:\n%s", n, got)
 	}
-	if n := strings.Count(got, "<circle"); n != 4 {
-		t.Errorf("donutSVG drew %d circles, want 4 (track + 3 slices)", n)
+	if !strings.Contains(got, `"offset":"-131.95"`) || !strings.Contains(got, `"dash":"131.95 131.95"`) {
+		t.Errorf("donutModel geometry drifted:\n%s", got)
 	}
 	if strings.Contains(got, "NaN") {
-		t.Errorf("donutSVG produced NaN:\n%s", got)
+		t.Errorf("donutModel produced NaN:\n%s", got)
 	}
 }
 
-func TestDonutSVGHandlesEmptyAndMissingShares(t *testing.T) {
+func TestDonutModelHandlesEmptyAndMissingShares(t *testing.T) {
 	vm := newJSVM(t)
-	if got := jsString(t, vm, `donutSVG([])`); got != "" {
-		t.Errorf("donutSVG([]) = %q, want empty string", got)
+	if got := jsString(t, vm, `String(donutModel([]).empty)`); got != "true" {
+		t.Errorf("donutModel([]).empty = %s, want true", got)
 	}
-	got := jsString(t, vm, `donutSVG([{},{share:0.5}])`)
-	if strings.Contains(got, "NaN") {
-		t.Errorf("donutSVG leaked NaN on a missing share:\n%s", got)
+	if got := jsString(t, vm, `String(donutModel(undefined).empty)`); got != "true" {
+		t.Errorf("donutModel(undefined).empty = %s, want true", got)
+	}
+	if got := jsString(t, vm, `JSON.stringify(donutModel([{},{share:0.5}]))`); strings.Contains(got, "NaN") {
+		t.Errorf("donutModel leaked NaN on a missing share:\n%s", got)
 	}
 }
 
-func TestCashflowSVGPlotsEveryPoint(t *testing.T) {
+func TestCashflowModelPlotsEveryPoint(t *testing.T) {
 	vm := newJSVM(t)
-	got := jsString(t, vm, `cashflowSVG([
+	got := jsString(t, vm, `JSON.stringify(cashflowModel([
 		{period:{name:"Jul"},income:{amount:"100"},expense:{amount:"60"}},
 		{period:{name:"Aug"},income:{amount:"140"},expense:{amount:"90"}},
 		{period:{name:"Sep"},income:{amount:"120"},expense:{amount:"130"}}
-	])`)
-	if n := strings.Count(got, "<rect"); n != 6 {
-		t.Errorf("cashflowSVG drew %d bars, want 6 (income+expense per point)", n)
+	]))`)
+	if n := strings.Count(got, `"fill"`); n != 6 {
+		t.Errorf("cashflowModel drew %d bars, want 6 (income+expense per point)", n)
+	}
+	if n := strings.Count(got, `"text"`); n != 3 {
+		t.Errorf("cashflowModel drew %d labels, want 3", n)
 	}
 	if strings.Contains(got, "NaN") {
-		t.Errorf("cashflowSVG produced NaN:\n%s", got)
+		t.Errorf("cashflowModel produced NaN:\n%s", got)
 	}
 }
 
-func TestCashflowSVGSurvivesAllZero(t *testing.T) {
+func TestCashflowModelSurvivesAllZero(t *testing.T) {
 	vm := newJSVM(t)
-	got := jsString(t, vm, `cashflowSVG([{period:{name:"Jul"}},{period:{name:"Aug"}}])`)
+	got := jsString(t, vm, `JSON.stringify(cashflowModel([{period:{name:"Jul"}},{period:{name:"Aug"}}]))`)
 	if strings.Contains(got, "NaN") || strings.Contains(got, "Infinity") {
 		t.Errorf("all-zero cashflow must not divide by zero:\n%s", got)
+	}
+	if got := jsString(t, vm, `JSON.stringify(cashflowModel([]))`); strings.Contains(got, "NaN") || strings.Contains(got, "Infinity") {
+		t.Errorf("an empty cashflow must not divide by zero:\n%s", got)
+	}
+}
+
+// TestChartAttributesCannotBreakOut: a slice colour lands in an SVG stroke attribute, so only an allow-listed token may reach it.
+func TestChartAttributesCannotBreakOut(t *testing.T) {
+	vm := newJSVM(t)
+	got := jsString(t, vm, `donutModel([{share:1,category:{color:'#000" onmouseover="alert(1)'}}]).segments[0].stroke`)
+	if strings.Contains(got, "onmouseover") || strings.ContainsAny(got, `"<>`) {
+		t.Errorf("a slice colour carried attribute breakout into the stroke: %q", got)
+	}
+	label := jsString(t, vm, `cashflowModel([{period:{name:{__raw:"<script>"}}}]).labels[0].text`)
+	if label != "" {
+		t.Errorf("a forged label object reached the chart: %q", label)
 	}
 }

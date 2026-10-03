@@ -2,6 +2,7 @@ package templates
 
 import (
 	"strconv"
+	"time"
 
 	"altalune.id/yasaku/internal/web"
 	"altalune.id/yasaku/internal/web/icons"
@@ -15,7 +16,7 @@ type PeriodRow struct {
 	Start     string
 	End       string
 	Closed    bool
-	ClosedAt  string
+	ClosedAt  *time.Time
 	HasTotals bool
 	Income    money.Amount
 	Expense   money.Amount
@@ -177,10 +178,12 @@ templ periodHistoryRow(d web.LayoutData, projectSlug string, r PeriodRow) {
 		if r.HasTotals {
 			@periodTotals(d, r)
 		}
-		if r.ClosedAt != "" {
+		if r.ClosedAt != nil {
 			<p class="mt-2 text-xs text-muted-foreground">
 				{ d.Tr("period.closed_at") }
-				<span class="tabular-nums">{ r.ClosedAt }</span>
+				<span class="tabular-nums">
+					@DateTime(d, *r.ClosedAt)
+				</span>
 			</p>
 		}
 		if r.CanReopen || r.CanClose {
@@ -334,9 +337,12 @@ templ ClosePeriodPage(d web.LayoutData, v ClosePeriodView) {
 					max={ v.MaxDate }
 					disabled?={ v.DateLocked }
 					hx-get={ d.ProjectPath(v.ProjectSlug, "/periods/"+v.PeriodID+"/close") }
+					hx-nonce={ d.Nonce }
 					hx-trigger="change"
 					hx-target="#close-preview"
 					hx-swap="outerHTML"
+					hx-status:4xx="target:#hx-error swap:innerHTML"
+					hx-status:5xx="target:#hx-error swap:innerHTML"
 					class="mt-1.5 block w-full rounded-md border border-border bg-card px-3 py-2 text-base text-foreground shadow-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1 disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground sm:max-w-xs sm:text-sm"
 				/>
 				if v.DateLocked {
@@ -344,6 +350,7 @@ templ ClosePeriodPage(d web.LayoutData, v ClosePeriodView) {
 					<p class="mt-1.5 text-xs text-muted-foreground">{ d.Tr("period.locked_hint") }</p>
 				} else {
 					<p class="mt-1.5 text-xs text-muted-foreground">{ d.Tr("period.end_date_hint") }</p>
+					@DateInputHint(d)
 				}
 				@ClosePreviewFragment(d, v)
 				<p class="mt-6 text-sm text-muted-foreground">{ d.Tr("period.close_confirm") }</p>

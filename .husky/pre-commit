@@ -1,3 +1,5 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
 set -e
 
 go tool i18n-lint --check

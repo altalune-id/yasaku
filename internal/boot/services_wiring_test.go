@@ -14,6 +14,7 @@ import (
 	"altalune.id/yasaku/internal/platform/capabilities"
 	"altalune.id/yasaku/internal/platform/config"
 	"altalune.id/yasaku/internal/platform/db"
+	"altalune.id/yasaku/internal/platform/tenant"
 	"altalune.id/yasaku/mailer"
 )
 
@@ -78,7 +79,7 @@ func TestUnitOfWork_SQLite_IsARealTransaction(t *testing.T) {
 	cfg := newWiringConfig(t)
 	k := newWiringKernel(t, cfg)
 
-	uow := unitOfWork(cfg.DB, k.Pool, k.PgConn)
+	uow := tenant.NewUnitOfWork(cfg.DB, k.Pool, k.PgConn)
 
 	var sawTx bool
 	err := uow(context.Background(), func(ctx context.Context) error {

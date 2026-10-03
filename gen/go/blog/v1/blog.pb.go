@@ -7,6 +7,7 @@
 package blogv1
 
 import (
+	_ "altalune.id/yasaku/gen/go/mcp/v1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
@@ -156,8 +157,10 @@ type Post struct {
 	FirstPublishedAt *timestamppb.Timestamp `protobuf:"bytes,10,opt,name=first_published_at,json=firstPublishedAt,proto3" json:"first_published_at,omitempty"`
 	CreatedAt        *timestamppb.Timestamp `protobuf:"bytes,11,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	UpdatedAt        *timestamppb.Timestamp `protobuf:"bytes,12,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// Optimistic-concurrency version; pass it back as if_version on a write
+	Version       int32 `protobuf:"varint,13,opt,name=version,proto3" json:"version,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Post) Reset() {
@@ -272,6 +275,13 @@ func (x *Post) GetUpdatedAt() *timestamppb.Timestamp {
 		return x.UpdatedAt
 	}
 	return nil
+}
+
+func (x *Post) GetVersion() int32 {
+	if x != nil {
+		return x.Version
+	}
+	return 0
 }
 
 type CreatePostRequest struct {
@@ -491,10 +501,13 @@ func (x *GetPostResponse) GetPost() *Post {
 }
 
 type ListPostsRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ProjectId     string                 `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
-	Status        string                 `protobuf:"bytes,2,opt,name=status,proto3" json:"status,omitempty"`
-	CategoryId    string                 `protobuf:"bytes,3,opt,name=category_id,json=categoryId,proto3" json:"category_id,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// UUID of the project to list posts in; omit to use the credential's active project
+	ProjectId string `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	// Filter by state: "published" or "draft"
+	Status string `protobuf:"bytes,2,opt,name=status,proto3" json:"status,omitempty"`
+	// UUID of a category to filter by
+	CategoryId    string `protobuf:"bytes,3,opt,name=category_id,json=categoryId,proto3" json:"category_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -595,13 +608,15 @@ func (x *ListPostsResponse) GetPosts() []*Post {
 }
 
 type UpdatePostRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	PostId        string                 `protobuf:"bytes,1,opt,name=post_id,json=postId,proto3" json:"post_id,omitempty"`
-	CategoryId    string                 `protobuf:"bytes,2,opt,name=category_id,json=categoryId,proto3" json:"category_id,omitempty"`
-	Title         string                 `protobuf:"bytes,3,opt,name=title,proto3" json:"title,omitempty"`
-	Slug          string                 `protobuf:"bytes,4,opt,name=slug,proto3" json:"slug,omitempty"`
-	BodyMarkdown  string                 `protobuf:"bytes,5,opt,name=body_markdown,json=bodyMarkdown,proto3" json:"body_markdown,omitempty"`
-	TagIds        []string               `protobuf:"bytes,6,rep,name=tag_ids,json=tagIds,proto3" json:"tag_ids,omitempty"`
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	PostId       string                 `protobuf:"bytes,1,opt,name=post_id,json=postId,proto3" json:"post_id,omitempty"`
+	CategoryId   string                 `protobuf:"bytes,2,opt,name=category_id,json=categoryId,proto3" json:"category_id,omitempty"`
+	Title        string                 `protobuf:"bytes,3,opt,name=title,proto3" json:"title,omitempty"`
+	Slug         string                 `protobuf:"bytes,4,opt,name=slug,proto3" json:"slug,omitempty"`
+	BodyMarkdown string                 `protobuf:"bytes,5,opt,name=body_markdown,json=bodyMarkdown,proto3" json:"body_markdown,omitempty"`
+	TagIds       []string               `protobuf:"bytes,6,rep,name=tag_ids,json=tagIds,proto3" json:"tag_ids,omitempty"`
+	// Version the write is conditioned on; omit for an unconditional write
+	IfVersion     *int32 `protobuf:"varint,7,opt,name=if_version,json=ifVersion,proto3,oneof" json:"if_version,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -678,6 +693,13 @@ func (x *UpdatePostRequest) GetTagIds() []string {
 	return nil
 }
 
+func (x *UpdatePostRequest) GetIfVersion() int32 {
+	if x != nil && x.IfVersion != nil {
+		return *x.IfVersion
+	}
+	return 0
+}
+
 type UpdatePostResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Post          *Post                  `protobuf:"bytes,1,opt,name=post,proto3" json:"post,omitempty"`
@@ -723,8 +745,10 @@ func (x *UpdatePostResponse) GetPost() *Post {
 }
 
 type DeletePostRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	PostId        string                 `protobuf:"bytes,1,opt,name=post_id,json=postId,proto3" json:"post_id,omitempty"`
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	PostId string                 `protobuf:"bytes,1,opt,name=post_id,json=postId,proto3" json:"post_id,omitempty"`
+	// Version the delete is conditioned on; omit for an unconditional delete
+	IfVersion     *int32 `protobuf:"varint,2,opt,name=if_version,json=ifVersion,proto3,oneof" json:"if_version,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -766,6 +790,13 @@ func (x *DeletePostRequest) GetPostId() string {
 	return ""
 }
 
+func (x *DeletePostRequest) GetIfVersion() int32 {
+	if x != nil && x.IfVersion != nil {
+		return *x.IfVersion
+	}
+	return 0
+}
+
 type DeletePostResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -803,8 +834,11 @@ func (*DeletePostResponse) Descriptor() ([]byte, []int) {
 }
 
 type PublishPostRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	PostId        string                 `protobuf:"bytes,1,opt,name=post_id,json=postId,proto3" json:"post_id,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// UUID of the post to publish
+	PostId string `protobuf:"bytes,1,opt,name=post_id,json=postId,proto3" json:"post_id,omitempty"`
+	// Version the transition is conditioned on; omit for an unconditional publish
+	IfVersion     *int32 `protobuf:"varint,2,opt,name=if_version,json=ifVersion,proto3,oneof" json:"if_version,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -844,6 +878,13 @@ func (x *PublishPostRequest) GetPostId() string {
 		return x.PostId
 	}
 	return ""
+}
+
+func (x *PublishPostRequest) GetIfVersion() int32 {
+	if x != nil && x.IfVersion != nil {
+		return *x.IfVersion
+	}
+	return 0
 }
 
 type PublishPostResponse struct {
@@ -891,8 +932,10 @@ func (x *PublishPostResponse) GetPost() *Post {
 }
 
 type UnpublishPostRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	PostId        string                 `protobuf:"bytes,1,opt,name=post_id,json=postId,proto3" json:"post_id,omitempty"`
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	PostId string                 `protobuf:"bytes,1,opt,name=post_id,json=postId,proto3" json:"post_id,omitempty"`
+	// Version the transition is conditioned on; omit for an unconditional unpublish
+	IfVersion     *int32 `protobuf:"varint,2,opt,name=if_version,json=ifVersion,proto3,oneof" json:"if_version,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -932,6 +975,13 @@ func (x *UnpublishPostRequest) GetPostId() string {
 		return x.PostId
 	}
 	return ""
+}
+
+func (x *UnpublishPostRequest) GetIfVersion() int32 {
+	if x != nil && x.IfVersion != nil {
+		return *x.IfVersion
+	}
+	return 0
 }
 
 type UnpublishPostResponse struct {
@@ -982,7 +1032,7 @@ var File_blog_v1_blog_proto protoreflect.FileDescriptor
 
 const file_blog_v1_blog_proto_rawDesc = "" +
 	"\n" +
-	"\x12blog/v1/blog.proto\x12\ablog.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"B\n" +
+	"\x12blog/v1/blog.proto\x12\ablog.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x18mcp/v1/annotations.proto\"B\n" +
 	"\bCategory\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x12\n" +
@@ -990,7 +1040,7 @@ const file_blog_v1_blog_proto_rawDesc = "" +
 	"\x03Tag\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x12\n" +
-	"\x04slug\x18\x03 \x01(\tR\x04slug\"\xca\x03\n" +
+	"\x04slug\x18\x03 \x01(\tR\x04slug\"\xe4\x03\n" +
 	"\x04Post\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
@@ -1007,7 +1057,8 @@ const file_blog_v1_blog_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
-	"updated_at\x18\f \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\xbb\x01\n" +
+	"updated_at\x18\f \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x12\x18\n" +
+	"\aversion\x18\r \x01(\x05R\aversion\"\xbb\x01\n" +
 	"\x11CreatePostRequest\x12\x1d\n" +
 	"\n" +
 	"project_id\x18\x01 \x01(\tR\tprojectId\x12\x1f\n" +
@@ -1030,7 +1081,7 @@ const file_blog_v1_blog_proto_rawDesc = "" +
 	"\vcategory_id\x18\x03 \x01(\tR\n" +
 	"categoryId\"8\n" +
 	"\x11ListPostsResponse\x12#\n" +
-	"\x05posts\x18\x01 \x03(\v2\r.blog.v1.PostR\x05posts\"\xb5\x01\n" +
+	"\x05posts\x18\x01 \x03(\v2\r.blog.v1.PostR\x05posts\"\xe8\x01\n" +
 	"\x11UpdatePostRequest\x12\x17\n" +
 	"\apost_id\x18\x01 \x01(\tR\x06postId\x12\x1f\n" +
 	"\vcategory_id\x18\x02 \x01(\tR\n" +
@@ -1038,30 +1089,44 @@ const file_blog_v1_blog_proto_rawDesc = "" +
 	"\x05title\x18\x03 \x01(\tR\x05title\x12\x12\n" +
 	"\x04slug\x18\x04 \x01(\tR\x04slug\x12#\n" +
 	"\rbody_markdown\x18\x05 \x01(\tR\fbodyMarkdown\x12\x17\n" +
-	"\atag_ids\x18\x06 \x03(\tR\x06tagIds\"7\n" +
+	"\atag_ids\x18\x06 \x03(\tR\x06tagIds\x12\"\n" +
+	"\n" +
+	"if_version\x18\a \x01(\x05H\x00R\tifVersion\x88\x01\x01B\r\n" +
+	"\v_if_version\"7\n" +
 	"\x12UpdatePostResponse\x12!\n" +
-	"\x04post\x18\x01 \x01(\v2\r.blog.v1.PostR\x04post\",\n" +
+	"\x04post\x18\x01 \x01(\v2\r.blog.v1.PostR\x04post\"_\n" +
 	"\x11DeletePostRequest\x12\x17\n" +
-	"\apost_id\x18\x01 \x01(\tR\x06postId\"\x14\n" +
-	"\x12DeletePostResponse\"-\n" +
+	"\apost_id\x18\x01 \x01(\tR\x06postId\x12\"\n" +
+	"\n" +
+	"if_version\x18\x02 \x01(\x05H\x00R\tifVersion\x88\x01\x01B\r\n" +
+	"\v_if_version\"\x14\n" +
+	"\x12DeletePostResponse\"`\n" +
 	"\x12PublishPostRequest\x12\x17\n" +
-	"\apost_id\x18\x01 \x01(\tR\x06postId\"8\n" +
+	"\apost_id\x18\x01 \x01(\tR\x06postId\x12\"\n" +
+	"\n" +
+	"if_version\x18\x02 \x01(\x05H\x00R\tifVersion\x88\x01\x01B\r\n" +
+	"\v_if_version\"8\n" +
 	"\x13PublishPostResponse\x12!\n" +
-	"\x04post\x18\x01 \x01(\v2\r.blog.v1.PostR\x04post\"/\n" +
+	"\x04post\x18\x01 \x01(\v2\r.blog.v1.PostR\x04post\"b\n" +
 	"\x14UnpublishPostRequest\x12\x17\n" +
-	"\apost_id\x18\x01 \x01(\tR\x06postId\":\n" +
+	"\apost_id\x18\x01 \x01(\tR\x06postId\x12\"\n" +
+	"\n" +
+	"if_version\x18\x02 \x01(\x05H\x00R\tifVersion\x88\x01\x01B\r\n" +
+	"\v_if_version\":\n" +
 	"\x15UnpublishPostResponse\x12!\n" +
-	"\x04post\x18\x01 \x01(\v2\r.blog.v1.PostR\x04post2\xfe\x03\n" +
+	"\x04post\x18\x01 \x01(\v2\r.blog.v1.PostR\x04post2\x9e\x06\n" +
 	"\vBlogService\x12E\n" +
 	"\n" +
 	"CreatePost\x12\x1a.blog.v1.CreatePostRequest\x1a\x1b.blog.v1.CreatePostResponse\x12<\n" +
-	"\aGetPost\x12\x17.blog.v1.GetPostRequest\x1a\x18.blog.v1.GetPostResponse\x12B\n" +
-	"\tListPosts\x12\x19.blog.v1.ListPostsRequest\x1a\x1a.blog.v1.ListPostsResponse\x12E\n" +
+	"\aGetPost\x12\x17.blog.v1.GetPostRequest\x1a\x18.blog.v1.GetPostResponse\x12\x8c\x02\n" +
+	"\tListPosts\x12\x19.blog.v1.ListPostsRequest\x1a\x1a.blog.v1.ListPostsResponse\"\xc7\x01\xca\xf3\x18\xc2\x01\n" +
+	"\tblog_list\x12\xaf\x01List a project's blog posts. Omit projectId to use the credential's active project; call project_list to discover the others. Pass status \"published\" for published posts only.*\x03app\x12E\n" +
 	"\n" +
 	"UpdatePost\x12\x1a.blog.v1.UpdatePostRequest\x1a\x1b.blog.v1.UpdatePostResponse\x12E\n" +
 	"\n" +
-	"DeletePost\x12\x1a.blog.v1.DeletePostRequest\x1a\x1b.blog.v1.DeletePostResponse\x12H\n" +
-	"\vPublishPost\x12\x1b.blog.v1.PublishPostRequest\x1a\x1c.blog.v1.PublishPostResponse\x12N\n" +
+	"DeletePost\x12\x1a.blog.v1.DeletePostRequest\x1a\x1b.blog.v1.DeletePostResponse\x12\x9c\x01\n" +
+	"\vPublishPost\x12\x1b.blog.v1.PublishPostRequest\x1a\x1c.blog.v1.PublishPostResponse\"R\xca\xf3\x18N\n" +
+	"\fblog_publish\x124Publish a draft blog post. Requires the post's UUID.\x1a\x06postId \x01\x12N\n" +
 	"\rUnpublishPost\x12\x1d.blog.v1.UnpublishPostRequest\x1a\x1e.blog.v1.UnpublishPostResponseB\x7f\n" +
 	"\vcom.blog.v1B\tBlogProtoP\x01Z(altalune.id/yasaku/gen/go/blog/v1;blogv1\xa2\x02\x03BXX\xaa\x02\aBlog.V1\xca\x02\aBlog\\V1\xe2\x02\x13Blog\\V1\\GPBMetadata\xea\x02\bBlog::V1b\x06proto3"
 
@@ -1136,6 +1201,10 @@ func file_blog_v1_blog_proto_init() {
 	if File_blog_v1_blog_proto != nil {
 		return
 	}
+	file_blog_v1_blog_proto_msgTypes[9].OneofWrappers = []any{}
+	file_blog_v1_blog_proto_msgTypes[11].OneofWrappers = []any{}
+	file_blog_v1_blog_proto_msgTypes[13].OneofWrappers = []any{}
+	file_blog_v1_blog_proto_msgTypes[15].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

@@ -146,6 +146,33 @@ func LatestClosed(items []*Period) *Period {
 	return best
 }
 
+// OpeningDate is when an opening balance is dated; Moved reports that it was moved out of a closed period.
+type OpeningDate struct {
+	At    time.Time
+	Date  civil.Date
+	Moved bool
+}
+
+// NextOpenStart returns the start of the earliest open period beginning after today, or the day after closed ends, where Close opens the next period.
+func NextOpenStart(items []*Period, closed *Period, today civil.Date) civil.Date {
+	var best *Period
+	for _, p := range items {
+		if p.IsLocked() || !today.Before(p.StartDate) {
+			continue
+		}
+		if best == nil || p.StartDate.Before(best.StartDate) {
+			best = p
+		}
+	}
+	if best != nil {
+		return best.StartDate
+	}
+	if closed.EndDate == nil {
+		return today.AddDays(1)
+	}
+	return closed.EndDate.AddDays(1)
+}
+
 // ParseEnd reads a submitted close date, reporting a typed refusal when it is not a calendar date.
 func ParseEnd(raw string) (civil.Date, error) {
 	d, err := civil.ParseDate(strings.TrimSpace(raw))

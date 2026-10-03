@@ -43,7 +43,7 @@ func (r *pgUserRow) toUser() *User {
 		IsAdmin:      r.IsAdmin,
 		PasswordHash: r.PasswordHash,
 		Locale:       r.Locale,
-		CreatedAt:    r.CreatedAt,
+		CreatedAt:    r.CreatedAt.UTC(),
 	}
 	if r.IDPIssuer != nil {
 		u.IDPIssuer = *r.IDPIssuer

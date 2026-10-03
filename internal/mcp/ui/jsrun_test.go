@@ -7,18 +7,70 @@ import (
 	"github.com/dop251/goja"
 )
 
-// newJSVM loads every script part except bridge.js and boot.js, which need the
-// ext-apps module and a DOM that goja does not provide.
+//nolint:gochecknoglobals // a classification table has to be package level.
+var (
+	litParts = map[string]bool{
+		"src/lit.js":                 true,
+		"src/styles.js":              true,
+		"src/views/blog_list.js":     true,
+		"src/app.js":                 true,
+		"src/charts.js":              true,
+		"src/views/common.js":        true,
+		"src/views/yasaku_styles.js": true,
+		"src/views/tx.js":            true,
+		"src/views/wallets.js":       true,
+		"src/views/report.js":        true,
+		"src/views/lists.js":         true,
+		"src/views/mutation.js":      true,
+		"src/views/bulk.js":          true,
+	}
+	domParts = map[string]bool{
+		"src/bridge.js": true,
+		"src/boot.js":   true,
+	}
+)
+
+// TestEveryScriptPartIsClassified: an unclassified part would silently drop out of the goja harness.
+func TestEveryScriptPartIsClassified(t *testing.T) {
+	for _, p := range scriptParts {
+		if litParts[p] && domParts[p] {
+			t.Errorf("%s is classified twice", p)
+		}
+	}
+	for p := range litParts {
+		if !contains(scriptParts, p) {
+			t.Errorf("litParts names %s, which is not a script part", p)
+		}
+	}
+	for p := range domParts {
+		if !contains(scriptParts, p) {
+			t.Errorf("domParts names %s, which is not a script part", p)
+		}
+	}
+}
+
+func contains(list []string, want string) bool {
+	for _, v := range list {
+		if v == want {
+			return true
+		}
+	}
+	return false
+}
+
 func newJSVM(t *testing.T) *goja.Runtime {
 	t.Helper()
 	vm := goja.New()
 	for _, p := range scriptParts {
-		if p == "src/bridge.js" || p == "src/boot.js" {
+		if litParts[p] || domParts[p] {
 			continue
 		}
 		if _, err := vm.RunString(mustRead(t, p)); err != nil {
 			t.Fatalf("eval %s: %v", p, err)
 		}
+	}
+	if _, err := vm.RunString(`registerView("blog_list", blogListModel, null);`); err != nil {
+		t.Fatalf("register blog_list: %v", err)
 	}
 	return vm
 }
@@ -32,42 +84,8 @@ func jsString(t *testing.T, vm *goja.Runtime, expr string) string {
 	return v.String()
 }
 
-func TestHTMLEscapesInterpolations(t *testing.T) {
-	vm := newJSVM(t)
-	got := jsString(t, vm, "html`<p>${'<script>alert(1)</script>'}</p>`")
-	if got != "<p>&lt;script&gt;alert(1)&lt;/script&gt;</p>" {
-		t.Errorf("html`` = %q, want the script tag escaped", got)
-	}
-}
-
-func TestHTMLDoesNotEscapeLiteralMarkup(t *testing.T) {
-	vm := newJSVM(t)
-	if got := jsString(t, vm, "html`<b>${'x'}</b>`"); got != "<b>x</b>" {
-		t.Errorf("html`` = %q", got)
-	}
-}
-
-func TestHTMLJoinsArrays(t *testing.T) {
-	vm := newJSVM(t)
-	if got := jsString(t, vm, "html`${['<a>','b']}`"); got != "&lt;a&gt;b" {
-		t.Errorf("html`` array = %q, want each item escaped and joined", got)
-	}
-}
-
-func TestRawBypassesEscapingOnlyWhenAsked(t *testing.T) {
-	vm := newJSVM(t)
-	if got := jsString(t, vm, "html`${raw('<b>x</b>')}`"); got != "<b>x</b>" {
-		t.Errorf("raw() = %q, want the markup passed through", got)
-	}
-	if got := jsString(t, vm, "html`${'<b>x</b>'}`"); got != "&lt;b&gt;x&lt;/b&gt;" {
-		t.Errorf("a plain string = %q, want it escaped", got)
-	}
-	if got := jsString(t, vm, "html`${[raw('<i>a</i>'), '<i>b</i>']}`"); got != "<i>a</i>&lt;i&gt;b&lt;/i&gt;" {
-		t.Errorf("mixed array = %q, want raw passed through and the string escaped", got)
-	}
-	if got := jsString(t, vm, "html`${raw(raw('<b>x</b>'))}`"); got != "<b>x</b>" {
-		t.Errorf("raw(raw(x)) = %q — double-wrapping must be idempotent, not [object Object]", got)
-	}
+func jsQuote(s string) string {
+	return "'" + strings.ReplaceAll(strings.ReplaceAll(s, `\`, `\\`), "'", `\'`) + "'"
 }
 
 func TestFormatNumGroupsWithoutToLocaleString(t *testing.T) {
@@ -84,15 +102,30 @@ func TestFormatNumGroupsWithoutToLocaleString(t *testing.T) {
 	}
 }
 
+func TestFormatDayToleratesMissingTimestamps(t *testing.T) {
+	vm := newJSVM(t)
+	for expr, want := range map[string]string{
+		`day("2026-09-01T08:30:00Z")`: "2026-09-01",
+		`day("2026-09-01")`:           "2026-09-01",
+		`day(undefined)`:              "—",
+		`day("")`:                     "—",
+	} {
+		if got := jsString(t, vm, expr); got != want {
+			t.Errorf("%s = %q, want %q", expr, got, want)
+		}
+	}
+}
+
 func TestFormatMoneyToleratesMissingFields(t *testing.T) {
 	vm := newJSVM(t)
-	tests := []struct{ expr, want string }{
+	for _, tc := range []struct{ expr, want string }{
 		{`money({amount:"12500000",currency:"IDR"})`, "IDR 12,500,000"},
 		{`money({currency:"IDR"})`, "IDR 0"},
 		{`money(undefined)`, "—"},
 		{`money({amount:"-3750000",currency:"IDR"})`, "IDR -3,750,000"},
-	}
-	for _, tc := range tests {
+		{`money({amount:{__raw:"<b>"},currency:{}})`, "0"},
+		{`money("IDR 5")`, "—"},
+	} {
 		if got := jsString(t, vm, tc.expr); got != tc.want {
 			t.Errorf("%s = %q, want %q", tc.expr, got, tc.want)
 		}
@@ -105,6 +138,7 @@ func TestFormatPercentToleratesMissing(t *testing.T) {
 		`pct(0.4)`:       "40%",
 		`pct(undefined)`: "0%",
 		`pct(0)`:         "0%",
+		`pct("x")`:       "0%",
 	} {
 		if got := jsString(t, vm, expr); got != want {
 			t.Errorf("%s = %q, want %q", expr, got, want)
@@ -112,6 +146,89 @@ func TestFormatPercentToleratesMissing(t *testing.T) {
 	}
 }
 
-func jsQuote(s string) string {
-	return "'" + strings.ReplaceAll(strings.ReplaceAll(s, `\`, `\\`), "'", `\'`) + "'"
+func TestFormatDateRangeToleratesEitherEnd(t *testing.T) {
+	vm := newJSVM(t)
+	for expr, want := range map[string]string{
+		`dateRange("2026-09-01", "2026-09-30")`: "2026-09-01 → 2026-09-30",
+		`dateRange("2026-09-01")`:               "2026-09-01",
+		`dateRange(undefined, "2026-09-30")`:    "2026-09-30",
+		`dateRange()`:                           "",
+		`dateRange({}, {})`:                     "",
+	} {
+		if got := jsString(t, vm, expr); got != want {
+			t.Errorf("%s = %q, want %q", expr, got, want)
+		}
+	}
+}
+
+// TestTxDatePrefersTheCivilDate: protojson renders occurredAt in UTC, which reads a day early east of Greenwich, so only the server's civil date is shown.
+func TestTxDatePrefersTheCivilDate(t *testing.T) {
+	vm := newJSVM(t)
+	for expr, want := range map[string]string{
+		`civilDay("2026-09-23")`:           "2026-09-23",
+		`civilDay(undefined)`:              "—",
+		`civilDay("")`:                     "—",
+		`civilDay("not-a-date")`:           "—",
+		`civilDay("2026-09-22T19:30:00Z")`: "—",
+		`civilDay({__raw:"2026-09-22"})`:   "—",
+		`txRowModel({kind:"expense",date:"2026-09-23",occurredAt:"2026-09-22T19:30:00Z"}).date`: "2026-09-23",
+		`txRowModel({kind:"expense",occurredAt:"2026-09-22T19:30:00Z"}).date`:                   "—",
+	} {
+		if got := jsString(t, vm, expr); got != want {
+			t.Errorf("%s = %q, want %q", expr, got, want)
+		}
+	}
+}
+
+func TestBlogListModelRendersPostsAndOffersPublishOnDraftsOnly(t *testing.T) {
+	vm := newJSVM(t)
+	model, actions := modelFixture(t, vm, "blog_list", "blog_list.json")
+	body := jsString(t, vm, `JSON.stringify(renderTool("blog_list", `+fixtureJSON(t, "blog_list.json")+`).model)`)
+	for _, want := range []string{"Shipping the MCP surface", "Draft: tenant scoping notes", "Engineering", "mcp · release", "2026-09-01"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("blog_list model is missing %q:\n%s", want, body)
+		}
+	}
+	if model["empty"] != false {
+		t.Errorf("model.empty = %v, want false", model["empty"])
+	}
+	if len(actions) != 1 {
+		t.Fatalf("blog_list declared %d actions, want 1 — only the draft is publishable: %v", len(actions), actions)
+	}
+	action, ok := actions["publish:0193f2a0-0000-7000-8000-000000000002"].(map[string]any)
+	if !ok {
+		t.Fatalf("the draft's publish action is missing: %v", actions)
+	}
+	if action["tool"] != "blog_publish" {
+		t.Errorf("action tool = %v, want blog_publish", action["tool"])
+	}
+}
+
+func TestBlogListModelCountsKPIs(t *testing.T) {
+	vm := newJSVM(t)
+	got := jsString(t, vm, `renderTool("blog_list", `+fixtureJSON(t, "blog_list.json")+`).model.kpis.map(function (k) { return k.label + "=" + k.value; }).join(",")`)
+	if got != "Posts=2,Published=1,Drafts=1" {
+		t.Errorf("kpis = %q", got)
+	}
+}
+
+func TestBlogListModelRendersAnEmptyState(t *testing.T) {
+	vm := newJSVM(t)
+	model, actions := modelFixture(t, vm, "blog_list", "blog_list_empty.json")
+	if model["empty"] != true {
+		t.Errorf("empty fixture produced empty = %v, want true", model["empty"])
+	}
+	if len(actions) != 0 {
+		t.Errorf("empty blog_list declared %d actions, want 0", len(actions))
+	}
+}
+
+func TestUnknownToolIsReportedMissing(t *testing.T) {
+	vm := newJSVM(t)
+	if got := jsString(t, vm, `String(renderTool("todo_list", {}).missing)`); got != "true" {
+		t.Errorf("an unregistered tool must report missing, got %q", got)
+	}
+	if got := jsString(t, vm, `String(renderTool("todo_list", {}).template)`); got != "null" {
+		t.Errorf("an unregistered tool must carry no template, got %q", got)
+	}
 }

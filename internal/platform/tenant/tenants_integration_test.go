@@ -56,8 +56,6 @@ type orgDefinerFixture struct {
 	appRole string
 }
 
-// newOrgDefinerFixture migrates under an owner role, seeds one org, and returns a connection bound
-// to a NOBYPASSRLS app role that may execute the wrapper but cannot read the table.
 func newOrgDefinerFixture(t *testing.T) *orgDefinerFixture {
 	t.Helper()
 	h := pgtest.New(t)
@@ -149,8 +147,6 @@ func sortedOrgIDs(t *testing.T, n int) []uuid.UUID {
 	return ids
 }
 
-// seedTiedOrgs inserts orgs that share one byte-identical created_at, in descending id order so
-// heap order is the opposite of the order the reader must return.
 func (f *orgDefinerFixture) seedTiedOrgs(t *testing.T, ids []uuid.UUID) {
 	t.Helper()
 	tied := time.Now().UTC().Truncate(time.Microsecond)
@@ -169,7 +165,6 @@ func (f *orgDefinerFixture) seedTiedOrgs(t *testing.T, ids []uuid.UUID) {
 	require.Equal(t, 1, distinct, "test premise: every seeded org must share one created_at")
 }
 
-// cloneWrapperUnordered creates a list_org_ids() under its own prefix whose body carries no ORDER BY.
 func (f *orgDefinerFixture) cloneWrapperUnordered(t *testing.T, prefix string) {
 	t.Helper()
 	_, err := f.migDB.ExecContext(t.Context(),

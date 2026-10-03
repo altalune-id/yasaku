@@ -3,16 +3,30 @@ syntax = "proto3";
 package blog.v1;
 
 import "google/protobuf/timestamp.proto";
+import "mcp/v1/annotations.proto";
 
 option go_package = "altalune.id/yasaku/gen/go/blog/v1;blogv1";
 
 service BlogService {
   rpc CreatePost(CreatePostRequest) returns (CreatePostResponse);
   rpc GetPost(GetPostRequest) returns (GetPostResponse);
-  rpc ListPosts(ListPostsRequest) returns (ListPostsResponse);
+  rpc ListPosts(ListPostsRequest) returns (ListPostsResponse) {
+    option (mcp.v1.tool) = {
+      name: "blog_list"
+      description: "List a project's blog posts. Omit projectId to use the credential's active project; call project_list to discover the others. Pass status \"published\" for published posts only."
+      ui: "app"
+    };
+  }
   rpc UpdatePost(UpdatePostRequest) returns (UpdatePostResponse);
   rpc DeletePost(DeletePostRequest) returns (DeletePostResponse);
-  rpc PublishPost(PublishPostRequest) returns (PublishPostResponse);
+  rpc PublishPost(PublishPostRequest) returns (PublishPostResponse) {
+    option (mcp.v1.tool) = {
+      name: "blog_publish"
+      description: "Publish a draft blog post. Requires the post's UUID."
+      mutation: true
+      required: ["postId"]
+    };
+  }
   rpc UnpublishPost(UnpublishPostRequest) returns (UnpublishPostResponse);
 }
 
@@ -41,6 +55,8 @@ message Post {
   google.protobuf.Timestamp first_published_at = 10;
   google.protobuf.Timestamp created_at = 11;
   google.protobuf.Timestamp updated_at = 12;
+  // Optimistic-concurrency version; pass it back as if_version on a write
+  int32 version = 13;
 }
 
 message CreatePostRequest {
@@ -65,8 +81,11 @@ message GetPostResponse {
 }
 
 message ListPostsRequest {
+  // UUID of the project to list posts in; omit to use the credential's active project
   string project_id = 1;
+  // Filter by state: "published" or "draft"
   string status = 2;
+  // UUID of a category to filter by
   string category_id = 3;
 }
 
@@ -81,6 +100,8 @@ message UpdatePostRequest {
   string slug = 4;
   string body_markdown = 5;
   repeated string tag_ids = 6;
+  // Version the write is conditioned on; omit for an unconditional write
+  optional int32 if_version = 7;
 }
 
 message UpdatePostResponse {
@@ -89,12 +110,17 @@ message UpdatePostResponse {
 
 message DeletePostRequest {
   string post_id = 1;
+  // Version the delete is conditioned on; omit for an unconditional delete
+  optional int32 if_version = 2;
 }
 
 message DeletePostResponse {}
 
 message PublishPostRequest {
+  // UUID of the post to publish
   string post_id = 1;
+  // Version the transition is conditioned on; omit for an unconditional publish
+  optional int32 if_version = 2;
 }
 
 message PublishPostResponse {
@@ -103,6 +129,8 @@ message PublishPostResponse {
 
 message UnpublishPostRequest {
   string post_id = 1;
+  // Version the transition is conditioned on; omit for an unconditional unpublish
+  optional int32 if_version = 2;
 }
 
 message UnpublishPostResponse {

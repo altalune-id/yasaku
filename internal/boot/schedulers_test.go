@@ -116,8 +116,8 @@ func TestBootServer_RegistersEveryProvidersJobs(t *testing.T) {
 	for _, j := range srv.Scheduler.Jobs() {
 		names = append(names, j.Name)
 	}
-	require.ElementsMatch(t, []string{"todo-autocomplete-stale", "session-sweep"}, names,
-		"the db health probe is a standalone worker, not a scheduler job")
+	require.ElementsMatch(t, []string{"session-sweep"}, names,
+		"the db health probe is a standalone worker, not a scheduler job; todo-autocomplete-stale is gated off by mountTodo")
 }
 
 func TestBootServer_SchedulerDisabledByOption(t *testing.T) {
@@ -269,9 +269,8 @@ func schedulerBootCfg(t *testing.T) *config.Config {
 		},
 		Genesis: config.GenesisConfig{Email: "root@example.com", Password: "hunter2"},
 		Tenant: config.TenantConfig{
-			SingletonOrg:            config.SingletonOrgConfig{Slug: "default", Name: "Default"},
+			SingletonOrg:            config.SingletonOrgConfig{Name: "Default"},
 			PersonalOrgSlugFallback: "personal",
-			PersonalProjectSlug:     "default",
 		},
 		Log:       logger.Config{Level: "error", Format: "json"},
 		Mail:      config.MailConfig{Driver: "console", From: "no-reply@example.com"},

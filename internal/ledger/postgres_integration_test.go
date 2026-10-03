@@ -29,9 +29,7 @@ type pgFixture struct {
 	tc     tenant.Context
 }
 
-// newPgFixture builds the plain superuser fixture. The migration does create RLS policies, but
-// this connection bypasses them, so the store's own org predicates are the only tenant
-// protection — which is what lets the hijack test detect their removal.
+// NOTE: this connection bypasses RLS, so the store's own org predicates are the only tenant guard.
 func newPgFixture(t *testing.T) pgFixture {
 	t.Helper()
 	h := pgtest.New(t)
@@ -62,9 +60,6 @@ func newPgFixture(t *testing.T) pgFixture {
 	}
 }
 
-// requireBypassesRLS fails the fixture unless this connection really is exempt from row level
-// security. Without it the guard tests below would pass whether or not the guard exists, because
-// RLS would refuse the cross-tenant write either way.
 func requireBypassesRLS(t *testing.T, sqlDB *sql.DB) {
 	t.Helper()
 	var bypasses bool
@@ -161,10 +156,7 @@ func TestPostgres_Ledger_ForeignOrgIsInvisible(t *testing.T) {
 	assert.True(t, ledger.IsNotFoundError(err), "want NotFoundError, got %T: %v", err, err)
 }
 
-// TestPostgres_Ledger_Save_CannotUpsertOntoAnotherOrgsRow runs on the plain superuser fixture ON
-// PURPOSE. RLS is bypassed there, so Save's conflict-clause org guard and its RowsAffected()==0
-// branch are the only things preventing the hijack — which is what makes this test able to
-// detect their removal.
+// TestPostgres_Ledger_Save_CannotUpsertOntoAnotherOrgsRow runs without RLS so only Save's org guard stops the hijack.
 func TestPostgres_Ledger_Save_CannotUpsertOntoAnotherOrgsRow(t *testing.T) {
 	f := newPgFixture(t)
 	ownerCtx := tenant.Into(t.Context(), f.tc)
@@ -204,8 +196,7 @@ func TestPostgres_Ledger_Save_CannotUpsertOntoAnotherOrgsRow(t *testing.T) {
 	assert.Zero(t, pgRowCount(t, f, otherProj), "the refused upsert must not have inserted a row for org B either")
 }
 
-// TestPostgres_Ledger_Save_UpdatesOwnRow is the positive control: a WHERE(false) conflict guard
-// would pass every hijack assertion above while breaking this one.
+// TestPostgres_Ledger_Save_UpdatesOwnRow is the positive control for the hijack tests.
 func TestPostgres_Ledger_Save_UpdatesOwnRow(t *testing.T) {
 	f := newPgFixture(t)
 	ctx := tenant.Into(t.Context(), f.tc)
@@ -230,9 +221,7 @@ func pgRowCount(t *testing.T, f pgFixture, projectID uuid.UUID) int {
 	return n
 }
 
-// TestPostgres_Ledger_Save_EnrollsInTheCallersUnitOfWork pins that the adapter joins an outer
-// unit of work rather than opening its own transaction, which is what Task 8's real UnitOfWork
-// depends on: a later failure in the same unit must roll the settings row back with it.
+// TestPostgres_Ledger_Save_EnrollsInTheCallersUnitOfWork checks a later failure in the unit rolls the row back.
 func TestPostgres_Ledger_Save_EnrollsInTheCallersUnitOfWork(t *testing.T) {
 	f := newPgFixture(t)
 	ctx := tenant.Into(t.Context(), f.tc)

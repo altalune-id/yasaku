@@ -21,6 +21,7 @@ import (
 	"altalune.id/yasaku/internal/i18n"
 	"altalune.id/yasaku/internal/ledger"
 	"altalune.id/yasaku/internal/org"
+	"altalune.id/yasaku/internal/period"
 	"altalune.id/yasaku/internal/platform/capabilities"
 	"altalune.id/yasaku/internal/platform/config"
 	"altalune.id/yasaku/internal/platform/db"
@@ -51,6 +52,7 @@ type walletFixture struct {
 	Ledgers      *ledger.Service
 	Wallets      *wallet.Service
 	WalletOpen   *wallet.OpenWorkflow
+	Periods      *period.Service
 	TxCategories *category.Service
 	Transactions *transaction.Service
 	Principal    session.Principal
@@ -114,7 +116,9 @@ func newWalletFixture(t *testing.T) *walletFixture {
 		walletReaderForTest(wallets), categoryReaderForTest(cats),
 		noPeriods{}, transaction.UnitOfWork(uow),
 	)
-	walletOpen := wallet.NewOpenWorkflow(wallets, txs, wallet.UnitOfWork(uow), log, unexpected)
+	periods := period.NewService(period.NewStore(dbCfg, pool, nil), log, unexpected,
+		ledgers, reportSnapshotter{}, period.UnitOfWork(uow), time.Now)
+	walletOpen := wallet.NewOpenWorkflow(wallets, txs, openingDater(periods), wallet.UnitOfWork(uow), log, unexpected)
 
 	bundle := i18n.NewEmbeddedBundle(i18n.EnUS)
 	deps := handlers.Deps{
@@ -130,7 +134,7 @@ func newWalletFixture(t *testing.T) *walletFixture {
 	f := &walletFixture{
 		Deps: deps, Cfg: cfg, Sessions: deps.Sessions, DB: sqlDB,
 		Orgs: orgs, Projects: projects, Ledgers: ledgers,
-		Wallets: wallets, WalletOpen: walletOpen, TxCategories: cats, Transactions: txs,
+		Wallets: wallets, WalletOpen: walletOpen, Periods: periods, TxCategories: cats, Transactions: txs,
 	}
 
 	ctx := t.Context()
@@ -195,6 +199,16 @@ func (f *walletFixture) path(sub string) string {
 
 func (f *walletFixture) do(t *testing.T, mux *http.ServeMux, method, sub string, form url.Values) *httptest.ResponseRecorder {
 	t.Helper()
+	return f.send(t, mux, method, sub, form, false)
+}
+
+func (f *walletFixture) doHTMX(t *testing.T, mux *http.ServeMux, method, sub string, form url.Values) *httptest.ResponseRecorder {
+	t.Helper()
+	return f.send(t, mux, method, sub, form, true)
+}
+
+func (f *walletFixture) send(t *testing.T, mux *http.ServeMux, method, sub string, form url.Values, htmx bool) *httptest.ResponseRecorder {
+	t.Helper()
 	sid, err := web.NewSID()
 	require.NoError(t, err)
 	require.NoError(t, f.Sessions.Save(t.Context(), sid, f.Principal, time.Now().Add(web.SessionTTL)))
@@ -205,6 +219,9 @@ func (f *walletFixture) do(t *testing.T, mux *http.ServeMux, method, sub string,
 		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	} else {
 		r = httptest.NewRequest(method, f.path(sub), nil)
+	}
+	if htmx {
+		r.Header.Set("HX-Request", "true")
 	}
 	r.AddCookie(&http.Cookie{
 		Name:  web.SessionCookieName,
@@ -625,4 +642,32 @@ func TestWallet_DetailShowsTheProjectDayNotTheUTCDay(t *testing.T) {
 	body := rec.Body.String()
 	assert.Contains(t, body, "2026-09-23", "the row must carry the project-timezone day")
 	assert.NotContains(t, body, "2026-09-22", "19:30Z is already the 23rd in Asia/Jakarta")
+}
+
+func TestWallet_List_ForeignCurrencyWalletNotesTheMixedTotal(t *testing.T) {
+	t.Parallel()
+	f := newWalletFixture(t)
+	mux := f.walletMux(t)
+	_, err := f.Wallets.Create(f.scoped(t), wallet.Params{Name: "Tunai", Kind: wallet.KindCash, Currency: money.IDR})
+	require.NoError(t, err)
+	_, err = f.Wallets.Create(f.scoped(t), wallet.Params{Name: "Payoneer", Kind: wallet.KindBank, Currency: money.Currency("USD")})
+	require.NoError(t, err)
+
+	rec := f.do(t, mux, http.MethodGet, "/wallets", nil)
+	require.Equal(t, http.StatusOK, rec.Code)
+	assert.Contains(t, rec.Body.String(), `data-mixed-currency="1"`)
+}
+
+func TestWallet_List_LedgerCurrencyWalletsShowNoMixedNote(t *testing.T) {
+	t.Parallel()
+	f := newWalletFixture(t)
+	mux := f.walletMux(t)
+	_, err := f.Wallets.Create(f.scoped(t), wallet.Params{Name: "Tunai", Kind: wallet.KindCash, Currency: money.IDR})
+	require.NoError(t, err)
+	_, err = f.Wallets.Create(f.scoped(t), wallet.Params{Name: "BCA", Kind: wallet.KindBank, Currency: money.IDR})
+	require.NoError(t, err)
+
+	rec := f.do(t, mux, http.MethodGet, "/wallets", nil)
+	require.Equal(t, http.StatusOK, rec.Code)
+	assert.NotContains(t, rec.Body.String(), `data-mixed-currency`)
 }

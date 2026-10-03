@@ -36,6 +36,14 @@ func newPgSeed(t *testing.T) seed {
 
 	prefix := cfg.DB.TablePrefix
 	s := seedPgRows(t, sqlDB, prefix)
+	s.archive = func(t *testing.T, walletID uuid.UUID, at time.Time) {
+		t.Helper()
+		mustExecPg(t, sqlDB, "UPDATE "+prefix+"wallets SET archived_at = $1 WHERE id = $2", at.UTC(), walletID)
+	}
+	s.closeAs = func(t *testing.T, periodID uuid.UUID, status string, at time.Time) {
+		t.Helper()
+		mustExecPg(t, sqlDB, "UPDATE "+prefix+"periods SET status = $1, closed_at = $2 WHERE id = $3", status, at.UTC(), periodID)
+	}
 	s.reader = report.NewReader(
 		db.DBConfig{Driver: db.DriverPostgres, Schema: h.Schema, TablePrefix: prefix},
 		db.Pool{W: sqlDB, R: sqlDB},
@@ -56,7 +64,7 @@ func TestPgReader_Period(t *testing.T) {
 
 func TestPgReader_Summary_FirstPeriod(t *testing.T) {
 	s := newPgSeed(t)
-	got, err := s.reader.Summary(s.ctx(), s.tc.OrgID, s.tc.ProjectID, s.periodAug, money.IDR, s.augStartUTC(t))
+	got, err := s.reader.Summary(s.ctx(), s.tc.OrgID, s.tc.ProjectID, s.periodAug, money.IDR, s.augStartUTC(t), nil)
 	require.NoError(t, err)
 
 	assert.Equal(t, idr(500_000), got.Income)
@@ -79,7 +87,7 @@ func TestPgReader_Summary_FirstPeriod(t *testing.T) {
 
 func TestPgReader_Summary_SecondPeriodCarriesOpening(t *testing.T) {
 	s := newPgSeed(t)
-	got, err := s.reader.Summary(s.ctx(), s.tc.OrgID, s.tc.ProjectID, s.periodSep, money.IDR, s.sepStartUTC(t))
+	got, err := s.reader.Summary(s.ctx(), s.tc.OrgID, s.tc.ProjectID, s.periodSep, money.IDR, s.sepStartUTC(t), nil)
 	require.NoError(t, err)
 
 	assert.Equal(t, idr(5_000), got.Income)
@@ -139,6 +147,10 @@ func TestPgReader_Cashflow_KeepsTheRequestedOrder(t *testing.T) {
 	assert.Equal(t, idr(-20_000), got[0].Net)
 	assert.Equal(t, s.periodAug, got[1].Period.ID)
 	assert.Equal(t, idr(240_000), got[1].Net)
+}
+
+func TestPgReader_ArchivedWallets(t *testing.T) {
+	assertArchivedWallets(t, newPgSeed)
 }
 
 func TestPgReader_WalletBalances(t *testing.T) {

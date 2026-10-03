@@ -1,6 +1,8 @@
 package templates
 
 import (
+	"time"
+
 	"altalune.id/yasaku/internal/web"
 	"altalune.id/yasaku/internal/web/icons"
 )
@@ -9,7 +11,7 @@ type InviteRow struct {
 	ID        string
 	Email     string
 	Role      string
-	ExpiresAt string
+	ExpiresAt time.Time
 }
 
 type InvitesView struct {
@@ -41,7 +43,10 @@ templ InvitesPage(d web.LayoutData, v InvitesView) {
 				<li class="flex items-center justify-between px-4 py-3">
 					<div class="min-w-0">
 						<p class="truncate text-sm font-medium text-foreground">{ i.Email }</p>
-						<p class="truncate text-xs text-muted-foreground">{ i.Role } · expires { i.ExpiresAt }</p>
+						<p class="truncate text-xs text-muted-foreground">
+							{ i.Role } · expires
+							@DateTime(d, i.ExpiresAt)
+						</p>
 					</div>
 					if v.CanManage {
 						<form method="post" action={ templ.SafeURL(d.Href("/orgs/" + v.OrgSlug + "/invites/" + i.ID + "/revoke")) } class="ml-4 inline">

@@ -3,6 +3,7 @@ package handlers_test
 import (
 	"net/http"
 	"net/url"
+	"regexp"
 	"testing"
 	"time"
 
@@ -203,4 +204,63 @@ func (f *walletFixture) onlyCategory(t *testing.T) *category.Category {
 	require.NoError(t, err)
 	require.Len(t, rows, 1)
 	return rows[0]
+}
+
+var (
+	categoryCreateFormRe = regexp.MustCompile(`(?s)<form[^>]*id="tx-category-create"[^>]*>.*?</form>`)
+	categoryCreateTagRe  = regexp.MustCompile(`<form[^>]*id="tx-category-create"[^>]*>`)
+)
+
+func TestTxCategoryCreateRefusalIs422(t *testing.T) {
+	t.Parallel()
+	f := newWalletFixture(t)
+	mux := f.txCategoryMux(t)
+
+	first := f.doHTMX(t, mux, http.MethodPost, "/categories", url.Values{"name": {"Food"}, "kind": {"expense"}})
+	require.Equal(t, http.StatusOK, first.Code, first.Body.String())
+
+	dup := f.doHTMX(t, mux, http.MethodPost, "/categories", url.Values{"name": {"Food"}, "kind": {"expense"}})
+	require.Equal(t, http.StatusUnprocessableEntity, dup.Code,
+		"a refusal under 400 would fire data-reset-on-success and wipe the typed name")
+	assert.Contains(t, dup.Body.String(), "data-category-error")
+	assert.Contains(t, dup.Body.String(), "CTG003")
+
+	rows, err := f.TxCategories.List(f.scoped(t), category.ListOpts{IncludeArchived: true})
+	require.NoError(t, err)
+	assert.Len(t, rows, 1)
+}
+
+func TestTxCategoryCreateFormRoutesTheRefusalIntoItsOwnErrorBox(t *testing.T) {
+	t.Parallel()
+	f := newWalletFixture(t)
+	mux := f.txCategoryMux(t)
+
+	page := f.do(t, mux, http.MethodGet, "/categories", nil)
+	require.Equal(t, http.StatusOK, page.Code)
+	form := categoryCreateFormRe.FindString(page.Body.String())
+	require.NotEmpty(t, form, "no create-category form")
+	tag := categoryCreateTagRe.FindString(form)
+	assert.Contains(t, tag, `hx-status:422="target:#tx-category-form-errors swap:innerHTML select:[data-category-error]"`)
+	assert.Contains(t, tag, "data-reset-on-success")
+	assert.Contains(t, form, `id="tx-category-form-errors"`)
+}
+
+func TestTxCategoryCreateSuccessClearsTheFormErrorBox(t *testing.T) {
+	t.Parallel()
+	f := newWalletFixture(t)
+	mux := f.txCategoryMux(t)
+
+	rec := f.doHTMX(t, mux, http.MethodPost, "/categories", url.Values{"name": {"Kopi"}, "kind": {"expense"}})
+	require.Equal(t, http.StatusOK, rec.Code)
+	assert.Regexp(t, `<div id="tx-category-form-errors"[^>]*hx-swap-oob="true"`, rec.Body.String())
+}
+
+func TestTxCategoryCreateRefusalWithoutHTMXStaysAFragment(t *testing.T) {
+	t.Parallel()
+	f := newWalletFixture(t)
+	mux := f.txCategoryMux(t)
+
+	rec := f.do(t, mux, http.MethodPost, "/categories", url.Values{"name": {"  "}, "kind": {"expense"}})
+	require.Equal(t, http.StatusOK, rec.Code)
+	assert.Contains(t, rec.Body.String(), `id="tx-category-list"`)
 }

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/go-jet/jet/v2/qrm"
@@ -100,13 +101,14 @@ func (r *sqlitePeriodRow) toPeriod() (*Period, error) {
 }
 
 type sqliteClosingRow struct {
-	ID        string  `alias:"period_closings.id"`
-	OrgID     string  `alias:"period_closings.org_id"`
-	ProjectID string  `alias:"period_closings.project_id"`
-	PeriodID  string  `alias:"period_closings.period_id"`
-	ClosedAt  string  `alias:"period_closings.closed_at"`
-	ClosedBy  string  `alias:"period_closings.closed_by"`
-	Snapshot  jsonDoc `alias:"period_closings.snapshot"`
+	ID            string  `alias:"period_closings.id"`
+	OrgID         string  `alias:"period_closings.org_id"`
+	ProjectID     string  `alias:"period_closings.project_id"`
+	PeriodID      string  `alias:"period_closings.period_id"`
+	ClosedAt      string  `alias:"period_closings.closed_at"`
+	ClosedBy      *string `alias:"period_closings.closed_by"`
+	ClosedByKeyID *string `alias:"period_closings.closed_by_key_id"`
+	Snapshot      jsonDoc `alias:"period_closings.snapshot"`
 }
 
 func (r *sqliteClosingRow) toClosing() (*Closing, error) {
@@ -118,9 +120,13 @@ func (r *sqliteClosingRow) toClosing() (*Closing, error) {
 	if err != nil {
 		return nil, fmt.Errorf("period.sqlite: parse period_id: %w", err)
 	}
-	closedBy, err := uuid.Parse(r.ClosedBy)
+	closedBy, err := parseSQLiteOptionalUUID(r.ClosedBy, "closed_by")
 	if err != nil {
-		return nil, fmt.Errorf("period.sqlite: parse closed_by: %w", err)
+		return nil, err
+	}
+	closedByKey, err := parseSQLiteOptionalUUID(r.ClosedByKeyID, "closed_by_key_id")
+	if err != nil {
+		return nil, err
 	}
 	closedAt, err := time.Parse(time.RFC3339Nano, r.ClosedAt)
 	if err != nil {
@@ -131,12 +137,13 @@ func (r *sqliteClosingRow) toClosing() (*Closing, error) {
 		return nil, err
 	}
 	c := &Closing{
-		ID:        id,
-		OrgID:     orgID,
-		ProjectID: projectID,
-		PeriodID:  periodID,
-		ClosedAt:  closedAt,
-		ClosedBy:  closedBy,
+		ID:            id,
+		OrgID:         orgID,
+		ProjectID:     projectID,
+		PeriodID:      periodID,
+		ClosedAt:      closedAt,
+		ClosedBy:      closedBy,
+		ClosedByKeyID: closedByKey,
 	}
 	if snap != nil {
 		c.Snapshot = *snap
@@ -155,6 +162,25 @@ func parseSQLiteIDs(rawID, rawOrg, rawProject string) (id, orgID, projectID uuid
 		return id, orgID, projectID, fmt.Errorf("period.sqlite: parse project_id: %w", err)
 	}
 	return id, orgID, projectID, nil
+}
+
+func parseSQLiteOptionalUUID(raw *string, col string) (uuid.UUID, error) {
+	if raw == nil {
+		return uuid.Nil, nil
+	}
+	id, err := uuid.Parse(*raw)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("period.sqlite: parse %s: %w", col, err)
+	}
+	return id, nil
+}
+
+// NOTE: only a key-authored closing writes closed_by as NULL; a legacy closing stored with the nil uuid keeps it.
+func sqliteAuthorExprs(user, key uuid.UUID) (userExpr, keyExpr sqlite.StringExpression) {
+	if key != uuid.Nil {
+		return sqliteent.NullText(), sqlite.String(key.String())
+	}
+	return sqlite.String(user.String()), sqliteent.NullText()
 }
 
 func sqliteText(v *string) sqlite.StringExpression {
@@ -188,10 +214,12 @@ func translateSQLiteError(err error, p *Period) error {
 	if sqliteErr.Code() == sqlite3.SQLITE_CONSTRAINT_UNIQUE {
 		return newOverlapError(p)
 	}
+	if sqliteErr.Code() == sqlite3.SQLITE_CONSTRAINT_CHECK && strings.Contains(sqliteErr.Error(), "author_one") {
+		return &AuthorMissingError{}
+	}
 	return nil
 }
 
-// txAcquire enrolls in the caller's unit of work when one is active, so a multi-statement write commits or rolls back as one.
 func (s *sqliteStore) txAcquire(ctx context.Context) (*sql.Tx, bool, tenant.Context, error) {
 	tc, err := tenant.From(ctx)
 	if err != nil {
@@ -256,7 +284,7 @@ func (s *sqliteStore) Save(ctx context.Context, p *Period) error {
 				s.table.ClosedAt.SET(sqliteTimePtr(p.ClosedAt)),
 				s.table.Snapshot.SET(sqliteText(js)),
 				s.table.UpdatedAt.SET(sqlite.String(updatedAt)),
-			).WHERE(s.table.OrgID.EQ(sqlite.String(tc.OrgID.String()))),
+			).WHERE(s.table.OrgID.EQ(sqlite.String(tc.OrgID.String())).AND(s.table.ProjectID.EQ(sqlite.String(tc.ProjectID.String())))),
 		)
 	res, execErr := stmt.ExecContext(ctx, tx)
 	if execErr != nil {
@@ -288,6 +316,7 @@ func (s *sqliteStore) SaveClosing(ctx context.Context, c *Closing) error {
 	if err != nil {
 		return s.endTx(tx, owned, err)
 	}
+	closedBy, closedByKey := sqliteAuthorExprs(c.ClosedBy, c.ClosedByKeyID)
 	stmt := s.closings.INSERT(s.closings.AllColumns).
 		VALUES(
 			sqlite.String(c.ID.String()),
@@ -295,10 +324,14 @@ func (s *sqliteStore) SaveClosing(ctx context.Context, c *Closing) error {
 			sqlite.String(c.ProjectID.String()),
 			sqlite.String(c.PeriodID.String()),
 			sqlite.String(sqliteent.SQLiteTime(c.ClosedAt)),
-			sqlite.String(c.ClosedBy.String()),
+			closedBy,
+			closedByKey,
 			sqliteText(js),
 		)
 	if _, execErr := stmt.ExecContext(ctx, tx); execErr != nil {
+		if typed := translateSQLiteError(execErr, nil); IsAuthorMissingError(typed) {
+			return s.endTx(tx, owned, typed)
+		}
 		return s.endTx(tx, owned, fmt.Errorf("period.sqlite.SaveClosing: %w", execErr))
 	}
 	return s.endTx(tx, owned, nil)

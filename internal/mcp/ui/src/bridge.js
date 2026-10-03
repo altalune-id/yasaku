@@ -1,5 +1,3 @@
-// bridge.js
-// createBridge returns the host seam every view depends on.
 function createBridge(handlers, loadModule) {
   let app = null;
   let mod = null;
@@ -13,8 +11,7 @@ function createBridge(handlers, loadModule) {
 
   async function connect() {
     mod = await loadModule();
-    // NOTE: capabilities is the SECOND positional argument. Omit the third so
-    // autoResize stays on and the host gets ui/notifications/size-changed.
+    // NOTE: capabilities is the SECOND positional argument; omitting the third keeps autoResize on.
     app = new mod.App({ name: "yasaku", version: "1.0.0" }, { availableDisplayModes: ["inline"] });
     app.ontoolinput = function (params) {
       const ctx = app.getHostContext();

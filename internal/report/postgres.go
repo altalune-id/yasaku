@@ -48,10 +48,11 @@ func (r *postgresReader) txAcquire(ctx context.Context) (*sql.Tx, bool, tenant.C
 }
 
 type pgPeriodRow struct {
-	ID    uuid.UUID  `alias:"period.id"`
-	Name  string     `alias:"period.name"`
-	Start time.Time  `alias:"period.start"`
-	End   *time.Time `alias:"period.end"`
+	ID       uuid.UUID  `alias:"period.id"`
+	Name     string     `alias:"period.name"`
+	Start    time.Time  `alias:"period.start"`
+	End      *time.Time `alias:"period.end"`
+	ClosedAt *time.Time `alias:"period.closed_at"`
 }
 
 func (r *postgresReader) Period(ctx context.Context, orgID, projectID, periodID uuid.UUID) (PeriodRef, error) {
@@ -66,7 +67,8 @@ func (r *postgresReader) Period(ctx context.Context, orgID, projectID, periodID 
 SELECT id         AS "period.id",
        name       AS "period.name",
        start_date AS "period.start",
-       end_date   AS "period.end"
+       end_date   AS "period.end",
+       CASE WHEN status = 'closed' THEN closed_at END AS "period.closed_at"
   FROM %s
  WHERE id = #periodID AND org_id = #orgID AND org_id = #scopeOrg AND project_id = #projectID
  LIMIT 1`, r.tables.periods)
@@ -84,7 +86,9 @@ SELECT id         AS "period.id",
 		}
 		return PeriodRef{}, fmt.Errorf("report.postgres.Period: %w", qErr)
 	}
-	return pgPeriodRef(row.ID, row.Name, row.Start, row.End), nil
+	ref := pgPeriodRef(row.ID, row.Name, row.Start, row.End)
+	ref.ClosedAt = row.ClosedAt
+	return ref, nil
 }
 
 type pgTotalsRow struct {
@@ -103,7 +107,7 @@ type pgWalletRow struct {
 	Out      int64     `alias:"line.out"`
 }
 
-func (r *postgresReader) Summary(ctx context.Context, orgID, projectID, periodID uuid.UUID, currency money.Currency, startUTC time.Time) (PeriodSummary, error) {
+func (r *postgresReader) Summary(ctx context.Context, orgID, projectID, periodID uuid.UUID, currency money.Currency, startUTC time.Time, archivedBefore *time.Time) (PeriodSummary, error) {
 	ref, err := r.Period(ctx, orgID, projectID, periodID)
 	if err != nil {
 		return PeriodSummary{}, err
@@ -131,11 +135,14 @@ func (r *postgresReader) Summary(ctx context.Context, orgID, projectID, periodID
 	}
 
 	lineArgs := postgres.RawArgs{"#startUTC": startUTC.UTC()}
+	if archivedBefore != nil {
+		lineArgs["#archivedBefore"] = archivedBefore.UTC()
+	}
 	for k, v := range args {
 		lineArgs[k] = v
 	}
 	var rows []pgWalletRow
-	if qErr := postgres.RawStatement(walletLinesSQL(r.tables, true), lineArgs).QueryContext(ctx, tx, &rows); qErr != nil {
+	if qErr := postgres.RawStatement(walletLinesSQL(r.tables, true, archivedBefore != nil), lineArgs).QueryContext(ctx, tx, &rows); qErr != nil {
 		return PeriodSummary{}, fmt.Errorf("report.postgres.Summary: wallets: %w", qErr)
 	}
 	moves := make([]walletMovement, 0, len(rows))

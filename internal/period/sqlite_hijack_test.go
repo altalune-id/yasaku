@@ -20,7 +20,7 @@ type hijackFixture struct {
 	orgB  tenant.Context
 }
 
-// newHijackFixture runs on SQLite deliberately: SQLite has no RLS, so the adapter's own tenant predicate is the only guard under test.
+// NOTE: SQLite has no RLS, so the adapter's own tenant predicate is the only guard under test.
 func newHijackFixture(t *testing.T) hijackFixture {
 	t.Helper()
 	sqlDB, cfg := newSQLiteDB(t)

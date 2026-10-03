@@ -1,16 +1,25 @@
 package blog_test
 
 import (
+	"context"
+	"database/sql"
 	"errors"
 	"fmt"
+	"io"
+	"log/slog"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
+	"google.golang.org/grpc/codes"
 
+	apperrorv1 "altalune.id/yasaku/gen/go/apperror/v1"
 	"altalune.id/yasaku/internal/apperror"
 	"altalune.id/yasaku/internal/blog"
+	"altalune.id/yasaku/internal/platform/db"
+	"altalune.id/yasaku/internal/platform/tenant"
+	"altalune.id/yasaku/internal/testutil/fakes"
 )
 
 func newTestPost(t *testing.T) *blog.Post {
@@ -241,6 +250,7 @@ func TestErrors_CarryStableCodes(t *testing.T) {
 		{"invalid slug", &blog.InvalidSlugError{Reason: "empty"}, apperror.CodePostInvalidSlug, blog.IsInvalidSlugError},
 		{"invalid body", &blog.InvalidBodyError{Reason: "too large"}, apperror.CodePostInvalidBody, blog.IsInvalidBodyError},
 		{"category required", &blog.CategoryRequiredError{}, apperror.CodePostCategoryRequired, blog.IsCategoryRequiredError},
+		{"stale version", &blog.StaleVersionError{Want: 1, Got: 2}, apperror.CodePostStaleVersion, blog.IsStaleVersionError},
 	}
 
 	for _, tt := range tests {
@@ -262,5 +272,135 @@ func TestErrors_CarryStableCodes(t *testing.T) {
 				t.Error("the Is helper must reject an unrelated error")
 			}
 		})
+	}
+}
+
+type testService struct {
+	*blog.Service
+	tc  tenant.Context
+	cat uuid.UUID
+}
+
+func (s testService) Create(ctx context.Context, categoryID uuid.UUID, title, slug, body string) (*blog.Post, error) {
+	if categoryID == uuid.Nil {
+		categoryID = s.cat
+	}
+	return s.Service.Create(tenant.Into(ctx, s.tc), categoryID, title, slug, body)
+}
+
+func (s testService) Update(ctx context.Context, id uuid.UUID, title, slug, body string, categoryID uuid.UUID, ifVersion int) (*blog.Post, error) {
+	if categoryID == uuid.Nil {
+		categoryID = s.cat
+	}
+	return s.Service.Update(tenant.Into(ctx, s.tc), id, title, slug, body, categoryID, ifVersion)
+}
+
+func (s testService) BySlug(ctx context.Context, slug string) (*blog.Post, error) {
+	return s.Service.BySlug(tenant.Into(ctx, s.tc), slug)
+}
+
+func newTestService(t *testing.T) testService {
+	t.Helper()
+	store, sqlDB, tc, cat := newBlogStoreForTest(t)
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	unexpected := func(_ context.Context, _ string, err error, _ ...any) *apperror.AppError {
+		return apperror.New("yasaku.unexpected", err.Error(), codes.Internal,
+			&apperrorv1.ErrorDetail{Code: "yasaku.unexpected"}).WithCause(err)
+	}
+	svc := blog.NewService(store, log, unexpected, sqliteUnitOfWork(sqlDB), &fakes.Webhooks{})
+	return testService{Service: svc, tc: tc, cat: cat}
+}
+
+func sqliteUnitOfWork(sqlDB *sql.DB) tenant.UnitOfWork {
+	return tenant.NewUnitOfWork(db.DBConfig{Driver: db.DriverSQLite}, db.Pool{W: sqlDB, R: sqlDB}, nil)
+}
+
+// NOTE: int(1<<32)+1 is a constant-overflow compile error on a 32-bit GOARCH, where no int can exceed MaxInt32.
+func wrappingVersion() (int, bool) {
+	const v = int64(1)<<32 + 1
+	if int64(int(v)) != v {
+		return 0, false
+	}
+	return int(v), true
+}
+
+func TestSaveBumpsVersion(t *testing.T) {
+	svc := newTestService(t)
+	p, err := svc.Create(t.Context(), uuid.Nil, "Hello", "hello", "body")
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if p.Version != 1 {
+		t.Fatalf("Version after create = %d, want 1", p.Version)
+	}
+
+	updated, err := svc.Update(t.Context(), p.ID, "Hello again", "hello", "body", uuid.Nil, p.Version)
+	if err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	if updated.Version != 2 {
+		t.Fatalf("Version after update = %d, want 2", updated.Version)
+	}
+}
+
+func TestUpdateRejectsStaleVersion(t *testing.T) {
+	svc := newTestService(t)
+	p, err := svc.Create(t.Context(), uuid.Nil, "Hello", "hello", "body")
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if _, err := svc.Update(t.Context(), p.ID, "A", "hello", "b", uuid.Nil, p.Version); err != nil {
+		t.Fatalf("first update: %v", err)
+	}
+	_, err = svc.Update(t.Context(), p.ID, "B", "hello", "b", uuid.Nil, p.Version)
+	if !blog.IsStaleVersionError(err) {
+		t.Fatalf("err = %v, want *StaleVersionError", err)
+	}
+}
+
+// SECURITY: an ifVersion above int32 wraps when narrowed, turning a conditional write unconditional.
+func TestUpdateRejectsAnOutOfRangeVersion(t *testing.T) {
+	wrapped, ok := wrappingVersion()
+	if !ok {
+		t.Skip("no int on this GOARCH exceeds MaxInt32")
+	}
+	svc := newTestService(t)
+	p, err := svc.Create(t.Context(), uuid.Nil, "Hello", "hello", "body")
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if p.Version != 1 {
+		t.Fatalf("Version = %d, want 1", p.Version)
+	}
+
+	if _, err := svc.Update(t.Context(), p.ID, "B", "hello", "b", uuid.Nil, wrapped); !blog.IsStaleVersionError(err) {
+		t.Fatalf("Update(ifVersion=%d) err = %v, want *StaleVersionError", wrapped, err)
+	}
+
+	got, err := svc.BySlug(t.Context(), "hello")
+	if err != nil {
+		t.Fatalf("BySlug: %v", err)
+	}
+	if got.Title != "Hello" {
+		t.Fatalf("Title = %q, want %q — the out-of-range write was applied", got.Title, "Hello")
+	}
+}
+
+func TestBySlugScopesToProject(t *testing.T) {
+	svc := newTestService(t)
+	p, err := svc.Create(t.Context(), uuid.Nil, "Hello", "hello", "body")
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	got, err := svc.BySlug(t.Context(), "hello")
+	if err != nil {
+		t.Fatalf("BySlug: %v", err)
+	}
+	if got.ID != p.ID {
+		t.Fatalf("BySlug returned %s, want %s", got.ID, p.ID)
+	}
+	if _, err := svc.BySlug(t.Context(), "absent"); !blog.IsNotFoundError(err) {
+		t.Fatalf("absent slug err = %v, want *NotFoundError", err)
 	}
 }

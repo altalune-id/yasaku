@@ -1,6 +1,8 @@
 package templates
 
 import (
+	"time"
+
 	"altalune.id/yasaku/internal/web"
 	"altalune.id/yasaku/internal/web/icons"
 	"altalune.id/yasaku/money"
@@ -53,8 +55,11 @@ type TxFormView struct {
 	Group       bool
 	Recent      bool
 	FullPage    bool
+	InDialog    bool
 	Error       string
 	ErrorCode   string
+	RecordedAt  time.Time
+	UpdatedAt   time.Time
 }
 
 // TransactionForm is the single-submit quick-add card, shared by the overview and the transactions pages.
@@ -64,13 +69,16 @@ templ TransactionForm(d web.LayoutData, v TxFormView) {
 		method="post"
 		action={ templ.SafeURL(txFormAction(d, v)) }
 		{ txFormSwap(d, v)... }
-		class="rounded-xl border border-border bg-card p-4 shadow-sm"
+		data-category-picked?={ v.ID != "" && v.CategoryID != "" }
+		class={ templ.KV("rounded-xl border border-border bg-card p-4 shadow-sm", !v.InDialog) }
 	>
-		if v.Error != "" {
-			<div data-tx-error="1">
-				@ErrorBanner(d, v.Error, v.ErrorCode)
-			</div>
-		}
+		<div id="tx-form-errors">
+			if v.Error != "" {
+				<div data-tx-error="1">
+					@ErrorBanner(d, v.Error, v.ErrorCode)
+				</div>
+			}
+		</div>
 		if v.Recent {
 			<input type="hidden" name="list" value="recent"/>
 		}
@@ -143,6 +151,7 @@ templ TransactionForm(d web.LayoutData, v TxFormView) {
 					{ d.Tr("tx.yesterday") }
 				</button>
 			</div>
+			@DateInputHint(d)
 		</div>
 		<div class="mt-3">
 			<label for="tx-note" class="block text-xs font-medium text-muted-foreground">{ d.Tr("tx.note") }</label>
@@ -154,9 +163,12 @@ templ TransactionForm(d web.LayoutData, v TxFormView) {
 				value={ v.Note }
 				maxlength="500"
 				hx-post={ d.ProjectPath(v.ProjectSlug, "/transactions/suggest") }
-				hx-trigger="blur changed"
+				hx-nonce={ d.Nonce }
+				hx-trigger="input changed delay:400ms"
 				hx-target="#tx-category"
 				hx-swap="outerHTML"
+				hx-status:4xx="target:#hx-error swap:innerHTML"
+				hx-status:5xx="target:#hx-error swap:innerHTML"
 				hx-include="[name='kind'],[name='category_id']"
 				class={ txControlClass }
 			/>
@@ -173,14 +185,25 @@ templ TransactionForm(d web.LayoutData, v TxFormView) {
 				</select>
 			</div>
 		}
-		<button
-			type="submit"
-			class="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-		>
-			@icons.Icon("circle-plus", "h-4 w-4")
-			{ d.Tr("tx.save") }
-		</button>
-		@txFormAssets()
+		<div class={ templ.KV("sticky bottom-0 -mx-1 bg-card px-1 pb-1", v.InDialog) }>
+			<button
+				type="submit"
+				class="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+			>
+				@icons.Icon("circle-plus", "h-4 w-4")
+				{ d.Tr("tx.save") }
+			</button>
+			if v.InDialog {
+				<button
+					type="submit"
+					data-keep-open
+					class="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-border px-4 py-2.5 text-sm font-medium text-foreground hover:bg-muted focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+				>
+					{ d.Tr("tx.save_add_another") }
+				</button>
+			}
+		</div>
+		@txFormAssets(d.Nonce)
 	</form>
 }
 
@@ -230,8 +253,8 @@ templ txKindPill(d web.LayoutData, v TxFormView, kind, key string) {
 	</label>
 }
 
-templ txFormAssets() {
-	<script>
+templ txFormAssets(nonce string) {
+	<script nonce={ nonce }>
 	(function () {
 		const form = document.currentScript && document.currentScript.closest("form");
 		if (!form || form.dataset.txWired === "1") return;
@@ -247,6 +270,27 @@ templ txFormAssets() {
 			amount.addEventListener("input", group);
 			group();
 		}
+
+		form.addEventListener("htmx:after:request", (e) => {
+			const ctx = e.detail && e.detail.ctx;
+			const status = ctx && ctx.response && ctx.response.status;
+			if (e.target !== form || typeof status !== "number" || status >= 400) return;
+			const errors = form.querySelector("#tx-form-errors");
+			if (errors) errors.innerHTML = "";
+			form.removeAttribute("data-category-picked");
+			if (amount) setTimeout(() => amount.focus(), 0);
+		});
+
+		form.addEventListener("change", (e) => {
+			if (e.target && e.target.name === "category_id") form.setAttribute("data-category-picked", "1");
+		});
+		const keepPick = (e) => {
+			const ctx = e.detail && e.detail.ctx;
+			const target = ctx && ctx.target;
+			if (target && target.id === "tx-category" && form.hasAttribute("data-category-picked")) e.preventDefault();
+		};
+		form.addEventListener("htmx:before:request", keepPick);
+		form.addEventListener("htmx:before:swap", keepPick);
 
 		const walletSelect = form.querySelector("[name=wallet_id]");
 		const symbolSlot = form.querySelector("[data-tx-symbol-slot]");
@@ -301,12 +345,15 @@ func txFormSwap(d web.LayoutData, v TxFormView) templ.Attributes {
 		return templ.Attributes{}
 	}
 	return templ.Attributes{
-		"hx-post":   txFormAction(d, v),
-		"hx-target": "#tx-list",
-		"hx-swap":   "outerHTML",
-		"hx-on::after-request": "if(event.detail.successful && !event.detail.xhr.responseText.includes('data-tx-error'))" +
-			" { this.querySelector('[name=amount]').value=''; this.querySelector('[name=note]').value='';" +
-			" this.querySelector('[name=amount]').focus(); }",
+		"hx-post":               txFormAction(d, v),
+		"hx-nonce":              d.Nonce,
+		"hx-target":             "#tx-list",
+		"hx-swap":               "outerHTML",
+		"hx-disable":            "find button, find input",
+		"hx-status:422":         "target:#tx-form-errors swap:innerHTML select:[data-tx-error]",
+		"hx-status:4xx":         "target:#hx-error swap:innerHTML",
+		"hx-status:5xx":         "target:#hx-error swap:innerHTML",
+		"data-clear-on-success": "#tx-amount, #tx-note",
 	}
 }
 

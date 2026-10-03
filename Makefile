@@ -1,4 +1,4 @@
-.PHONY: help build test test-race test-cover vet fmt check generate ui-vendor buf migrate docker clean install-tools lint dev test-integration test-all gen-plugin-fixture mcp-ui-vendor mcp-ui-dev mcp-ui-preview
+.PHONY: help build test test-race test-cover vet fmt check generate templ-normalize templ-normalize-check buf migrate docker clean install-tools lint dev test-integration test-all comment-check comment-list ui-vendor ui-verify ui-vendor-check mcp-ui-vendor mcp-ui-dev mcp-ui-preview
 
 GO      ?= go
 BIN     := bin/yasaku
@@ -45,10 +45,11 @@ vet: ## Run go vet
 fmt: ## gofmt -w
 	gofmt -w .
 
-check: fmt vet test ## fmt + vet + test — pre-commit gate
+check: fmt vet templ-normalize test-race ## fmt + vet + race tests — pre-commit gate
 
 generate: ## Regenerate templ + buf outputs (pnpm-managed buf, go-tool templ)
-	$(GO) tool templ generate
+	$(GO) tool templ generate -path .
+	@bash scripts/templ-normalize.sh
 	@if command -v pnpm >/dev/null 2>&1; then \
 		pnpm exec buf generate; \
 	else \
@@ -56,27 +57,42 @@ generate: ## Regenerate templ + buf outputs (pnpm-managed buf, go-tool templ)
 		$(GO) tool buf generate; \
 	fi
 
-FIXTURE_DIR := cmd/protoc-gen-yasaku-mcp/internal/gen/testdata
+templ-normalize: ## Pin generated templ FileName paths to repo-root-relative form
+	@bash scripts/templ-normalize.sh
 
-gen-plugin-fixture: ## Rebuild protoc-gen-yasaku-mcp's golden-test descriptor set from testdata/proto
-	pnpm exec buf build $(FIXTURE_DIR)/proto -o $(FIXTURE_DIR)/fixture.binpb
-	@echo "→ rebuilt $(FIXTURE_DIR)/fixture.binpb; review the diff, then \`go test ./cmd/protoc-gen-yasaku-mcp/... -update\` if the goldens should move"
+templ-normalize-check: ## Fail if any generated templ FileName is not root-relative (CI check)
+	@bash scripts/templ-normalize.sh --check
 
-mcp-ui-vendor: ## Download pinned MCP Apps assets (sha256-verified) into internal/mcp/ui/assets
-	@if [ -x scripts/mcp-ui-vendor.sh ]; then bash scripts/mcp-ui-vendor.sh; else echo "(scripts/mcp-ui-vendor.sh missing — skipping)"; fi
+UI_TEMPL_SRC := $(shell find internal/web -name '*.templ')
 
-mcp-ui-dev: ## Assemble the MCP Apps bundle to tmp/bundle.html for local layout checks
-	@mkdir -p tmp
-	@YASAKU_UI_DUMP=$(CURDIR)/tmp/bundle.html $(GO) test ./internal/mcp/ui/ -run TestDumpBundle -count=1 >/dev/null
-	@echo "wrote tmp/bundle.html — open it to check layout (the bridge will not connect outside a host)"
+internal/web/static/.vendor-stamp: scripts/ui-vendor.sh
+	bash scripts/ui-vendor.sh
+	@touch $@
 
-mcp-ui-preview: ## Render every MCP view against its fixture to tmp/preview.html
-	@mkdir -p tmp
-	@YASAKU_UI_PREVIEW=$(CURDIR)/tmp/preview.html $(GO) test ./internal/mcp/ui/ -run TestDumpPreview -count=1 >/dev/null
-	@echo "wrote tmp/preview.html — open it to see every view rendered"
+internal/web/static/app.css: internal/web/static/.vendor-stamp internal/web/static/app.tailwind.css internal/web/tailwind.config.js $(UI_TEMPL_SRC)
+	bash scripts/ui-vendor.sh --css-only
 
-ui-vendor: ## Download pinned static assets into internal/web/static
-	@if [ -x scripts/ui-vendor.sh ]; then bash scripts/ui-vendor.sh; else echo "(scripts/ui-vendor.sh missing — skipping)"; fi
+ui-vendor: internal/web/static/app.css ## Download the SHA-256 pinned static assets and compile app.css
+
+ui-verify: ## Check the committed static assets against their pinned digests (no network)
+	bash scripts/ui-vendor.sh --verify
+
+ui-vendor-check: ## Fail if the committed static assets drift from the pinned sources (CI check)
+	bash scripts/ui-vendor.sh --force
+	@git diff --exit-code -- internal/web/static/ || { echo "internal/web/static/ is stale — run \`make ui-vendor\` and commit the result."; exit 1; }
+
+mcp-ui-vendor: ## Re-download the SHA-256 pinned MCP Apps assets into internal/mcp/ui/assets and mcp/testdata
+	bash scripts/mcp-ui-vendor.sh
+
+mcp-ui-dev: ## Assemble the MCP Apps bundle to bin/bundle.html for local layout checks
+	@mkdir -p bin
+	@YASAKU_UI_DUMP=$(CURDIR)/bin/bundle.html $(GO) test ./internal/mcp/ui/ -run TestDumpBundle -count=1 >/dev/null
+	@echo "wrote bin/bundle.html — open it to check layout (the bridge will not connect outside a host)"
+
+mcp-ui-preview: ## Render every MCP view against its fixture to bin/preview.html
+	@mkdir -p bin
+	@YASAKU_UI_PREVIEW=$(CURDIR)/bin/preview.html $(GO) test ./internal/mcp/ui/ -run TestDumpPreview -count=1 >/dev/null
+	@echo "wrote bin/preview.html — open it to see every view rendered"
 
 config-examples: ## Regenerate .env.example and config.example.yaml from config struct tags
 	$(GO) tool gen-config-example
@@ -88,6 +104,12 @@ config-examples-check: ## Fail if .env.example or config.example.yaml is stale (
 
 tenant-tables: ## Regenerate schema/tenant_tables_gen.go from RLS migrations
 	$(GO) tool gen-tenant-tables
+
+comment-check: ## Fail on any comment that breaks the repo comment discipline (CI check)
+	$(GO) tool comment-lint .
+
+comment-list: ## List comment-discipline violations without failing
+	@$(GO) tool comment-lint -list .
 
 i18n-check: ## Verify every d.Tr key in .templ files has a translation in every locale (CI check)
 	$(GO) tool i18n-lint -check
@@ -126,10 +148,10 @@ compose-logs: ## Tail logs from the local dev stack
 	@if command -v docker >/dev/null 2>&1; then docker compose logs -f --tail=100; \
 	elif command -v podman-compose >/dev/null 2>&1; then podman-compose logs -f --tail=100; fi
 
-compose-nuke: ## Stop the stack AND wipe the bind-mounted postgres data
+compose-nuke: ## Stop the stack AND wipe the bind-mounted postgres and nats data
 	@if command -v docker >/dev/null 2>&1; then docker compose down -v; \
 	elif command -v podman-compose >/dev/null 2>&1; then podman-compose down -v; fi
-	rm -rf docker/data/pg
+	rm -rf docker/data/pg docker/data/nats
 
 install-tools: ## Install pinned developer tools (pnpm devDeps + go tool templ)
 	@if command -v pnpm >/dev/null 2>&1; then pnpm install --frozen-lockfile; \
@@ -139,7 +161,7 @@ lint: ## Run golangci-lint if present; else fall back to go vet
 	@if command -v golangci-lint >/dev/null 2>&1; then golangci-lint run ./...; \
 	else echo "golangci-lint not installed; running go vet instead"; $(GO) vet ./...; fi
 
-dev: build ## Rebuild + run the server (defaults to serve)
+dev: ui-vendor build ## Rebuild + run the server (defaults to serve)
 	$(BIN) serve
 
 clean: ## Remove build artifacts + generated code

@@ -15,18 +15,18 @@ templ Layout(d web.LayoutData) {
 			<link rel="icon" href={ d.Static("favicon.ico") } sizes="any"/>
 			<link rel="icon" type="image/png" sizes="32x32" href={ d.Static("favicon-32x32.png") }/>
 			<link rel="apple-touch-icon" href={ d.Static("apple-touch-icon.png") }/>
-			@themeInitScript()
-			if d.UIMode == web.UIModeVendored {
-				<link rel="stylesheet" href={ d.Static("basecoat.css") }/>
-				<link rel="stylesheet" href={ d.Static("app.css") }/>
-				<script src={ d.Static("htmx.min.js") } defer></script>
-			} else {
-				@tailwindThemeBridge()
-				<!-- CDN mode is for local dev only; the Tailwind CDN prints a production warning. For prod deploys, vendor assets via `scripts/ui-vendor.sh` and set YASAKU_UI_MODE=vendored. -->
-				<script src="https://cdn.tailwindcss.com"></script>
-				<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/basecoat-css@latest/dist/basecoat.min.css"/>
-				<script src="https://unpkg.com/htmx.org@2" defer></script>
+			@themeInitScript(d.Nonce)
+			if d.CSPEnforced {
+				<!-- SECURITY: whitelists the one extension we load, so a stray script cannot register another. -->
+				<meta name="htmx-config" content="extensions:&#34;hx-csp&#34;"/>
 			}
+			<link rel="stylesheet" href={ d.Static("basecoat.css") }/>
+			<link rel="stylesheet" href={ d.Static("app.css") }/>
+			<script src={ d.Static("htmx.min.js") } nonce={ d.Nonce } defer></script>
+			if d.CSPEnforced {
+				<script src={ d.Static("hx-csp.min.js") } nonce={ d.Nonce } defer></script>
+			}
+			@htmxRequestHooks(d.Nonce)
 			<!-- themes.css MUST load AFTER basecoat so our per-theme HSL variables win the cascade. -->
 			<link rel="stylesheet" href={ d.Static("themes.css") }/>
 			<style>
@@ -46,10 +46,10 @@ templ Layout(d web.LayoutData) {
 						</div>
 						@sidebarFooterUtils(d)
 					</aside>
-					if d.ActiveNav.Scope == web.NavScopeProject {
+					if d.ActiveNav.Scope == web.NavScopeProject || d.ActiveNav.Scope == web.NavScopeSettings {
 						<aside class="sticky top-14 hidden h-[calc(100vh-3.5rem)] shrink-0 flex-col md:flex md:w-64 md:border-r border-subtle" style="background:hsl(var(--card));color:hsl(var(--card-foreground));">
 							<div class="flex-1 overflow-y-auto">
-								@projectSidebar(d)
+								@secondarySidebar(d)
 							</div>
 						</aside>
 					}
@@ -57,7 +57,9 @@ templ Layout(d web.LayoutData) {
 						if d.Flash != nil {
 							<div class={ "mb-4 rounded-md p-3 text-sm", flashClass(d.Flash.Kind) }>{ d.Flash.Message }</div>
 						}
+						<div id="hx-error" class="mb-4 empty:hidden empty:mb-0" aria-live="polite"></div>
 						@d.Content
+						@LedgerTimeFooter(d)
 					</main>
 				</div>
 			} else {
@@ -65,6 +67,7 @@ templ Layout(d web.LayoutData) {
 					if d.Flash != nil {
 						<div class={ "mb-4 rounded-md p-3 text-sm", flashClass(d.Flash.Kind) }>{ d.Flash.Message }</div>
 					}
+					<div id="hx-error" class="mb-4 empty:hidden empty:mb-0" aria-live="polite"></div>
 					@d.Content
 					if d.Principal == nil && len(d.SupportedLocs) > 1 {
 						@publicLocaleFooter(d)
@@ -74,7 +77,7 @@ templ Layout(d web.LayoutData) {
 			if d.Principal != nil && d.ActiveNav.Scope != web.NavScopeNone {
 				@mobileDrawer(d)
 			}
-			<script>
+			<script nonce={ d.Nonce }>
 				document.addEventListener('click', function(e) {
 					document.querySelectorAll('details[data-switcher][open]').forEach(function(d) {
 						if (!d.contains(e.target)) d.removeAttribute('open');
@@ -123,7 +126,7 @@ templ topNav(d web.LayoutData) {
 					@publicUtilityBar(d)
 				} else if d.Principal.Email != "" {
 					@userMenu(d)
-					@themeApplyScript()
+					@themeApplyScript(d.Nonce)
 				}
 			</div>
 		</div>
@@ -136,7 +139,7 @@ templ publicUtilityBar(d web.LayoutData) {
 			@colorModeSelectorPill(d, false)
 		</div>
 	}
-	@themeApplyScript()
+	@themeApplyScript(d.Nonce)
 }
 
 templ publicLocaleFooter(d web.LayoutData) {
@@ -162,6 +165,10 @@ templ userMenu(d web.LayoutData) {
 				<p class="mt-0.5 truncate text-sm font-medium text-foreground">{ d.Principal.Email }</p>
 			</div>
 			<div class="my-1 border-t border-subtle"></div>
+			<a href={ templ.SafeURL(d.Href("/settings/tokens")) } class="flex w-full items-center gap-2 rounded px-3 py-2 text-sm text-foreground/90 hover:bg-muted">
+				@icons.Icon("settings", "h-4 w-4 text-muted-foreground")
+				<span>{ d.Tr("nav.settings") }</span>
+			</a>
 			<form method="post" action={ templ.SafeURL(d.Href("/logout")) } class="block">
 				<button type="submit" class="flex w-full items-center gap-2 rounded px-3 py-2 text-sm text-foreground/90 hover:bg-muted">
 					@icons.Icon("log-out", "h-4 w-4 text-muted-foreground")
@@ -227,70 +234,45 @@ templ sidebarFooterUtils(d web.LayoutData) {
 		if d.Version != "" {
 			<p class="px-2 pt-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground/60">yasaku · { d.Version }</p>
 		}
-		@themeApplyScript()
+		@themeApplyScript(d.Nonce)
 	</div>
 }
 
-templ tailwindThemeBridge() {
-	<script>
-	window.tailwind = window.tailwind || {};
-	window.tailwind.config = {
-		darkMode: 'class',
-		theme: {
-			extend: {
-				colors: {
-					background: 'hsl(var(--background) / <alpha-value>)',
-					foreground: 'hsl(var(--foreground) / <alpha-value>)',
-					card: {
-						DEFAULT: 'hsl(var(--card) / <alpha-value>)',
-						foreground: 'hsl(var(--card-foreground) / <alpha-value>)'
-					},
-					popover: {
-						DEFAULT: 'hsl(var(--popover) / <alpha-value>)',
-						foreground: 'hsl(var(--popover-foreground) / <alpha-value>)'
-					},
-					primary: {
-						DEFAULT: 'hsl(var(--primary) / <alpha-value>)',
-						foreground: 'hsl(var(--primary-foreground) / <alpha-value>)'
-					},
-					secondary: {
-						DEFAULT: 'hsl(var(--secondary) / <alpha-value>)',
-						foreground: 'hsl(var(--secondary-foreground) / <alpha-value>)'
-					},
-					muted: {
-						DEFAULT: 'hsl(var(--muted) / <alpha-value>)',
-						foreground: 'hsl(var(--muted-foreground) / <alpha-value>)'
-					},
-					accent: {
-						DEFAULT: 'hsl(var(--accent) / <alpha-value>)',
-						foreground: 'hsl(var(--accent-foreground) / <alpha-value>)'
-					},
-					destructive: {
-						DEFAULT: 'hsl(var(--destructive) / <alpha-value>)',
-						foreground: 'hsl(var(--destructive-foreground) / <alpha-value>)'
-					},
-					border: 'hsl(var(--border) / <alpha-value>)',
-					input: 'hsl(var(--input) / <alpha-value>)',
-					ring: 'hsl(var(--ring) / <alpha-value>)'
-				}
-			}
+// SECURITY: this replaces per-element hx-on handlers so script-src needs no 'unsafe-eval'.
+templ htmxRequestHooks(nonce string) {
+	<script nonce={ nonce }>
+	document.addEventListener('htmx:after:request', function(e) {
+		var ctx = e.detail && e.detail.ctx;
+		var status = ctx && ctx.response && ctx.response.status;
+		if (typeof status !== 'number' || status >= 400) return;
+		var banner = document.getElementById('hx-error');
+		if (banner) banner.innerHTML = '';
+		var elt = e.target || (ctx && ctx.sourceElement);
+		if (!elt || !elt.getAttribute) return;
+		if (elt.hasAttribute('data-reset-on-success') && elt.reset) elt.reset();
+		var sel = elt.getAttribute('data-clear-on-success');
+		if (sel) {
+			document.querySelectorAll(sel).forEach(function(i) { i.value = ''; });
 		}
-	};
+	});
 	</script>
 }
 
-templ themeInitScript() {
-	<script>
+templ themeInitScript(nonce string) {
+	<script nonce={ nonce }>
 	(function() {
+		var root = document.documentElement;
+		var mql = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+		function applyMode() {
+			var m = root.getAttribute('data-color-mode') || 'auto';
+			root.classList.toggle('dark', m === 'dark' || (m === 'auto' && !!mql && mql.matches));
+		}
 		try {
-			var t = localStorage.getItem('yasaku.theme') || 'slate';
-			var m = localStorage.getItem('yasaku.mode') || 'auto';
-			var root = document.documentElement;
-			root.setAttribute('data-theme', t);
-			root.setAttribute('data-color-mode', m);
-			var dark = m === 'dark' || (m === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches);
-			root.classList.toggle('dark', dark);
+			root.setAttribute('data-theme', localStorage.getItem('yasaku.theme') || 'slate');
+			root.setAttribute('data-color-mode', localStorage.getItem('yasaku.mode') || 'auto');
 		} catch (e) {}
+		applyMode();
+		if (mql && mql.addEventListener) mql.addEventListener('change', applyMode);
 	})();
 	</script>
 }
@@ -354,8 +336,8 @@ templ modeIcon(m string) {
 	}
 }
 
-templ themeApplyScript() {
-	<script>
+templ themeApplyScript(nonce string) {
+	<script nonce={ nonce }>
 	(function() {
 		var root = document.documentElement;
 		function cap(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
@@ -402,12 +384,6 @@ templ themeApplyScript() {
 				var m = e.target.closest('button[data-color-mode]');
 				if (m) { setMode(m.getAttribute('data-color-mode')); closeParentDetails(m); return; }
 			});
-			if (window.matchMedia) {
-				var mql = window.matchMedia('(prefers-color-scheme: dark)');
-				if (mql.addEventListener) mql.addEventListener('change', function(){
-					if ((localStorage.getItem('yasaku.mode') || 'auto') === 'auto') setMode('auto');
-				});
-			}
 		}
 		// Always refresh labels + active marks, even if the wire-guard tripped.
 		// Deferred to DOMContentLoaded so we still catch buttons rendered after
@@ -465,7 +441,29 @@ templ orgMenu(d web.LayoutData, slug string) {
 		<a href={ templ.SafeURL(d.Href("/orgs/" + slug + "/invites")) } class={ orgItemClass(d.ActiveNav.OrgKey == "invites") }>
 			@icons.Icon("mail", "h-4 w-4 shrink-0") <span>{ d.Tr("nav.invites") }</span>
 		</a>
+		<a href={ templ.SafeURL(d.Href("/orgs/" + slug + "/apikeys")) } class={ orgItemClass(d.ActiveNav.OrgKey == "apikeys") }>
+			@icons.Icon("key", "h-4 w-4 shrink-0") <span>{ d.Tr("nav.apikeys") }</span>
+		</a>
 	</nav>
+}
+
+templ secondarySidebar(d web.LayoutData) {
+	if d.ActiveNav.Scope == web.NavScopeSettings {
+		@settingsSidebar(d)
+	} else {
+		@projectSidebar(d)
+	}
+}
+
+templ settingsSidebar(d web.LayoutData) {
+	<div class="flex flex-col gap-1 p-3">
+		<p class="mt-1 mb-2 px-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground/70">{ d.Tr("nav.settings") }</p>
+		<nav class="flex flex-col gap-0.5">
+			<a href={ templ.SafeURL(d.Href("/settings/tokens")) } class={ orgItemClass(d.ActiveNav.SettingsKey == "tokens") }>
+				@icons.Icon("key", "h-4 w-4 shrink-0") <span>{ d.Tr("nav.personal_tokens") }</span>
+			</a>
+		</nav>
+	</div>
 }
 
 templ projectSidebar(d web.LayoutData) {
@@ -501,7 +499,10 @@ templ projectMenu(d web.LayoutData, slug string) {
 			@icons.Icon("chart-pie", "h-4 w-4 shrink-0") <span>{ d.Tr("nav.reports") }</span>
 		</a>
 		<a href={ templ.SafeURL(d.ProjectPath(slug, "/settings")) } class={ orgItemClass(d.ActiveNav.ProjectKey == "settings") }>
-			@icons.Icon("settings", "h-4 w-4 shrink-0") <span>{ d.Tr("nav.settings") }</span>
+			@icons.Icon("settings", "h-4 w-4 shrink-0") <span>{ d.Tr("nav.ledger_settings") }</span>
+		</a>
+		<a href={ templ.SafeURL(d.ProjectPath(slug, "/apikeys")) } class={ orgItemClass(d.ActiveNav.ProjectKey == "apikeys") }>
+			@icons.Icon("key", "h-4 w-4 shrink-0") <span>{ d.Tr("nav.apikeys") }</span>
 		</a>
 	</nav>
 }
@@ -594,9 +595,9 @@ templ mobileDrawer(d web.LayoutData) {
 		@orgSwitcherHeader(d)
 		<div class="flex-1 overflow-y-auto">
 			@orgSidebar(d)
-			if d.ActiveNav.Scope == web.NavScopeProject {
+			if d.ActiveNav.Scope == web.NavScopeProject || d.ActiveNav.Scope == web.NavScopeSettings {
 				<div class="mx-3 border-t border-subtle"></div>
-				@projectSidebar(d)
+				@secondarySidebar(d)
 			}
 		</div>
 		@sidebarFooterUtils(d)

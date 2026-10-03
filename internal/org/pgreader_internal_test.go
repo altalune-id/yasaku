@@ -20,6 +20,10 @@ func TestPostgresStore_WrapperStatementsBindValuesNotInterpolate(t *testing.T) {
 	require.NotContains(t, slugSQL, "DROP TABLE", "the slug must be bound, never interpolated")
 	require.Equal(t, []any{injected}, slugArgs)
 
+	systemSQL, systemArgs := postgres.RawStatement(s.resolveSystemOrgStmt, nil).Sql()
+	require.Contains(t, systemSQL, "public.yasaku_resolve_system_org() AS o")
+	require.Empty(t, systemArgs)
+
 	listSQL, listArgs := postgres.RawStatement(s.listForUserStmt, postgres.RawArgs{"#userID": userID}).Sql()
 	require.Contains(t, listSQL, "public.yasaku_list_orgs_for_user($1) AS o")
 	require.Contains(t, listSQL, "ORDER BY o.created_at ASC, o.id ASC",
@@ -32,8 +36,9 @@ func TestPostgresStore_WrapperStatementsProjectEveryOrgColumn(t *testing.T) {
 	s := newPostgresStore(pdb.Pool{}, nil, "", "yasaku_")
 
 	for name, stmt := range map[string]string{
-		"resolveBySlug": s.resolveBySlugStmt,
-		"listForUser":   s.listForUserStmt,
+		"resolveBySlug":    s.resolveBySlugStmt,
+		"resolveSystemOrg": s.resolveSystemOrgStmt,
+		"listForUser":      s.listForUserStmt,
 	} {
 		for _, col := range []string{"orgs.id", "orgs.slug", "orgs.name", "orgs.created_by", "orgs.created_at", "orgs.system"} {
 			require.Contains(t, stmt, `AS "`+col+`"`, "%s must project %s or qrm drops it", name, col)

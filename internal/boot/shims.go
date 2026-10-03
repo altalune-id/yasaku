@@ -6,8 +6,11 @@ import (
 	"github.com/google/uuid"
 
 	"altalune.id/yasaku/internal/auth"
+	"altalune.id/yasaku/internal/blog"
+	"altalune.id/yasaku/internal/dataplane"
 	"altalune.id/yasaku/internal/invite"
 	"altalune.id/yasaku/internal/org"
+	"altalune.id/yasaku/internal/platform/tenant"
 	"altalune.id/yasaku/internal/project"
 	"altalune.id/yasaku/internal/user"
 )
@@ -85,19 +88,23 @@ func (s userStoreForAuth) Save(ctx context.Context, u *auth.UserRef) error {
 
 type orgStoreForOnboard struct{ store org.Store }
 
-func (s orgStoreForOnboard) BySlug(ctx context.Context, slug string) (*user.OrgRef, error) {
-	o, err := s.store.BySlug(ctx, slug)
+func (s orgStoreForOnboard) SystemOrg(ctx context.Context) (*user.OrgRef, error) {
+	o, err := s.store.SystemOrg(ctx)
 	if err != nil {
 		if org.IsNotFoundError(err) {
-			return nil, &user.SingletonOrgMissingError{Slug: slug}
+			return nil, &user.SingletonOrgMissingError{}
 		}
 		return nil, err
 	}
-	return &user.OrgRef{ID: o.ID, Slug: o.Slug, Name: o.Name, OwnerID: o.OwnerID, CreatedAt: o.CreatedAt}, nil
+	return orgRefForOnboard(o), nil
 }
 
 func (s orgStoreForOnboard) Save(ctx context.Context, o *user.OrgRef) error {
-	return s.store.Save(ctx, &org.Org{ID: o.ID, Slug: o.Slug, Name: o.Name, OwnerID: o.OwnerID, CreatedAt: o.CreatedAt})
+	return s.store.Save(ctx, &org.Org{ID: o.ID, Slug: o.Slug, Name: o.Name, OwnerID: o.OwnerID, CreatedAt: o.CreatedAt, System: o.System})
+}
+
+func orgRefForOnboard(o *org.Org) *user.OrgRef {
+	return &user.OrgRef{ID: o.ID, Slug: o.Slug, Name: o.Name, OwnerID: o.OwnerID, CreatedAt: o.CreatedAt, System: o.System}
 }
 
 func (s orgStoreForOnboard) ListForUser(ctx context.Context, userID uuid.UUID) ([]*user.OrgRef, error) {
@@ -107,7 +114,7 @@ func (s orgStoreForOnboard) ListForUser(ctx context.Context, userID uuid.UUID) (
 	}
 	out := make([]*user.OrgRef, 0, len(orgs))
 	for _, o := range orgs {
-		out = append(out, &user.OrgRef{ID: o.ID, Slug: o.Slug, Name: o.Name, OwnerID: o.OwnerID, CreatedAt: o.CreatedAt})
+		out = append(out, orgRefForOnboard(o))
 	}
 	return out, nil
 }
@@ -190,4 +197,125 @@ func toUserInvites(invs []*invite.Invite) []*user.InviteRef {
 		})
 	}
 	return out
+}
+
+type orgServiceForDataplane struct{ svc *org.Service }
+
+func (s orgServiceForDataplane) BySlug(ctx context.Context, slug string) (dataplane.OrgRef, error) {
+	o, err := s.svc.BySlug(ctx, slug)
+	if err != nil {
+		return dataplane.OrgRef{}, err
+	}
+	return dataplane.OrgRef{ID: o.ID}, nil
+}
+
+type projectServiceForDataplane struct{ svc *project.Service }
+
+func (s projectServiceForDataplane) BySlug(ctx context.Context, orgID uuid.UUID, slug string) (dataplane.ProjectRef, error) {
+	p, err := s.svc.BySlug(ctx, orgID, slug)
+	if err != nil {
+		return dataplane.ProjectRef{}, err
+	}
+	return dataplane.ProjectRef{ID: p.ID}, nil
+}
+
+type projectServiceForAPIKeys struct{ svc *project.Service }
+
+// NOTE: tenant.WithOrg scopes the read to orgID, so the key service can check a grant before any project scope exists.
+func (s projectServiceForAPIKeys) ProjectIDs(ctx context.Context, orgID uuid.UUID) ([]uuid.UUID, error) {
+	list, err := s.svc.List(tenant.WithOrg(ctx, orgID), orgID)
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]uuid.UUID, 0, len(list))
+	for _, p := range list {
+		ids = append(ids, p.ID)
+	}
+	return ids, nil
+}
+
+type blogServiceForDataplane struct{ svc *blog.Service }
+
+// NOTE: the tenant scope on ctx is authoritative here, so the ids the port passes are not re-supplied.
+func (s blogServiceForDataplane) BySlug(ctx context.Context, _ uuid.UUID, slug string) (dataplane.PostRef, error) {
+	p, err := s.svc.BySlug(ctx, slug)
+	if err != nil {
+		return dataplane.PostRef{}, err
+	}
+	return postRefOf(p), nil
+}
+
+func (s blogServiceForDataplane) List(ctx context.Context, _, _ uuid.UUID, opts dataplane.ListOpts) ([]dataplane.PostRef, error) {
+	var listOpts blog.ListOpts
+	if opts.PublishedOnly {
+		published := blog.StatusPublished
+		listOpts.Status = &published
+	}
+	posts, err := s.svc.List(ctx, listOpts)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]dataplane.PostRef, 0, len(posts))
+	for _, p := range posts {
+		out = append(out, postRefOf(p))
+	}
+	return out, nil
+}
+
+func (s blogServiceForDataplane) Create(ctx context.Context, categoryID uuid.UUID, title, slug, body string) (dataplane.PostRef, error) {
+	p, err := s.svc.Create(ctx, categoryID, title, slug, body)
+	if err != nil {
+		return dataplane.PostRef{}, err
+	}
+	return postRefOf(p), nil
+}
+
+func (s blogServiceForDataplane) Update(ctx context.Context, id uuid.UUID, title, slug, body string, categoryID uuid.UUID, ifVersion int) (dataplane.PostRef, error) {
+	p, err := s.svc.Update(ctx, id, title, slug, body, categoryID, ifVersion)
+	if err != nil {
+		return dataplane.PostRef{}, err
+	}
+	return postRefOf(p), nil
+}
+
+func (s blogServiceForDataplane) Delete(ctx context.Context, id uuid.UUID, ifVersion int) error {
+	return s.svc.Delete(ctx, id, ifVersion)
+}
+
+func (s blogServiceForDataplane) Publish(ctx context.Context, id uuid.UUID, ifVersion int) (dataplane.PostRef, error) {
+	p, err := s.svc.Publish(ctx, id, ifVersion)
+	if err != nil {
+		return dataplane.PostRef{}, err
+	}
+	return postRefOf(p), nil
+}
+
+func (s blogServiceForDataplane) Unpublish(ctx context.Context, id uuid.UUID, ifVersion int) (dataplane.PostRef, error) {
+	p, err := s.svc.Unpublish(ctx, id, ifVersion)
+	if err != nil {
+		return dataplane.PostRef{}, err
+	}
+	return postRefOf(p), nil
+}
+
+type projectSlugs struct{ svc *project.Service }
+
+func (s projectSlugs) SlugOf(ctx context.Context, projectID uuid.UUID) (string, error) {
+	p, err := s.svc.ByID(ctx, projectID)
+	if err != nil {
+		return "", err
+	}
+	return p.Slug, nil
+}
+
+func postRefOf(p *blog.Post) dataplane.PostRef {
+	return dataplane.PostRef{
+		ID:         p.ID,
+		CategoryID: p.CategoryID,
+		Title:      p.Title,
+		Slug:       p.Slug,
+		Body:       p.BodyMarkdown,
+		Published:  p.Status == blog.StatusPublished,
+		Version:    p.Version,
+	}
 }

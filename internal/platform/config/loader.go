@@ -43,7 +43,7 @@ func Load(path string, opts ...Option) (*Config, error) {
 	if path != "" {
 		v.SetConfigFile(path)
 	} else {
-		v.SetConfigType("yaml")
+		// NOTE: no SetConfigType on purpose, or viper matches the extensionless compiled binary and parses it as YAML.
 		v.SetConfigName("yasaku")
 		v.AddConfigPath(".")
 		if home, err := os.UserHomeDir(); err == nil {
@@ -83,6 +83,8 @@ func setDefaults(v *viper.Viper) {
 
 	v.SetDefault("http.addr", ":5150")
 	v.SetDefault("http.cookieSecure", false)
+	v.SetDefault("http.csp.enabled", true)
+	v.SetDefault("http.csp.reportOnly", false)
 
 	v.SetDefault("db.driver", "sqlite")
 	v.SetDefault("db.dsn", filepath.Join(homeDir(), ".yasaku", "yasaku.db"))
@@ -98,12 +100,15 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("scheduler.timezone", "UTC")
 	v.SetDefault("scheduler.shutdownGrace", "30s")
 
-	v.SetDefault("mcp.enabled", false)
-	v.SetDefault("mcp.appsUI", false)
+	v.SetDefault("queue.enabled", false)
+	v.SetDefault("queue.connectTimeout", "10s")
 
 	v.SetDefault("api.enabled", true)
+	v.SetDefault("api.keyPrefix", "key_")
 	v.SetDefault("api.openapi.enabled", true)
 	v.SetDefault("api.openapi.requireBasicAuth", true)
+
+	v.SetDefault("dataplane.enabled", true)
 
 	v.SetDefault("session.path", filepath.Join(homeDir(), ".yasaku", "session.json"))
 
@@ -127,8 +132,8 @@ func setDefaults(v *viper.Viper) {
 
 	v.SetDefault("tenant.rlsEnforce", true)
 	v.SetDefault("tenant.personalOrgSlugFallback", "personal")
-	v.SetDefault("tenant.personalProjectSlug", "default")
-	v.SetDefault("tenant.singletonOrg.slug", "default")
+	v.SetDefault("tenant.personalProjectSlug", "")
+	v.SetDefault("tenant.singletonOrg.slug", "")
 	v.SetDefault("tenant.singletonOrg.name", "Default Organization")
 
 	v.SetDefault("genesis.breakGlass", false)

@@ -32,9 +32,9 @@ type SettingsReader interface {
 	StartDay(ctx context.Context, orgID, projectID uuid.UUID) (int, error)
 }
 
-// Snapshotter computes a period's totals; satisfied by the report module in boot.
+// Snapshotter computes a period's totals as they stand once closed at at with end as its last day; satisfied by the report module in boot.
 type Snapshotter interface {
-	Snapshot(ctx context.Context, orgID, projectID, periodID uuid.UUID) (Snapshot, error)
+	Snapshot(ctx context.Context, orgID, projectID, periodID uuid.UUID, end civil.Date, at time.Time) (Snapshot, error)
 }
 
 // UnitOfWork runs fn inside one transaction.

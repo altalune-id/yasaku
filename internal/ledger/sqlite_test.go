@@ -188,9 +188,7 @@ func TestSQLiteStore_TenantMissing(t *testing.T) {
 	}
 }
 
-// TestSQLiteStore_Save_EnrollsInTheCallersUnitOfWork drives Save inside a real db.RunInTx whose
-// later step fails. If Save opened its own transaction instead of enrolling, its row would have
-// been committed independently and would survive the unit of work's rollback.
+// TestSQLiteStore_Save_EnrollsInTheCallersUnitOfWork checks a later failure in the unit rolls the row back.
 func TestSQLiteStore_Save_EnrollsInTheCallersUnitOfWork(t *testing.T) {
 	store, sqlDB, prefix, tc := newSQLiteFixture(t)
 	ctx := tenant.Into(context.Background(), tc)
@@ -228,8 +226,7 @@ func TestSQLiteStore_Save_EnrollsInTheCallersUnitOfWork(t *testing.T) {
 	}
 }
 
-// TestSQLiteStore_Save_CommitsWithTheCallersUnitOfWork is the positive control: enrolling must
-// not stop a successful unit of work from persisting the row.
+// TestSQLiteStore_Save_CommitsWithTheCallersUnitOfWork checks a successful unit of work persists the row.
 func TestSQLiteStore_Save_CommitsWithTheCallersUnitOfWork(t *testing.T) {
 	store, sqlDB, _, tc := newSQLiteFixture(t)
 	ctx := tenant.Into(context.Background(), tc)
@@ -254,8 +251,7 @@ func TestSQLiteStore_Save_CommitsWithTheCallersUnitOfWork(t *testing.T) {
 	}
 }
 
-// TestSQLiteStore_ByProject_ReadsTheCallersUncommittedWrite pins that the read path enrolls too:
-// a read inside the unit of work must see that unit's own not-yet-committed write.
+// TestSQLiteStore_ByProject_ReadsTheCallersUncommittedWrite checks a read inside the unit sees its uncommitted write.
 func TestSQLiteStore_ByProject_ReadsTheCallersUncommittedWrite(t *testing.T) {
 	store, sqlDB, _, tc := newSQLiteFixture(t)
 	ctx := tenant.Into(context.Background(), tc)

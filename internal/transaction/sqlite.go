@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/go-jet/jet/v2/qrm"
@@ -34,22 +35,23 @@ func newSQLiteStore(sqlDB *sql.DB, tablePrefix string) *sqliteStore {
 }
 
 type sqliteTxnRow struct {
-	ID          string  `alias:"transactions.id"`
-	OrgID       string  `alias:"transactions.org_id"`
-	ProjectID   string  `alias:"transactions.project_id"`
-	WalletID    string  `alias:"transactions.wallet_id"`
-	ToWalletID  *string `alias:"transactions.to_wallet_id"`
-	Kind        string  `alias:"transactions.kind"`
-	AmountMinor int64   `alias:"transactions.amount_minor"`
-	Currency    string  `alias:"transactions.currency"`
-	CategoryID  *string `alias:"transactions.category_id"`
-	PeriodID    *string `alias:"transactions.period_id"`
-	Note        string  `alias:"transactions.note"`
-	NoteNorm    string  `alias:"transactions.note_norm"`
-	OccurredAt  string  `alias:"transactions.occurred_at"`
-	CreatedBy   string  `alias:"transactions.created_by"`
-	CreatedAt   string  `alias:"transactions.created_at"`
-	UpdatedAt   string  `alias:"transactions.updated_at"`
+	ID             string  `alias:"transactions.id"`
+	OrgID          string  `alias:"transactions.org_id"`
+	ProjectID      string  `alias:"transactions.project_id"`
+	WalletID       string  `alias:"transactions.wallet_id"`
+	ToWalletID     *string `alias:"transactions.to_wallet_id"`
+	Kind           string  `alias:"transactions.kind"`
+	AmountMinor    int64   `alias:"transactions.amount_minor"`
+	Currency       string  `alias:"transactions.currency"`
+	CategoryID     *string `alias:"transactions.category_id"`
+	PeriodID       *string `alias:"transactions.period_id"`
+	Note           string  `alias:"transactions.note"`
+	NoteNorm       string  `alias:"transactions.note_norm"`
+	OccurredAt     string  `alias:"transactions.occurred_at"`
+	CreatedBy      *string `alias:"transactions.created_by"`
+	CreatedByKeyID *string `alias:"transactions.created_by_key_id"`
+	CreatedAt      string  `alias:"transactions.created_at"`
+	UpdatedAt      string  `alias:"transactions.updated_at"`
 }
 
 func (r *sqliteTxnRow) toTransaction() (*Transaction, error) {
@@ -81,7 +83,11 @@ func (r *sqliteTxnRow) toTransaction() (*Transaction, error) {
 	if err != nil {
 		return nil, err
 	}
-	createdBy, err := parseUUID(r.CreatedBy, "created_by")
+	createdBy, err := parseOptionalUUID(r.CreatedBy, "created_by")
+	if err != nil {
+		return nil, err
+	}
+	createdByKey, err := parseOptionalUUID(r.CreatedByKeyID, "created_by_key_id")
 	if err != nil {
 		return nil, err
 	}
@@ -98,20 +104,21 @@ func (r *sqliteTxnRow) toTransaction() (*Transaction, error) {
 		return nil, err
 	}
 	return &Transaction{
-		ID:         id,
-		OrgID:      orgID,
-		ProjectID:  projectID,
-		WalletID:   walletID,
-		ToWalletID: toWalletID,
-		Kind:       Kind(r.Kind),
-		Amount:     money.New(r.AmountMinor, money.Currency(r.Currency)),
-		CategoryID: categoryID,
-		PeriodID:   periodID,
-		Note:       r.Note,
-		OccurredAt: occurredAt,
-		CreatedBy:  createdBy,
-		CreatedAt:  createdAt,
-		UpdatedAt:  updatedAt,
+		ID:             id,
+		OrgID:          orgID,
+		ProjectID:      projectID,
+		WalletID:       walletID,
+		ToWalletID:     toWalletID,
+		Kind:           Kind(r.Kind),
+		Amount:         money.New(r.AmountMinor, money.Currency(r.Currency)),
+		CategoryID:     categoryID,
+		PeriodID:       periodID,
+		Note:           r.Note,
+		OccurredAt:     occurredAt,
+		CreatedBy:      derefUUID(createdBy),
+		CreatedByKeyID: derefUUID(createdByKey),
+		CreatedAt:      createdAt,
+		UpdatedAt:      updatedAt,
 	}, nil
 }
 
@@ -194,7 +201,18 @@ func translateSQLiteConstraint(err error) error {
 	if sqliteErr.Code() == sqlite3.SQLITE_CONSTRAINT_FOREIGNKEY {
 		return &NotFoundError{}
 	}
+	if sqliteErr.Code() == sqlite3.SQLITE_CONSTRAINT_CHECK && strings.Contains(sqliteErr.Error(), "author_one") {
+		return &AuthorMissingError{}
+	}
 	return nil
+}
+
+// NOTE: only a key-authored row writes created_by as NULL; a legacy row stored with the nil uuid keeps it, so a re-save passes the author CHECK.
+func sqliteAuthorArgs(user, key uuid.UUID) (userArg, keyArg any) {
+	if key != uuid.Nil {
+		return nil, key.String()
+	}
+	return user.String(), nil
 }
 
 func (s *sqliteStore) Save(ctx context.Context, t *Transaction) error {
@@ -205,13 +223,14 @@ func (s *sqliteStore) Save(ctx context.Context, t *Transaction) error {
 	noteNorm := NormalizeNote(t.Note)
 	occurredAt := sqliteent.SQLiteTime(t.OccurredAt)
 	updatedAt := sqliteent.SQLiteTime(t.UpdatedAt)
+	createdBy, createdByKey := sqliteAuthorArgs(t.CreatedBy, t.CreatedByKeyID)
 
 	stmt := s.table.INSERT(s.table.AllColumns).
 		VALUES(
 			t.ID.String(), t.OrgID.String(), t.ProjectID.String(), t.WalletID.String(),
 			sqliteUUIDArg(t.ToWalletID), string(t.Kind), t.Amount.Minor, string(t.Amount.Currency),
 			sqliteUUIDArg(t.CategoryID), sqliteUUIDArg(t.PeriodID),
-			t.Note, noteNorm, occurredAt, t.CreatedBy.String(),
+			t.Note, noteNorm, occurredAt, createdBy, createdByKey,
 			sqliteent.SQLiteTime(t.CreatedAt), updatedAt,
 		).
 		ON_CONFLICT(s.table.ID).
@@ -229,7 +248,7 @@ func (s *sqliteStore) Save(ctx context.Context, t *Transaction) error {
 				s.table.NoteNorm.SET(sqlite.String(noteNorm)),
 				s.table.OccurredAt.SET(sqlite.String(occurredAt)),
 				s.table.UpdatedAt.SET(sqlite.String(updatedAt)),
-			).WHERE(s.table.OrgID.EQ(sqlite.String(tc.OrgID.String()))),
+			).WHERE(s.table.OrgID.EQ(sqlite.String(tc.OrgID.String())).AND(s.table.ProjectID.EQ(sqlite.String(tc.ProjectID.String())))),
 		)
 
 	res, execErr := stmt.ExecContext(ctx, tx)
@@ -497,7 +516,8 @@ func (s *sqliteStore) Delete(ctx context.Context, id uuid.UUID) error {
 	}
 	stmt := s.table.DELETE().
 		WHERE(s.table.ID.EQ(sqlite.String(id.String())).
-			AND(s.table.OrgID.EQ(sqlite.String(tc.OrgID.String()))))
+			AND(s.table.OrgID.EQ(sqlite.String(tc.OrgID.String()))).
+			AND(s.table.ProjectID.EQ(sqlite.String(tc.ProjectID.String()))))
 	res, execErr := stmt.ExecContext(ctx, tx)
 	if execErr != nil {
 		return s.endTx(tx, owned, fmt.Errorf("transaction.sqlite.Delete: %w", execErr))
@@ -512,8 +532,7 @@ func (s *sqliteStore) Delete(ctx context.Context, id uuid.UUID) error {
 	return s.endTx(tx, owned, nil)
 }
 
-// SECURITY: SQLite has no advisory locks, so a caller that forgot its unit of work must fail loudly rather than race silently.
-// NOTE: an ambient transaction is necessary but not sufficient here — SQLite begins deferred, so a concurrent adjustment surfaces as SQLITE_BUSY on the write rather than being serialized at the read.
+// SECURITY: SQLite has no advisory locks, so LockWallet fails without a unit of work, and a concurrent adjustment surfaces as SQLITE_BUSY on the write.
 func (s *sqliteStore) LockWallet(ctx context.Context, _, _, _ uuid.UUID) error {
 	if _, ok := pdb.CurrentTx(ctx); !ok {
 		return fmt.Errorf("transaction.sqlite.LockWallet: %w", ErrNoUnitOfWork)

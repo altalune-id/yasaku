@@ -41,7 +41,7 @@ func (s *postgresStore) Save(ctx context.Context, p *Period) error {
 				s.table.ClosedAt.SET(pgTimePtr(p.ClosedAt)),
 				s.table.Snapshot.SET(pgJSON(js)),
 				s.table.UpdatedAt.SET(postgres.TimestampzT(p.UpdatedAt.UTC())),
-			).WHERE(s.table.OrgID.EQ(postgres.UUID(tc.OrgID))),
+			).WHERE(s.table.OrgID.EQ(postgres.UUID(tc.OrgID)).AND(s.table.ProjectID.EQ(postgres.UUID(tc.ProjectID)))),
 		)
 	res, execErr := stmt.ExecContext(ctx, tx)
 	if execErr != nil {
@@ -73,6 +73,7 @@ func (s *postgresStore) SaveClosing(ctx context.Context, c *Closing) error {
 	if err != nil {
 		return s.endTx(tx, owned, err)
 	}
+	closedBy, closedByKey := pgAuthorExprs(c.ClosedBy, c.ClosedByKeyID)
 	stmt := s.closings.INSERT(s.closings.AllColumns).
 		VALUES(
 			postgres.UUID(c.ID),
@@ -80,10 +81,14 @@ func (s *postgresStore) SaveClosing(ctx context.Context, c *Closing) error {
 			postgres.UUID(c.ProjectID),
 			postgres.UUID(c.PeriodID),
 			postgres.TimestampzT(c.ClosedAt.UTC()),
-			postgres.UUID(c.ClosedBy),
+			closedBy,
+			closedByKey,
 			pgJSON(js),
 		)
 	if _, execErr := stmt.ExecContext(ctx, tx); execErr != nil {
+		if typed := translatePgError(execErr, nil); IsAuthorMissingError(typed) {
+			return s.endTx(tx, owned, typed)
+		}
 		return s.endTx(tx, owned, fmt.Errorf("period.postgres.SaveClosing: %w", execErr))
 	}
 	return s.endTx(tx, owned, nil)

@@ -29,7 +29,8 @@ func (s *postgresStore) ByEmail(ctx context.Context, email string) (*User, error
 }
 
 func (s *postgresStore) ByIDP(ctx context.Context, issuer, subject string) (*User, error) {
-	cond := s.table.IDPIssuer.EQ(postgres.String(issuer)).AND(s.table.IDPSubject.EQ(postgres.String(subject)))
+	cond := s.table.IDPIssuer.EQ(postgres.String(issuer)).
+		AND(s.table.IDPSubject.EQ(postgres.String(subject)))
 	return s.queryOne(ctx, cond, &NotFoundError{Subject: subject})
 }
 

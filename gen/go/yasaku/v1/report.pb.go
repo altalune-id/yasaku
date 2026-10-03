@@ -7,7 +7,7 @@
 package yasakuv1
 
 import (
-	_ "altalune.id/yasaku/gen/go/yasaku/mcp/v1"
+	_ "altalune.id/yasaku/gen/go/mcp/v1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
@@ -414,7 +414,7 @@ var File_yasaku_v1_report_proto protoreflect.FileDescriptor
 
 const file_yasaku_v1_report_proto_rawDesc = "" +
 	"\n" +
-	"\x16yasaku/v1/report.proto\x12\tyasaku.v1\x1a\x1fyasaku/mcp/v1/annotations.proto\x1a\x16yasaku/v1/common.proto\x1a\x16yasaku/v1/period.proto\"\x99\x01\n" +
+	"\x16yasaku/v1/report.proto\x12\tyasaku.v1\x1a\x18mcp/v1/annotations.proto\x1a\x16yasaku/v1/common.proto\x1a\x16yasaku/v1/period.proto\"\x99\x01\n" +
 	"\rCategorySlice\x122\n" +
 	"\bcategory\x18\x01 \x01(\v2\x16.yasaku.v1.CategoryRefR\bcategory\x12(\n" +
 	"\x06amount\x18\x02 \x01(\v2\x10.yasaku.v1.MoneyR\x06amount\x12\x14\n" +
@@ -441,12 +441,12 @@ const file_yasaku_v1_report_proto_rawDesc = "" +
 	"\x06target\x18\x01 \x01(\v2\x11.yasaku.v1.TargetR\x06target\x12\x18\n" +
 	"\aperiods\x18\x02 \x01(\x05R\aperiods\"J\n" +
 	"\x16CashflowReportResponse\x120\n" +
-	"\x06points\x18\x01 \x03(\v2\x18.yasaku.v1.CashflowPointR\x06points2\xff\x05\n" +
-	"\rReportService\x12\xa1\x03\n" +
-	"\fPeriodReport\x12\x1e.yasaku.v1.PeriodReportRequest\x1a\x1f.yasaku.v1.PeriodReportResponse\"\xcf\x02\xca\xf3\x18\xca\x02\n" +
-	"\rperiod_report\x12\xb1\x02Report one period's totals: income, expense, net, and the breakdown per category and per wallet. Period must be a period ID from list_periods or current_period, never a period name; leave it empty for the current period. Category slices are largest first and share is a fraction of that direction's total.\x18\x01*\x03app\x12\xc9\x02\n" +
-	"\x0eCashflowReport\x12 .yasaku.v1.CashflowReportRequest\x1a!.yasaku.v1.CashflowReportResponse\"\xf1\x01\xca\xf3\x18\xec\x01\n" +
-	"\x0fcashflow_report\x12\xd1\x01Plot the cashflow trend over the most recent periods, one point per period that has transactions. Periods defaults to the last 6 and is capped at 24. Points run oldest to newest so a trend reads left to right.\x18\x01*\x03appB\x8f\x01\n" +
+	"\x06points\x18\x01 \x03(\v2\x18.yasaku.v1.CashflowPointR\x06points2\xfb\x05\n" +
+	"\rReportService\x12\x9f\x03\n" +
+	"\fPeriodReport\x12\x1e.yasaku.v1.PeriodReportRequest\x1a\x1f.yasaku.v1.PeriodReportResponse\"\xcd\x02\xca\xf3\x18\xc8\x02\n" +
+	"\rperiod_report\x12\xb1\x02Report one period's totals: income, expense, net, and the breakdown per category and per wallet. Period must be a period ID from list_periods or current_period, never a period name; leave it empty for the current period. Category slices are largest first and share is a fraction of that direction's total.*\x03app\x12\xc7\x02\n" +
+	"\x0eCashflowReport\x12 .yasaku.v1.CashflowReportRequest\x1a!.yasaku.v1.CashflowReportResponse\"\xef\x01\xca\xf3\x18\xea\x01\n" +
+	"\x0fcashflow_report\x12\xd1\x01Plot the cashflow trend over the most recent periods, one point per period that has transactions. Periods defaults to the last 6 and is capped at 24. Points run oldest to newest so a trend reads left to right.*\x03appB\x8f\x01\n" +
 	"\rcom.yasaku.v1B\vReportProtoP\x01Z,altalune.id/yasaku/gen/go/yasaku/v1;yasakuv1\xa2\x02\x03YXX\xaa\x02\tYasaku.V1\xca\x02\tYasaku\\V1\xe2\x02\x15Yasaku\\V1\\GPBMetadata\xea\x02\n" +
 	"Yasaku::V1b\x06proto3"
 

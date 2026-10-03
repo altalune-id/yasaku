@@ -36,7 +36,7 @@ func NewPeriodHandler(d Deps, projects *project.Service, periods *period.Service
 }
 
 // Register wires the period routes onto mux.
-func (h *PeriodHandler) Register(mux *http.ServeMux) {
+func (h *PeriodHandler) Register(mux web.Mux) {
 	mux.HandleFunc("GET /orgs/{org}/projects/{project}/periods", h.GetPeriods)
 	mux.HandleFunc("GET /orgs/{org}/projects/{project}/periods/{id}/close", h.GetClose)
 	mux.HandleFunc("POST /orgs/{org}/projects/{project}/periods/{id}/close", h.PostClose)
@@ -46,7 +46,7 @@ func (h *PeriodHandler) Register(mux *http.ServeMux) {
 
 // GetPeriods renders the current period card and the closed-period history.
 func (h *PeriodHandler) GetPeriods(w http.ResponseWriter, r *http.Request) {
-	sc, ok := h.requireProject(w, r)
+	sc, ok := h.RequireProject(w, r)
 	if !ok {
 		return
 	}
@@ -61,7 +61,7 @@ func (h *PeriodHandler) GetClose(w http.ResponseWriter, r *http.Request) {
 	}
 	v := h.closeView(sc, p, h.requestedEnd(sc, p))
 	d := h.layout(sc)
-	if h.isHTMX(sc.req) {
+	if web.IsHTMXRequest(sc.req) {
 		Render(w, sc.req, templates.ClosePreviewFragment(d, v))
 		return
 	}
@@ -132,61 +132,42 @@ func (h *PeriodHandler) PostRename(w http.ResponseWriter, r *http.Request) {
 	h.redirectToPeriods(w, sc)
 }
 
-func (h *PeriodHandler) requireProject(w http.ResponseWriter, r *http.Request) (projectScope, bool) {
-	p, sid, ok := h.LoadSession(r)
+func (h *PeriodHandler) requirePeriod(w http.ResponseWriter, r *http.Request) (ProjectScope, *period.Period, bool) {
+	sc, ok := h.RequireProject(w, r)
 	if !ok {
-		http.Redirect(w, r, ResolveReturnTo(h.Cfg.HTTP.BasePath, "/login"), http.StatusSeeOther)
-		return projectScope{}, false
-	}
-	o, r, ok := h.OrgScopeFor(w, r, p, r.PathValue("org"))
-	if !ok {
-		return projectScope{}, false
-	}
-	proj, r, ok := h.ProjectScopeFor(w, r, o.ID, r.PathValue("project"))
-	if !ok {
-		return projectScope{}, false
-	}
-	return projectScope{principal: p, sid: sid, org: o, project: proj, req: r}, true
-}
-
-func (h *PeriodHandler) requirePeriod(w http.ResponseWriter, r *http.Request) (projectScope, *period.Period, bool) {
-	sc, ok := h.requireProject(w, r)
-	if !ok {
-		return projectScope{}, nil, false
+		return ProjectScope{}, nil, false
 	}
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
 		h.ErrorPage(w, sc.req, http.StatusNotFound, "Not found", "That period no longer exists.")
-		return projectScope{}, nil, false
+		return ProjectScope{}, nil, false
 	}
 	p, err := h.Periods.ByID(sc.req.Context(), id)
 	if err != nil {
 		if period.IsNotFoundError(err) {
 			h.ErrorPage(w, sc.req, http.StatusNotFound, "Not found", "That period no longer exists.", err)
-			return projectScope{}, nil, false
+			return ProjectScope{}, nil, false
 		}
 		h.LogErr("web period: byID", err)
 		h.ErrorPage(w, sc.req, http.StatusInternalServerError, "Lookup failed", "Could not load that period.", err)
-		return projectScope{}, nil, false
+		return ProjectScope{}, nil, false
 	}
 	return sc, p, true
 }
 
-func (h *PeriodHandler) layout(sc projectScope) web.LayoutData {
+func (h *PeriodHandler) layout(sc ProjectScope) web.LayoutData {
 	d := h.LayoutForProject(sc.req, "", sc.org.Slug, sc.project, periodNavKey)
 	d.Title = d.Tr("period.title") + " · " + sc.project.Name
 	return d
 }
 
-func (h *PeriodHandler) isHTMX(r *http.Request) bool { return r.Header.Get("HX-Request") == "true" }
-
-func (h *PeriodHandler) redirectToPeriods(w http.ResponseWriter, sc projectScope) {
+func (h *PeriodHandler) redirectToPeriods(w http.ResponseWriter, sc ProjectScope) {
 	target := web.Path(h.Cfg.HTTP.BasePath, projectPath(sc.org.Slug, sc.project.Slug, "/periods"))
 	//nolint:gosec // G710: both slugs come from rows already resolved by their own slug patterns.
 	http.Redirect(w, sc.req, target, http.StatusSeeOther)
 }
 
-func (h *PeriodHandler) renderPeriods(w http.ResponseWriter, sc projectScope, cause error) {
+func (h *PeriodHandler) renderPeriods(w http.ResponseWriter, sc ProjectScope, cause error) {
 	v, err := h.periodsView(sc, cause)
 	if err != nil {
 		h.LogErr("web period: list", err)
@@ -196,7 +177,7 @@ func (h *PeriodHandler) renderPeriods(w http.ResponseWriter, sc projectScope, ca
 	Render(w, sc.req, templates.PeriodsLayout(h.layout(sc), v))
 }
 
-func (h *PeriodHandler) renderClose(w http.ResponseWriter, sc projectScope, p *period.Period, end civil.Date, cause error) {
+func (h *PeriodHandler) renderClose(w http.ResponseWriter, sc ProjectScope, p *period.Period, end civil.Date, cause error) {
 	v := h.closeView(sc, p, end)
 	if cause != nil {
 		v.Error, v.ErrorCode = appErrorBanner(cause)
@@ -206,7 +187,7 @@ func (h *PeriodHandler) renderClose(w http.ResponseWriter, sc projectScope, p *p
 	Render(w, sc.req, templates.ClosePeriodLayout(d, v))
 }
 
-func (h *PeriodHandler) closeFailed(w http.ResponseWriter, sc projectScope, p *period.Period, end civil.Date, err error) {
+func (h *PeriodHandler) closeFailed(w http.ResponseWriter, sc ProjectScope, p *period.Period, end civil.Date, err error) {
 	if period.IsAlreadyClosedError(err) {
 		fresh, freshErr := h.Periods.ByID(sc.req.Context(), p.ID)
 		if freshErr != nil {
@@ -224,7 +205,7 @@ func (h *PeriodHandler) closeFailed(w http.ResponseWriter, sc projectScope, p *p
 	h.renderClose(w, sc, p, end, err)
 }
 
-func (h *PeriodHandler) periodsView(sc projectScope, cause error) (templates.PeriodsView, error) {
+func (h *PeriodHandler) periodsView(sc ProjectScope, cause error) (templates.PeriodsView, error) {
 	ctx := sc.req.Context()
 	items, err := h.Periods.List(ctx, period.ListOpts{})
 	if err != nil {
@@ -237,7 +218,6 @@ func (h *PeriodHandler) periodsView(sc projectScope, cause error) (templates.Per
 		History:     make([]templates.PeriodRow, 0, len(items)),
 	}
 	v.Error, v.ErrorCode = appErrorBanner(cause)
-	loc := h.location(ctx)
 	reopenable, err := h.Periods.Reopenable(ctx)
 	if err != nil {
 		return templates.PeriodsView{}, err
@@ -258,9 +238,7 @@ func (h *PeriodHandler) periodsView(sc projectScope, cause error) (templates.Per
 		row.CanReopen = reopenable != nil && reopenable.ID == p.ID
 		row.CanClose = !p.IsLocked()
 		if p.IsLocked() {
-			if p.ClosedAt != nil {
-				row.ClosedAt = p.ClosedAt.In(loc).Format("2006-01-02 15:04")
-			}
+			row.ClosedAt = p.ClosedAt
 			applySnapshot(&row, p.Snapshot)
 		}
 		v.History = append(v.History, row)
@@ -279,7 +257,7 @@ func (h *PeriodHandler) currentRow(ctx context.Context, p *period.Period, row te
 	return row
 }
 
-func (h *PeriodHandler) requestedEnd(sc projectScope, p *period.Period) civil.Date {
+func (h *PeriodHandler) requestedEnd(sc ProjectScope, p *period.Period) civil.Date {
 	ctx := sc.req.Context()
 	if p.EndDate == nil {
 		if raw := strings.TrimSpace(sc.req.URL.Query().Get("end_date")); raw != "" {
@@ -296,7 +274,7 @@ func (h *PeriodHandler) requestedEnd(sc projectScope, p *period.Period) civil.Da
 	return end
 }
 
-func (h *PeriodHandler) closeView(sc projectScope, p *period.Period, end civil.Date) templates.ClosePeriodView {
+func (h *PeriodHandler) closeView(sc ProjectScope, p *period.Period, end civil.Date) templates.ClosePeriodView {
 	ctx := sc.req.Context()
 	v := templates.ClosePeriodView{
 		OrgSlug:       sc.org.Slug,
@@ -367,7 +345,7 @@ func previewFromSnapshot(s *period.Snapshot) (templates.ClosePreview, bool) {
 	return p, true
 }
 
-// NOTE: the code is the stable handle on a refusal; the catalogue is docs/ERROR_CODES.md.
+// NOTE: the code is the stable handle on a refusal; the catalogue is docs/errors/README.md and docs/errors/yasaku.md.
 func appErrorBanner(err error) (msg, code string) { //nolint:nonamedreturns // two strings differ only by role
 	if err == nil {
 		return "", ""

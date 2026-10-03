@@ -10,6 +10,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
+	"altalune.id/yasaku/civil"
 	"altalune.id/yasaku/internal/apperror"
 	"altalune.id/yasaku/internal/platform/tenant"
 	"altalune.id/yasaku/money"
@@ -53,13 +54,15 @@ func (s *Service) Summary(ctx context.Context, periodID uuid.UUID) (PeriodSummar
 	return s.summary(ctx, tc.OrgID, tc.ProjectID, periodID)
 }
 
-// SnapshotFor totals the identified period in an explicit scope; boot's period.Snapshotter adapter calls it.
-func (s *Service) SnapshotFor(ctx context.Context, orgID, projectID, periodID uuid.UUID) (PeriodSummary, error) {
+// SnapshotFor totals the identified period in an explicit scope as it will stand once closed at at with end as its last day; boot's period.Snapshotter adapter calls it.
+func (s *Service) SnapshotFor(ctx context.Context, orgID, projectID, periodID uuid.UUID, end civil.Date, at time.Time) (PeriodSummary, error) {
 	ctx, span := tracer.Start(ctx, "report.SnapshotFor",
 		trace.WithAttributes(attribute.String("period.id", periodID.String())))
 	defer span.End()
 
-	return s.summary(ctx, orgID, projectID, periodID)
+	return s.summaryAs(ctx, orgID, projectID, periodID, func(ref *PeriodRef) {
+		ref.End, ref.ClosedAt = &end, &at
+	})
 }
 
 // SpendByCategory breaks the identified period's expenses down by category, largest first.
@@ -154,6 +157,10 @@ func (s *Service) WalletBalances(ctx context.Context) ([]WalletLine, error) {
 }
 
 func (s *Service) summary(ctx context.Context, orgID, projectID, periodID uuid.UUID) (PeriodSummary, error) {
+	return s.summaryAs(ctx, orgID, projectID, periodID, func(*PeriodRef) {})
+}
+
+func (s *Service) summaryAs(ctx context.Context, orgID, projectID, periodID uuid.UUID, as func(*PeriodRef)) (PeriodSummary, error) {
 	currency, err := s.currency(ctx, orgID, projectID)
 	if err != nil {
 		return PeriodSummary{}, err
@@ -166,7 +173,8 @@ func (s *Service) summary(ctx context.Context, orgID, projectID, periodID uuid.U
 	if err != nil {
 		return PeriodSummary{}, s.unexpected(ctx, "report.Summary: period", err, "period_id", periodID)
 	}
-	out, err := s.reader.Summary(ctx, orgID, projectID, periodID, currency, ref.Start.In(loc))
+	as(&ref)
+	out, err := s.reader.Summary(ctx, orgID, projectID, periodID, currency, ref.Start.In(loc), ref.ArchivedBefore(loc))
 	if err != nil {
 		return PeriodSummary{}, s.unexpected(ctx, "report.Summary: read", err, "period_id", periodID)
 	}

@@ -14,6 +14,8 @@ import (
 	"altalune.id/yasaku/internal/apperror"
 	"altalune.id/yasaku/internal/platform/capabilities"
 	"altalune.id/yasaku/internal/platform/db"
+	"altalune.id/yasaku/internal/platform/outbox"
+	"altalune.id/yasaku/internal/platform/queue"
 	"altalune.id/yasaku/internal/platform/sealer"
 	"altalune.id/yasaku/internal/platform/session"
 	"altalune.id/yasaku/internal/platform/tenant"
@@ -40,6 +42,9 @@ type Kernel struct {
 	Notify   []apperror.ReportSink
 	Nano     NanoIDFunc
 	Caps     capabilities.Capabilities
+	Outbox   outbox.Store
+	// Queue is always non-nil: Disabled(log) when queue.enabled is false.
+	Queue *queue.Client
 
 	closers []io.Closer
 }

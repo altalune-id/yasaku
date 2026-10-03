@@ -83,13 +83,14 @@ func TestFrom_APIEnabled(t *testing.T) {
 	}
 }
 
-func TestFrom_MCPEnabled(t *testing.T) {
+func TestFrom_EphemeralEncryptionKey(t *testing.T) {
 	c := config.Defaults()
-	if From(c).MCPEnabled {
-		t.Error("MCP should be disabled by default")
+	c.Security.EncryptionKey = ""
+	if !From(c).EphemeralEncryptionKey {
+		t.Error("an empty security.encryptionKey must report an ephemeral key")
 	}
-	c.MCP.Enabled = true
-	if !From(c).MCPEnabled {
-		t.Error("MCPEnabled should reflect config")
+	c.Security.EncryptionKey = "configured"
+	if From(c).EphemeralEncryptionKey {
+		t.Error("a configured security.encryptionKey must not report an ephemeral key")
 	}
 }

@@ -12,8 +12,7 @@ import (
 	"altalune.id/yasaku/internal/web/templates"
 )
 
-// TxCategoryHandler owns the project-scoped transaction-categories screen.
-// NOTE: named apart from BlogHandler's category methods, which serve the blog's own categories.
+// TxCategoryHandler owns the project-scoped transaction-categories screen, apart from BlogHandler's blog categories.
 type TxCategoryHandler struct {
 	Deps
 	TxCategories *category.Service
@@ -27,7 +26,7 @@ func NewTxCategoryHandler(d Deps, projects *project.Service, cats *category.Serv
 
 // GetCategories renders the transaction-categories page.
 func (h *TxCategoryHandler) GetCategories(w http.ResponseWriter, r *http.Request) {
-	sc, ok := requireYasakuProject(h.Deps, w, r)
+	sc, ok := h.RequireProject(w, r)
 	if !ok {
 		return
 	}
@@ -42,7 +41,7 @@ func (h *TxCategoryHandler) GetCategories(w http.ResponseWriter, r *http.Request
 
 // PostCreate adds a category and returns the refreshed list fragment.
 func (h *TxCategoryHandler) PostCreate(w http.ResponseWriter, r *http.Request) {
-	sc, ok := requireYasakuProject(h.Deps, w, r)
+	sc, ok := h.RequireProject(w, r)
 	if !ok {
 		return
 	}
@@ -52,21 +51,34 @@ func (h *TxCategoryHandler) PostCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	kind, err := category.ParseKind(sc.req.PostForm.Get("kind"))
 	if err != nil {
-		h.writeTxCategoryList(w, sc, categoryBannerFrom(err))
+		h.refuseCreate(w, sc, err)
 		return
 	}
 	name := strings.TrimSpace(sc.req.PostForm.Get("name"))
 	if _, err := h.TxCategories.Create(sc.req.Context(), name, kind, "", ""); err != nil {
 		h.LogErr("web category: create", err)
-		h.writeTxCategoryList(w, sc, categoryBannerFrom(err))
+		h.refuseCreate(w, sc, err)
 		return
 	}
 	h.writeTxCategoryList(w, sc, banner{})
+	if web.IsHTMXRequest(sc.req) {
+		Render(w, sc.req, templates.TxCategoryFormErrors(h.txCategoryLayout(sc), templates.TxCategoriesView{}, true))
+	}
+}
+
+func (h *TxCategoryHandler) refuseCreate(w http.ResponseWriter, sc ProjectScope, err error) {
+	if !web.IsHTMXRequest(sc.req) {
+		h.writeTxCategoryList(w, sc, categoryBannerFrom(err))
+		return
+	}
+	b := categoryBannerFrom(err)
+	v := templates.TxCategoriesView{ErrorKey: b.Key, ErrorMsg: b.Msg, ErrorCode: b.Code}
+	RenderStatus(w, sc.req, http.StatusUnprocessableEntity, templates.TxCategoryFormErrors(h.txCategoryLayout(sc), v, false))
 }
 
 // PostSeed inserts every missing default category and reports how many it added.
 func (h *TxCategoryHandler) PostSeed(w http.ResponseWriter, r *http.Request) {
-	sc, ok := requireYasakuProject(h.Deps, w, r)
+	sc, ok := h.RequireProject(w, r)
 	if !ok {
 		return
 	}
@@ -141,7 +153,7 @@ func (h *TxCategoryHandler) PostDelete(w http.ResponseWriter, r *http.Request) {
 }
 
 // Register wires the transaction-category routes onto mux.
-func (h *TxCategoryHandler) Register(mux *http.ServeMux) {
+func (h *TxCategoryHandler) Register(mux web.Mux) {
 	mux.HandleFunc("GET /orgs/{org}/projects/{project}/categories", h.GetCategories)
 	mux.HandleFunc("POST /orgs/{org}/projects/{project}/categories", h.PostCreate)
 	mux.HandleFunc("POST /orgs/{org}/projects/{project}/categories/seed", h.PostSeed)
@@ -151,6 +163,7 @@ func (h *TxCategoryHandler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /orgs/{org}/projects/{project}/categories/{id}/delete", h.PostDelete)
 }
 
+//i18n:use category.in_use
 func categoryBannerFrom(err error) banner {
 	if category.IsInUseError(err) {
 		return banner{Key: "category.in_use", Code: ErrorRef(err)}
@@ -158,34 +171,36 @@ func categoryBannerFrom(err error) banner {
 	return bannerFrom(err)
 }
 
-func (h *TxCategoryHandler) requireCategory(w http.ResponseWriter, r *http.Request) (projectScope, *category.Category, bool) {
-	sc, ok := requireYasakuProject(h.Deps, w, r)
+func (h *TxCategoryHandler) requireCategory(w http.ResponseWriter, r *http.Request) (ProjectScope, *category.Category, bool) {
+	sc, ok := h.RequireProject(w, r)
 	if !ok {
-		return projectScope{}, nil, false
+		return ProjectScope{}, nil, false
 	}
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
 		h.ErrorPage(w, sc.req, http.StatusBadRequest, "Bad id", "Malformed category id.")
-		return projectScope{}, nil, false
+		return ProjectScope{}, nil, false
 	}
 	c, err := h.TxCategories.ByID(sc.req.Context(), id)
 	if err != nil {
 		if category.IsNotFoundError(err) {
 			h.ErrorPage(w, sc.req, http.StatusNotFound, "Not found", "That category no longer exists.", err)
-			return projectScope{}, nil, false
+			return ProjectScope{}, nil, false
 		}
 		h.LogErr("web category: byID", err)
 		h.ErrorPage(w, sc.req, http.StatusInternalServerError, "Lookup failed", "Could not load that category.", err)
-		return projectScope{}, nil, false
+		return ProjectScope{}, nil, false
 	}
 	return sc, c, true
 }
 
-func (h *TxCategoryHandler) txCategoryLayout(sc projectScope) web.LayoutData {
+func (h *TxCategoryHandler) txCategoryLayout(sc ProjectScope) web.LayoutData {
 	return h.LayoutForProject(sc.req, "Categories · "+sc.project.Name, sc.org.Slug, sc.project, "categories")
 }
 
-func (h *TxCategoryHandler) categoriesView(sc projectScope, b banner, seeded int) (templates.TxCategoriesView, error) {
+//i18n:use category.expense
+//i18n:use category.income
+func (h *TxCategoryHandler) categoriesView(sc ProjectScope, b banner, seeded int) (templates.TxCategoriesView, error) {
 	rows, err := h.TxCategories.List(sc.req.Context(), category.ListOpts{IncludeArchived: true})
 	if err != nil {
 		return templates.TxCategoriesView{}, err
@@ -218,11 +233,11 @@ func (h *TxCategoryHandler) categoriesView(sc projectScope, b banner, seeded int
 	return v, nil
 }
 
-func (h *TxCategoryHandler) writeTxCategoryList(w http.ResponseWriter, sc projectScope, b banner) {
+func (h *TxCategoryHandler) writeTxCategoryList(w http.ResponseWriter, sc ProjectScope, b banner) {
 	h.writeTxCategoryListSeeded(w, sc, b, -1)
 }
 
-func (h *TxCategoryHandler) writeTxCategoryListSeeded(w http.ResponseWriter, sc projectScope, b banner, seeded int) {
+func (h *TxCategoryHandler) writeTxCategoryListSeeded(w http.ResponseWriter, sc ProjectScope, b banner, seeded int) {
 	v, err := h.categoriesView(sc, b, seeded)
 	if err != nil {
 		h.LogErr("web category: list", err)

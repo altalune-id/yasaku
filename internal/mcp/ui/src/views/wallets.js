@@ -1,85 +1,58 @@
-// views/wallets.js
-function walletRow(w) {
-  const meta = [w.kind, w.provider].filter(Boolean).join(" · ");
-  const excluded = w.excludeFromTotal ? html`<span class="ya-muted">excluded</span>` : "";
-  const archived = w.archived ? html`<span class="ya-muted">archived</span>` : "";
-  return html`<div class="ya-row">
-    <span>${w.name || "—"}</span>
-    <span class="ya-muted">${meta}</span>
-    ${raw(excluded)}
-    ${raw(archived)}
-    <span class="ya-num">${money(w.balance)}</span>
-  </div>`;
-}
-
-function renderWalletList(d) {
-  const wallets = d.wallets || [];
-  if (!wallets.length) {
-    return html`<div class="ya-root"><p class="ya-muted">No wallets yet.</p></div>`;
-  }
-  return html`<div class="ya-root">
-    <div class="ya-card">
-      <div class="ya-kpi-label">Wallets</div>
-      ${raw(wallets.map(walletRow).join(""))}
-    </div>
-  </div>`;
-}
-
-function renderWalletDetail(d) {
-  const w = d.wallet || {};
-  const recent = d.recent || [];
-  const meta = [w.kind, w.provider, w.currency].filter(Boolean).join(" · ");
-  const rows = recent.length
-    ? html`<div class="ya-card">
-        <div class="ya-kpi-label">Recent</div>
-        ${raw(recent.map(txRow).join(""))}
-      </div>`
-    : html`<p class="ya-muted">No transactions in this wallet yet.</p>`;
-  return html`<div class="ya-root">
-    <div>
-      <div class="ya-kpi-value">${w.name || "Wallet"}</div>
-      <div class="ya-muted">${meta}</div>
-    </div>
-    <div class="ya-card ya-kpis">
-      ${raw(kpi("Balance", money(w.balance)))}
-      ${raw(kpi("Excluded", w.excludeFromTotal ? "yes" : "no"))}
-    </div>
-    ${raw(rows)}
-  </div>`;
-}
-
-function renderWalletTotals(d) {
-  const p = d.period || {};
-  const lines = (d.wallets || []).map(function (l) {
-    const excluded = l.excludeFromTotal ? html`<span class="ya-muted">excluded</span>` : "";
-    return html`<div class="ya-row">
-      <span>${(l.wallet || {}).name || "—"}</span>
-      <span class="ya-muted">${l.kind || ""}</span>
-      ${raw(excluded)}
-      <span class="ya-num">${money(l.closing)}</span>
+class WalletListView extends YasakuView {
+  render() {
+    const m = this.model;
+    if (!m || m.empty) return html`<p class="app-muted">No wallets yet.</p>`;
+    return html`<div class="app-card">
+      <div class="app-kpi-label">Wallets</div>
+      ${m.rows.map((r) => html`<div class="app-row">
+        <span>${r.name}</span>
+        <span class="app-muted">${r.meta}</span>
+        ${r.excluded ? html`<span class="app-muted">excluded</span>` : nothing}
+        ${r.archived ? html`<span class="app-muted">archived</span>` : nothing}
+        <span class="app-num">${r.balance}</span>
+      </div>`)}
     </div>`;
-  });
-  const period = p.name
-    ? html`<div class="ya-muted">${p.name} · ${dateRange(p.startDate, p.endDate)}</div>`
-    : "";
-  return html`<div class="ya-root">
-    <div>
-      <div class="ya-kpi-value">Wallet totals</div>
-      ${raw(period)}
-    </div>
-    <div class="ya-card ya-kpis">
-      ${raw(kpi("Spendable", money(d.spendableTotal)))}
-      ${raw(kpi("Total", money(d.total)))}
-    </div>
-    <div class="ya-card ya-kpis">
-      ${raw(kpi("Income", money(d.income)))}
-      ${raw(kpi("Expense", money(d.expense)))}
-      ${raw(kpi("Net", money(d.net)))}
-    </div>
-    ${raw(lines.length ? html`<div class="ya-card">${raw(lines.join(""))}</div>` : "")}
-  </div>`;
+  }
 }
 
-registerView("list_wallets", renderWalletList);
-registerView("get_wallet", renderWalletDetail);
-registerView("wallet_totals", renderWalletTotals);
+class WalletDetailView extends YasakuView {
+  render() {
+    const m = this.model;
+    if (!m) return nothing;
+    return html`<div class="app-stack">
+      ${heading(m.name, m.meta)}
+      ${kpiCard(m.kpis)}
+      ${m.recent.length
+        ? html`<div class="app-card"><div class="app-kpi-label">Recent</div>${m.recent.map(txRow)}</div>`
+        : html`<p class="app-muted">No transactions in this wallet yet.</p>`}
+    </div>`;
+  }
+}
+
+class WalletTotalsView extends YasakuView {
+  render() {
+    const m = this.model;
+    if (!m) return nothing;
+    return html`<div class="app-stack">
+      ${heading("Wallet totals", m.period)}
+      ${kpiCard(m.totals)}
+      ${kpiCard(m.flows)}
+      ${m.rows.length
+        ? html`<div class="app-card">${m.rows.map((r) => html`<div class="app-row">
+            <span>${r.name}</span>
+            <span class="app-muted">${r.kind}</span>
+            ${r.excluded ? html`<span class="app-muted">excluded</span>` : nothing}
+            <span class="app-num">${r.closing}</span>
+          </div>`)}</div>`
+        : nothing}
+    </div>`;
+  }
+}
+
+customElements.define("yasaku-wallet-list", WalletListView);
+customElements.define("yasaku-wallet-detail", WalletDetailView);
+customElements.define("yasaku-wallet-totals", WalletTotalsView);
+
+registerView("list_wallets", walletListModel, (m) => html`<yasaku-wallet-list .model=${m}></yasaku-wallet-list>`);
+registerView("get_wallet", walletDetailModel, (m) => html`<yasaku-wallet-detail .model=${m}></yasaku-wallet-detail>`);
+registerView("wallet_totals", walletTotalsModel, (m) => html`<yasaku-wallet-totals .model=${m}></yasaku-wallet-totals>`);

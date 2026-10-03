@@ -47,9 +47,7 @@ func (r *pgSettingsRow) toSettings() *Settings {
 	}
 }
 
-// txAcquire enrolls in the caller's unit of work when one is active, so a Save never opens a
-// second transaction. SECURITY: the tenant is resolved first, so a missing one is a MissingError
-// rather than a zero OrgID silently becoming the upsert guard's predicate.
+// SECURITY: resolves the tenant first, so a missing one is a MissingError, never a zero OrgID guard.
 func (s *postgresStore) txAcquire(ctx context.Context) (*sql.Tx, bool, tenant.Context, error) {
 	tc, err := tenant.From(ctx)
 	if err != nil {

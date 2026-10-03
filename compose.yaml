@@ -26,8 +26,17 @@ services:
       MP_SMTP_AUTH_ACCEPT_ANY: "true"
       MP_SMTP_AUTH_ALLOW_INSECURE: "true"
     ports:
-      - "1025:1025"  # SMTP
-      - "8025:8025"  # web UI at http://localhost:8025
+      - "1025:1025" # SMTP
+      - "8025:8025" # web UI at http://localhost:8025
+
+  nats:
+    image: nats:2.15-alpine
+    restart: unless-stopped
+    command: ["-js", "-sd", "/data", "--auth", "yasaku-dev"]
+    ports:
+      - "4222:4222"
+    volumes:
+      - ./docker/data/nats:/data
 
   yasaku:
     build:
@@ -38,10 +47,13 @@ services:
         BUILD_TIME: unknown
     image: yasaku:dev
     restart: unless-stopped
+    stop_grace_period: 20s
     depends_on:
       postgres:
         condition: service_healthy
       mailpit:
+        condition: service_started
+      nats:
         condition: service_started
     ports:
       - "5150:5150"
@@ -61,6 +73,10 @@ services:
       YASAKU_MAIL_SMTP_USER: ""
       YASAKU_MAIL_SMTP_PASS: ""
       YASAKU_MAIL_SMTP_TLS: "false"
+
+      YASAKU_QUEUE_ENABLED: "true"
+      YASAKU_QUEUE_URL: "nats://nats:4222"
+      YASAKU_QUEUE_TOKEN: "yasaku-dev"
 
       YASAKU_GENESIS_EMAIL: admin@yasaku.local
       YASAKU_GENESIS_PASSWORD: change-me

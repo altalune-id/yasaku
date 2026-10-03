@@ -1,6 +1,8 @@
 package category
 
 // DefaultKeyPrefix is the i18n message-id prefix every default category name resolves under.
+//
+//i18n:use category.default.*
 const DefaultKeyPrefix = "category.default."
 
 // DefaultNameKey returns the i18n message id carrying the localized name for a default's key.

@@ -1,8 +1,6 @@
 package apperror
 
-// Error code registry: <DOM><NNN>, a three-letter domain mnemonic plus a per-domain sequence.
-// Codes are quoted by users off an error page, so they are append-only: never renumber, never reuse a retired code.
-// NNN 900-999 is reserved per domain for unexpected or internal failures.
+// Error code registry: <DOM><NNN>, a domain mnemonic plus a per-domain sequence. NOTE: append-only — never renumber, never reuse a retired code; 900-999 is reserved per domain for internal failures.
 const (
 	CodeTenantMissing   = "GEN001"
 	CodeUnauthenticated = "GEN002"
@@ -32,11 +30,13 @@ const (
 	CodeOrgSystemProtected   = "ORG008"
 	CodeOrgSelfRemoval       = "ORG009"
 	CodeOrgOwnerRemoval      = "ORG010"
+	CodeOrgManagerRequired   = "ORG011"
 
 	CodeProjectNotFound        = "PRJ001"
 	CodeProjectAlreadyExists   = "PRJ002"
 	CodeProjectInvalidSlug     = "PRJ003"
 	CodeProjectSystemProtected = "PRJ004"
+	CodeProjectUnresolved      = "PRJ005"
 
 	CodeInviteNotFound    = "INV001"
 	CodeInviteExpired     = "INV002"
@@ -64,6 +64,7 @@ const (
 	CodePostInvalidSlug      = "BLG004"
 	CodePostInvalidBody      = "BLG005"
 	CodePostCategoryRequired = "BLG006"
+	CodePostStaleVersion     = "BLG007"
 
 	CodeCategoryNotFound      = "CAT001"
 	CodeCategoryAlreadyExists = "CAT002"
@@ -105,6 +106,7 @@ const (
 	CodeTransactionPeriodNotAdjacent    = "TXN009"
 	CodeTransactionInvalidNote          = "TXN010"
 	CodeTransactionSystemRecorded       = "TXN011"
+	CodeTransactionAuthorMissing        = "TXN012"
 
 	CodePeriodNotFound        = "PRD001"
 	CodePeriodInvalidName     = "PRD002"
@@ -113,9 +115,29 @@ const (
 	CodePeriodAlreadyClosed   = "PRD005"
 	CodePeriodNotClosed       = "PRD006"
 	CodePeriodNotLatestClosed = "PRD007"
+	CodePeriodAuthorMissing   = "PRD008"
 
 	CodeMCPUnauthenticated = "MCP001"
-	CodeMCPForbiddenScope  = "MCP002"
-	CodeMCPUnknownUser     = "MCP003"
-	CodeMCPNotMember       = "MCP004"
+
+	CodeAPIKeyUnknownScope       = "APK001"
+	CodeAPIKeyRetiredScope       = "APK002"
+	CodeAPIKeyScopeLevel         = "APK003"
+	CodeAPIKeyEmptyGrant         = "APK004"
+	CodeAPIKeyGrantConflict      = "APK005"
+	CodeAPIKeyBoundToProject     = "APK006"
+	CodeAPIKeyAlreadyAllProjects = "APK007"
+	CodeAPIKeyRevoked            = "APK008"
+	CodeAPIKeyProjectNotInOrg    = "APK009"
+	CodeAPIKeyExpiryRequired     = "APK010"
+	CodeAPIKeyExpiryInPast       = "APK011"
+	CodeAPIKeyExpiryTooLong      = "APK012"
+
+	CodeWebhookEndpointNotFound     = "WHK001"
+	CodeWebhookInvalidURL           = "WHK002"
+	CodeWebhookInvalidEventTypes    = "WHK003"
+	CodeWebhookEndpointLimit        = "WHK004"
+	CodeWebhookDeliveryNotRetryable = "WHK005"
+	CodeWebhookDeliveryNotFound     = "WHK006"
+	CodeWebhookEndpointInactive     = "WHK007"
+	CodeWebhookSecretConflict       = "WHK008"
 )

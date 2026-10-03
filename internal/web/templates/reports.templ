@@ -103,7 +103,7 @@ templ reportPeriodPicker(d web.LayoutData, v ReportsView) {
 		<select
 			id="report-period"
 			name="period"
-			onchange="this.form.submit()"
+			data-autosubmit
 			class="min-w-[10rem] rounded-md border border-border bg-card px-3 py-1.5 text-sm text-foreground shadow-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
 		>
 			for _, o := range v.Periods {
@@ -261,6 +261,9 @@ templ ReportsPage(d web.LayoutData, v ReportsView) {
 			if v.HasCharts() {
 				@chartAssets(d)
 			}
+		}
+		if (v.NoPeriod || !v.HasCharts()) && len(v.Periods) > 0 {
+			@chartsScript(d)
 		}
 	</section>
 }

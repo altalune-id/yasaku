@@ -5,9 +5,6 @@ import (
 	"altalune.id/yasaku/internal/web/icons"
 )
 
-// easyMDEVersion pins the markdown editor loaded on the post form. Keep in step with scripts/ui-vendor.sh.
-const easyMDEVersion = "2.21.0"
-
 type PostTagOption struct {
 	ID       string
 	Name     string
@@ -89,10 +86,14 @@ templ postQuickTag(d web.LayoutData, v PostFormView) {
 			<button
 				type="button"
 				hx-post={ d.ProjectPath(v.ProjectSlug, "/tags/quick") }
+				hx-nonce={ d.Nonce }
 				hx-include="#quick-tag-fields, #post-tag-picker"
 				hx-target="#post-tag-picker"
 				hx-swap="outerHTML"
-				hx-on::after-request="document.getElementById('quick-tag-name').value = ''"
+				data-clear-on-success="#quick-tag-name"
+				hx-status:4xx="target:#hx-error swap:innerHTML"
+				hx-status:5xx="target:#hx-error swap:innerHTML"
+				hx-disable="find button, find input"
 				class="mt-2 w-full rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90"
 			>
 				{ d.Tr("blog.post_quick_tag_add") }
@@ -102,20 +103,15 @@ templ postQuickTag(d web.LayoutData, v PostFormView) {
 }
 
 templ postEditorAssets(d web.LayoutData) {
-	if d.UIMode == web.UIModeVendored {
-		<link rel="stylesheet" href={ d.Static("easymde.min.css") }/>
-		<script src={ d.Static("easymde.min.js") }></script>
-	} else {
-		<link rel="stylesheet" href={ "https://cdn.jsdelivr.net/npm/easymde@" + easyMDEVersion + "/dist/easymde.min.css" }/>
-		<script src={ "https://cdn.jsdelivr.net/npm/easymde@" + easyMDEVersion + "/dist/easymde.min.js" }></script>
-	}
+	<link rel="stylesheet" href={ d.Static("easymde.min.css") }/>
+	<script src={ d.Static("easymde.min.js") } nonce={ d.Nonce }></script>
 	<style>
 		/* NOTE: EasyMDE labels its toolbar with Font Awesome classes; that font is not vendored, so show the aria-label instead. */
 		.editor-toolbar button > i { display: none; }
 		.editor-toolbar button { width: auto; padding: 0 6px; }
 		.editor-toolbar button::after { content: attr(aria-label); font-size: 11px; }
 	</style>
-	<script>
+	<script nonce={ d.Nonce }>
 		(function() {
 			var ta = document.getElementById('post-body');
 			if (!ta || typeof EasyMDE === 'undefined') return;
@@ -245,13 +241,19 @@ templ PostFormPage(d web.LayoutData, v PostFormView) {
 						id="post-preview-button"
 						type="button"
 						hx-post={ d.ProjectPath(v.ProjectSlug, "/posts/preview") }
+						hx-nonce={ d.Nonce }
 						hx-include="#post-body"
 						hx-target="#post-preview"
 						hx-swap="outerHTML"
 						hx-trigger="click, preview-refresh"
+						hx-indicator="#post-preview-spinner"
+						hx-status:4xx="target:#hx-error swap:innerHTML"
+						hx-status:5xx="target:#hx-error swap:innerHTML"
+						hx-disable="find button, find input"
 						class="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-foreground/90 hover:bg-muted"
 					>
 						{ d.Tr("blog.post_preview") }
+						<span id="post-preview-spinner" class="htmx-indicator ml-1.5 inline-block align-middle">…</span>
 					</button>
 					<div class="mt-2 rounded-lg border border-border bg-card p-4 shadow-sm">
 						@PostPreviewFragment(d, v.PreviewHTML)

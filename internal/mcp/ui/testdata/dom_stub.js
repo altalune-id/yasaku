@@ -1,26 +1,16 @@
-// Minimal DOM for goja: enough to mount boot.js and dispatch synthetic events.
+// NOTE: enough DOM for boot.js only — the Lit render layer is covered by render_browser_test.go, not by this stub.
 (function () {
   function El(tag, attrs) {
     this.tagName = tag || "div";
     this.attrs = Object.assign(Object.create(null), attrs || {});
     this.children = [];
-    this.innerHTML = "";
     this.disabled = false;
-    this.listeners = Object.create(null);
   }
   El.prototype.getAttribute = function (k) {
     return k in this.attrs ? this.attrs[k] : null;
   };
-  El.prototype.addEventListener = function (type, fn) {
-    (this.listeners[type] = this.listeners[type] || []).push(fn);
-  };
-  El.prototype.dispatch = function (type, ev) {
-    const ls = this.listeners[type] || [];
-    for (let i = 0; i < ls.length; i++) ls[i](ev);
-  };
   El.prototype.matches = function (sel) {
     if (sel === "[name]") return this.attrs["name"] !== undefined;
-    if (sel === "[data-action]") return this.attrs["data-action"] !== undefined;
     if (sel === "form") return this.tagName === "form";
     return false;
   };
@@ -45,6 +35,8 @@
   };
 
   const root = new El("div", { id: "root" });
+  root.appendChild = function (child) { this.children.push(child); child.parent = this; };
+
   globalThis.__root = root;
   globalThis.__mkEl = function (attrs, children, tag) {
     const e = new El(tag || "button", attrs);
@@ -56,6 +48,16 @@
   globalThis.document = {
     getElementById: function (id) {
       return id === "root" ? root : null;
+    },
+    createElement: function (tag) {
+      const e = new El(tag);
+      e.status = "";
+      e.message = "";
+      e.detail = "";
+      e.view = null;
+      e.onaction = null;
+      if (tag === "yasaku-app") globalThis.__appEl = e;
+      return e;
     },
   };
 })();

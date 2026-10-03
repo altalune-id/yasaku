@@ -58,9 +58,9 @@ func (s *postgresStore) Save(ctx context.Context, u *User) error {
 	if _, err := stmt.ExecContext(ctx, s.writer(ctx)); err != nil {
 		if constraint, ok := isPGUniqueViolation(err); ok {
 			if strings.HasSuffix(constraint, "users_idp_idx") {
-				return idpConflict(u)
+				return &AlreadyExistsError{Field: "idp_subject", Value: u.IDPSubject}
 			}
-			return emailConflict(u)
+			return &AlreadyExistsError{Field: "email", Value: u.Email}
 		}
 		return fmt.Errorf("user.postgres.Save: %w", err)
 	}
@@ -82,6 +82,7 @@ func (s *postgresStore) UpdateLocale(ctx context.Context, id uuid.UUID, locale s
 	return nil
 }
 
+// NOTE: users_idp_idx is partial on idp_issuer IS NOT NULL, so "" here would collide every password user.
 func nullableStringExpr(v string) postgres.StringExpression {
 	if v == "" {
 		return pgent.NullText()

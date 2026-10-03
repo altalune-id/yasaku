@@ -31,7 +31,7 @@ func (s *postgresStore) Save(ctx context.Context, w *Wallet) error {
 				s.table.ExcludeFromTotal.SET(postgres.Bool(w.ExcludeFromTotal)),
 				s.table.ArchivedAt.SET(pgNullableTimeExpr(w.ArchivedAt)),
 				s.table.UpdatedAt.SET(postgres.TimestampzT(w.UpdatedAt.UTC())),
-			).WHERE(s.table.OrgID.EQ(postgres.UUID(tc.OrgID))),
+			).WHERE(s.table.OrgID.EQ(postgres.UUID(tc.OrgID)).AND(s.table.ProjectID.EQ(postgres.UUID(tc.ProjectID)))),
 		)
 	res, execErr := stmt.ExecContext(ctx, tx)
 	if execErr != nil {
@@ -57,10 +57,11 @@ func (s *postgresStore) Delete(ctx context.Context, id uuid.UUID) error {
 	if err != nil {
 		return err
 	}
-	// SECURITY: org predicate, not RLS alone — a BYPASSRLS role would otherwise delete another org's row.
+	// SECURITY: org and project predicates, not RLS alone — a BYPASSRLS role would otherwise delete another tenant's row.
 	stmt := s.table.DELETE().
 		WHERE(s.table.ID.EQ(postgres.UUID(id)).
-			AND(s.table.OrgID.EQ(postgres.UUID(tc.OrgID))))
+			AND(s.table.OrgID.EQ(postgres.UUID(tc.OrgID))).
+			AND(s.table.ProjectID.EQ(postgres.UUID(tc.ProjectID))))
 	res, execErr := stmt.ExecContext(ctx, tx)
 	if execErr != nil {
 		if typed := translatePgDeleteError(execErr, id.String()); typed != nil {

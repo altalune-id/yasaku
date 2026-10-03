@@ -16,10 +16,11 @@ type Blog struct {
 	mu   sync.Mutex
 	data map[uuid.UUID]*blog.Post
 
-	SaveFn   func(ctx context.Context, p *blog.Post) error
+	SaveFn   func(ctx context.Context, p *blog.Post, ifVersion int) error
 	ByIDFn   func(ctx context.Context, id uuid.UUID) (*blog.Post, error)
+	BySlugFn func(ctx context.Context, projectID uuid.UUID, slug string) (*blog.Post, error)
 	ListFn   func(ctx context.Context, orgID, projectID uuid.UUID, opts blog.ListOpts) ([]*blog.Post, error)
-	DeleteFn func(ctx context.Context, id uuid.UUID) error
+	DeleteFn func(ctx context.Context, id uuid.UUID, ifVersion int) error
 }
 
 // NewBlog returns an empty in-memory blog.Store.
@@ -41,9 +42,9 @@ func (f *Blog) Len() int {
 	return len(f.data)
 }
 
-func (f *Blog) Save(ctx context.Context, p *blog.Post) error {
+func (f *Blog) Save(ctx context.Context, p *blog.Post, ifVersion int) error {
 	if f.SaveFn != nil {
-		return f.SaveFn(ctx, p)
+		return f.SaveFn(ctx, p, ifVersion)
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -52,7 +53,15 @@ func (f *Blog) Save(ctx context.Context, p *blog.Post) error {
 			return &blog.AlreadyExistsError{Slug: p.Slug}
 		}
 	}
-	f.data[p.ID] = clonePost(p)
+	stored := clonePost(p)
+	// NOTE: both real stores insert with the caller's version and, on conflict, set version = version + 1.
+	if existing, ok := f.data[p.ID]; ok {
+		if ifVersion != 0 && existing.Version != ifVersion {
+			return &blog.StaleVersionError{Want: ifVersion, Got: existing.Version}
+		}
+		stored.Version = existing.Version + 1
+	}
+	f.data[p.ID] = stored
 	return nil
 }
 
@@ -67,6 +76,20 @@ func (f *Blog) ByID(ctx context.Context, id uuid.UUID) (*blog.Post, error) {
 		return nil, &blog.NotFoundError{ID: id.String()}
 	}
 	return clonePost(p), nil
+}
+
+func (f *Blog) BySlug(ctx context.Context, projectID uuid.UUID, slug string) (*blog.Post, error) {
+	if f.BySlugFn != nil {
+		return f.BySlugFn(ctx, projectID, slug)
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, p := range f.data {
+		if p.ProjectID == projectID && p.Slug == slug {
+			return clonePost(p), nil
+		}
+	}
+	return nil, &blog.NotFoundError{ID: slug}
 }
 
 func (f *Blog) List(ctx context.Context, orgID, projectID uuid.UUID, opts blog.ListOpts) ([]*blog.Post, error) {
@@ -97,14 +120,18 @@ func (f *Blog) List(ctx context.Context, orgID, projectID uuid.UUID, opts blog.L
 	return out, nil
 }
 
-func (f *Blog) Delete(ctx context.Context, id uuid.UUID) error {
+func (f *Blog) Delete(ctx context.Context, id uuid.UUID, ifVersion int) error {
 	if f.DeleteFn != nil {
-		return f.DeleteFn(ctx, id)
+		return f.DeleteFn(ctx, id, ifVersion)
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if _, ok := f.data[id]; !ok {
+	existing, ok := f.data[id]
+	if !ok {
 		return &blog.NotFoundError{ID: id.String()}
+	}
+	if ifVersion != 0 && existing.Version != ifVersion {
+		return &blog.StaleVersionError{Want: ifVersion, Got: existing.Version}
 	}
 	delete(f.data, id)
 	return nil

@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -177,6 +178,42 @@ func TestPostgres_DefinerWrappers_ReadWithoutTenantScope(t *testing.T) {
 	require.WithinDuration(t, f.now, got.CreatedAt, time.Second)
 }
 
+func TestPostgres_DefinerWrappers_SystemOrgWithoutTenantScope(t *testing.T) {
+	f := newDefinerFixture(t)
+	f.seedTiedOrgs(t, sortedOrgIDs(t, 3, f.orgID))
+
+	got, err := f.store.SystemOrg(t.Context())
+	require.NoError(t, err, "SystemOrg must not need a tenant scope the caller cannot have yet")
+	require.Equal(t, f.orgID, got.ID, "only the system org may be returned, never a non-system neighbour")
+	require.Equal(t, f.slug, got.Slug)
+	require.Equal(t, "Acme", got.Name)
+	require.Equal(t, f.userID, got.OwnerID)
+	require.True(t, got.System)
+	require.WithinDuration(t, f.now, got.CreatedAt, time.Second)
+}
+
+func TestPostgres_DefinerWrappers_SystemOrgInsideCallerTransaction(t *testing.T) {
+	f := newDefinerFixture(t)
+
+	other := tenant.Context{OrgID: uuid.New(), UserID: f.userID}
+	require.NoError(t, tenant.RunInTx(t.Context(), tenant.NewPgConn(f.appConn), other, func(ctx context.Context) error {
+		got, err := f.store.SystemOrg(ctx)
+		require.NoError(t, err)
+		require.Equal(t, f.orgID, got.ID, "the wrapper must lift RLS even under a scope naming another org")
+		return nil
+	}))
+}
+
+func TestPostgres_DefinerWrappers_SystemOrgMissingIsNotFound(t *testing.T) {
+	f := newDefinerFixture(t)
+	_, err := f.migDB.ExecContext(t.Context(),
+		"UPDATE public."+f.prefix+"orgs SET system = false WHERE id = $1", f.orgID)
+	require.NoError(t, err)
+
+	_, err = f.store.SystemOrg(t.Context())
+	require.True(t, org.IsNotFoundError(err), "want NotFoundError, got %T: %v", err, err)
+}
+
 func TestPostgres_DefinerWrappers_BySlugMissingIsNotFound(t *testing.T) {
 	f := newDefinerFixture(t)
 
@@ -268,8 +305,6 @@ func sortedOrgIDs(t *testing.T, n int, extra ...uuid.UUID) []uuid.UUID {
 	return ids
 }
 
-// seedTiedOrgs inserts orgs and memberships sharing the fixture's byte-identical created_at, in
-// descending id order so heap order is the opposite of the order the wrapper must return.
 func (f *definerFixture) seedTiedOrgs(t *testing.T, ids []uuid.UUID) {
 	t.Helper()
 	for i := len(ids) - 1; i >= 0; i-- {
@@ -306,5 +341,80 @@ func TestPostgres_DefinerWrappers_TiedCreatedAtIsOrderedByID(t *testing.T) {
 			got = append(got, o.ID)
 		}
 		require.Equal(t, ids, got, "read %d returned a different order for rows tied on created_at", read)
+	}
+}
+
+func (f *definerFixture) seedOwners(t *testing.T, n int) []uuid.UUID {
+	t.Helper()
+	ids := make([]uuid.UUID, 0, n)
+	for range n {
+		id := uuid.New()
+		_, err := f.migDB.ExecContext(t.Context(),
+			"INSERT INTO public."+f.prefix+"users (id, email, name, avatar_url, is_admin, created_at, updated_at) VALUES ($1,$2,'','',false,$3,$3)",
+			id, id.String()+"@x.co", f.now)
+		require.NoError(t, err)
+		ids = append(ids, id)
+	}
+	return ids
+}
+
+func TestPostgres_SecondSystemOrgIsRefused(t *testing.T) {
+	f := newDefinerFixture(t)
+	owner := f.seedOwners(t, 1)[0]
+
+	second, err := org.NewOrg("second-"+f.slug, "Second", owner)
+	require.NoError(t, err)
+	second.System = true
+	err = f.store.Save(tenant.Into(t.Context(), tenant.Context{OrgID: second.ID, UserID: owner}), second)
+	require.True(t, org.IsSystemOrgExistsError(err), "want SystemOrgExistsError, got %T: %v", err, err)
+}
+
+func TestPostgres_ConcurrentBootstrapsLeaveOneSystemOrg(t *testing.T) {
+	for _, sameSlug := range []bool{false, true} {
+		t.Run(fmt.Sprintf("sameSlug=%v", sameSlug), func(t *testing.T) {
+			f := newDefinerFixture(t)
+			f.assertConcurrentBootstrapsConverge(t, sameSlug)
+		})
+	}
+}
+
+func (f *definerFixture) assertConcurrentBootstrapsConverge(t *testing.T, sameSlug bool) {
+	t.Helper()
+	_, err := f.migDB.ExecContext(t.Context(),
+		"UPDATE public."+f.prefix+"orgs SET system = false WHERE id = $1", f.orgID)
+	require.NoError(t, err)
+	owners := f.seedOwners(t, 6)
+	svc := newDefinerService(t, f)
+
+	results := make([]*org.Org, len(owners))
+	errs := make([]error, len(owners))
+	var wg, ready sync.WaitGroup
+	start := make(chan struct{})
+	ready.Add(len(owners))
+	for i, owner := range owners {
+		slug := fmt.Sprintf("race-%d-%s", i, f.slug)
+		if sameSlug {
+			slug = "race-" + f.slug
+		}
+		wg.Go(func() {
+			ready.Done()
+			<-start
+			results[i], errs[i] = svc.BootstrapSingleton(context.Background(), slug, "Race", owner)
+		})
+	}
+	ready.Wait()
+	close(start)
+	wg.Wait()
+
+	for i := range owners {
+		require.NoError(t, errs[i], "bootstrap %d must converge on the winner, not fail", i)
+		require.Equal(t, results[0].ID, results[i].ID, "every bootstrap must return the one system org")
+	}
+	var systems int
+	require.NoError(t, f.migDB.QueryRowContext(t.Context(),
+		"SELECT count(*) FROM public."+f.prefix+"orgs WHERE system").Scan(&systems))
+	require.Equal(t, 1, systems)
+	for _, owner := range owners {
+		f.assertOrgAndOwnerCommitted(t, results[0], owner)
 	}
 }

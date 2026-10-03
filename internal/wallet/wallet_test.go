@@ -143,9 +143,7 @@ func TestUpdate(t *testing.T) {
 	})
 }
 
-// TestRenameAllowsArchived pins the escape from a name collision: an archived wallet whose name
-// has since been taken by a new active wallet can only be unarchived after it is renamed, so
-// Rename must stay available while archived. Update is the operation ArchivedError guards.
+// TestRenameAllowsArchived pins that Rename stays available while archived, the only escape from a name collision on unarchive.
 func TestRenameAllowsArchived(t *testing.T) {
 	w, err := wallet.New(uuid.New(), uuid.New(), params())
 	require.NoError(t, err)

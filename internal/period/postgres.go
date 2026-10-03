@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/go-jet/jet/v2/postgres"
@@ -17,8 +18,7 @@ import (
 	"altalune.id/yasaku/internal/platform/tenant"
 )
 
-// NOTE: the assertion is load-bearing — Service.scopedLocked type-asserts LockingStore and silently
-// falls back to the non-locking read, so a renamed method would drop the FOR UPDATE with a green build.
+// NOTE: load-bearing — Service.scopedLocked falls back to a non-locking read when LockingStore is missing.
 var _ LockingStore = (*postgresStore)(nil)
 
 type postgresStore struct {
@@ -72,13 +72,14 @@ func (r *pgPeriodRow) toPeriod() (*Period, error) {
 }
 
 type pgClosingRow struct {
-	ID        uuid.UUID `alias:"period_closings.id"`
-	OrgID     uuid.UUID `alias:"period_closings.org_id"`
-	ProjectID uuid.UUID `alias:"period_closings.project_id"`
-	PeriodID  uuid.UUID `alias:"period_closings.period_id"`
-	ClosedAt  time.Time `alias:"period_closings.closed_at"`
-	ClosedBy  uuid.UUID `alias:"period_closings.closed_by"`
-	Snapshot  jsonDoc   `alias:"period_closings.snapshot"`
+	ID            uuid.UUID  `alias:"period_closings.id"`
+	OrgID         uuid.UUID  `alias:"period_closings.org_id"`
+	ProjectID     uuid.UUID  `alias:"period_closings.project_id"`
+	PeriodID      uuid.UUID  `alias:"period_closings.period_id"`
+	ClosedAt      time.Time  `alias:"period_closings.closed_at"`
+	ClosedBy      *uuid.UUID `alias:"period_closings.closed_by"`
+	ClosedByKeyID *uuid.UUID `alias:"period_closings.closed_by_key_id"`
+	Snapshot      jsonDoc    `alias:"period_closings.snapshot"`
 }
 
 func (r *pgClosingRow) toClosing() (*Closing, error) {
@@ -87,12 +88,13 @@ func (r *pgClosingRow) toClosing() (*Closing, error) {
 		return nil, err
 	}
 	c := &Closing{
-		ID:        r.ID,
-		OrgID:     r.OrgID,
-		ProjectID: r.ProjectID,
-		PeriodID:  r.PeriodID,
-		ClosedAt:  r.ClosedAt.UTC(),
-		ClosedBy:  r.ClosedBy,
+		ID:            r.ID,
+		OrgID:         r.OrgID,
+		ProjectID:     r.ProjectID,
+		PeriodID:      r.PeriodID,
+		ClosedAt:      r.ClosedAt.UTC(),
+		ClosedBy:      derefUUID(r.ClosedBy),
+		ClosedByKeyID: derefUUID(r.ClosedByKeyID),
 	}
 	if snap != nil {
 		c.Snapshot = *snap
@@ -106,6 +108,21 @@ func utcPtr(t *time.Time) *time.Time {
 	}
 	u := t.UTC()
 	return &u
+}
+
+func derefUUID(id *uuid.UUID) uuid.UUID {
+	if id == nil {
+		return uuid.Nil
+	}
+	return *id
+}
+
+// NOTE: only a key-authored closing writes closed_by as NULL; a legacy closing stored with the nil uuid keeps it.
+func pgAuthorExprs(user, key uuid.UUID) (userExpr, keyExpr postgres.StringExpression) {
+	if key != uuid.Nil {
+		return pgent.NullUUID(), postgres.UUID(key)
+	}
+	return postgres.UUID(user), pgent.NullUUID()
 }
 
 func pgDate(d civil.Date) postgres.DateExpression { return postgres.Date(d.Year, d.Month, d.Day) }
@@ -169,6 +186,9 @@ func translatePgError(err error, p *Period) error {
 	}
 	if pgErr.Code == "23505" {
 		return newOverlapError(p)
+	}
+	if pgErr.Code == "23514" && strings.Contains(pgErr.ConstraintName, "author_one") {
+		return &AuthorMissingError{}
 	}
 	return nil
 }

@@ -251,9 +251,7 @@ func isSQLiteUniqueViolation(err error) bool {
 	return false
 }
 
-// NOTE: SQLite reports an ON DELETE RESTRICT refusal as SQLITE_CONSTRAINT_TRIGGER (1811),
-// because RESTRICT is implemented as an internal trigger; only an immediate FK failure
-// (a child row naming a missing parent) reports SQLITE_CONSTRAINT_FOREIGNKEY (787).
+// NOTE: SQLite reports an ON DELETE RESTRICT refusal as SQLITE_CONSTRAINT_TRIGGER (1811), not SQLITE_CONSTRAINT_FOREIGNKEY (787).
 func isSQLiteForeignKeyViolation(err error) bool {
 	var sqliteErr *sqlitedrv.Error
 	if errors.As(err, &sqliteErr) {

@@ -106,8 +106,7 @@ func New(orgID, projectID uuid.UUID, p Params) (*Wallet, error) {
 	}, nil
 }
 
-// Rename replaces the display name; it stays available while archived so a wallet whose name was
-// taken after archiving can be renamed out of the way and then unarchived.
+// Rename replaces the display name; it stays available while archived so a name collision can be renamed away before unarchiving.
 func (w *Wallet) Rename(name string) error {
 	clean, err := cleanName(name)
 	if err != nil {

@@ -5,12 +5,12 @@ import "altalune.id/yasaku/internal/web"
 const echartsVersion = "6.1.0"
 
 templ chartAssets(d web.LayoutData) {
-	if d.UIMode == web.UIModeVendored {
-		<script defer src={ d.Static("echarts.min.js") }></script>
-	} else {
-		<script defer src={ "https://cdn.jsdelivr.net/npm/echarts@" + echartsVersion + "/dist/echarts.min.js" }></script>
-	}
-	<script defer src={ d.Static("charts.js") }></script>
+	<script defer src={ d.Static("echarts.min.js") } nonce={ d.Nonce }></script>
+	@chartsScript(d)
+}
+
+templ chartsScript(d web.LayoutData) {
+	<script defer src={ d.Static("charts.js") } nonce={ d.Nonce }></script>
 }
 
 // Chart renders a container plus its JSON payload; charts.js draws it.

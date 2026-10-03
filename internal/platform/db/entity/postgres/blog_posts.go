@@ -17,6 +17,7 @@ type BlogPosts struct {
 	FirstPublishedAt postgres.ColumnTimestampz
 	CreatedAt        postgres.ColumnTimestampz
 	UpdatedAt        postgres.ColumnTimestampz
+	Version          postgres.ColumnInteger
 
 	AllColumns postgres.ColumnList
 }
@@ -38,7 +39,8 @@ func NewBlogPosts(schema, tablePrefix string) *BlogPosts {
 		firstPublishedAt = postgres.TimestampzColumn("first_published_at")
 		createdAt        = postgres.TimestampzColumn("created_at")
 		updatedAt        = postgres.TimestampzColumn("updated_at")
-		all              = postgres.ColumnList{id, orgID, projectID, categoryID, title, slug, bodyMarkdown, status, firstPublishedAt, createdAt, updatedAt}
+		version          = postgres.IntegerColumn("version")
+		all              = postgres.ColumnList{id, orgID, projectID, categoryID, title, slug, bodyMarkdown, status, firstPublishedAt, createdAt, updatedAt, version}
 	)
 	return &BlogPosts{
 		Table:            postgres.NewTable(schema, tablePrefix+"blog_posts", "blog_posts", all...),
@@ -53,6 +55,7 @@ func NewBlogPosts(schema, tablePrefix string) *BlogPosts {
 		FirstPublishedAt: firstPublishedAt,
 		CreatedAt:        createdAt,
 		UpdatedAt:        updatedAt,
+		Version:          version,
 		AllColumns:       all,
 	}
 }

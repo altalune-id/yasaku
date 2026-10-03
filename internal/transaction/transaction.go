@@ -69,8 +69,7 @@ func (k Kind) IsUserRecorded() bool {
 	return k == KindIncome || k == KindExpense || k == KindTransfer
 }
 
-// Transaction is the aggregate root: one movement of money.
-// NOTE: Amount is always positive; the direction comes from Kind, never from the sign.
+// Transaction is the aggregate root: one movement of money. NOTE: Amount is always positive; Kind carries the direction.
 type Transaction struct {
 	ID         uuid.UUID
 	OrgID      uuid.UUID
@@ -83,42 +82,47 @@ type Transaction struct {
 	PeriodID   *uuid.UUID
 	Note       string
 	OccurredAt time.Time
-	CreatedBy  uuid.UUID
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
+	// CreatedBy is the recording user, or uuid.Nil when an API key recorded the row.
+	CreatedBy uuid.UUID
+	// CreatedByKeyID is the recording API key, or uuid.Nil when a user recorded the row.
+	CreatedByKeyID uuid.UUID
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
 }
 
 // NewParams carries the fields New needs beyond the tenant scope.
 type NewParams struct {
-	WalletID   uuid.UUID
-	ToWalletID *uuid.UUID
-	Kind       Kind
-	Amount     money.Amount
-	CategoryID *uuid.UUID
-	PeriodID   *uuid.UUID
-	Note       string
-	OccurredAt time.Time
-	CreatedBy  uuid.UUID
+	WalletID       uuid.UUID
+	ToWalletID     *uuid.UUID
+	Kind           Kind
+	Amount         money.Amount
+	CategoryID     *uuid.UUID
+	PeriodID       *uuid.UUID
+	Note           string
+	OccurredAt     time.Time
+	CreatedBy      uuid.UUID
+	CreatedByKeyID uuid.UUID
 }
 
 // New enforces the creation invariants and stamps id and timestamps.
 func New(orgID, projectID uuid.UUID, p NewParams) (*Transaction, error) {
 	now := time.Now().UTC()
 	t := &Transaction{
-		ID:         uuid.Must(uuid.NewV7()),
-		OrgID:      orgID,
-		ProjectID:  projectID,
-		WalletID:   p.WalletID,
-		ToWalletID: p.ToWalletID,
-		Kind:       p.Kind,
-		Amount:     p.Amount,
-		CategoryID: p.CategoryID,
-		PeriodID:   p.PeriodID,
-		Note:       strings.TrimSpace(p.Note),
-		OccurredAt: p.OccurredAt.UTC(),
-		CreatedBy:  p.CreatedBy,
-		CreatedAt:  now,
-		UpdatedAt:  now,
+		ID:             uuid.Must(uuid.NewV7()),
+		OrgID:          orgID,
+		ProjectID:      projectID,
+		WalletID:       p.WalletID,
+		ToWalletID:     p.ToWalletID,
+		Kind:           p.Kind,
+		Amount:         p.Amount,
+		CategoryID:     p.CategoryID,
+		PeriodID:       p.PeriodID,
+		Note:           strings.TrimSpace(p.Note),
+		OccurredAt:     p.OccurredAt.UTC(),
+		CreatedBy:      p.CreatedBy,
+		CreatedByKeyID: p.CreatedByKeyID,
+		CreatedAt:      now,
+		UpdatedAt:      now,
 	}
 	if err := t.validate(); err != nil {
 		return nil, err

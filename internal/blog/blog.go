@@ -30,7 +30,7 @@ const MaxBodyBytes = 64 << 10
 
 var nonSlug = regexp.MustCompile(`[^a-z0-9]+`)
 
-// Post is the aggregate root. Invariants live here.
+// Post is the aggregate root, where the invariants live.
 type Post struct {
 	ID               uuid.UUID
 	OrgID            uuid.UUID
@@ -44,6 +44,7 @@ type Post struct {
 	FirstPublishedAt *time.Time
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
+	Version          int
 }
 
 // New enforces creation invariants and returns an unpublished draft.
@@ -64,6 +65,7 @@ func New(orgID, projectID, categoryID uuid.UUID, title, slug, body string) (*Pos
 		Status:       StatusDraft,
 		CreatedAt:    now,
 		UpdatedAt:    now,
+		Version:      1,
 	}, nil
 }
 
@@ -112,7 +114,7 @@ func (p *Post) SetTags(ids []uuid.UUID) {
 	p.UpdatedAt = time.Now().UTC()
 }
 
-// ListOpts filters Store.List. Zero value returns every post in scope.
+// ListOpts filters Store.List, with the zero value returning every post in scope.
 type ListOpts struct {
 	Status     *Status
 	CategoryID *uuid.UUID

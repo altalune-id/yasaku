@@ -1,16 +1,10 @@
 version: "2"
 
-# yasaku's golangci-lint config. v2 schema.
 # Run locally:  golangci-lint run --timeout=3m ./...
-# CI runs the same command via golangci/golangci-lint-action.
 
 run:
   timeout: 3m
-  # Include test files in every linter's scope by default; exclude generated code below.
   tests: true
-  # Skip the module's generated code entirely — buf + templ own their output.
-  # golangci-lint auto-detects _templ.go and *.pb.go; we still list them explicitly
-  # so accidental hand-edits still surface as "we skipped this on purpose".
 
 linters:
   default: standard
@@ -32,7 +26,6 @@ linters:
 
   settings:
     gocritic:
-      # opinionated tags: performance/diagnostic are safe; disable style noise.
       enabled-tags:
         - diagnostic
         - performance
@@ -46,9 +39,6 @@ linters:
         - G104            # duplicates errcheck
         - G404            # weak random OK for non-crypto uses (invite-token uses crypto/rand explicitly)
     revive:
-      # NOTE: we don't enforce doc-comments on every exported symbol — the spec's
-      # comment policy is "no comments unless the WHY is non-obvious". Well-named
-      # identifiers self-document. We DO keep the substantive checks below.
       rules:
         - name: exported
           disabled: true
@@ -101,6 +91,7 @@ linters:
             - "**/internal/*/auth.go"
             - "**/internal/onboard/onboard.go"
             - "**/internal/*/blog.go"
+            - "**/internal/*/webhook.go"
             - "**/internal/*/ledger.go"
             - "**/internal/*/wallet.go"
             - "**/internal/*/category.go"
@@ -111,20 +102,19 @@ linters:
             - "**/internal/blog/*/{category,tag,store,errors}.go"
             - "**/internal/*/store.go"
             - "**/internal/*/errors.go"
-            # internal/cli holds Cobra command files whose names collide with the
-            # domain globs above (cli/todo.go, cli/auth.go, …); they are interfaces.
+            # Cobra command files, not domains, despite colliding names.
             - "!**/internal/cli/*.go"
-            # internal/mcp is the MCP transport surface, not a domain; its auth.go and
-            # errors.go collide with the domain globs above.
-            - "!**/internal/mcp/*.go"
-            # TODO: auth.go imports platform/session for session.Principal. Define a
-            # local principal type in the auth domain and drop the platform import,
-            # then remove this exclusion.
+            # TODO: define a local principal type in auth and drop the platform/session import.
             - "!**/internal/auth/auth.go"
+            # Surface S3, not a domain package.
+            - "!**/internal/dataplane/*.go"
+            # Surface S7, not a domain package.
+            - "!**/internal/mcp/auth.go"
           allow:
             - $gostd
             - github.com/google/uuid
             - altalune.id/yasaku/internal/platform/tenant
+            - altalune.id/yasaku/internal/platform/events
             - altalune.id/yasaku/internal/apperror
             - altalune.id/yasaku/gen/go/apperror/v1
             - altalune.id/yasaku/reqid
@@ -175,15 +165,6 @@ linters:
             - altalune.id/yasaku/httpclient
             - github.com/go-resty/resty/v2
             - go.opentelemetry.io/otel
-        mcp-purity:
-          list-mode: strict
-          files:
-            - "**/mcp/*.go"
-            - "!**/internal/mcp/*.go"
-            - "!**/mcp/*_test.go"
-          allow:
-            - $gostd
-            - github.com/modelcontextprotocol/go-sdk
         application-purity:
           list-mode: lax
           files:
@@ -227,6 +208,7 @@ linters:
             - "**/authl/**"
             - "**/reqid/**"
             - "**/nanoid/**"
+            - "**/slug/**"
             - "**/worker/**"
             - "**/logger/**"
             - "**/telemetry/**"
@@ -234,12 +216,22 @@ linters:
             - "**/httpclient/**"
             - "**/civil/*.go"
             - "**/money/*.go"
-            - "**/mcp/*.go"
-            - "!**/internal/mcp/*.go"
             - "**/opensheet/*.go"
+            - "**/mcp/**"
+            # Only the root mcp/ package is in scope here.
+            - "!**/internal/mcp/**"
           deny:
             - pkg: "altalune.id/yasaku/internal"
               desc: "root-level shared packages must NOT depend on any internal/ package (import inversion)"
+        mcp-purity:
+          list-mode: strict
+          files:
+            - "**/mcp/*.go"
+            - "!**/internal/mcp/*.go"
+            - "!**/mcp/*_test.go"
+          allow:
+            - $gostd
+            - github.com/modelcontextprotocol/go-sdk
     forbidigo:
       forbid:
         - pattern: 'fmt\.Print(f|ln|)\('
@@ -248,16 +240,10 @@ linters:
           msg: "use an injected *slog.Logger, not the slog default"
       exclude-godoc-examples: true
       analyze-types: true
-      # Allow slog default + fmt.Print in main.go and cli/render.
-      # Configure via `exclusions` block below.
-    # gochecknoglobals is enabled in linters.enable above with no extra config.
-    # It warns on unexported package-level variables; exported ones we tolerate
-    # for release-metadata (main.version, main.commit) via the exclusions block.
 
   exclusions:
     generated: strict
     warn-unused: false
-    # Test files: relax noise from linters that overfire on table tests / fake repos.
     rules:
       - path: _test\.go
         linters:
@@ -266,7 +252,6 @@ linters:
           - gocritic
           - prealloc
           - unparam
-      # Generated code: buf + templ own it. Belt-and-suspenders with `generated: strict`.
       - path: gen/
         linters:
           - all
@@ -281,8 +266,7 @@ linters:
         linters:
           - forbidigo
         text: "fmt\\.Print"
-      # version/version.go holds -ldflags-injected build metadata; these MUST be
-      # package-level vars so `go build -ldflags -X ...` can stamp them.
+      # NOTE: -ldflags -X can only stamp package-level vars.
       - path: version/version\.go
         linters:
           - gochecknoglobals
@@ -301,6 +285,6 @@ formatters:
         - altalune.id/yasaku
 
 issues:
-  # Fail CI on any issue.
+  # 0 means no cap on reported issues.
   max-issues-per-linter: 0
   max-same-issues: 0

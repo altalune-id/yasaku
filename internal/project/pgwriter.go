@@ -30,6 +30,9 @@ func (s *postgresStore) Save(ctx context.Context, p *Project) error {
 		)
 	res, execErr := stmt.ExecContext(ctx, tx)
 	if execErr != nil {
+		if isPgOneSystemViolation(execErr) {
+			return s.endTx(tx, owned, &SystemProjectExistsError{OrgID: p.OrgID.String(), Slug: p.Slug})
+		}
 		if isPgUniqueViolation(execErr) {
 			return s.endTx(tx, owned, &AlreadyExistsError{Field: "slug", Value: p.Slug})
 		}

@@ -302,6 +302,13 @@ components:
         postId:
           type: string
           title: post_id
+        ifVersion:
+          type:
+            - integer
+            - "null"
+          title: if_version
+          format: int32
+          description: Version the delete is conditioned on; omit for an unconditional delete
       title: DeletePostRequest
       additionalProperties: false
     blog.v1.DeletePostResponse:
@@ -330,12 +337,15 @@ components:
         projectId:
           type: string
           title: project_id
+          description: UUID of the project to list posts in; omit to use the credential's active project
         status:
           type: string
           title: status
+          description: 'Filter by state: "published" or "draft"'
         categoryId:
           type: string
           title: category_id
+          description: UUID of a category to filter by
       title: ListPostsRequest
       additionalProperties: false
     blog.v1.ListPostsResponse:
@@ -389,6 +399,11 @@ components:
         updatedAt:
           title: updated_at
           $ref: '#/components/schemas/google.protobuf.Timestamp'
+        version:
+          type: integer
+          title: version
+          format: int32
+          description: Optimistic-concurrency version; pass it back as if_version on a write
       title: Post
       additionalProperties: false
     blog.v1.PublishPostRequest:
@@ -397,6 +412,14 @@ components:
         postId:
           type: string
           title: post_id
+          description: UUID of the post to publish
+        ifVersion:
+          type:
+            - integer
+            - "null"
+          title: if_version
+          format: int32
+          description: Version the transition is conditioned on; omit for an unconditional publish
       title: PublishPostRequest
       additionalProperties: false
     blog.v1.PublishPostResponse:
@@ -427,6 +450,13 @@ components:
         postId:
           type: string
           title: post_id
+        ifVersion:
+          type:
+            - integer
+            - "null"
+          title: if_version
+          format: int32
+          description: Version the transition is conditioned on; omit for an unconditional unpublish
       title: UnpublishPostRequest
       additionalProperties: false
     blog.v1.UnpublishPostResponse:
@@ -460,6 +490,13 @@ components:
           items:
             type: string
           title: tag_ids
+        ifVersion:
+          type:
+            - integer
+            - "null"
+          title: if_version
+          format: int32
+          description: Version the write is conditioned on; omit for an unconditional write
       title: UpdatePostRequest
       additionalProperties: false
     blog.v1.UpdatePostResponse:

@@ -26,8 +26,6 @@ func newSQLiteStore(db *sql.DB, tablePrefix string) *sqliteStore {
 	return &sqliteStore{db: db, table: sqliteent.NewLedgerSettings(tablePrefix)}
 }
 
-// txAcquire enrolls in the caller's unit of work when one is active, so a Save never opens a
-// second writer transaction against the same SQLite file.
 func (s *sqliteStore) txAcquire(ctx context.Context) (*sql.Tx, bool, tenant.Context, error) {
 	tc, err := tenant.From(ctx)
 	if err != nil {

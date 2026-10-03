@@ -48,8 +48,12 @@ templ txCategoryRowItem(d web.LayoutData, v TxCategoriesView, c TxCategoryRow) {
 			method="post"
 			action={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/categories/"+c.ID+"/rename")) }
 			hx-post={ d.ProjectPath(v.ProjectSlug, "/categories/"+c.ID+"/rename") }
+			hx-nonce={ d.Nonce }
 			hx-target="#tx-category-list"
 			hx-swap="outerHTML"
+			hx-disable="find button, find input"
+			hx-status:4xx="target:#hx-error swap:innerHTML"
+			hx-status:5xx="target:#hx-error swap:innerHTML"
 			class="flex min-w-0 flex-1 items-center gap-2"
 		>
 			<input
@@ -70,8 +74,12 @@ templ txCategoryRowItem(d web.LayoutData, v TxCategoriesView, c TxCategoryRow) {
 				method="post"
 				action={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/categories/"+c.ID+"/unarchive")) }
 				hx-post={ d.ProjectPath(v.ProjectSlug, "/categories/"+c.ID+"/unarchive") }
+				hx-nonce={ d.Nonce }
 				hx-target="#tx-category-list"
 				hx-swap="outerHTML"
+				hx-disable="find button, find input"
+				hx-status:4xx="target:#hx-error swap:innerHTML"
+				hx-status:5xx="target:#hx-error swap:innerHTML"
 				class="inline"
 			>
 				<button type="submit" aria-label={ d.Tr("category.unarchive") + ": " + c.Name } class="rounded p-1.5 text-muted-foreground/80 hover:bg-muted hover:text-foreground">
@@ -83,8 +91,12 @@ templ txCategoryRowItem(d web.LayoutData, v TxCategoriesView, c TxCategoryRow) {
 				method="post"
 				action={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/categories/"+c.ID+"/archive")) }
 				hx-post={ d.ProjectPath(v.ProjectSlug, "/categories/"+c.ID+"/archive") }
+				hx-nonce={ d.Nonce }
 				hx-target="#tx-category-list"
 				hx-swap="outerHTML"
+				hx-disable="find button, find input"
+				hx-status:4xx="target:#hx-error swap:innerHTML"
+				hx-status:5xx="target:#hx-error swap:innerHTML"
 				class="inline"
 			>
 				<button type="submit" aria-label={ d.Tr("category.archive") + ": " + c.Name } class="rounded p-1.5 text-muted-foreground/80 hover:bg-muted hover:text-foreground">
@@ -96,8 +108,12 @@ templ txCategoryRowItem(d web.LayoutData, v TxCategoriesView, c TxCategoryRow) {
 			method="post"
 			action={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/categories/"+c.ID+"/delete")) }
 			hx-post={ d.ProjectPath(v.ProjectSlug, "/categories/"+c.ID+"/delete") }
+			hx-nonce={ d.Nonce }
 			hx-target="#tx-category-list"
 			hx-swap="outerHTML"
+			hx-disable="find button, find input"
+			hx-status:4xx="target:#hx-error swap:innerHTML"
+			hx-status:5xx="target:#hx-error swap:innerHTML"
 			class="inline"
 		>
 			<button type="submit" aria-label={ d.Tr("category.delete") + ": " + c.Name } class="rounded p-1.5 text-muted-foreground/70 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 dark:hover:text-red-400">
@@ -128,8 +144,12 @@ templ txCategorySeedCard(d web.LayoutData, v TxCategoriesView) {
 			method="post"
 			action={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/categories/seed")) }
 			hx-post={ d.ProjectPath(v.ProjectSlug, "/categories/seed") }
+			hx-nonce={ d.Nonce }
 			hx-target="#tx-category-list"
 			hx-swap="outerHTML"
+			hx-disable="find button, find input"
+			hx-status:4xx="target:#hx-error swap:innerHTML"
+			hx-status:5xx="target:#hx-error swap:innerHTML"
 			class="mt-4"
 		>
 			<button type="submit" class="inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2">
@@ -186,14 +206,21 @@ templ TxCategoriesPage(d web.LayoutData, v TxCategoriesView) {
 			<p class="mt-1 truncate text-sm text-muted-foreground">{ v.ProjectName }</p>
 		</header>
 		<form
+			id="tx-category-create"
 			method="post"
 			action={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/categories")) }
 			hx-post={ d.ProjectPath(v.ProjectSlug, "/categories") }
+			hx-nonce={ d.Nonce }
 			hx-target="#tx-category-list"
 			hx-swap="outerHTML"
-			hx-on::after-request="if(event.detail.successful) this.reset()"
+			hx-disable="find button, find input"
+			hx-status:422="target:#tx-category-form-errors swap:innerHTML select:[data-category-error]"
+			hx-status:4xx="target:#hx-error swap:innerHTML"
+			hx-status:5xx="target:#hx-error swap:innerHTML"
+			data-reset-on-success
 			class="mt-6 flex flex-wrap gap-2"
 		>
+			@TxCategoryFormErrors(d, TxCategoriesView{}, false)
 			<input
 				name="name"
 				type="text"
@@ -216,6 +243,21 @@ templ TxCategoriesPage(d web.LayoutData, v TxCategoriesView) {
 		</form>
 		@TxCategoryList(d, v)
 	</section>
+}
+
+// TxCategoryFormErrors is the create form's error box; with oob it clears itself beside a successful create.
+templ TxCategoryFormErrors(d web.LayoutData, v TxCategoriesView, oob bool) {
+	if oob {
+		<div id="tx-category-form-errors" hx-swap-oob="true" hx-nonce={ d.Nonce } class="basis-full empty:hidden"></div>
+	} else {
+		<div id="tx-category-form-errors" class="basis-full empty:hidden">
+			if v.ErrorKey != "" || v.ErrorMsg != "" {
+				<div data-category-error="1">
+					@pageBanner(d, v.ErrorKey, v.ErrorMsg, v.ErrorCode)
+				</div>
+			}
+		</div>
+	}
 }
 
 templ TxCategoriesLayout(d web.LayoutData, v TxCategoriesView) {

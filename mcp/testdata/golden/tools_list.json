@@ -4,27 +4,35 @@
       "destructiveHint": false,
       "idempotentHint": false,
       "openWorldHint": false,
-      "readOnlyHint": false
+      "readOnlyHint": true
     },
-    "description": "create a wallet",
+    "description": "List a project's blog posts.",
     "inputSchema": {
+      "properties": {
+        "projectId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "projectId"
+      ],
       "type": "object"
     },
-    "name": "wallet_create",
-    "title": "Wallet create"
+    "name": "blog_list",
+    "title": "Blog list"
   },
   {
     "annotations": {
       "destructiveHint": false,
       "idempotentHint": false,
       "openWorldHint": false,
-      "readOnlyHint": true
+      "readOnlyHint": false
     },
-    "description": "list wallets",
+    "description": "Publish a draft blog post.",
     "inputSchema": {
       "type": "object"
     },
-    "name": "wallet_list",
-    "title": "Wallet list"
+    "name": "blog_publish",
+    "title": "Blog publish"
   }
 ]
