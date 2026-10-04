@@ -224,6 +224,8 @@ type QueueConfig struct {
 	Enabled        bool          `yaml:"enabled"        mapstructure:"enabled"        awareness:"-"`
 	URL            string        `yaml:"url"            mapstructure:"url"            awareness:"secret"`
 	Token          string        `yaml:"token"          mapstructure:"token"          awareness:"secret"`
+	User           string        `yaml:"user"           mapstructure:"user"           awareness:"-"`
+	Password       string        `yaml:"password"       mapstructure:"password"       awareness:"secret"`
 	ConnectTimeout time.Duration `yaml:"connectTimeout" mapstructure:"connectTimeout" awareness:"-"      validate:"gte=0"`
 }
 
@@ -299,6 +301,9 @@ func validateInvariants(c *Config) error {
 	if err := validateQueueNeedsURL(c); err != nil {
 		return err
 	}
+	if err := validateQueueCredentials(c); err != nil {
+		return err
+	}
 	switch c.Mode {
 	case ModeSelfhosted:
 		if err := validateSelfhosted(c); err != nil {
@@ -366,6 +371,48 @@ func validateCloudGenesisEmail(c *Config) error {
 func validateQueueNeedsURL(c *Config) error {
 	if c.Queue.Enabled && c.Queue.URL == "" {
 		return errors.New("config: queue.enabled=true requires queue.url (set YASAKU_QUEUE_URL)")
+	}
+	return nil
+}
+
+// QueueCredentialsConflictError reports queue.token set together with queue.user or queue.password.
+type QueueCredentialsConflictError struct{}
+
+func (*QueueCredentialsConflictError) Error() string {
+	return "config: queue.token and queue.user/queue.password are mutually exclusive — a token authenticates to a server without accounts, a user to one account (unset YASAKU_QUEUE_TOKEN, or unset YASAKU_QUEUE_USER and YASAKU_QUEUE_PASSWORD)"
+}
+
+// IsQueueCredentialsConflictError reports whether err is a *QueueCredentialsConflictError.
+func IsQueueCredentialsConflictError(err error) bool {
+	var target *QueueCredentialsConflictError
+	return errors.As(err, &target)
+}
+
+// QueueCredentialsIncompleteError reports queue.user without queue.password, or the reverse.
+type QueueCredentialsIncompleteError struct {
+	Missing string
+}
+
+func (e *QueueCredentialsIncompleteError) Error() string {
+	return fmt.Sprintf("config: queue.user and queue.password are set together — %s is missing (set YASAKU_QUEUE_%s)", e.Missing, strings.ToUpper(strings.TrimPrefix(e.Missing, "queue.")))
+}
+
+// IsQueueCredentialsIncompleteError reports whether err is a *QueueCredentialsIncompleteError.
+func IsQueueCredentialsIncompleteError(err error) bool {
+	var target *QueueCredentialsIncompleteError
+	return errors.As(err, &target)
+}
+
+func validateQueueCredentials(c *Config) error {
+	q := c.Queue
+	if q.Token != "" && (q.User != "" || q.Password != "") {
+		return &QueueCredentialsConflictError{}
+	}
+	if q.User != "" && q.Password == "" {
+		return &QueueCredentialsIncompleteError{Missing: "queue.password"}
+	}
+	if q.Password != "" && q.User == "" {
+		return &QueueCredentialsIncompleteError{Missing: "queue.user"}
 	}
 	return nil
 }

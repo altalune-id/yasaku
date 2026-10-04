@@ -113,8 +113,8 @@ UTF-8), `Yasaku-Dlq-Attempts` and `Yasaku-Dlq-Stream-Seq`.
   `MaxDeliver` is unlimited: with a server cap the message would stay in `WORK` with no DLQ entry.
 - **SECURITY: the tenant headers are trusted.** A valid `Yasaku-Org-Id` (plus project and user)
   is bound with `tenant.Into` before `Handle`; no org header means system work with no scope.
-  Anyone who can publish to `WORK` can act as any tenant, so the NATS token is as sensitive as the
-  DB DSN.
+  Anyone who can publish to `WORK` can act as any tenant, so the NATS credential is as sensitive as
+  the DB DSN.
 - **At least once.** An ack can be lost and shutdown can cut a handler short. Handlers are
   idempotent; `Message.ID` is the dedupe key when a side effect needs one.
 - `Consumer.Run` returns nil on shutdown (drains for up to 8s). A consume loop that closes, or a
@@ -152,7 +152,9 @@ no connection, so `Kernel.Queue` is never nil. Boot logs `queue: disabled — Su
 | ---------------------- | ------- | --------- | --------------------------------------------------------------- |
 | `queue.enabled`        | `false` | `-`       | Master switch. Off: no connection, no-op verbs, no consumer     |
 | `queue.url`            | `""`    | `secret`  | e.g. `nats://nats.railway.internal:4222`. Required when enabled |
-| `queue.token`          | `""`    | `secret`  | NATS auth token                                                 |
+| `queue.token`          | `""`    | `secret`  | NATS auth token, for a server without accounts                  |
+| `queue.user`           | `""`    | `-`       | NATS account user; set with `queue.password`, never with token  |
+| `queue.password`       | `""`    | `secret`  | That user's password                                            |
 | `queue.connectTimeout` | `10s`   | `-`       | Boot connect budget; dial retries back off 250ms doubling to 2s |
 
 When the budget runs out boot fails, like the DB. After the first connect the client reconnects

@@ -38,22 +38,25 @@ worker, not a job.
 NATS JetStream behind `queue.Submit` and `queue.Emit`. Off by default; the contract, including the
 full `serve` flag matrix: [`queue`](../queue/README.md).
 
-**NATS on Railway.** Deploy Railway's NATS template, then set on every yasaku service:
+**NATS on Railway.** Run [`ghcr.io/altalune-id/nats`](https://github.com/altalune-id/nats): one
+server shared by every app, one NATS account per app. Set on every yasaku service:
 
 ```bash
 YASAKU_QUEUE_ENABLED=true
 YASAKU_QUEUE_URL=nats://nats.railway.internal:4222
-YASAKU_QUEUE_TOKEN=<the template's token>
+YASAKU_QUEUE_USER=yasaku
+YASAKU_QUEUE_PASSWORD=${{nats.YASAKU_NATS_PASSWORD}}
 ```
 
-- SECURITY: connect over the **private network with the token**, never the public TCP proxy. The
-  tenant headers on a message are trusted, so anyone who can publish can act as any tenant: the
-  token is as sensitive as the DB DSN.
-- **About 576 MiB free on the NATS volume.** The server reserves each stream's `MaxBytes` when it
-  creates it: `WORK` 256 + `DLQ` 256 + `BROADCAST` 64 MiB. Check the volume size before the first
-  deploy.
-- **One NATS server or account per deployment.** Subjects carry no app prefix. Two apps on one
-  server are isolated with NATS accounts.
+- SECURITY: connect over the **private network with the account's password**, never the public TCP
+  proxy. The tenant headers on a message are trusted, so anyone who can publish can act as any
+  tenant: the password is as sensitive as the DB DSN.
+- **One account per app, never shared.** Subjects carry no app prefix, so two apps in one account
+  consume each other's jobs. Accounts keep same-named streams apart.
+- **About 576 MiB of the account's JetStream quota.** The server reserves each stream's `MaxBytes`
+  when it creates it: `WORK` 256 + `DLQ` 256 + `BROADCAST` 64 MiB.
+- `queue.token` is for a server without accounts. It and `queue.user`/`queue.password` are mutually
+  exclusive.
 - Boot fails when NATS is unreachable for `queue.connectTimeout` (10s), like the DB. After that
   the client reconnects forever; a `Submit` during an outage longer than 5s is reported, not
   retried later.
