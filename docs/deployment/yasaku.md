@@ -8,24 +8,26 @@ template's "Railway's NATS template" note, this page wins.
 
 Production enables the queue. NATS is a separate Railway service built from
 [`altalune-id/nats`](https://github.com/altalune-id/nats): the official `nats` image pinned by
-digest, JetStream on `/data` (file store capped at 1G), and a required `NATS_TOKEN`.
+digest, JetStream on `/data`, one server shared by every app with one NATS account per app. yasaku
+is user `yasaku` in account `YASAKU`, capped at 1G of JetStream file storage.
 
-1. Check that the pinned tag exists in GHCR before deploying. The output must list `cdc9440`:
+1. Check that the pinned tag exists in GHCR before deploying. It must include altalune-id/nats#6
+   (per-app accounts); `cdc9440` predates it and takes only a token:
 
    ```bash
    curl -s -H "Authorization: Bearer $(curl -s 'https://ghcr.io/token?scope=repository:altalune-id/nats:pull' | jq -r .token)" \
      https://ghcr.io/v2/altalune-id/nats/tags/list
    ```
 
-2. New service from image `ghcr.io/altalune-id/nats:cdc9440` (altalune-id/nats `main` at `cdc9440`).
-   Never `edge`.
+2. New service from image `ghcr.io/altalune-id/nats:<short-sha>`. Never `edge`.
 
    NOTE: switch to the `X.Y.Z` image tag (git tag `vX.Y.Z`) once altalune-id/nats cuts a release.
 
-3. Attach a volume at `/data`, at least 1 GB. Without it every redeploy drops `WORK` and `DLQ`. The
-   streams reserve 576 MiB at creation (`WORK` 256 + `DLQ` 256 + `BROADCAST` 64 MiB). With less
-   free space, yasaku's boot fails with `insufficient storage resources available (10047)`.
-4. Set `NATS_TOKEN` to a long random string. The server refuses to start without it.
+3. Attach a volume at `/data`, at least 5 GB. Without it every redeploy drops `WORK` and `DLQ`. The
+   streams reserve 576 MiB of the account's quota at creation (`WORK` 256 + `DLQ` 256 + `BROADCAST`
+   64 MiB). Past the quota, yasaku's boot fails with `insufficient storage resources available (10047)`.
+4. Set every `<APP>_NATS_PASSWORD` the image's config names, `YASAKU_NATS_PASSWORD` among them, to a
+   long random string. The server refuses to start while any is unset, empty or under 16 characters.
 5. Private networking only: no public domain, no TCP proxy.
 6. NATS service stop timeout about 20s.
 
@@ -34,19 +36,21 @@ On every yasaku service (`<svc>` is the NATS service's Railway name):
 ```bash
 YASAKU_QUEUE_ENABLED=true
 YASAKU_QUEUE_URL=nats://<svc>.railway.internal:4222
-YASAKU_QUEUE_TOKEN=${{<svc>.NATS_TOKEN}}
+YASAKU_QUEUE_USER=yasaku
+YASAKU_QUEUE_PASSWORD=${{<svc>.YASAKU_NATS_PASSWORD}}
 ```
 
 Also set the yasaku service's stop timeout to about 20s (consumer drain 8s, then connection drain).
 
-SECURITY: the consumer trusts the tenant headers on a message, so anyone who can publish to NATS
-can act as any tenant. The token is as sensitive as `YASAKU_DB_DSN`.
+SECURITY: the consumer trusts the tenant headers on a message, so anyone who can publish in the
+`YASAKU` account can act as any tenant. The password is as sensitive as `YASAKU_DB_DSN`. Never put
+another app in the `YASAKU` account: they share stream names and would consume each other's jobs.
 
 ## Boot and outages
 
 | Situation                                | What happens                                                                                                                     | Do                                                                                  |
 | ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| NATS unreachable at boot                 | boot retries for `queue.connectTimeout` (10s), then exits `1`: `boot: queue: queue: connect within 10s: …`. Railway restarts it. | check the NATS service is up, the URL host and the token                            |
+| NATS unreachable at boot                 | boot retries for `queue.connectTimeout` (10s), then exits `1`: `boot: queue: queue: connect within 10s: …`. Railway restarts it. | check the NATS service is up, the URL host and the user and password                |
 | NATS lost after boot                     | the client reconnects forever; HTTP keeps serving                                                                                | nothing; watch logs for `queue: disconnected` / `queue: reconnected`                |
 | `Submit` during an outage longer than 5s | `*queue.PublishError`, reported as `<module>.<Method>: submit`; the user's change is saved, the job is lost                      | the module's reconciler (opensheet) re-submits; otherwise re-run the action         |
 | a consume loop closes                    | `*queue.ConsumerClosedError` stops the process; the restart recreates streams and consumers                                      | nothing                                                                             |

@@ -532,6 +532,8 @@ func openQueue(ctx context.Context, cfg *config.Config, k *platform.Kernel, repo
 	return queue.Connect(ctx, queue.Options{
 		URL:            cfg.Queue.URL,
 		Token:          cfg.Queue.Token,
+		User:           cfg.Queue.User,
+		Password:       cfg.Queue.Password,
 		ConnectTimeout: cfg.Queue.ConnectTimeout,
 		Log:            log,
 		Tracer:         k.Tracer,

@@ -81,6 +81,7 @@ func (b Broadcast) Validate() error {
 // Options configures Connect; the tracer, meter and reporter are injected, never global.
 type Options struct {
 	URL, Token     string
+	User, Password string
 	ConnectTimeout time.Duration
 	Log            *slog.Logger
 	Tracer         trace.Tracer
@@ -144,7 +145,7 @@ func Connect(ctx context.Context, o Options) (*Client, error) {
 	}
 	c.unexpected = o.Unexpected
 	c.closed = make(chan struct{})
-	nc, err := dial(ctx, o, c.natsOptions(o.Token))
+	nc, err := dial(ctx, o, c.natsOptions(o))
 	if err != nil {
 		return nil, err
 	}
@@ -217,9 +218,8 @@ func newMetrics(meter metric.Meter) (metrics, error) {
 	return m, nil
 }
 
-func (c *Client) natsOptions(token string) []nats.Option {
-	return []nats.Option{
-		nats.Token(token),
+func (c *Client) natsOptions(o Options) []nats.Option {
+	opts := []nats.Option{
 		nats.Name(connectionName),
 		nats.MaxReconnects(-1),
 		nats.Timeout(dialTimeout),
@@ -230,6 +230,10 @@ func (c *Client) natsOptions(token string) []nats.Option {
 		nats.ReconnectHandler(func(*nats.Conn) { c.log.Info("queue: reconnected") }),
 		nats.ClosedHandler(func(*nats.Conn) { close(c.closed) }),
 	}
+	if o.User != "" {
+		return append(opts, nats.UserInfo(o.User, o.Password))
+	}
+	return append(opts, nats.Token(o.Token))
 }
 
 func dial(ctx context.Context, o Options, opts []nats.Option) (*nats.Conn, error) {

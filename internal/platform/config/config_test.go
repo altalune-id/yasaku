@@ -280,6 +280,34 @@ func TestValidate_ModeInvariants(t *testing.T) {
 			wantSub: "",
 		},
 		{
+			name: "queue user with password is allowed",
+			mutate: func(c *Config) {
+				c.Queue = QueueConfig{Enabled: true, URL: "nats://127.0.0.1:4222", User: "yasaku", Password: "pw"}
+			},
+			wantSub: "",
+		},
+		{
+			name: "queue user without password fails",
+			mutate: func(c *Config) {
+				c.Queue = QueueConfig{Enabled: true, URL: "nats://127.0.0.1:4222", User: "yasaku"}
+			},
+			wantSub: "YASAKU_QUEUE_PASSWORD",
+		},
+		{
+			name: "queue password without user fails",
+			mutate: func(c *Config) {
+				c.Queue = QueueConfig{Enabled: true, URL: "nats://127.0.0.1:4222", Password: "pw"}
+			},
+			wantSub: "YASAKU_QUEUE_USER",
+		},
+		{
+			name: "queue token with user fails",
+			mutate: func(c *Config) {
+				c.Queue = QueueConfig{Enabled: true, URL: "nats://127.0.0.1:4222", Token: "t", User: "yasaku", Password: "pw"}
+			},
+			wantSub: "mutually exclusive",
+		},
+		{
 			name: "cloud with genesis password alone fails",
 			mutate: func(c *Config) {
 				c.Mode = ModeCloud
@@ -519,4 +547,27 @@ func TestLoad_FirstRunSlugsHonourEnv(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "acme", cfg.Tenant.SingletonOrg.Slug, "a configured slug still wins over generation")
 	require.Equal(t, "web", cfg.Tenant.PersonalProjectSlug)
+}
+
+func TestValidate_QueueCredentialErrorsAreTyped(t *testing.T) {
+	tests := []struct {
+		name  string
+		queue QueueConfig
+		is    func(error) bool
+	}{
+		{"conflict", QueueConfig{Enabled: true, URL: "nats://x:4222", Token: "t", Password: "pw"}, IsQueueCredentialsConflictError},
+		{"incomplete", QueueConfig{Enabled: true, URL: "nats://x:4222", User: "u"}, IsQueueCredentialsIncompleteError},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := &Config{Mode: ModeSelfhosted, Queue: tt.queue}
+			err := validateInvariants(c)
+			if !tt.is(err) {
+				t.Fatalf("want typed %s error, got %v", tt.name, err)
+			}
+		})
+	}
+	if IsQueueCredentialsConflictError(errors.New("other")) || IsQueueCredentialsIncompleteError(errors.New("other")) {
+		t.Fatal("helpers must reject unrelated errors")
+	}
 }

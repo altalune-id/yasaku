@@ -219,10 +219,14 @@ queue:
   connectTimeout: 10s
   # env: YASAKU_QUEUE_ENABLED
   enabled: false
+  # [secret] env: YASAKU_QUEUE_PASSWORD
+  password: ""
   # [secret] env: YASAKU_QUEUE_TOKEN
   token: ""
   # [secret] env: YASAKU_QUEUE_URL
   url: ""
+  # env: YASAKU_QUEUE_USER
+  user: ""
 
 scheduler:
   # [bootstrap] env: YASAKU_SCHEDULER_ENABLED
