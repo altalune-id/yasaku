@@ -498,6 +498,11 @@ templ projectMenu(d web.LayoutData, slug string) {
 		<a href={ templ.SafeURL(d.ProjectPath(slug, "/reports")) } class={ orgItemClass(d.ActiveNav.ProjectKey == "reports") }>
 			@icons.Icon("chart-pie", "h-4 w-4 shrink-0") <span>{ d.Tr("nav.reports") }</span>
 		</a>
+		if d.Opensheet {
+			<a href={ templ.SafeURL(d.ProjectPath(slug, "/opensheet")) } class={ orgItemClass(d.ActiveNav.ProjectKey == "opensheet") }>
+				@icons.Icon("arrow-left-right", "h-4 w-4 shrink-0") <span>{ d.Tr("nav.opensheet") }</span>
+			</a>
+		}
 		<a href={ templ.SafeURL(d.ProjectPath(slug, "/settings")) } class={ orgItemClass(d.ActiveNav.ProjectKey == "settings") }>
 			@icons.Icon("settings", "h-4 w-4 shrink-0") <span>{ d.Tr("nav.ledger_settings") }</span>
 		</a>

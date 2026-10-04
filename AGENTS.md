@@ -120,17 +120,25 @@ concurrently, and the one data race found downstream was invisible without it.
 
 yasaku is a fork of the template. It adds a personal-finance domain on top of the template platform.
 
-- **Modules** — `wallet`, `transaction`, `period`, `report`, `category`, `ledger`. Reference impls:
-  `internal/wallet/` (flat) and `internal/transaction/` (relations and ports); see
-  [`docs/modules/yasaku.md`](docs/modules/yasaku.md).
+- **Modules** — `wallet`, `transaction`, `period`, `report`, `category`, `ledger`, and the optional
+  `opensheetsync`. Reference impls: `internal/wallet/` (flat) and `internal/transaction/` (relations
+  and ports); see [`docs/modules/yasaku.md`](docs/modules/yasaku.md).
 - **yasaku-only roots** — `money/`, `civil/` and `opensheet/`. They are leaf packages with their own
   depguard rules in `.golangci.yaml`.
 - **blog and todo** — kept as code, mounted nowhere. Which surfaces yasaku mounts is decided in
   `internal/boot/surfaces_yasaku.go`.
 - **Scopes** — `yasaku:read` and `yasaku:write` are the enforced scopes. TODO: split them into fine scopes.
-- **Error codes** — yasaku's LDG, WLT, CTG, TXN and PRD codes are in
+- **Error codes** — yasaku's LDG, WLT, CTG, TXN, PRD and OSL codes are in
   [`docs/errors/yasaku.md`](docs/errors/yasaku.md). The registry is append-only.
 - **MCP** — the 27-tool catalogue, project targeting, two-phase confirm and the UI bundle are in
   [`docs/mcp/yasaku.md`](docs/mcp/yasaku.md).
+- **Queue** — yasaku services submit jobs through `svcs.jobs` (`internal/boot/submit_yasaku.go`), never
+  `Kernel.Queue`: with the queue off, the job runs inline (20s budget, one level of chaining) instead
+  of being dropped (template gap T32). Seam and registration: [`docs/queue/yasaku.md`](docs/queue/yasaku.md);
+  NATS on Railway: [`docs/deployment/yasaku.md`](docs/deployment/yasaku.md).
+- **Opensheet** — optional one-way mirror of a project's wallets, categories and transactions to
+  Google Sheets, unmounted unless `opensheet.baseURL` is set (it then needs `security.encryptionKey`).
+  Mark inside the write's unit of work, Kick after the commit; the `opensheet.sync` job and the 5-minute
+  reconciler push. Contract: [`docs/opensheet/yasaku.md`](docs/opensheet/yasaku.md).
 - **opensheet-api skill** — `.claude/skills/opensheet-api` is yasaku-only. Use it when calling the
   opensheet HTTP data plane.

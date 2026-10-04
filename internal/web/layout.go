@@ -118,6 +118,8 @@ type LayoutData struct {
 	CSPEnforced bool
 	// TimeZone is the active project's zone for display; nil outside a project.
 	TimeZone *time.Location
+	// Opensheet shows the Opensheet project nav entry; true only when the server mounts the module.
+	Opensheet bool
 }
 
 // LocaleOption is one row in the locale-selector dropdown.

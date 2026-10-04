@@ -17,7 +17,8 @@ type Period struct {
 	data     map[uuid.UUID]*period.Period
 	closings []*period.Closing
 
-	SaveFn func(ctx context.Context, p *period.Period) error
+	SaveFn          func(ctx context.Context, p *period.Period) error
+	CreateCurrentFn func(ctx context.Context, p *period.Period) (bool, error)
 }
 
 // NewPeriod returns an empty in-memory period.Store.
@@ -58,6 +59,22 @@ func (f *Period) Save(ctx context.Context, p *period.Period) error {
 	}
 	f.data[p.ID] = clonePeriod(p)
 	return nil
+}
+
+// CreateCurrent stores p unless the project already has a current period, as the real stores' ON CONFLICT DO NOTHING does.
+func (f *Period) CreateCurrent(ctx context.Context, p *period.Period) (bool, error) {
+	if f.CreateCurrentFn != nil {
+		return f.CreateCurrentFn(ctx, p)
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, other := range f.data {
+		if other.ProjectID == p.ProjectID && other.IsCurrent() {
+			return false, nil
+		}
+	}
+	f.data[p.ID] = clonePeriod(p)
+	return true, nil
 }
 
 // ByID looks a period up by id alone. NOTE: it deliberately does not filter by scope, so the service's own check is what the scope tests exercise.

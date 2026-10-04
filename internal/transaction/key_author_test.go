@@ -96,7 +96,8 @@ func TestSQLite_Transaction_KeyAuthor(t *testing.T) {
 	assert.Equal(t, keyID, got.CreatedByKeyID, "the store must read the key author back")
 	assert.Equal(t, uuid.Nil, got.CreatedBy)
 
-	require.NoError(t, svc.RecordOpening(keyPrincipalCtx(t.Context(), f.tc, keyID), f.walletB, money.New(5_000, money.IDR), at, uuid.Nil))
+	_, err = svc.RecordOpening(keyPrincipalCtx(t.Context(), f.tc, keyID), f.walletB, money.New(5_000, money.IDR), at, uuid.Nil)
+	require.NoError(t, err)
 
 	byPerson, err := svc.Record(personCtx(t.Context(), f.tc), transaction.RecordInput{
 		WalletID: f.walletA, Kind: transaction.KindIncome, Amount: money.New(2_000, money.IDR), OccurredAt: at,

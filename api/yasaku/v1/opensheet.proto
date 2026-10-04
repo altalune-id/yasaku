@@ -1,0 +1,120 @@
+syntax = "proto3";
+
+package yasaku.v1;
+
+import "yasaku/v1/common.proto";
+
+option go_package = "altalune.id/yasaku/gen/go/yasaku/v1;yasakuv1";
+
+// OpensheetService manages a project's one-way mirror to a Google Sheet through opensheet. It is mounted only when the server sets opensheet.baseURL, and it has no MCP tools.
+service OpensheetService {
+  rpc GetOpensheetLink(GetOpensheetLinkRequest) returns (GetOpensheetLinkResponse);
+  rpc TestOpensheetLink(TestOpensheetLinkRequest) returns (TestOpensheetLinkResponse);
+  rpc SaveOpensheetLink(SaveOpensheetLinkRequest) returns (SaveOpensheetLinkResponse);
+  rpc SetOpensheetLinkEnabled(SetOpensheetLinkEnabledRequest) returns (SetOpensheetLinkEnabledResponse);
+  rpc SyncOpensheetNow(SyncOpensheetNowRequest) returns (SyncOpensheetNowResponse);
+  rpc DeleteOpensheetLink(DeleteOpensheetLinkRequest) returns (DeleteOpensheetLinkResponse);
+}
+
+// OpensheetLink is a project's link; the API key is write-only and only its last four characters come back.
+message OpensheetLink {
+  string os_org = 1;
+  string os_project = 2;
+  string api_key_hint = 3;
+  string transactions_sheet = 4;
+  string wallets_sheet = 5;
+  string categories_sheet = 6;
+  bool enabled = 7;
+  // RFC 3339 in UTC; empty until a Save passed the Test, and cleared when repeated failures turn the link off.
+  string verified_at = 8;
+  string last_error = 9;
+  // RFC 3339 in UTC; empty until the first successful sync.
+  string last_synced_at = 10;
+  bool auto_disabled = 11;
+  // Rows still waiting to reach the sheet, failing ones included.
+  int64 pending = 12;
+  // Pending rows opensheet refused at least once; each is retried with backoff, at most five times.
+  int64 failing = 13;
+  // Rows refused five times; they wait for their next edit or a full sync.
+  int64 given_up = 14;
+  // True until a sync lands after the last Save; the first sync confirms the sheet columns.
+  bool awaiting_first_sync = 15;
+}
+
+// OpensheetSettings is what a Test or Save checks; an empty api_key keeps the saved key.
+message OpensheetSettings {
+  string os_org = 1;
+  string os_project = 2;
+  string api_key = 3;
+  string transactions_sheet = 4;
+  string wallets_sheet = 5;
+  string categories_sheet = 6;
+}
+
+// OpensheetTabCheck is one tab's Test result; code is the OSL code of the first rule it broke, empty when it passed.
+message OpensheetTabCheck {
+  // One of transaction, wallet or category.
+  string entity = 1;
+  string sheet = 2;
+  bool ok = 3;
+  bool reachable = 4;
+  bool id_column = 5;
+  bool writable = 6;
+  repeated string missing = 7;
+  string contract_reason = 8;
+  string code = 9;
+  // True when opensheet showed no columns for the tab yet; the first sync checks them.
+  bool columns_deferred = 10;
+}
+
+message GetOpensheetLinkRequest {
+  Target target = 1;
+}
+
+message GetOpensheetLinkResponse {
+  // Absent when the project has no link.
+  OpensheetLink link = 1;
+}
+
+message TestOpensheetLinkRequest {
+  Target target = 1;
+  OpensheetSettings settings = 2;
+}
+
+message TestOpensheetLinkResponse {
+  repeated OpensheetTabCheck checks = 1;
+  bool ok = 2;
+}
+
+message SaveOpensheetLinkRequest {
+  Target target = 1;
+  OpensheetSettings settings = 2;
+}
+
+message SaveOpensheetLinkResponse {
+  OpensheetLink link = 1;
+}
+
+message SetOpensheetLinkEnabledRequest {
+  Target target = 1;
+  bool enabled = 2;
+}
+
+message SetOpensheetLinkEnabledResponse {
+  OpensheetLink link = 1;
+}
+
+message SyncOpensheetNowRequest {
+  Target target = 1;
+}
+
+message SyncOpensheetNowResponse {
+  // Rows marked for the mirror.
+  int64 marked = 1;
+}
+
+message DeleteOpensheetLinkRequest {
+  Target target = 1;
+}
+
+message DeleteOpensheetLinkResponse {}

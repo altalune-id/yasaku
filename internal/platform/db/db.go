@@ -117,6 +117,25 @@ func sqliteDSNWithPragmas(dsn string) string {
 	return b.String()
 }
 
+// NOTE: BEGIN IMMEDIATE takes the write lock up front, so a unit of work that reads before it writes waits on busy_timeout instead of failing with SQLITE_BUSY_SNAPSHOT when another writer commits in between. Only the unit-of-work handle uses it: store reads open deferred transactions on W and must stay concurrent with a writer.
+func sqliteDSNWithImmediateTx(dsn string) string {
+	if strings.Contains(dsn, "_txlock=") {
+		return dsn
+	}
+	if !strings.HasPrefix(dsn, "file:") {
+		dsn = "file:" + dsn
+	}
+	if strings.Contains(dsn, "?") {
+		return dsn + "&_txlock=immediate"
+	}
+	return dsn + "?_txlock=immediate"
+}
+
+// NOTE: every handle on a private in-memory database opens its own empty database, so a second handle would not see W's tables.
+func sqliteInMemory(dsn string) bool {
+	return strings.Contains(dsn, ":memory:") || strings.Contains(dsn, "mode=memory")
+}
+
 func openPostgres(cfg DBConfig) (*sql.DB, error) {
 	connCfg, err := pgConnConfig(cfg.DSN)
 	if err != nil {

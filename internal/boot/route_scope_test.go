@@ -126,6 +126,12 @@ func probeRoutes() []probeRoute {
 		{http.MethodPost, pbase + "/settings", url.Values{
 			"timezone": {"Asia/Jakarta"}, "currency": {"IDR"}, "period_start_day": {"25"},
 		}},
+		{http.MethodGet, pbase + "/opensheet", nil},
+		{http.MethodPost, pbase + "/opensheet", opensheetProbeForm()},
+		{http.MethodPost, pbase + "/opensheet/test", opensheetProbeForm()},
+		{http.MethodPost, pbase + "/opensheet/enabled", url.Values{"enabled": {"true"}}},
+		{http.MethodPost, pbase + "/opensheet/sync", url.Values{}},
+		{http.MethodPost, pbase + "/opensheet/delete", url.Values{}},
 		{http.MethodPost, pbase + "/apikeys", url.Values{"name": {"Probe Key"}, "scopes": {authn.ScopeYasakuRead}}},
 		{http.MethodPost, pbase + "/apikeys/" + id + "/revoke", url.Values{}},
 		{http.MethodPost, "/onboarding", url.Values{"name": {"Probe"}}},
@@ -147,10 +153,20 @@ func probeRoutes() []probeRoute {
 	}
 }
 
+func opensheetProbeForm() url.Values {
+	return url.Values{
+		"os_org": {"acme"}, "os_project": {"home"}, "api_key": {"osk_probe_0123456789abcd"},
+		"transactions_sheet": {"yasaku-transactions"}, "wallets_sheet": {"yasaku-wallets"}, "categories_sheet": {"yasaku-categories"},
+	}
+}
+
 func newScopeProbeServer(t *testing.T, mode config.Mode) (*boot.Server, *bytes.Buffer) {
 	t.Helper()
 	cfg := newSmokeCfg(t)
 	cfg.Mode = mode
+	// NOTE: a refused local port answers the Opensheet Test at once; the module must be mounted for its routes to be probed.
+	cfg.Opensheet = config.OpensheetConfig{BaseURL: "http://127.0.0.1:9", AllowPrivateHosts: true}
+	cfg.Security.EncryptionKey = strings.Repeat("ab", 32)
 	if mode == config.ModeCloud {
 		// NOTE: org creation and the signup flow are cloud-only capabilities.
 		cfg.OIDC = config.OIDCConfig{

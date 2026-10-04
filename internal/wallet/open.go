@@ -16,9 +16,9 @@ import (
 	"altalune.id/yasaku/money"
 )
 
-// OpeningRecorder posts the opening-balance transaction for a freshly created wallet.
+// OpeningRecorder posts the opening-balance transaction for a freshly created wallet and returns its id.
 type OpeningRecorder interface {
-	RecordOpening(ctx context.Context, walletID uuid.UUID, amount money.Amount, at time.Time, by uuid.UUID) error
+	RecordOpening(ctx context.Context, walletID uuid.UUID, amount money.Amount, at time.Time, by uuid.UUID) (uuid.UUID, error)
 }
 
 // OpeningDate is when an opening balance is dated; Moved reports that it was moved out of a closed period, and Date is At's day in the project timezone.
@@ -91,9 +91,10 @@ func (w *OpenWorkflow) Run(ctx context.Context, p Params, opening *money.Amount,
 
 	var created *Wallet
 	var dated OpeningDate
+	var refs []MirrorRef
 	var inner error
 	uowErr := w.uow(ctx, func(ctx context.Context) error {
-		created, dated, inner = w.open(ctx, p, opening, at, tc.UserID)
+		created, dated, refs, inner = w.open(ctx, p, opening, at, tc.UserID)
 		return inner
 	})
 	if inner != nil {
@@ -105,6 +106,7 @@ func (w *OpenWorkflow) Run(ctx context.Context, p Params, opening *money.Amount,
 		return nil, OpeningDate{}, w.unexpected(ctx, "wallet.Open: unit of work", cmp.Or(uowErr, errNoUnitOfWorkRun),
 			"org_id", tc.OrgID, "project_id", tc.ProjectID)
 	}
+	w.wallets.mirror.Kick(ctx, refs...)
 	span.SetAttributes(attribute.String("wallet.id", created.ID.String()), attribute.Bool("wallet.opening_moved", dated.Moved))
 	return created, dated, nil
 }
@@ -120,22 +122,29 @@ func (w *OpenWorkflow) Preview(ctx context.Context, opening *money.Amount, at ti
 	return w.date(ctx, opening, at)
 }
 
-func (w *OpenWorkflow) open(ctx context.Context, p Params, opening *money.Amount, at time.Time, by uuid.UUID) (*Wallet, OpeningDate, error) {
-	created, err := w.wallets.Create(ctx, p)
+// NOTE: RecordOpening marks the opening transaction itself and open marks the wallet after it, so one unit of work marks transactions before wallets; Run kicks both after the commit.
+func (w *OpenWorkflow) open(ctx context.Context, p Params, opening *money.Amount, at time.Time, by uuid.UUID) (*Wallet, OpeningDate, []MirrorRef, error) {
+	created, err := w.wallets.create(ctx, p)
 	if err != nil {
-		return nil, OpeningDate{}, err
+		return nil, OpeningDate{}, nil, err
 	}
 	dated, err := w.date(ctx, opening, at)
 	if err != nil {
-		return nil, OpeningDate{}, err
+		return nil, OpeningDate{}, nil, err
 	}
-	if opening == nil || opening.IsZero() {
-		return created, dated, nil
+	walletRef := MirrorRef{Entity: MirrorWallet, ID: created.ID}
+	refs := []MirrorRef{walletRef}
+	if opening != nil && !opening.IsZero() {
+		txID, err := w.opening.RecordOpening(ctx, created.ID, *opening, dated.At, by)
+		if err != nil {
+			return nil, OpeningDate{}, nil, err
+		}
+		refs = append(refs, MirrorRef{Entity: MirrorTransaction, ID: txID})
 	}
-	if err := w.opening.RecordOpening(ctx, created.ID, *opening, dated.At, by); err != nil {
-		return nil, OpeningDate{}, err
+	if err := w.wallets.mirror.Mark(ctx, walletRef); err != nil {
+		return nil, OpeningDate{}, nil, w.unexpected(ctx, "wallet.Open: mark", err, "wallet_id", created.ID)
 	}
-	return created, dated, nil
+	return created, dated, refs, nil
 }
 
 func (w *OpenWorkflow) date(ctx context.Context, opening *money.Amount, at time.Time) (OpeningDate, error) {

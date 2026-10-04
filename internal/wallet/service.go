@@ -24,15 +24,39 @@ type Service struct {
 	store      Store
 	log        *slog.Logger
 	unexpected apperror.UnexpectedFunc
+	mirror     Mirror
+	uow        UnitOfWork
 }
 
 // NewService binds the service to its dependencies.
-func NewService(store Store, log *slog.Logger, unexpected apperror.UnexpectedFunc) *Service {
-	return &Service{store: store, log: log.With("module", "wallet"), unexpected: unexpected}
+func NewService(store Store, log *slog.Logger, unexpected apperror.UnexpectedFunc, opts ...Option) *Service {
+	s := &Service{store: store, log: log.With("module", "wallet"), unexpected: unexpected, mirror: nopMirror{}, uow: passthrough}
+	for _, o := range opts {
+		o(s)
+	}
+	return s
 }
 
 // Create constructs a wallet in the caller's tenant scope and persists it.
 func (s *Service) Create(ctx context.Context, p Params) (*Wallet, error) {
+	var out *Wallet
+	refs, err := s.commit(ctx, "wallet.Create", func(ctx context.Context) ([]MirrorRef, error) {
+		w, err := s.create(ctx, p)
+		if err != nil {
+			return nil, err
+		}
+		out = w
+		return []MirrorRef{{Entity: MirrorWallet, ID: w.ID}}, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	s.mirror.Kick(ctx, refs...)
+	return out, nil
+}
+
+// NOTE: create neither marks nor opens a unit of work; Create and OpenWorkflow own both.
+func (s *Service) create(ctx context.Context, p Params) (*Wallet, error) {
 	ctx, span := tracer.Start(ctx, "wallet.Create")
 	defer span.End()
 
@@ -57,7 +81,7 @@ func (s *Service) Create(ctx context.Context, p Params) (*Wallet, error) {
 		span.RecordError(err)
 		return nil, err
 	}
-	if err := s.save(ctx, w, "wallet.Create"); err != nil {
+	if err := s.saveRow(ctx, w, "wallet.Create"); err != nil {
 		span.RecordError(err)
 		return nil, err
 	}
@@ -79,7 +103,7 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, kind Kind, provider 
 		span.RecordError(err)
 		return nil, err
 	}
-	if err := s.save(ctx, w, "wallet.Update"); err != nil {
+	if err := s.save(ctx, w, "wallet.Update", false); err != nil {
 		span.RecordError(err)
 		return nil, err
 	}
@@ -96,11 +120,12 @@ func (s *Service) Edit(ctx context.Context, id uuid.UUID, name string, kind Kind
 	if err != nil {
 		return nil, err
 	}
+	before := w.Name
 	if err := w.Edit(name, kind, provider, exclude); err != nil {
 		span.RecordError(err)
 		return nil, err
 	}
-	if err := s.save(ctx, w, "wallet.Edit"); err != nil {
+	if err := s.save(ctx, w, "wallet.Edit", w.Name != before); err != nil {
 		span.RecordError(err)
 		return nil, err
 	}
@@ -117,11 +142,12 @@ func (s *Service) Rename(ctx context.Context, id uuid.UUID, name string) (*Walle
 	if err != nil {
 		return nil, err
 	}
+	before := w.Name
 	if err := w.Rename(name); err != nil {
 		span.RecordError(err)
 		return nil, err
 	}
-	if err := s.save(ctx, w, "wallet.Rename"); err != nil {
+	if err := s.save(ctx, w, "wallet.Rename", w.Name != before); err != nil {
 		span.RecordError(err)
 		return nil, err
 	}
@@ -142,7 +168,7 @@ func (s *Service) Archive(ctx context.Context, id uuid.UUID) (*Wallet, error) {
 		return w, nil
 	}
 	w.Archive()
-	if err := s.save(ctx, w, "wallet.Archive"); err != nil {
+	if err := s.save(ctx, w, "wallet.Archive", false); err != nil {
 		span.RecordError(err)
 		return nil, err
 	}
@@ -163,7 +189,7 @@ func (s *Service) Unarchive(ctx context.Context, id uuid.UUID) (*Wallet, error) 
 		return w, nil
 	}
 	w.Unarchive()
-	if err := s.save(ctx, w, "wallet.Unarchive"); err != nil {
+	if err := s.save(ctx, w, "wallet.Unarchive", false); err != nil {
 		span.RecordError(err)
 		return nil, err
 	}
@@ -180,13 +206,20 @@ func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
 	if _, err := s.ByID(ctx, id); err != nil {
 		return err
 	}
-	if err := s.store.Delete(ctx, id); err != nil {
-		span.RecordError(err)
-		if IsInUseError(err) || IsNotFoundError(err) {
-			return err
+	refs, err := s.commit(ctx, "wallet.Delete", func(ctx context.Context) ([]MirrorRef, error) {
+		if err := s.store.Delete(ctx, id); err != nil {
+			if IsInUseError(err) || IsNotFoundError(err) {
+				return nil, err
+			}
+			return nil, s.unexpected(ctx, "wallet.Delete: delete", err, "wallet_id", id)
 		}
-		return s.unexpected(ctx, "wallet.Delete: delete", err, "wallet_id", id)
+		return []MirrorRef{{Entity: MirrorWallet, ID: id, Deleted: true}}, nil
+	})
+	if err != nil {
+		span.RecordError(err)
+		return err
 	}
+	s.mirror.Kick(ctx, refs...)
 	return nil
 }
 
@@ -283,7 +316,22 @@ func (s *Service) ResolveByName(ctx context.Context, q string) (*Wallet, error) 
 	}
 }
 
-func (s *Service) save(ctx context.Context, w *Wallet, op string) error {
+// NOTE: save persists w in a unit of work that marks it; cascade also re-marks the transactions showing its name.
+func (s *Service) save(ctx context.Context, w *Wallet, op string, cascade bool) error {
+	refs, err := s.commit(ctx, op, func(ctx context.Context) ([]MirrorRef, error) {
+		if err := s.saveRow(ctx, w, op); err != nil {
+			return nil, err
+		}
+		return []MirrorRef{{Entity: MirrorWallet, ID: w.ID, Cascade: cascade}}, nil
+	})
+	if err != nil {
+		return err
+	}
+	s.mirror.Kick(ctx, refs...)
+	return nil
+}
+
+func (s *Service) saveRow(ctx context.Context, w *Wallet, op string) error {
 	if err := s.store.Save(ctx, w); err != nil {
 		if IsAlreadyExistsError(err) || IsNotFoundError(err) {
 			return err

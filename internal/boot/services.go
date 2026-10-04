@@ -15,6 +15,7 @@ import (
 	"altalune.id/yasaku/internal/invite"
 	"altalune.id/yasaku/internal/ledger"
 	"altalune.id/yasaku/internal/onboard"
+	"altalune.id/yasaku/internal/opensheetsync"
 	"altalune.id/yasaku/internal/org"
 	"altalune.id/yasaku/internal/password"
 	"altalune.id/yasaku/internal/period"
@@ -70,6 +71,11 @@ type Services struct {
 	Transactions *transaction.Service
 	Reports      *report.Service
 
+	// Opensheet is nil when opensheet.baseURL is empty, as are OpensheetSync and OpensheetMirror.
+	Opensheet       *opensheetsync.Service
+	OpensheetSync   *opensheetsync.Syncer
+	OpensheetMirror *opensheetsync.Mirror
+
 	Onboard    *user.OnboardWorkflow
 	WalletOpen *wallet.OpenWorkflow
 
@@ -77,6 +83,8 @@ type Services struct {
 	KeyAuthn    *apikey.Authenticator
 	APIKeys     *apikey.Service
 	APIKeyUsage *apikey.UsageWorker
+
+	jobs *jobSubmitter
 }
 
 func buildServices(cfg *config.Config, k *platform.Kernel, caps capabilities.Capabilities) (*Services, error) {
@@ -96,8 +104,13 @@ func buildServices(cfg *config.Config, k *platform.Kernel, caps capabilities.Cap
 	orgs := org.NewService(orgStore, caps, log, reporter.Unexpected)
 	projects := project.NewService(projectStore, log, reporter.Unexpected)
 	todos := todo.NewService(todoStore, log, reporter.Unexpected, k.Queue)
+	jobs := newJobSubmitter(k.Queue, k.Tracer, log)
 	onboards := onboard.NewService(onboardStore, log, reporter.Unexpected)
 	uow := tenant.NewUnitOfWork(cfg.DB, pool, pgConn)
+	osw, err := newOpensheetWiring(cfg, k, jobs, log)
+	if err != nil {
+		return nil, err
+	}
 	webhookStore := webhook.NewStore(cfg.DB, pool, pgConn)
 	webhooks := webhook.NewService(webhookStore, log, reporter.Unexpected, k.Sealer, k.Outbox, projectSlugs{svc: projects})
 	posts := blog.NewService(blog.NewStore(cfg.DB, pool, pgConn), log, reporter.Unexpected, uow, webhooks)
@@ -111,15 +124,19 @@ func buildServices(cfg *config.Config, k *platform.Kernel, caps capabilities.Cap
 	transactionStore := transaction.NewStore(cfg.DB, pool, pgConn)
 
 	ledgers := ledger.NewService(ledgerStore, log, reporter.Unexpected)
-	wallets := wallet.NewService(walletStore, log, reporter.Unexpected)
-	txCategories := category.NewService(txCategoryStore, log, reporter.Unexpected, namerAdapter{})
+	wallets := wallet.NewService(walletStore, log, reporter.Unexpected, wallet.WithMirror(osw.walletMirror(), wallet.UnitOfWork(uow)))
+	txCategories := category.NewService(txCategoryStore, log, reporter.Unexpected, namerAdapter{},
+		category.WithMirror(osw.categoryMirror(), category.UnitOfWork(uow)))
 	reports := report.NewService(report.NewReader(cfg.DB, pool, pgConn), log, reporter.Unexpected, ledgers)
 	periods := period.NewService(periodStore, log, reporter.Unexpected,
 		ledgers, snapshotterAdapter{reports: reports, now: time.Now}, period.UnitOfWork(uow), time.Now)
 	transactions := transaction.NewService(transactionStore, log, reporter.Unexpected,
 		walletReaderFor(wallets), categoryReaderFor(txCategories),
-		periodResolverAdapter{periods: periods}, transaction.UnitOfWork(uow))
+		periodResolverAdapter{periods: periods}, transaction.UnitOfWork(uow), transaction.WithMirror(osw.transactionMirror()))
 	walletOpen := wallet.NewOpenWorkflow(wallets, transactions, openingDaterFor(periods), wallet.UnitOfWork(uow), log, reporter.Unexpected)
+	opensheet, opensheetSync := osw.services(k, log, opensheetSource{
+		txs: transactions, wallets: wallets, cats: txCategories, periods: periods, ledgers: ledgers,
+	}, orgs, uow)
 
 	invitesEnabled := cfg.Mode == config.ModeCloud || cfg.OIDC.Issuer != ""
 
@@ -253,6 +270,10 @@ func buildServices(cfg *config.Config, k *platform.Kernel, caps capabilities.Cap
 		Transactions: transactions,
 		Reports:      reports,
 
+		Opensheet:       opensheet,
+		OpensheetSync:   opensheetSync,
+		OpensheetMirror: osw.mirror,
+
 		Onboard:    onboardWorkflow,
 		WalletOpen: walletOpen,
 
@@ -260,6 +281,8 @@ func buildServices(cfg *config.Config, k *platform.Kernel, caps capabilities.Cap
 		KeyAuthn:    keyAuthn,
 		APIKeys:     keys,
 		APIKeyUsage: keyUsage,
+
+		jobs: jobs,
 	}, nil
 }
 

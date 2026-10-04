@@ -8,12 +8,12 @@ import (
 	"altalune.id/yasaku/internal/todo"
 )
 
-func consumerDomains() []string { return []string{"todo"} }
+func consumerDomains() []string { return append([]string{"todo"}, yasakuConsumerDomains()...) }
 
 func consumerProviders(s *Services, log *slog.Logger) []queue.Provider {
-	return []queue.Provider{
+	return append([]queue.Provider{
 		todo.NewConsumer(s.Todos, log),
-	}
+	}, yasakuConsumerProviders(s, log)...)
 }
 
 func listenerProviders(gate *onboardingGate) []queue.ListenerProvider {

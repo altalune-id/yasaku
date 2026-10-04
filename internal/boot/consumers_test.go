@@ -34,7 +34,7 @@ func TestAssertConsumerWiring(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := assertConsumerWiring(tt.providers)
+			err := assertConsumerWiring(append(tt.providers, yasakuConsumerStubs()...))
 			if tt.wantErr == "" {
 				require.NoError(t, err)
 				return
@@ -46,7 +46,7 @@ func TestAssertConsumerWiring(t *testing.T) {
 
 func TestAssertConsumerWiring_LengthMismatchIsAnError(t *testing.T) {
 	require.Error(t, assertConsumerWiring(nil))
-	require.Error(t, assertConsumerWiring([]queue.Provider{stubConsumerProvider{}, stubConsumerProvider{}}))
+	require.Error(t, assertConsumerWiring(append([]queue.Provider{stubConsumerProvider{}, stubConsumerProvider{}}, yasakuConsumerStubs()...)))
 }
 
 func TestConsumerDomains_MatchesProviderCount(t *testing.T) {

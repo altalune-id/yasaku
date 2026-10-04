@@ -65,6 +65,43 @@ rules (append-only, `900`-`999` reserved) are the same, and `TestCodes_EveryRefI
 | `PRD007` | `apperror.CodePeriodNotLatestClosed` | Period Not Latest Closed |
 | `PRD008` | `apperror.CodePeriodAuthorMissing`   | Period Author Missing    |
 
+## OSL — Opensheet mirror
+
+| Code     | Constant                                    | Meaning                          |
+| -------- | ------------------------------------------- | -------------------------------- |
+| `OSL001` | `apperror.CodeOpensheetLinkNotFound`        | Opensheet Link Not Found         |
+| `OSL002` | `apperror.CodeOpensheetInvalidSetting`      | Opensheet Invalid Setting        |
+| `OSL003` | `apperror.CodeOpensheetAPIKeyRequired`      | Opensheet API Key Required       |
+| `OSL004` | `apperror.CodeOpensheetSheetUnreachable`    | Opensheet Sheet Unreachable      |
+| `OSL005` | `apperror.CodeOpensheetShapeMismatch`       | Opensheet Sheet Columns Missing  |
+| `OSL006` | `apperror.CodeOpensheetNoIDColumn`          | Opensheet Sheet Has No id Column |
+| `OSL007` | `apperror.CodeOpensheetSheetNotWritable`    | Opensheet Sheet Not Writable     |
+| `OSL008` | `apperror.CodeOpensheetContractUnsatisfied` | Opensheet Table Contract Failed  |
+| `OSL009` | `apperror.CodeOpensheetUnavailable`         | Opensheet Unavailable            |
+| `OSL010` | `apperror.CodeOpensheetNotVerified`         | Opensheet Link Not Verified      |
+| `OSL011` | `apperror.CodeOpensheetLinkDisabled`        | Opensheet Link Disabled          |
+| `OSL012` | `apperror.CodeOpensheetSyncRefused`         | Opensheet Sync Refused           |
+| `OSL013` | `apperror.CodeOpensheetScopeMismatch`       | Opensheet Job Scope Mismatch     |
+| `OSL014` | `apperror.CodeOpensheetRowRefused`          | Opensheet Row Refused            |
+| `OSL015` | `apperror.CodeOpensheetKeyUnreadable`       | Opensheet API Key Unreadable     |
+| `OSL016` | `apperror.CodeOpensheetPrivateEndpoint`     | Opensheet Base URL Is Private    |
+
+`OSL004` covers opensheet's 404 mask and a 401 or 403 during the Test: an unknown slug, a wrong org
+or project, a revoked key, a key without the scope and a key not granted the sheet all look the same
+from yasaku.
+
+`OSL012` is a link-level sync refusal: it counts toward turning the link off. `OSL014` is a refusal of
+one row: the row backs off and the link is never penalised. Which opensheet answer is which is in
+[`opensheet/yasaku.md`](../opensheet/yasaku.md#failures).
+
+`OSL015` means the deployment's `security.encryptionKey` no longer opens the saved API key (the key
+was rotated). The person enters the opensheet key again and saves; the sync job treats it as a link-level
+refusal.
+
+`OSL016` means `opensheet.baseURL` resolves to a private address while `opensheet.allowPrivateHosts`
+is off. Set `YASAKU_OPENSHEET_ALLOW_PRIVATE_HOSTS=true` when opensheet runs on a private network. The
+Test answers it per tab; the sync job treats it as a link-level `config` refusal.
+
 ## MCP — Reserved
 
 `MCP002`-`MCP004` were registered before the template sync and are retired. The registry is append-only,

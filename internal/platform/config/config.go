@@ -53,6 +53,7 @@ type Config struct {
 	Security      SecurityConfig      `yaml:"security"      mapstructure:"security"`
 	Blog          BlogConfig          `yaml:"blog"          mapstructure:"blog"`
 	DataPlane     DataPlaneConfig     `yaml:"dataplane"     mapstructure:"dataplane"`
+	Opensheet     OpensheetConfig     `yaml:"opensheet"     mapstructure:"opensheet"`
 }
 
 // BlogConfig gates the blog data plane's uncredentialed reads.

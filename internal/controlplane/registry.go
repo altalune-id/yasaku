@@ -66,6 +66,13 @@ func VerbTable() map[string]surfaces.Verb {
 
 		yasakuv1connect.ReportServicePeriodReportProcedure:   {Module: "report", Aggregate: "report", Operation: "period"},
 		yasakuv1connect.ReportServiceCashflowReportProcedure: {Module: "report", Aggregate: "report", Operation: "cashflow"},
+
+		yasakuv1connect.OpensheetServiceGetOpensheetLinkProcedure:        {Module: "opensheetsync", Aggregate: "link", Operation: "get"},
+		yasakuv1connect.OpensheetServiceTestOpensheetLinkProcedure:       {Module: "opensheetsync", Aggregate: "link", Operation: "test"},
+		yasakuv1connect.OpensheetServiceSaveOpensheetLinkProcedure:       {Module: "opensheetsync", Aggregate: "link", Operation: "save"},
+		yasakuv1connect.OpensheetServiceSetOpensheetLinkEnabledProcedure: {Module: "opensheetsync", Aggregate: "link", Operation: "set_enabled"},
+		yasakuv1connect.OpensheetServiceSyncOpensheetNowProcedure:        {Module: "opensheetsync", Aggregate: "link", Operation: "sync_now"},
+		yasakuv1connect.OpensheetServiceDeleteOpensheetLinkProcedure:     {Module: "opensheetsync", Aggregate: "link", Operation: "delete"},
 	}
 }
 

@@ -33,6 +33,15 @@ func publishedConsoleHandlers(all []web.Register) []web.Register {
 	})
 }
 
+// NOTE: yasakuConsoleHandlers is the hook for yasaku-only console modules; a module the server leaves unmounted adds nothing.
+func yasakuConsoleHandlers(deps webhandlers.Deps, s *Services) []web.Register {
+	var hs []web.Register
+	if s.Opensheet != nil {
+		hs = append(hs, webhandlers.NewOpensheetHandler(deps, s.Opensheet))
+	}
+	return hs
+}
+
 func publishedConsumers(all []queue.Provider) []queue.Provider {
 	return slices.DeleteFunc(slices.Clone(all), func(p queue.Provider) bool {
 		_, isTodo := p.(*todo.Consumer)

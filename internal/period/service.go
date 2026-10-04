@@ -91,14 +91,16 @@ func (s *Service) EnsureCurrent(ctx context.Context) (*Period, error) {
 		span.RecordError(err)
 		return nil, err
 	}
-	if saveErr := s.store.Save(ctx, first); saveErr != nil {
-		if IsOverlapError(saveErr) {
-			// NOTE: a concurrent creator won the partial unique index; its row is the current period.
-			return s.currentAfterRace(ctx, tc)
-		}
+	created, saveErr := s.store.CreateCurrent(ctx, first)
+	if saveErr != nil {
 		span.RecordError(saveErr)
-		return nil, s.unexpected(ctx, "period.EnsureCurrent: save", saveErr,
+		return nil, s.unexpected(ctx, "period.EnsureCurrent: create", saveErr,
 			"org_id", tc.OrgID, "project_id", tc.ProjectID)
+	}
+	if !created {
+		// NOTE: a concurrent creator won the partial unique index; its row is the current period.
+		// NOTE: the re-read sees that committed row only under READ COMMITTED, the server default the tenant unit of work begins with (BeginTx with nil options); a stricter level would need a retry here instead.
+		return s.currentAfterRace(ctx, tc)
 	}
 	span.SetAttributes(attribute.String("period.id", first.ID.String()))
 	return first, nil

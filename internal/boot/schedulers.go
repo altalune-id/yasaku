@@ -16,13 +16,13 @@ import (
 )
 
 //nolint:gochecknoglobals // Immutable wiring manifest; not runtime state.
-var schedulerDomains = []string{"todo", "session"}
+var schedulerDomains = append([]string{"todo", "session"}, yasakuSchedulerDomains()...)
 
 func schedulerProviders(s *Services, sessions session.Store, loc scheduler.LocationFunc, log *slog.Logger) []scheduler.Provider {
-	return []scheduler.Provider{
+	return append([]scheduler.Provider{
 		todo.NewScheduler(s.Todos, log, loc),
 		session.NewScheduler(sessions, log),
-	}
+	}, yasakuSchedulerProviders(s, log)...)
 }
 
 func assertSchedulerWiring(ps []scheduler.Provider) error {

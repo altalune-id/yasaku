@@ -2,6 +2,7 @@ package opensheet_test
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -91,7 +92,7 @@ func TestPages_FollowsLinkAndReportsStale(t *testing.T) {
 func TestCreateRow_IdempotencyKeyReplays(t *testing.T) {
 	var keys []string
 	mux := http.NewServeMux()
-	mux.HandleFunc("/api/v1/orgs/o1/projects/p1/sheets/s1", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/v1/orgs/o1/projects/p1/sheets/s1/rows", func(w http.ResponseWriter, r *http.Request) {
 		keys = append(keys, r.Header.Get("Idempotency-Key"))
 		writeJSON(t, w, http.StatusCreated, opensheet.Row{"id": "1", "name": "a"})
 	})
@@ -112,7 +113,7 @@ func TestCreateRow_IdempotencyKeyReplays(t *testing.T) {
 func TestCreateRow_NumericColumns(t *testing.T) {
 	var body map[string]any
 	mux := http.NewServeMux()
-	mux.HandleFunc("/api/v1/orgs/o1/projects/p1/sheets/s1", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/v1/orgs/o1/projects/p1/sheets/s1/rows", func(w http.ResponseWriter, r *http.Request) {
 		require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
 		writeJSON(t, w, http.StatusCreated, opensheet.Row{"id": "1", "amount": "12"})
 	})
@@ -186,7 +187,7 @@ func TestCreateRows_RefusesOversizeBatchWithoutHTTPCall(t *testing.T) {
 func TestPatchRow_IfMatchAndPreconditionFailed(t *testing.T) {
 	var ifMatch string
 	mux := http.NewServeMux()
-	mux.HandleFunc("/api/v1/orgs/o1/projects/p1/sheets/s1/row1", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/v1/orgs/o1/projects/p1/sheets/s1/rows/row1", func(w http.ResponseWriter, r *http.Request) {
 		ifMatch = r.Header.Get("If-Match")
 		writeErrorEnvelope(t, w, http.StatusPreconditionFailed, "SHT030", "stale etag")
 	})
@@ -299,4 +300,66 @@ func TestNew_PrivateHostGuard(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.NotNil(t, c)
+}
+
+func TestRowRoutes_UseTheRowsSegment(t *testing.T) {
+	var got []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = append(got, r.Method+" "+r.URL.Path)
+		if r.Method == http.MethodDelete {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		writeJSON(t, w, http.StatusOK, opensheet.Row{"id": "r1"})
+	}))
+	defer srv.Close()
+	c := newTestClient(t, srv.URL)
+	ctx := t.Context()
+
+	_, _, err := c.CreateRow(ctx, "tx", opensheet.Row{"id": "r1"})
+	require.NoError(t, err)
+	_, _, err = c.Row(ctx, "tx", "r1")
+	require.NoError(t, err)
+	_, _, err = c.ReplaceRow(ctx, "tx", "r1", opensheet.Row{"name": "a"})
+	require.NoError(t, err)
+	_, _, err = c.PatchRow(ctx, "tx", "r1", opensheet.Row{"name": "b"})
+	require.NoError(t, err)
+	require.NoError(t, c.DeleteRow(ctx, "tx", "r1"))
+
+	const s = "/api/v1/orgs/o1/projects/p1/sheets/tx"
+	require.Equal(t, []string{
+		"POST " + s + "/rows",
+		"GET " + s + "/rows/r1",
+		"PUT " + s + "/rows/r1",
+		"PATCH " + s + "/rows/r1",
+		"DELETE " + s + "/rows/r1",
+	}, got)
+}
+
+func TestNotFound_CarriesTheCodeSoAMissingRowIsToldApartFromTheMask(t *testing.T) {
+	for _, tc := range []struct {
+		code       string
+		rowMissing bool
+	}{{"SHT013", true}, {"SHT001", false}, {"", false}} {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			writeErrorEnvelope(t, w, http.StatusNotFound, tc.code, "not found")
+		}))
+		c := newTestClient(t, srv.URL)
+		_, _, err := c.PatchRow(t.Context(), "tx", "r1", opensheet.Row{"name": "b"})
+		srv.Close()
+		nf, ok := errors.AsType[*opensheet.NotFoundError](err)
+		require.True(t, ok, "want NotFoundError, got %v", err)
+		require.Equal(t, tc.code, nf.Code)
+		require.Equal(t, tc.rowMissing, nf.RowMissing(), tc.code)
+		require.Equal(t, "r1", nf.ID)
+	}
+}
+
+func TestCreateRow_ANonNumericValueNamesTheColumnOnly(t *testing.T) {
+	c := newTestClient(t, "http://127.0.0.1:1")
+	_, _, err := c.CreateRow(t.Context(), "s1", opensheet.Row{"amount": "Rp12.000,secret"}, opensheet.WithNumericColumns("amount"))
+	var ve *opensheet.ValidationError
+	require.ErrorAs(t, err, &ve)
+	require.Equal(t, "client", ve.Code)
+	require.Equal(t, "column amount is not numeric", ve.Message, "no Go error text and no cell value")
 }

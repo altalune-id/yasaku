@@ -873,8 +873,9 @@ func TestOverviewHandler_Get_ForeignCurrencyOnlyHeadlinesTheLedgerCurrency(t *te
 func (f *txFixture) seedOpening(t *testing.T) uuid.UUID {
 	t.Helper()
 	ctx := f.projectCtx(t)
-	require.NoError(t, f.Transactions.RecordOpening(
-		ctx, f.Cash, money.New(1_000_000_00, money.IDR), time.Now(), f.Principal.UserID))
+	_, err := f.Transactions.RecordOpening(
+		ctx, f.Cash, money.New(1_000_000_00, money.IDR), time.Now(), f.Principal.UserID)
+	require.NoError(t, err)
 	items, _, err := f.Transactions.List(ctx, transaction.ListOpts{})
 	require.NoError(t, err)
 	for _, it := range items {

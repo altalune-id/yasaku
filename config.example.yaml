@@ -208,6 +208,12 @@ onboard:
   # [secret] env: YASAKU_ONBOARD_SETUP_TOKEN
   setupToken: ""
 
+opensheet:
+  # [bootstrap] env: YASAKU_OPENSHEET_ALLOW_PRIVATE_HOSTS
+  allowPrivateHosts: ""
+  # [bootstrap] env: YASAKU_OPENSHEET_BASE_URL
+  baseURL: ""
+
 queue:
   # env: YASAKU_QUEUE_CONNECT_TIMEOUT
   connectTimeout: 10s

@@ -12,6 +12,8 @@ import (
 // Store is the driven port.
 type Store interface {
 	Save(ctx context.Context, p *Period) error
+	// CreateCurrent inserts p unless the project already has a current period; created is false when another writer's row won, and the caller's transaction stays usable.
+	CreateCurrent(ctx context.Context, p *Period) (created bool, err error)
 	ByID(ctx context.Context, id uuid.UUID) (*Period, error)
 	List(ctx context.Context, orgID, projectID uuid.UUID, opts ListOpts) ([]*Period, error)
 	Current(ctx context.Context, orgID, projectID uuid.UUID) (*Period, error)

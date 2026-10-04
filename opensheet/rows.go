@@ -62,7 +62,7 @@ func (c *Client) Rows(ctx context.Context, slug string, q Query) iter.Seq2[Row, 
 // Row fetches one row by id.
 func (c *Client) Row(ctx context.Context, slug, id string) (Row, ETag, error) {
 	var row Row
-	resp, err := c.do(ctx, c.safe, http.MethodGet, c.sheetURL(slug, id), nil, nil, &row)
+	resp, err := c.do(ctx, c.safe, http.MethodGet, c.sheetURL(slug, "rows", id), nil, nil, &row)
 	if err != nil {
 		return nil, "", annotate(err, slug, id)
 	}
