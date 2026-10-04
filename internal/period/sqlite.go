@@ -259,20 +259,7 @@ func (s *sqliteStore) Save(ctx context.Context, p *Period) error {
 		return s.endTx(tx, owned, err)
 	}
 	updatedAt := sqliteent.SQLiteTime(p.UpdatedAt)
-	stmt := s.table.INSERT(s.table.AllColumns).
-		VALUES(
-			sqlite.String(p.ID.String()),
-			sqlite.String(p.OrgID.String()),
-			sqlite.String(p.ProjectID.String()),
-			sqlite.String(p.Name),
-			sqlite.String(p.StartDate.String()),
-			sqliteDatePtr(p.EndDate),
-			sqlite.String(string(p.Status)),
-			sqliteTimePtr(p.ClosedAt),
-			sqliteText(js),
-			sqlite.String(sqliteent.SQLiteTime(p.CreatedAt)),
-			sqlite.String(updatedAt),
-		).
+	stmt := s.insertValues(p, js).
 		ON_CONFLICT(s.table.ID).
 		// SECURITY: SQLite has no RLS, so this tenant predicate is the only thing stopping an attacker-supplied row id from updating another org's row.
 		DO_UPDATE(
@@ -301,6 +288,50 @@ func (s *sqliteStore) Save(ctx context.Context, p *Period) error {
 		return s.endTx(tx, owned, &NotFoundError{ID: p.ID.String()})
 	}
 	return s.endTx(tx, owned, nil)
+}
+
+func (s *sqliteStore) insertValues(p *Period, js *string) sqlite.InsertStatement {
+	return s.table.INSERT(s.table.AllColumns).
+		VALUES(
+			sqlite.String(p.ID.String()),
+			sqlite.String(p.OrgID.String()),
+			sqlite.String(p.ProjectID.String()),
+			sqlite.String(p.Name),
+			sqlite.String(p.StartDate.String()),
+			sqliteDatePtr(p.EndDate),
+			sqlite.String(string(p.Status)),
+			sqliteTimePtr(p.ClosedAt),
+			sqliteText(js),
+			sqlite.String(sqliteent.SQLiteTime(p.CreatedAt)),
+			sqlite.String(sqliteent.SQLiteTime(p.UpdatedAt)),
+		)
+}
+
+// NOTE: ON CONFLICT DO NOTHING, as on Postgres, so the caller's unit of work survives a lost race.
+func (s *sqliteStore) CreateCurrent(ctx context.Context, p *Period) (bool, error) {
+	tx, owned, tc, err := s.txAcquire(ctx)
+	if err != nil {
+		return false, err
+	}
+	// SECURITY: a period is only ever created inside the caller's own scope.
+	if p.OrgID != tc.OrgID || p.ProjectID != tc.ProjectID {
+		return false, s.endTx(tx, owned, &NotFoundError{ID: p.ID.String()})
+	}
+	js, err := marshalSnapshot(p.Snapshot)
+	if err != nil {
+		return false, s.endTx(tx, owned, err)
+	}
+	stmt := s.insertValues(p, js).
+		ON_CONFLICT(s.table.ProjectID).WHERE(s.table.EndDate.IS_NULL()).DO_NOTHING()
+	res, execErr := stmt.ExecContext(ctx, tx)
+	if execErr != nil {
+		return false, s.endTx(tx, owned, fmt.Errorf("period.sqlite.CreateCurrent: %w", execErr))
+	}
+	n, raErr := res.RowsAffected()
+	if raErr != nil {
+		return false, s.endTx(tx, owned, fmt.Errorf("period.sqlite.CreateCurrent: rows affected: %w", raErr))
+	}
+	return n == 1, s.endTx(tx, owned, nil)
 }
 
 func (s *sqliteStore) SaveClosing(ctx context.Context, c *Closing) error {

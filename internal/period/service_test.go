@@ -309,11 +309,11 @@ func TestEnsureCurrent_RereadsAfterLosingTheCreateRace(t *testing.T) {
 	require.NoError(t, err)
 
 	saves := 0
-	f.store.SaveFn = func(ctx context.Context, p *period.Period) error {
+	f.store.CreateCurrentFn = func(ctx context.Context, p *period.Period) (bool, error) {
 		saves++
-		f.store.SaveFn = nil
+		f.store.CreateCurrentFn = nil
 		require.NoError(t, f.store.Save(ctx, winner))
-		return &period.OverlapError{Start: p.StartDate.String()}
+		return false, nil
 	}
 
 	got, err := f.svc.EnsureCurrent(f.ctx)
@@ -326,9 +326,7 @@ func TestEnsureCurrent_RereadsAfterLosingTheCreateRace(t *testing.T) {
 // TestEnsureCurrent_SurfacesTheRereadFailure covers the currentAfterRace branch whose re-read still finds no current period.
 func TestEnsureCurrent_SurfacesTheRereadFailure(t *testing.T) {
 	f := newFixture(t)
-	f.store.SaveFn = func(_ context.Context, p *period.Period) error {
-		return &period.OverlapError{Start: p.StartDate.String()}
-	}
+	f.store.CreateCurrentFn = func(context.Context, *period.Period) (bool, error) { return false, nil }
 
 	_, err := f.svc.EnsureCurrent(f.ctx)
 	assert.True(t, period.IsNotFoundError(err), "got %T: %v", err, err)

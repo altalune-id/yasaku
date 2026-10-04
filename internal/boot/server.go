@@ -550,6 +550,7 @@ func declareQueue(q *queue.Client, svcs *Services, gate *onboardingGate, log *sl
 	if err := q.Declare(jobsOf(hs), broadcastsOf(ls)); err != nil {
 		return nil, nil, fmt.Errorf("boot: queue declare: %w", err)
 	}
+	svcs.jobs.bind(hs)
 	return hs, ls, nil
 }
 

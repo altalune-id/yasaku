@@ -35,10 +35,16 @@ func IsAPIError(err error) bool {
 	return ok
 }
 
-// NotFoundError is the server's single answer for an unknown slug, a missing or invalid credential, a key from another project, a key without the scope, or a sheet not granted to the key.
+// NotFoundError is opensheet's 404: the mask over a bad key, scope or slug (SHT001), or on a by-id route a missing row (SHT013).
 type NotFoundError struct {
 	Slug, ID string
+	Code     string
 }
+
+const codeRowNotFound = "SHT013"
+
+// RowMissing reports a 404 naming a missing row rather than the mask; only a by-id route can answer it.
+func (e *NotFoundError) RowMissing() bool { return e.Code == codeRowNotFound }
 
 func (e *NotFoundError) Error() string {
 	if e.ID == "" {
@@ -141,7 +147,7 @@ func fromResponse(resp *resty.Response) error {
 	code, msg := env.Error.Code, env.Error.Message
 	switch resp.StatusCode() {
 	case http.StatusNotFound:
-		return &NotFoundError{}
+		return &NotFoundError{Code: code}
 	case http.StatusPreconditionFailed:
 		return &PreconditionFailedError{}
 	case http.StatusConflict:

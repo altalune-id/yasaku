@@ -52,6 +52,13 @@ func yasakuProcedureScopes() authn.ScopeTable {
 
 		yasakuv1connect.ReportServicePeriodReportProcedure:   r,
 		yasakuv1connect.ReportServiceCashflowReportProcedure: r,
+
+		yasakuv1connect.OpensheetServiceGetOpensheetLinkProcedure:        r,
+		yasakuv1connect.OpensheetServiceTestOpensheetLinkProcedure:       w,
+		yasakuv1connect.OpensheetServiceSaveOpensheetLinkProcedure:       w,
+		yasakuv1connect.OpensheetServiceSetOpensheetLinkEnabledProcedure: w,
+		yasakuv1connect.OpensheetServiceSyncOpensheetNowProcedure:        w,
+		yasakuv1connect.OpensheetServiceDeleteOpensheetLinkProcedure:     w,
 	}
 }
 
@@ -102,5 +109,12 @@ func YasakuFineProcedureScopes() authn.ScopeTable {
 
 		yasakuv1connect.ReportServicePeriodReportProcedure:   "reports:read",
 		yasakuv1connect.ReportServiceCashflowReportProcedure: "reports:read",
+
+		yasakuv1connect.OpensheetServiceGetOpensheetLinkProcedure:        "opensheet:read",
+		yasakuv1connect.OpensheetServiceTestOpensheetLinkProcedure:       "opensheet:write",
+		yasakuv1connect.OpensheetServiceSaveOpensheetLinkProcedure:       "opensheet:write",
+		yasakuv1connect.OpensheetServiceSetOpensheetLinkEnabledProcedure: "opensheet:write",
+		yasakuv1connect.OpensheetServiceSyncOpensheetNowProcedure:        "opensheet:write",
+		yasakuv1connect.OpensheetServiceDeleteOpensheetLinkProcedure:     "opensheet:write",
 	}
 }

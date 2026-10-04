@@ -65,7 +65,7 @@ func newHarness(t *testing.T, p session.Principal) *harness {
 	return newHarnessOpts(t, p, nil)
 }
 
-func newHarnessOpts(t *testing.T, p session.Principal, verr error) *harness {
+func newHarnessOpts(t *testing.T, p session.Principal, verr error, mods ...func(*controlplane.Deps)) *harness {
 	t.Helper()
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	reporter := apperror.NewReporter(log, false)
@@ -92,11 +92,15 @@ func newHarnessOpts(t *testing.T, p session.Principal, verr error) *harness {
 		Verifier: stubVerifier{principal: p, err: verr},
 	}
 
-	srv := controlplane.New(nil, kernel, controlplane.Deps{
+	deps := controlplane.Deps{
 		Orgs:     orgSvc,
 		Projects: projectSvc,
 		Ledgers:  ledger.NewService(ledgers, log, reporter.Unexpected),
-	})
+	}
+	for _, mod := range mods {
+		mod(&deps)
+	}
+	srv := controlplane.New(nil, kernel, deps)
 	srv.Authn = authn.Chain{apikey.NewAuthenticator(keys, nil, apikey.Scheme{}, fakes.NewMembers()), tokens.NewAuthenticator(kernel.Verifier)}
 	srv.APIKeys = apikey.NewService(keys, apikey.Scheme{}, fakes.PermissiveMembers(), fakes.NewOrgProjects(), log, reporter.Unexpected)
 	srv.KeyPrefix = apikey.DefaultPrefix

@@ -57,6 +57,7 @@ yasaku/
 │   ├── cli/            # cobra command tree — the cli surface (S6)
 │   ├── apikey/, blog/, invite/, onboard/, org/, project/, todo/, user/   # domain modules
 │   ├── category/, ledger/, period/, report/, transaction/, wallet/   # yasaku domain modules
+│   ├── opensheetsync/  # yasaku: optional one-way mirror to Google Sheets through opensheet
 │   ├── legal/          # embedded Terms of Service + Privacy Policy markdown
 │   ├── controlplane/   # Connect-RPC surface (S2), mounted at /api/
 │   ├── dataplane/      # REST surface for integrators (S3), mounted at /api/v1/

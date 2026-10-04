@@ -23,16 +23,24 @@ type Service struct {
 	log        *slog.Logger
 	unexpected apperror.UnexpectedFunc
 	namer      Namer
+	mirror     Mirror
+	uow        UnitOfWork
 }
 
 // NewService binds the service to its dependencies.
-func NewService(store Store, log *slog.Logger, unexpected apperror.UnexpectedFunc, namer Namer) *Service {
-	return &Service{
+func NewService(store Store, log *slog.Logger, unexpected apperror.UnexpectedFunc, namer Namer, opts ...Option) *Service {
+	s := &Service{
 		store:      store,
 		log:        log.With("module", "category"),
 		unexpected: unexpected,
 		namer:      namer,
+		mirror:     nopMirror{},
+		uow:        passthrough,
 	}
+	for _, o := range opts {
+		o(s)
+	}
+	return s
 }
 
 // Create constructs a Category in the caller's tenant scope and persists it.
@@ -62,14 +70,21 @@ func (s *Service) Create(ctx context.Context, name string, kind Kind, icon, colo
 		span.RecordError(err)
 		return nil, err
 	}
-	if err := s.store.Save(ctx, c); err != nil {
-		span.RecordError(err)
-		if IsAlreadyExistsError(err) {
-			return nil, err
+	refs, err := s.commit(ctx, "category.Create", func(ctx context.Context) ([]MirrorRef, error) {
+		if err := s.store.Save(ctx, c); err != nil {
+			if IsAlreadyExistsError(err) {
+				return nil, err
+			}
+			return nil, s.unexpected(ctx, "category.Create: save", err,
+				"org_id", tc.OrgID, "project_id", tc.ProjectID)
 		}
-		return nil, s.unexpected(ctx, "category.Create: save", err,
-			"org_id", tc.OrgID, "project_id", tc.ProjectID)
+		return []MirrorRef{{Entity: MirrorCategory, ID: c.ID}}, nil
+	})
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
 	}
+	s.mirror.Kick(ctx, refs...)
 	span.SetAttributes(attribute.String("category.id", c.ID.String()))
 	return c, nil
 }
@@ -84,11 +99,12 @@ func (s *Service) Rename(ctx context.Context, id uuid.UUID, name string) (*Categ
 	if err != nil {
 		return nil, err
 	}
+	before := c.Name
 	if err := c.Rename(name); err != nil {
 		span.RecordError(err)
 		return nil, err
 	}
-	return s.save(ctx, span, c, "category.Rename")
+	return s.save(ctx, span, c, "category.Rename", c.Name != before)
 }
 
 // Update replaces the icon and colour of a category in the caller's tenant scope.
@@ -105,7 +121,7 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, icon, color string) 
 		span.RecordError(err)
 		return nil, err
 	}
-	return s.save(ctx, span, c, "category.Update")
+	return s.save(ctx, span, c, "category.Update", false)
 }
 
 // Archive hides the category from pickers, leaving its transactions intact.
@@ -119,7 +135,7 @@ func (s *Service) Archive(ctx context.Context, id uuid.UUID) (*Category, error) 
 		return nil, err
 	}
 	c.Archive()
-	return s.save(ctx, span, c, "category.Archive")
+	return s.save(ctx, span, c, "category.Archive", false)
 }
 
 // Unarchive returns the category to the pickers.
@@ -133,7 +149,7 @@ func (s *Service) Unarchive(ctx context.Context, id uuid.UUID) (*Category, error
 		return nil, err
 	}
 	c.Unarchive()
-	return s.save(ctx, span, c, "category.Unarchive")
+	return s.save(ctx, span, c, "category.Unarchive", false)
 }
 
 // Delete removes a category that no transaction references.
@@ -145,13 +161,20 @@ func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
 	if _, err := s.ByID(ctx, id); err != nil {
 		return err
 	}
-	if err := s.store.Delete(ctx, id); err != nil {
-		span.RecordError(err)
-		if IsInUseError(err) || IsNotFoundError(err) {
-			return err
+	refs, err := s.commit(ctx, "category.Delete", func(ctx context.Context) ([]MirrorRef, error) {
+		if err := s.store.Delete(ctx, id); err != nil {
+			if IsInUseError(err) || IsNotFoundError(err) {
+				return nil, err
+			}
+			return nil, s.unexpected(ctx, "category.Delete: delete", err, "category_id", id)
 		}
-		return s.unexpected(ctx, "category.Delete: delete", err, "category_id", id)
+		return []MirrorRef{{Entity: MirrorCategory, ID: id, Deleted: true}}, nil
+	})
+	if err != nil {
+		span.RecordError(err)
+		return err
 	}
+	s.mirror.Kick(ctx, refs...)
 	return nil
 }
 
@@ -277,6 +300,8 @@ func (s *Service) SeedDefaults(ctx context.Context) (int, error) {
 	}
 
 	added := 0
+	var kick []MirrorRef
+	defer func() { s.mirror.Kick(ctx, kick...) }()
 	seen := make(map[Kind]int, 2)
 	for _, d := range Defaults {
 		sortOrder := next[d.Kind] + seen[d.Kind]
@@ -292,16 +317,27 @@ func (s *Service) SeedDefaults(ctx context.Context) (int, error) {
 			return added, s.unexpected(ctx, "category.SeedDefaults: build default", nErr,
 				"org_id", tc.OrgID, "project_id", tc.ProjectID, "default_key", d.Key)
 		}
-		if sErr := s.store.Save(ctx, c); sErr != nil {
+		// NOTE: one unit of work per row: a unique violation aborts a Postgres transaction, and a concurrent seeder's row must only skip its own default.
+		refs, sErr := s.commit(ctx, "category.SeedDefaults", func(ctx context.Context) ([]MirrorRef, error) {
+			if err := s.store.Save(ctx, c); err != nil {
+				if IsAlreadyExistsError(err) {
+					return nil, err
+				}
+				return nil, s.unexpected(ctx, "category.SeedDefaults: save", err,
+					"org_id", tc.OrgID, "project_id", tc.ProjectID, "default_key", d.Key)
+			}
+			return []MirrorRef{{Entity: MirrorCategory, ID: c.ID}}, nil
+		})
+		if sErr != nil {
 			// NOTE: a concurrent seeder inserted this default first; that is the idempotent
 			// outcome this method promises, so skip it rather than abort with a partial set.
 			if IsAlreadyExistsError(sErr) {
 				continue
 			}
 			span.RecordError(sErr)
-			return added, s.unexpected(ctx, "category.SeedDefaults: save", sErr,
-				"org_id", tc.OrgID, "project_id", tc.ProjectID, "default_key", d.Key)
+			return added, sErr
 		}
+		kick = append(kick, refs...)
 		if taken[d.Kind] == nil {
 			taken[d.Kind] = map[string]bool{}
 		}
@@ -338,13 +374,21 @@ func (s *Service) nextSortOrder(ctx context.Context, tc tenant.Context, kind Kin
 	return next, nil
 }
 
-func (s *Service) save(ctx context.Context, span trace.Span, c *Category, op string) (*Category, error) {
-	if err := s.store.Save(ctx, c); err != nil {
-		span.RecordError(err)
-		if IsAlreadyExistsError(err) || IsNotFoundError(err) {
-			return nil, err
+// NOTE: save persists c in a unit of work that marks it; cascade also re-marks the transactions showing its name.
+func (s *Service) save(ctx context.Context, span trace.Span, c *Category, op string, cascade bool) (*Category, error) {
+	refs, err := s.commit(ctx, op, func(ctx context.Context) ([]MirrorRef, error) {
+		if err := s.store.Save(ctx, c); err != nil {
+			if IsAlreadyExistsError(err) || IsNotFoundError(err) {
+				return nil, err
+			}
+			return nil, s.unexpected(ctx, op+": save", err, "category_id", c.ID)
 		}
-		return nil, s.unexpected(ctx, op+": save", err, "category_id", c.ID)
+		return []MirrorRef{{Entity: MirrorCategory, ID: c.ID, Cascade: cascade}}, nil
+	})
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
 	}
+	s.mirror.Kick(ctx, refs...)
 	return c, nil
 }

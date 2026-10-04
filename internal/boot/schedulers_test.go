@@ -37,7 +37,7 @@ func TestAssertSchedulerWiring(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := assertSchedulerWiring(tt.providers)
+			err := assertSchedulerWiring(append(tt.providers, yasakuSchedulerStubs()...))
 			if tt.wantErr == "" {
 				require.NoError(t, err)
 				return
@@ -52,7 +52,7 @@ func TestAssertSchedulerWiring_LengthMismatchIsAnError(t *testing.T) {
 }
 
 func TestSchedulerDomains_MatchesProviderCount(t *testing.T) {
-	require.Len(t, schedulerDomains, 2, "add the new domain to schedulerDomains and schedulerProviders together")
+	require.Len(t, schedulerDomains, 2+len(yasakuSchedulerDomains()), "add the new domain to schedulerDomains and schedulerProviders together")
 }
 
 func TestWarnUnusedTimezoneOverrides(t *testing.T) {

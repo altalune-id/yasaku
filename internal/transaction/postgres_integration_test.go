@@ -651,7 +651,8 @@ func TestPostgres_Transaction_AdjustThroughAServiceAndARealUnitOfWork(t *testing
 
 	ctx := f.ctx(t)
 	at := time.Date(2026, 8, 5, 0, 0, 0, 0, time.UTC)
-	require.NoError(t, svc.RecordOpening(ctx, f.walletA, money.New(100_000, money.IDR), at, f.tc.UserID))
+	_, err := svc.RecordOpening(ctx, f.walletA, money.New(100_000, money.IDR), at, f.tc.UserID)
+	require.NoError(t, err)
 
 	got, err := svc.Adjust(ctx, f.walletA, money.New(150_000, money.IDR), at, f.tc.UserID)
 	require.NoError(t, err)

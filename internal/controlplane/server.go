@@ -27,6 +27,7 @@ import (
 	"altalune.id/yasaku/internal/controlplane/interceptor"
 	"altalune.id/yasaku/internal/invite"
 	"altalune.id/yasaku/internal/ledger"
+	"altalune.id/yasaku/internal/opensheetsync"
 	"altalune.id/yasaku/internal/org"
 	"altalune.id/yasaku/internal/period"
 	"altalune.id/yasaku/internal/platform"
@@ -54,6 +55,8 @@ type Deps struct {
 	Periods      *period.Service
 	Transactions *transaction.Service
 	Reports      *report.Service
+	// Opensheet is nil when opensheet.baseURL is empty.
+	Opensheet *opensheetsync.Service
 }
 
 // Server holds the wired Connect handlers and their runtime configuration.
@@ -82,6 +85,7 @@ type Server struct {
 	TransactionSvc *TransactionService
 	PeriodSvc      *PeriodService
 	ReportSvc      *ReportService
+	OpensheetSvc   *OpensheetService
 
 	Authn     authn.Chain
 	KeyPrefix string
@@ -115,6 +119,9 @@ func New(cfg *config.Config, kernel *platform.Kernel, d Deps) *Server {
 		PeriodSvc: NewPeriodService(d.Orgs, d.Projects, d.Periods, d.Reports, d.Ledgers),
 		ReportSvc: NewReportService(d.Orgs, d.Projects, d.Reports, d.Periods),
 	}
+	if d.Opensheet != nil {
+		s.OpensheetSvc = NewOpensheetService(d.Orgs, d.Projects, d.Opensheet)
+	}
 	if cfg != nil {
 		s.OpenAPIEnabled = cfg.API.OpenAPI.Enabled
 		if cfg.API.OpenAPI.RequireBasicAuth {
@@ -139,6 +146,7 @@ var (
 	_ yasakuv1connect.TransactionServiceHandler = (*TransactionService)(nil)
 	_ yasakuv1connect.PeriodServiceHandler      = (*PeriodService)(nil)
 	_ yasakuv1connect.ReportServiceHandler      = (*ReportService)(nil)
+	_ yasakuv1connect.OpensheetServiceHandler   = (*OpensheetService)(nil)
 )
 
 // Handler mounts the Connect handlers plus OpenAPI endpoints under basePath+"/api".
@@ -163,6 +171,10 @@ func (s *Server) Handler(basePath string) http.Handler {
 	} {
 		inner.Handle(m.path, m.handler)
 	}
+	if s.OpensheetSvc != nil {
+		m := mounted(yasakuv1connect.NewOpensheetServiceHandler(s.OpensheetSvc, opts...))
+		inner.Handle(m.path, m.handler)
+	}
 
 	if s.OpenAPIEnabled {
 		yamlBody, jsonBody := openAPI()
@@ -182,6 +194,10 @@ func (s *Server) Handler(basePath string) http.Handler {
 
 // MountedProcedures returns every Connect procedure path the handler serves.
 func (s *Server) MountedProcedures() []string {
+	var opensheet []string
+	if s.OpensheetSvc != nil {
+		opensheet = serviceProcedures(yasakuv1.File_yasaku_v1_opensheet_proto, "OpensheetService")
+	}
 	return slices.Concat(
 		serviceProcedures(authv1.File_auth_v1_auth_proto, "AuthService"),
 		serviceProcedures(projectv1.File_project_v1_project_proto, "ProjectService"),
@@ -194,6 +210,7 @@ func (s *Server) MountedProcedures() []string {
 		serviceProcedures(yasakuv1.File_yasaku_v1_transaction_proto, "TransactionService"),
 		serviceProcedures(yasakuv1.File_yasaku_v1_period_proto, "PeriodService"),
 		serviceProcedures(yasakuv1.File_yasaku_v1_report_proto, "ReportService"),
+		opensheet,
 	)
 }
 

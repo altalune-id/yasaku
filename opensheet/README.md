@@ -3,8 +3,9 @@
 A Go client for the [opensheet](https://github.com/altalune-id/opensheet) HTTP data plane
 (see `skills/opensheet-api` in that repo for the wire contract this client implements).
 
-This package has no consumer in `altalune-yasaku` yet. It exists so MVP 2 can wire a
-dual-write path against opensheet without a client to write from scratch first.
+Its one consumer is `internal/opensheetsync` (the Opensheet mirror). Row routes are
+`POST /sheets/<slug>/rows` and `GET|PUT|PATCH|DELETE /sheets/<slug>/rows/<id>`; the bare
+`POST /sheets/<slug>` (raw append) is not implemented.
 
 ## Config
 
@@ -57,6 +58,9 @@ fails with `PreconditionFailedError` if the row changed since the caller last re
 a missing or invalid credential, a key from another project, a key without the needed
 scope, or a sheet not granted to the key. The client cannot and does not distinguish
 between them.
+
+`NotFoundError.Code` is `SHT013` when a by-id route names a missing row (`RowMissing()`),
+`SHT001` for the mask.
 
 ## Errors
 

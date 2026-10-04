@@ -14,6 +14,8 @@ var TenantTableSuffixes = []string{
 	"invites",
 	"ledger_settings",
 	"memberships",
+	"opensheet_links",
+	"opensheet_sync_state",
 	"orgs",
 	"outbox_entries",
 	"period_closings",

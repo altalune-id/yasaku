@@ -1,0 +1,416 @@
+package templates
+
+import (
+	"slices"
+	"strconv"
+	"time"
+
+	"altalune.id/yasaku/internal/web"
+	"altalune.id/yasaku/internal/web/icons"
+)
+
+// OpensheetTab is one contract tab as the tutorial shows it.
+type OpensheetTab struct {
+	LabelKey  string
+	Slug      string
+	Columns   []string
+	HeaderTSV string
+}
+
+// OpensheetForm is the connection form's values; the API key is write-only and never rendered back.
+type OpensheetForm struct {
+	OSOrg             string
+	OSProject         string
+	TransactionsSheet string
+	WalletsSheet      string
+	CategoriesSheet   string
+}
+
+// OpensheetCheck is one tab's Test result.
+type OpensheetCheck struct {
+	LabelKey    string
+	Sheet       string
+	OK          bool
+	Reachable   bool
+	Unavailable bool
+	// PrivateEndpoint marks a base URL that resolves to a private address while the server refuses private hosts.
+	PrivateEndpoint bool
+	IDColumn        bool
+	Writable        bool
+	Missing         string
+	// MissingDeletedAt flags the one column people leave out: opensheet needs it to record a deletion.
+	MissingDeletedAt bool
+	// ColumnsDeferred marks a tab opensheet showed no columns for; the first sync checks them.
+	ColumnsDeferred bool
+	ContractReason  string
+	Code            string
+}
+
+// OpensheetView is the Opensheet module page.
+type OpensheetView struct {
+	ProjectSlug  string
+	CanManage    bool
+	Linked       bool
+	Enabled      bool
+	Verified     bool
+	AutoDisabled bool
+	// AwaitingFirstSync is set until a sync lands after the last Save.
+	AwaitingFirstSync bool
+	LastSyncedAt      *time.Time
+	LastError         string
+	Pending           int64
+	Failing           int64
+	GivenUp           int64
+	KeyHint           string
+	Form              OpensheetForm
+	Tabs              []OpensheetTab
+	Checks            []OpensheetCheck
+	NoticeKey         string
+	ErrorKey          string
+	ErrorMsg          string
+	ErrorCode         string
+}
+
+// SyncErrorInChecks reports whether the Test results repeat the last sync refusal: only next to a failing tab or one whose columns the Test could not see.
+func (v OpensheetView) SyncErrorInChecks() bool {
+	if v.LastError == "" {
+		return false
+	}
+	return slices.ContainsFunc(v.Checks, func(c OpensheetCheck) bool { return !c.OK || c.ColumnsDeferred })
+}
+
+// CanEnable reports whether the switch may be turned on now.
+func (v OpensheetView) CanEnable() bool { return v.CanManage && (v.Enabled || v.Verified) }
+
+templ OpensheetLayout(d web.LayoutData, v OpensheetView) {
+	@Layout(web.WithContent(d, OpensheetPage(d, v)))
+}
+
+templ OpensheetPage(d web.LayoutData, v OpensheetView) {
+	<section>
+		<header class="border-b border-border pb-4">
+			<h1 class="text-2xl font-semibold text-foreground">{ d.Tr("opensheet.title") }</h1>
+			<p class="mt-1 text-sm text-muted-foreground">{ d.Tr("opensheet.subtitle") }</p>
+		</header>
+		@OpensheetModule(d, v)
+		@copyScript(d.Nonce)
+	</section>
+}
+
+// OpensheetModule is the swappable module body: every successful action replaces #opensheet-module.
+templ OpensheetModule(d web.LayoutData, v OpensheetView) {
+	<div id="opensheet-module" class="mt-6 space-y-6">
+		@OpensheetStatus(d, v)
+		@opensheetTutorial(d, v)
+		@opensheetForm(d, v)
+	</div>
+}
+
+templ opensheetAction(d web.LayoutData, v OpensheetView, path string) {
+	<form
+		method="post"
+		action={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, path)) }
+		hx-post={ d.ProjectPath(v.ProjectSlug, path) }
+		hx-nonce={ d.Nonce }
+		hx-target="#opensheet-module"
+		hx-swap="outerHTML"
+		hx-disable="find button"
+		hx-status:422="target:#opensheet-status swap:outerHTML"
+		hx-status:4xx="target:#hx-error swap:innerHTML"
+		hx-status:5xx="target:#hx-error swap:innerHTML"
+		class="inline"
+	>
+		{ children... }
+	</form>
+}
+
+// OpensheetStatus is the Enabled switch, the sync status line and the link actions.
+templ OpensheetStatus(d web.LayoutData, v OpensheetView) {
+	<section id="opensheet-status" class="rounded-lg border border-border bg-card p-4 shadow-sm">
+		@pageBanner(d, v.ErrorKey, v.ErrorMsg, v.ErrorCode)
+		if v.NoticeKey != "" {
+			<p role="status" data-opensheet-notice={ v.NoticeKey } class="mb-3 rounded-md border border-border bg-muted px-3 py-2 text-sm text-foreground">{ d.Tr(v.NoticeKey) }</p>
+		}
+		if v.AutoDisabled {
+			<p role="alert" data-opensheet-auto-disabled="1" class="mb-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-200">{ d.Tr("opensheet.status.auto_disabled") }</p>
+		}
+		<div class="flex flex-wrap items-center gap-3">
+			@opensheetAction(d, v, "/opensheet/enabled") {
+				<input type="hidden" name="enabled" value={ strconv.FormatBool(!v.Enabled) }/>
+				<button
+					type="submit"
+					role="switch"
+					aria-checked={ strconv.FormatBool(v.Enabled) }
+					aria-label={ d.Tr("opensheet.enabled") }
+					data-opensheet-enabled={ strconv.FormatBool(v.Enabled) }
+					disabled?={ !v.CanEnable() }
+					class={ "relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border border-border transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:opacity-50", templ.KV("bg-primary", v.Enabled), templ.KV("bg-muted", !v.Enabled) }
+				>
+					<span data-opensheet-knob class={ "inline-block h-5 w-5 rounded-full bg-card shadow transition-[margin]", templ.KV("ms-5", v.Enabled), templ.KV("ms-0.5", !v.Enabled) }></span>
+				</button>
+			}
+			<span class="text-sm font-medium text-foreground">{ d.Tr("opensheet.enabled") }</span>
+			<span class="text-sm text-muted-foreground">{ d.Tr("opensheet.enabled_hint") }</span>
+		</div>
+		if v.Linked {
+			<p class="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground" data-opensheet-pending={ strconv.FormatInt(v.Pending, 10) }>
+				if v.LastSyncedAt != nil {
+					<span>
+						{ d.Tr("opensheet.status.last_sync") + " " }
+						@DateTime(d, *v.LastSyncedAt)
+					</span>
+				} else {
+					<span>{ d.Tr("opensheet.status.never") }</span>
+				}
+				<span>{ d.TrN("opensheet.status.pending", int(v.Pending)) }</span>
+				if v.AwaitingFirstSync {
+					<span data-opensheet-awaiting-first-sync="true">{ d.Tr("opensheet.status.awaiting_first_sync") }</span>
+				}
+				if v.Failing > 0 {
+					<span class="text-amber-700 dark:text-amber-300" data-opensheet-failing={ strconv.FormatInt(v.Failing, 10) }>{ d.TrN("opensheet.status.failing", int(v.Failing)) }</span>
+				}
+				if v.GivenUp > 0 {
+					<span class="text-red-700 dark:text-red-300" data-opensheet-given-up={ strconv.FormatInt(v.GivenUp, 10) }>{ d.TrN("opensheet.status.given_up", int(v.GivenUp)) }</span>
+				}
+				if v.LastError != "" {
+					<span class="text-red-700 dark:text-red-300" data-opensheet-status-last-error="true">{ d.Tr("opensheet.status.last_error", "Error", v.LastError) }</span>
+				}
+			</p>
+			if v.CanManage {
+				<div class="mt-3 flex flex-wrap gap-2">
+					@opensheetAction(d, v, "/opensheet/sync") {
+						<button type="submit" disabled?={ !v.Enabled } class="rounded-md border border-border px-3 py-1.5 text-sm font-medium text-foreground hover:bg-muted disabled:opacity-50">
+							{ d.Tr("opensheet.sync_now") }
+						</button>
+					}
+					<form
+						method="post"
+						action={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/opensheet/delete")) }
+						hx-post={ d.ProjectPath(v.ProjectSlug, "/opensheet/delete") }
+						hx-nonce={ d.Nonce }
+						hx-confirm={ d.Tr("opensheet.remove_confirm") }
+						hx-target="#opensheet-module"
+						hx-swap="outerHTML"
+						hx-disable="find button"
+						hx-status:4xx="target:#hx-error swap:innerHTML"
+						hx-status:5xx="target:#hx-error swap:innerHTML"
+						class="inline"
+					>
+						<button type="submit" class="rounded-md border border-border px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-950/40">
+							{ d.Tr("opensheet.remove") }
+						</button>
+					</form>
+				</div>
+			}
+		}
+	</section>
+}
+
+templ opensheetTutorial(d web.LayoutData, v OpensheetView) {
+	<section id="opensheet-tutorial" class="rounded-lg border border-border bg-card p-4 shadow-sm">
+		<h2 class="text-sm font-medium text-foreground">{ d.Tr("opensheet.tutorial.title") }</h2>
+		<ol class="mt-3 list-decimal space-y-4 ps-5 text-sm text-foreground">
+			<li>
+				<p>{ d.Tr("opensheet.tutorial.step1") }</p>
+				<ul class="mt-2 space-y-2">
+					for _, tab := range v.Tabs {
+						<li class="rounded-md border border-border/60 bg-muted/40 p-2" data-opensheet-tab={ tab.Slug }>
+							<div class="flex flex-wrap items-center justify-between gap-2">
+								<span class="font-medium">{ d.Tr(tab.LabelKey) }</span>
+								@opensheetCopyButton(d, tab.HeaderTSV, d.Tr("opensheet.tutorial.copy_header"), d.Tr("opensheet.tutorial.copy_header")+": "+d.Tr(tab.LabelKey))
+							</div>
+							<code dir="ltr" class="mt-1 block overflow-x-auto whitespace-nowrap text-left font-mono text-xs text-muted-foreground" data-opensheet-header={ tab.Slug }>
+								for i, col := range tab.Columns {
+									if i > 0 {
+										<span aria-hidden="true">{ " | " }</span>
+									}
+									{ col }
+								}
+							</code>
+						</li>
+					}
+				</ul>
+			</li>
+			<li>
+				<p>{ d.Tr("opensheet.tutorial.step2") }</p>
+				<ul dir="ltr" class="mt-1 flex flex-wrap gap-2 font-mono text-xs text-muted-foreground rtl:justify-end" data-opensheet-slugs>
+					for _, tab := range v.Tabs {
+						<li>{ tab.Slug }</li>
+					}
+				</ul>
+			</li>
+			<li><p>{ d.Tr("opensheet.tutorial.step3") }</p></li>
+		</ol>
+	</section>
+}
+
+templ opensheetCopyButton(d web.LayoutData, value, text, label string) {
+	<button
+		type="button"
+		data-copy={ value }
+		data-copy-text={ text }
+		data-copy-label={ label }
+		data-copied-label={ d.Tr("common.copied") }
+		aria-label={ label }
+		class="rounded-md border border-border px-2 py-1 text-xs font-medium text-foreground hover:bg-muted focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
+	>{ text }</button>
+}
+
+templ opensheetField(d web.LayoutData, v OpensheetView, name, label, value string) {
+	<label class="block text-sm">
+		<span class="text-muted-foreground">{ label }</span>
+		<input
+			name={ name }
+			type="text"
+			dir="ltr"
+			required
+			value={ value }
+			disabled?={ !v.CanManage }
+			autocomplete="off"
+			spellcheck="false"
+			class="mt-1 w-full rounded-md border border-border bg-card px-3 py-2 font-mono text-sm text-foreground shadow-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1 disabled:opacity-60"
+		/>
+	</label>
+}
+
+templ opensheetForm(d web.LayoutData, v OpensheetView) {
+	<section id="opensheet-form-panel" class="rounded-lg border border-border bg-card p-4 shadow-sm">
+		<h2 class="text-sm font-medium text-foreground">{ d.Tr("opensheet.form.title") }</h2>
+		if !v.CanManage {
+			<p class="mt-2 text-sm text-muted-foreground" data-opensheet-read-only="1">{ d.Tr("opensheet.manager_only") }</p>
+		}
+		<form
+			id="opensheet-form"
+			method="post"
+			action={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/opensheet")) }
+			hx-post={ d.ProjectPath(v.ProjectSlug, "/opensheet") }
+			hx-nonce={ d.Nonce }
+			hx-target="#opensheet-module"
+			hx-swap="outerHTML"
+			hx-disable="find button"
+			hx-status:422="target:#opensheet-checks swap:outerHTML"
+			hx-status:4xx="target:#hx-error swap:innerHTML"
+			hx-status:5xx="target:#hx-error swap:innerHTML"
+			class="mt-3 grid gap-3 md:grid-cols-2"
+		>
+			@opensheetField(d, v, "os_org", d.Tr("opensheet.form.os_org"), v.Form.OSOrg)
+			@opensheetField(d, v, "os_project", d.Tr("opensheet.form.os_project"), v.Form.OSProject)
+			<label class="block text-sm md:col-span-2">
+				<span class="text-muted-foreground">{ d.Tr("opensheet.form.api_key") }</span>
+				<input
+					name="api_key"
+					type="password"
+					dir="ltr"
+					autocomplete="new-password"
+					spellcheck="false"
+					disabled?={ !v.CanManage }
+					if v.KeyHint != "" {
+						placeholder={ "•••• " + v.KeyHint }
+					}
+					class="mt-1 w-full rounded-md border border-border bg-card px-3 py-2 font-mono text-sm text-foreground shadow-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1 disabled:opacity-60"
+				/>
+				<span class="mt-1 block text-xs text-muted-foreground">
+					if v.KeyHint != "" {
+						{ d.Tr("opensheet.form.api_key_hint", "Hint", v.KeyHint) }
+					} else {
+						{ d.Tr("opensheet.form.api_key_new") }
+					}
+				</span>
+			</label>
+			@opensheetField(d, v, "transactions_sheet", d.Tr("opensheet.tab.transaction")+" · "+d.Tr("opensheet.form.sheet_slug"), v.Form.TransactionsSheet)
+			@opensheetField(d, v, "wallets_sheet", d.Tr("opensheet.tab.wallet")+" · "+d.Tr("opensheet.form.sheet_slug"), v.Form.WalletsSheet)
+			@opensheetField(d, v, "categories_sheet", d.Tr("opensheet.tab.category")+" · "+d.Tr("opensheet.form.sheet_slug"), v.Form.CategoriesSheet)
+			if v.CanManage {
+				<div class="flex flex-wrap gap-2 md:col-span-2">
+					<button
+						type="button"
+						hx-post={ d.ProjectPath(v.ProjectSlug, "/opensheet/test") }
+						hx-nonce={ d.Nonce }
+						hx-target="#opensheet-checks"
+						hx-swap="outerHTML"
+						hx-status:422="target:#opensheet-checks swap:outerHTML"
+						hx-status:4xx="target:#hx-error swap:innerHTML"
+						hx-status:5xx="target:#hx-error swap:innerHTML"
+						class="inline-flex items-center gap-1.5 rounded-md border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-muted"
+					>
+						@icons.Icon("list-checks", "h-4 w-4")
+						<span>{ d.Tr("opensheet.test") }</span>
+					</button>
+					<button type="submit" class="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2">
+						{ d.Tr("opensheet.save") }
+					</button>
+				</div>
+			}
+		</form>
+		@OpensheetChecks(d, v)
+	</section>
+}
+
+templ opensheetCheckMark(d web.LayoutData, ok bool, labelKey string) {
+	<li class={ "flex items-center gap-1", templ.KV("text-foreground", ok), templ.KV("text-red-700 dark:text-red-300", !ok) } data-opensheet-check={ labelKey } data-ok={ strconv.FormatBool(ok) }>
+		if ok {
+			@icons.Icon("check", "h-3.5 w-3.5")
+		} else {
+			@icons.Icon("x", "h-3.5 w-3.5")
+		}
+		<span>{ d.Tr(labelKey) }</span>
+	</li>
+}
+
+// OpensheetChecks is the Test checklist; a refused Save or Test swaps only this, so the typed form values, the key included, stay in the browser.
+templ OpensheetChecks(d web.LayoutData, v OpensheetView) {
+	<div id="opensheet-checks" class="mt-4 space-y-3" aria-live="polite">
+		@pageBanner(d, v.ErrorKey, v.ErrorMsg, v.ErrorCode)
+		if len(v.Checks) > 0 {
+			<h3 class="text-sm font-medium text-foreground">{ d.Tr("opensheet.check.title") }</h3>
+			if v.SyncErrorInChecks() {
+				<p class="text-xs text-red-700 dark:text-red-300" data-opensheet-last-sync-error="true">{ d.Tr("opensheet.check.last_sync_error", "Error", v.LastError) }</p>
+			}
+			<ul class="space-y-2">
+				for _, c := range v.Checks {
+					<li class="rounded-md border border-border/60 p-3 text-sm" data-opensheet-result={ c.Sheet } data-ok={ strconv.FormatBool(c.OK) }>
+						<div class="flex flex-wrap items-center justify-between gap-2">
+							<span class="font-medium text-foreground">{ d.Tr(c.LabelKey) } <code dir="ltr" class="font-mono text-xs text-muted-foreground">{ c.Sheet }</code></span>
+							if c.OK {
+								<span class="text-xs font-medium text-emerald-700 dark:text-emerald-300">{ d.Tr("opensheet.check.ok") }</span>
+							} else {
+								<span class="text-xs font-medium text-red-700 dark:text-red-300">{ d.Tr("opensheet.check.failed") } <code dir="ltr" class="font-mono">{ c.Code }</code></span>
+							}
+						</div>
+						if c.Unavailable {
+							<p class="mt-1 text-xs text-muted-foreground">{ d.Tr("opensheet.check.unavailable") }</p>
+						} else if c.PrivateEndpoint {
+							<p class="mt-1 text-xs text-red-700 dark:text-red-300" data-opensheet-private-endpoint={ c.Sheet }>{ d.Tr("opensheet.check.private_endpoint") }</p>
+						} else {
+							<ul class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs">
+								@opensheetCheckMark(d, c.Reachable, "opensheet.check.reachable")
+								if c.Reachable {
+									@opensheetCheckMark(d, c.IDColumn, "opensheet.check.id_column")
+									@opensheetCheckMark(d, c.Writable, "opensheet.check.writable")
+									if !c.ColumnsDeferred {
+										@opensheetCheckMark(d, c.Missing == "", "opensheet.check.columns")
+									}
+								}
+							</ul>
+							if c.ColumnsDeferred && c.Missing == "" {
+								<p class="mt-1 text-xs text-muted-foreground" data-opensheet-columns-deferred={ c.Sheet }>{ d.Tr("opensheet.check.columns_deferred") }</p>
+							}
+							if !c.Reachable {
+								<p class="mt-1 text-xs text-muted-foreground">{ d.Tr("opensheet.check.unreachable_hint") }</p>
+							}
+							if c.Missing != "" {
+								<p class="mt-1 text-xs text-red-700 dark:text-red-300" data-opensheet-missing={ c.Sheet }>{ d.Tr("opensheet.check.missing", "Columns", c.Missing) }</p>
+							}
+							if c.MissingDeletedAt {
+								<p class="mt-1 text-xs text-muted-foreground" data-opensheet-deleted-at-hint={ c.Sheet }>{ d.Tr("opensheet.check.deleted_at_hint") }</p>
+							}
+							if c.ContractReason != "" {
+								<p class="mt-1 text-xs text-red-700 dark:text-red-300">{ d.Tr("opensheet.check.contract", "Reason", c.ContractReason) }</p>
+							}
+						}
+					</li>
+				}
+			</ul>
+		}
+	</div>
+}

@@ -37,12 +37,12 @@ type Client struct {
 func New(cfg Config) (*Client, error) {
 	u, err := url.Parse(cfg.BaseURL)
 	if err != nil || u.Scheme == "" || u.Host == "" {
-		return nil, fmt.Errorf("opensheet: invalid BaseURL %q", cfg.BaseURL)
+		return nil, errors.New("opensheet: invalid BaseURL: it needs a scheme and a host")
 	}
 	// SECURITY: httpclient.NewResty's SSRF guard only fires on dial, so a literal-IP BaseURL must be checked here too.
 	if !cfg.AllowPrivateHosts {
 		if addr, perr := netip.ParseAddr(u.Hostname()); perr == nil && httpclient.IsPrivateOrLocal(addr) {
-			return nil, fmt.Errorf("opensheet: BaseURL %q is a private host; set AllowPrivateHosts to allow it", cfg.BaseURL)
+			return nil, fmt.Errorf("opensheet: BaseURL %q is a private host; set AllowPrivateHosts to allow it", u.Redacted())
 		}
 	}
 	if cfg.Org == "" || cfg.Project == "" {

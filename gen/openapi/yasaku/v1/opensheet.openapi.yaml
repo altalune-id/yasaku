@@ -1,0 +1,542 @@
+openapi: 3.1.0
+info:
+  title: yasaku.v1
+paths:
+  /yasaku.v1.OpensheetService/DeleteOpensheetLink:
+    post:
+      tags:
+        - yasaku.v1.OpensheetService
+      summary: DeleteOpensheetLink
+      operationId: yasaku.v1.OpensheetService.DeleteOpensheetLink
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/yasaku.v1.DeleteOpensheetLinkRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/yasaku.v1.DeleteOpensheetLinkResponse'
+  /yasaku.v1.OpensheetService/GetOpensheetLink:
+    post:
+      tags:
+        - yasaku.v1.OpensheetService
+      summary: GetOpensheetLink
+      operationId: yasaku.v1.OpensheetService.GetOpensheetLink
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/yasaku.v1.GetOpensheetLinkRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/yasaku.v1.GetOpensheetLinkResponse'
+  /yasaku.v1.OpensheetService/SaveOpensheetLink:
+    post:
+      tags:
+        - yasaku.v1.OpensheetService
+      summary: SaveOpensheetLink
+      operationId: yasaku.v1.OpensheetService.SaveOpensheetLink
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/yasaku.v1.SaveOpensheetLinkRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/yasaku.v1.SaveOpensheetLinkResponse'
+  /yasaku.v1.OpensheetService/SetOpensheetLinkEnabled:
+    post:
+      tags:
+        - yasaku.v1.OpensheetService
+      summary: SetOpensheetLinkEnabled
+      operationId: yasaku.v1.OpensheetService.SetOpensheetLinkEnabled
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/yasaku.v1.SetOpensheetLinkEnabledRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/yasaku.v1.SetOpensheetLinkEnabledResponse'
+  /yasaku.v1.OpensheetService/SyncOpensheetNow:
+    post:
+      tags:
+        - yasaku.v1.OpensheetService
+      summary: SyncOpensheetNow
+      operationId: yasaku.v1.OpensheetService.SyncOpensheetNow
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/yasaku.v1.SyncOpensheetNowRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/yasaku.v1.SyncOpensheetNowResponse'
+  /yasaku.v1.OpensheetService/TestOpensheetLink:
+    post:
+      tags:
+        - yasaku.v1.OpensheetService
+      summary: TestOpensheetLink
+      operationId: yasaku.v1.OpensheetService.TestOpensheetLink
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/yasaku.v1.TestOpensheetLinkRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/yasaku.v1.TestOpensheetLinkResponse'
+components:
+  schemas:
+    connect-protocol-version:
+      type: number
+      title: Connect-Protocol-Version
+      enum:
+        - 1
+      description: Define the version of the Connect protocol
+      const: 1
+    connect-timeout-header:
+      type: number
+      title: Connect-Timeout-Ms
+      description: Define the timeout, in ms
+    connect.error:
+      type: object
+      properties:
+        code:
+          type: string
+          examples:
+            - not_found
+          enum:
+            - canceled
+            - unknown
+            - invalid_argument
+            - deadline_exceeded
+            - not_found
+            - already_exists
+            - permission_denied
+            - resource_exhausted
+            - failed_precondition
+            - aborted
+            - out_of_range
+            - unimplemented
+            - internal
+            - unavailable
+            - data_loss
+            - unauthenticated
+          description: The status code, which should be an enum value of [google.rpc.Code][google.rpc.Code].
+        message:
+          type: string
+          description: A developer-facing error message, which should be in English. Any user-facing error message should be localized and sent in the [google.rpc.Status.details][google.rpc.Status.details] field, or localized by the client.
+        details:
+          type: array
+          items:
+            $ref: '#/components/schemas/connect.error_details.Any'
+          description: A list of messages that carry the error details. There is no limit on the number of messages.
+      title: Connect Error
+      additionalProperties: true
+      description: 'Error type returned by Connect: https://connectrpc.com/docs/go/errors/#http-representation'
+    connect.error_details.Any:
+      type: object
+      properties:
+        type:
+          type: string
+          description: 'A URL that acts as a globally unique identifier for the type of the serialized message. For example: `type.googleapis.com/google.rpc.ErrorInfo`. This is used to determine the schema of the data in the `value` field and is the discriminator for the `debug` field.'
+        value:
+          type: string
+          format: binary
+          description: The Protobuf message, serialized as bytes and base64-encoded. The specific message type is identified by the `type` field.
+        debug:
+          oneOf:
+            - type: object
+              title: Any
+              additionalProperties: true
+              description: Detailed error information.
+          discriminator:
+            propertyName: type
+          title: Debug
+          description: Deserialized error detail payload. The 'type' field indicates the schema. This field is for easier debugging and should not be relied upon for application logic.
+      additionalProperties: true
+      description: Contains an arbitrary serialized message along with a @type that describes the type of the serialized message, with an additional debug field for ConnectRPC error details.
+    yasaku.v1.DeleteOpensheetLinkRequest:
+      type: object
+      properties:
+        target:
+          title: target
+          $ref: '#/components/schemas/yasaku.v1.Target'
+      title: DeleteOpensheetLinkRequest
+      additionalProperties: false
+    yasaku.v1.DeleteOpensheetLinkResponse:
+      type: object
+      title: DeleteOpensheetLinkResponse
+      additionalProperties: false
+    yasaku.v1.GetOpensheetLinkRequest:
+      type: object
+      properties:
+        target:
+          title: target
+          $ref: '#/components/schemas/yasaku.v1.Target'
+      title: GetOpensheetLinkRequest
+      additionalProperties: false
+    yasaku.v1.GetOpensheetLinkResponse:
+      type: object
+      properties:
+        link:
+          title: link
+          description: Absent when the project has no link.
+          $ref: '#/components/schemas/yasaku.v1.OpensheetLink'
+      title: GetOpensheetLinkResponse
+      additionalProperties: false
+    yasaku.v1.OpensheetLink:
+      type: object
+      properties:
+        osOrg:
+          type: string
+          title: os_org
+        osProject:
+          type: string
+          title: os_project
+        apiKeyHint:
+          type: string
+          title: api_key_hint
+        transactionsSheet:
+          type: string
+          title: transactions_sheet
+        walletsSheet:
+          type: string
+          title: wallets_sheet
+        categoriesSheet:
+          type: string
+          title: categories_sheet
+        enabled:
+          type: boolean
+          title: enabled
+        verifiedAt:
+          type: string
+          title: verified_at
+          description: RFC 3339 in UTC; empty until a Save passed the Test, and cleared when repeated failures turn the link off.
+        lastError:
+          type: string
+          title: last_error
+        lastSyncedAt:
+          type: string
+          title: last_synced_at
+          description: RFC 3339 in UTC; empty until the first successful sync.
+        autoDisabled:
+          type: boolean
+          title: auto_disabled
+        pending:
+          type:
+            - integer
+            - string
+          title: pending
+          format: int64
+          description: Rows still waiting to reach the sheet, failing ones included.
+        failing:
+          type:
+            - integer
+            - string
+          title: failing
+          format: int64
+          description: Pending rows opensheet refused at least once; each is retried with backoff, at most five times.
+        givenUp:
+          type:
+            - integer
+            - string
+          title: given_up
+          format: int64
+          description: Rows refused five times; they wait for their next edit or a full sync.
+        awaitingFirstSync:
+          type: boolean
+          title: awaiting_first_sync
+          description: True until a sync lands after the last Save; the first sync confirms the sheet columns.
+      title: OpensheetLink
+      additionalProperties: false
+      description: OpensheetLink is a project's link; the API key is write-only and only its last four characters come back.
+    yasaku.v1.OpensheetSettings:
+      type: object
+      properties:
+        osOrg:
+          type: string
+          title: os_org
+        osProject:
+          type: string
+          title: os_project
+        apiKey:
+          type: string
+          title: api_key
+        transactionsSheet:
+          type: string
+          title: transactions_sheet
+        walletsSheet:
+          type: string
+          title: wallets_sheet
+        categoriesSheet:
+          type: string
+          title: categories_sheet
+      title: OpensheetSettings
+      additionalProperties: false
+      description: OpensheetSettings is what a Test or Save checks; an empty api_key keeps the saved key.
+    yasaku.v1.OpensheetTabCheck:
+      type: object
+      properties:
+        entity:
+          type: string
+          title: entity
+          description: One of transaction, wallet or category.
+        sheet:
+          type: string
+          title: sheet
+        ok:
+          type: boolean
+          title: ok
+        reachable:
+          type: boolean
+          title: reachable
+        idColumn:
+          type: boolean
+          title: id_column
+        writable:
+          type: boolean
+          title: writable
+        missing:
+          type: array
+          items:
+            type: string
+          title: missing
+        contractReason:
+          type: string
+          title: contract_reason
+        code:
+          type: string
+          title: code
+        columnsDeferred:
+          type: boolean
+          title: columns_deferred
+          description: True when opensheet showed no columns for the tab yet; the first sync checks them.
+      title: OpensheetTabCheck
+      additionalProperties: false
+      description: OpensheetTabCheck is one tab's Test result; code is the OSL code of the first rule it broke, empty when it passed.
+    yasaku.v1.SaveOpensheetLinkRequest:
+      type: object
+      properties:
+        target:
+          title: target
+          $ref: '#/components/schemas/yasaku.v1.Target'
+        settings:
+          title: settings
+          $ref: '#/components/schemas/yasaku.v1.OpensheetSettings'
+      title: SaveOpensheetLinkRequest
+      additionalProperties: false
+    yasaku.v1.SaveOpensheetLinkResponse:
+      type: object
+      properties:
+        link:
+          title: link
+          $ref: '#/components/schemas/yasaku.v1.OpensheetLink'
+      title: SaveOpensheetLinkResponse
+      additionalProperties: false
+    yasaku.v1.SetOpensheetLinkEnabledRequest:
+      type: object
+      properties:
+        target:
+          title: target
+          $ref: '#/components/schemas/yasaku.v1.Target'
+        enabled:
+          type: boolean
+          title: enabled
+      title: SetOpensheetLinkEnabledRequest
+      additionalProperties: false
+    yasaku.v1.SetOpensheetLinkEnabledResponse:
+      type: object
+      properties:
+        link:
+          title: link
+          $ref: '#/components/schemas/yasaku.v1.OpensheetLink'
+      title: SetOpensheetLinkEnabledResponse
+      additionalProperties: false
+    yasaku.v1.SyncOpensheetNowRequest:
+      type: object
+      properties:
+        target:
+          title: target
+          $ref: '#/components/schemas/yasaku.v1.Target'
+      title: SyncOpensheetNowRequest
+      additionalProperties: false
+    yasaku.v1.SyncOpensheetNowResponse:
+      type: object
+      properties:
+        marked:
+          type:
+            - integer
+            - string
+          title: marked
+          format: int64
+          description: Rows marked for the mirror.
+      title: SyncOpensheetNowResponse
+      additionalProperties: false
+    yasaku.v1.Target:
+      type: object
+      properties:
+        org:
+          type: string
+          title: org
+        project:
+          type: string
+          title: project
+      title: Target
+      additionalProperties: false
+      description: Target names the org and project a request acts on; both empty means the caller's only project.
+    yasaku.v1.TestOpensheetLinkRequest:
+      type: object
+      properties:
+        target:
+          title: target
+          $ref: '#/components/schemas/yasaku.v1.Target'
+        settings:
+          title: settings
+          $ref: '#/components/schemas/yasaku.v1.OpensheetSettings'
+      title: TestOpensheetLinkRequest
+      additionalProperties: false
+    yasaku.v1.TestOpensheetLinkResponse:
+      type: object
+      properties:
+        checks:
+          type: array
+          items:
+            $ref: '#/components/schemas/yasaku.v1.OpensheetTabCheck'
+          title: checks
+        ok:
+          type: boolean
+          title: ok
+      title: TestOpensheetLinkResponse
+      additionalProperties: false
+security: []
+tags:
+  - name: yasaku.v1.OpensheetService
+    description: OpensheetService manages a project's one-way mirror to a Google Sheet through opensheet. It is mounted only when the server sets opensheet.baseURL, and it has no MCP tools.

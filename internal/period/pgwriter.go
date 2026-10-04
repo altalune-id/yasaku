@@ -16,20 +16,7 @@ func (s *postgresStore) Save(ctx context.Context, p *Period) error {
 	if err != nil {
 		return s.endTx(tx, owned, err)
 	}
-	stmt := s.table.INSERT(s.table.AllColumns).
-		VALUES(
-			postgres.UUID(p.ID),
-			postgres.UUID(p.OrgID),
-			postgres.UUID(p.ProjectID),
-			postgres.String(p.Name),
-			pgDate(p.StartDate),
-			pgDatePtr(p.EndDate),
-			postgres.String(string(p.Status)),
-			pgTimePtr(p.ClosedAt),
-			pgJSON(js),
-			postgres.TimestampzT(p.CreatedAt.UTC()),
-			postgres.TimestampzT(p.UpdatedAt.UTC()),
-		).
+	stmt := s.insertValues(p, js).
 		ON_CONFLICT(s.table.ID).
 		// SECURITY: the conflict clause carries the tenant predicate; without it an attacker-supplied row id updates another org's row.
 		DO_UPDATE(
@@ -58,6 +45,50 @@ func (s *postgresStore) Save(ctx context.Context, p *Period) error {
 		return s.endTx(tx, owned, &NotFoundError{ID: p.ID.String()})
 	}
 	return s.endTx(tx, owned, nil)
+}
+
+func (s *postgresStore) insertValues(p *Period, js *string) postgres.InsertStatement {
+	return s.table.INSERT(s.table.AllColumns).
+		VALUES(
+			postgres.UUID(p.ID),
+			postgres.UUID(p.OrgID),
+			postgres.UUID(p.ProjectID),
+			postgres.String(p.Name),
+			pgDate(p.StartDate),
+			pgDatePtr(p.EndDate),
+			postgres.String(string(p.Status)),
+			pgTimePtr(p.ClosedAt),
+			pgJSON(js),
+			postgres.TimestampzT(p.CreatedAt.UTC()),
+			postgres.TimestampzT(p.UpdatedAt.UTC()),
+		)
+}
+
+// NOTE: ON CONFLICT DO NOTHING, not a caught unique violation: a violation aborts the caller's unit of work, and the re-read after a lost race must run in it.
+func (s *postgresStore) CreateCurrent(ctx context.Context, p *Period) (bool, error) {
+	tx, owned, tc, err := s.txAcquire(ctx)
+	if err != nil {
+		return false, err
+	}
+	// SECURITY: a period is only ever created inside the caller's own scope.
+	if p.OrgID != tc.OrgID || p.ProjectID != tc.ProjectID {
+		return false, s.endTx(tx, owned, &NotFoundError{ID: p.ID.String()})
+	}
+	js, err := marshalSnapshot(p.Snapshot)
+	if err != nil {
+		return false, s.endTx(tx, owned, err)
+	}
+	stmt := s.insertValues(p, js).
+		ON_CONFLICT(s.table.ProjectID).WHERE(s.table.EndDate.IS_NULL()).DO_NOTHING()
+	res, execErr := stmt.ExecContext(ctx, tx)
+	if execErr != nil {
+		return false, s.endTx(tx, owned, fmt.Errorf("period.postgres.CreateCurrent: %w", execErr))
+	}
+	n, raErr := res.RowsAffected()
+	if raErr != nil {
+		return false, s.endTx(tx, owned, fmt.Errorf("period.postgres.CreateCurrent: rows affected: %w", raErr))
+	}
+	return n == 1, s.endTx(tx, owned, nil)
 }
 
 func (s *postgresStore) SaveClosing(ctx context.Context, c *Closing) error {

@@ -569,7 +569,7 @@ func TestService_List_NextCursor(t *testing.T) {
 
 func TestService_Balances(t *testing.T) {
 	f := newFixture(t)
-	if err := f.svc.RecordOpening(f.ctx, f.walletIDR, idr(1_000_000), augustDay(1), f.tc.UserID); err != nil {
+	if _, err := f.svc.RecordOpening(f.ctx, f.walletIDR, idr(1_000_000), augustDay(1), f.tc.UserID); err != nil {
 		t.Fatalf("RecordOpening: %v", err)
 	}
 	f.expense(t, augustDay(2), 250_000, "Groceries")
@@ -620,7 +620,7 @@ func TestService_Balance_OfAWalletWithNoTransactions(t *testing.T) {
 func TestService_Adjust(t *testing.T) {
 	t.Run("writes the difference as an adjustment_in", func(t *testing.T) {
 		f := newFixture(t)
-		if err := f.svc.RecordOpening(f.ctx, f.walletIDR, idr(100_000), augustDay(1), f.tc.UserID); err != nil {
+		if _, err := f.svc.RecordOpening(f.ctx, f.walletIDR, idr(100_000), augustDay(1), f.tc.UserID); err != nil {
 			t.Fatal(err)
 		}
 		got, err := f.svc.Adjust(f.ctx, f.walletIDR, idr(150_000), augustDay(5), f.tc.UserID)
@@ -644,7 +644,7 @@ func TestService_Adjust(t *testing.T) {
 
 	t.Run("writes an adjustment_out when the target is lower", func(t *testing.T) {
 		f := newFixture(t)
-		if err := f.svc.RecordOpening(f.ctx, f.walletIDR, idr(100_000), augustDay(1), f.tc.UserID); err != nil {
+		if _, err := f.svc.RecordOpening(f.ctx, f.walletIDR, idr(100_000), augustDay(1), f.tc.UserID); err != nil {
 			t.Fatal(err)
 		}
 		got, err := f.svc.Adjust(f.ctx, f.walletIDR, idr(40_000), augustDay(5), f.tc.UserID)
@@ -658,7 +658,7 @@ func TestService_Adjust(t *testing.T) {
 
 	t.Run("is a no-op when the balance already matches", func(t *testing.T) {
 		f := newFixture(t)
-		if err := f.svc.RecordOpening(f.ctx, f.walletIDR, idr(100_000), augustDay(1), f.tc.UserID); err != nil {
+		if _, err := f.svc.RecordOpening(f.ctx, f.walletIDR, idr(100_000), augustDay(1), f.tc.UserID); err != nil {
 			t.Fatal(err)
 		}
 		got, err := f.svc.Adjust(f.ctx, f.walletIDR, idr(100_000), augustDay(5), f.tc.UserID)
@@ -731,7 +731,7 @@ func TestService_RecordOpening(t *testing.T) {
 	f := newFixture(t)
 	by := uuid.New()
 	noUser := tenant.Into(context.Background(), tenant.Context{OrgID: f.tc.OrgID, ProjectID: f.tc.ProjectID})
-	if err := f.svc.RecordOpening(noUser, f.walletIDR, idr(500_000), augustDay(1), by); err != nil {
+	if _, err := f.svc.RecordOpening(noUser, f.walletIDR, idr(500_000), augustDay(1), by); err != nil {
 		t.Fatalf("RecordOpening: %v", err)
 	}
 	rows, _, err := f.svc.List(f.ctx, transaction.ListOpts{Kinds: []transaction.Kind{transaction.KindOpening}})
@@ -764,7 +764,7 @@ func TestService_TenantMissing(t *testing.T) {
 
 func TestService_Adjust_RunsInsideAUnitOfWorkAndLocksTheWallet(t *testing.T) {
 	f := newFixture(t)
-	if err := f.svc.RecordOpening(f.ctx, f.walletIDR, idr(100_000), augustDay(1), f.tc.UserID); err != nil {
+	if _, err := f.svc.RecordOpening(f.ctx, f.walletIDR, idr(100_000), augustDay(1), f.tc.UserID); err != nil {
 		t.Fatal(err)
 	}
 	before := *f.uowEntries
@@ -784,7 +784,7 @@ func TestService_Adjust_RunsInsideAUnitOfWorkAndLocksTheWallet(t *testing.T) {
 
 func TestService_Adjust_LocksBeforeReadingEvenWhenTheBalanceAlreadyMatches(t *testing.T) {
 	f := newFixture(t)
-	if err := f.svc.RecordOpening(f.ctx, f.walletIDR, idr(100_000), augustDay(1), f.tc.UserID); err != nil {
+	if _, err := f.svc.RecordOpening(f.ctx, f.walletIDR, idr(100_000), augustDay(1), f.tc.UserID); err != nil {
 		t.Fatal(err)
 	}
 	got, err := f.svc.Adjust(f.ctx, f.walletIDR, idr(100_000), augustDay(5), f.tc.UserID)

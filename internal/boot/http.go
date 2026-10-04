@@ -39,6 +39,7 @@ func buildAPIHandler(cfg *config.Config, k *platform.Kernel, s *Services) (*cont
 		Periods:      s.Periods,
 		Transactions: s.Transactions,
 		Reports:      s.Reports,
+		Opensheet:    s.Opensheet,
 	})
 	srv.Authn = s.Authn
 	srv.KeyPrefix = s.KeyAuthn.Scheme().Prefix()
@@ -128,10 +129,10 @@ func buildWebHandler(d webHandlerDeps) (handler http.Handler, routes []string) {
 	return web.NewServerWithRoutes(web.ServerOpts{
 		BasePath: cfg.HTTP.BasePath,
 		HealthOK: d.HealthOK,
-		AppHandlers: publishedConsoleHandlers([]web.Register{
+		AppHandlers: publishedConsoleHandlers(append([]web.Register{
 			authHandler, onboardingHandler, onboardHandler, homeHandler, orgHandler, projectHandler, todoHandler, blogHandler, apiKeyHandler, webhookHandler, inviteHandler, localeHandler, welcomeHandler, signupHandler, legalHandler,
 			overviewHandler, walletHandler, txCategoryHandler, transactionHandler, periodHandler, reportHandler, settingsHandler,
-		}),
+		}, yasakuConsoleHandlers(deps, svcs)...)),
 		APIHandler:         d.APIHandler,
 		DataHandler:        d.DataHandler,
 		IngestHandler:      buildIngestHandler(cfg, slogger),

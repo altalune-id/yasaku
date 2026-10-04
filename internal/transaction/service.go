@@ -31,6 +31,7 @@ type Service struct {
 	periods    PeriodResolver
 	uow        UnitOfWork
 	suggester  Suggester
+	mirror     Mirror
 }
 
 // NewService binds the service to its dependencies.
@@ -42,8 +43,9 @@ func NewService(
 	categories CategoryReader,
 	periods PeriodResolver,
 	uow UnitOfWork,
+	opts ...Option,
 ) *Service {
-	return &Service{
+	s := &Service{
 		store:      store,
 		log:        log.With("module", "transaction"),
 		unexpected: unexpected,
@@ -52,7 +54,12 @@ func NewService(
 		periods:    periods,
 		uow:        uow,
 		suggester:  lastUsedSuggester{store: store},
+		mirror:     nopMirror{},
 	}
+	for _, o := range opts {
+		o(s)
+	}
+	return s
 }
 
 // RecordInput carries a new transaction as the caller describes it.
@@ -85,21 +92,43 @@ type BatchResult struct {
 	Err         error
 }
 
-// Record validates and persists one transaction in the caller's tenant scope.
+// Record validates and persists one transaction in the caller's tenant scope, in one unit of work.
 func (s *Service) Record(ctx context.Context, in RecordInput) (*Transaction, error) {
+	t, refs, err := s.recordOne(ctx, in)
+	if err != nil {
+		return nil, err
+	}
+	s.mirror.Kick(ctx, refs...)
+	return t, nil
+}
+
+func (s *Service) recordOne(ctx context.Context, in RecordInput) (*Transaction, []MirrorRef, error) {
 	ctx, span := tracer.Start(ctx, "transaction.Record")
 	defer span.End()
 
 	tc, err := tenant.From(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	span.SetAttributes(
 		attribute.String("org_id", tc.OrgID.String()),
 		attribute.String("project_id", tc.ProjectID.String()),
 		attribute.String("transaction.kind", string(in.Kind)),
 	)
-	return s.record(ctx, tc, in, tc.UserID)
+	var out *Transaction
+	refs, err := s.commit(ctx, "transaction.Record", func(ctx context.Context) ([]MirrorRef, error) {
+		t, err := s.record(ctx, tc, in, tc.UserID)
+		if err != nil {
+			return nil, err
+		}
+		out = t
+		return touched(t, false), nil
+	})
+	if err != nil {
+		span.RecordError(err)
+		return nil, nil, err
+	}
+	return out, refs, nil
 }
 
 // RecordBatch records every input independently; one bad row does not roll back the others.
@@ -109,14 +138,17 @@ func (s *Service) RecordBatch(ctx context.Context, in []RecordInput) []BatchResu
 	defer span.End()
 
 	out := make([]BatchResult, 0, len(in))
+	var kick []MirrorRef
 	for i, row := range in {
-		t, err := s.Record(ctx, row)
+		t, refs, err := s.recordOne(ctx, row)
 		if err != nil {
 			out = append(out, BatchResult{Index: i, Err: err})
 			continue
 		}
+		kick = append(kick, refs...)
 		out = append(out, BatchResult{Index: i, Transaction: t})
 	}
+	s.mirror.Kick(ctx, kick...)
 	return out
 }
 
@@ -172,16 +204,35 @@ func (s *Service) Revise(ctx context.Context, id uuid.UUID, p RevisePatch) (*Tra
 	if err != nil {
 		return nil, err
 	}
-	t, err := s.load(ctx, tc, id, "transaction.Revise")
+	var out *Transaction
+	refs, err := s.commit(ctx, "transaction.Revise", func(ctx context.Context) ([]MirrorRef, error) {
+		next, refs, err := s.revise(ctx, tc, id, p)
+		if err != nil {
+			return nil, err
+		}
+		out = next
+		return refs, nil
+	})
 	if err != nil {
+		span.RecordError(err)
 		return nil, err
 	}
+	s.mirror.Kick(ctx, refs...)
+	return out, nil
+}
+
+// NOTE: the refs carry the wallets before and after, since moving a transaction changes both balances.
+func (s *Service) revise(ctx context.Context, tc tenant.Context, id uuid.UUID, p RevisePatch) (*Transaction, []MirrorRef, error) {
+	t, err := s.load(ctx, tc, id, "transaction.Revise")
+	if err != nil {
+		return nil, nil, err
+	}
 	if !t.Kind.IsUserRecorded() {
-		return nil, &SystemRecordedError{Kind: string(t.Kind)}
+		return nil, nil, &SystemRecordedError{Kind: string(t.Kind)}
 	}
 
 	if err := s.refusePeriodLocked(ctx, tc, t.PeriodID); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	next := *t
@@ -198,30 +249,30 @@ func (s *Service) Revise(ctx context.Context, id uuid.UUID, p RevisePatch) (*Tra
 	}
 	if p.Note != nil {
 		if err := next.SetNote(*p.Note); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
 	if p.Amount != nil {
 		if err := next.SetAmount(*p.Amount); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
 	if p.CategoryID != nil {
 		if err := next.SetCategory(*p.CategoryID); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
 	if err := next.validate(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	currency, err := s.checkWallets(ctx, tc, next.WalletID, next.ToWalletID, next.Kind, next.Amount)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	next.Amount = money.New(next.Amount.Minor, currency)
 	if err := s.checkCategory(ctx, tc, next.CategoryID, next.Kind); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	switch {
@@ -230,24 +281,24 @@ func (s *Service) Revise(ctx context.Context, id uuid.UUID, p RevisePatch) (*Tra
 	case p.PeriodID != nil:
 		periodID, pErr := s.resolvePeriod(ctx, tc, next.OccurredAt, *p.PeriodID)
 		if pErr != nil {
-			return nil, pErr
+			return nil, nil, pErr
 		}
 		next.SetPeriod(periodID)
 	case movedInTime:
 		periodID, pErr := s.resolvePeriod(ctx, tc, next.OccurredAt, nil)
 		if pErr != nil {
-			return nil, pErr
+			return nil, nil, pErr
 		}
 		next.SetPeriod(periodID)
 	}
 
 	if err := s.store.Save(ctx, &next); err != nil {
 		if IsNotFoundError(err) || IsAuthorMissingError(err) {
-			return nil, err
+			return nil, nil, err
 		}
-		return nil, s.unexpected(ctx, "transaction.Revise: save", err, "transaction_id", id)
+		return nil, nil, s.unexpected(ctx, "transaction.Revise: save", err, "transaction_id", id)
 	}
-	return &next, nil
+	return &next, append(touched(&next, false), touched(t, false)[1:]...), nil
 }
 
 // Delete removes the identified transaction when it is in the caller's tenant scope and its period is open.
@@ -260,22 +311,30 @@ func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
 	if err != nil {
 		return err
 	}
-	t, err := s.load(ctx, tc, id, "transaction.Delete")
-	if err != nil {
-		return err
-	}
-	if !t.Kind.IsUserRecorded() {
-		return &SystemRecordedError{Kind: string(t.Kind)}
-	}
-	if err := s.refusePeriodLocked(ctx, tc, t.PeriodID); err != nil {
-		return err
-	}
-	if err := s.store.Delete(ctx, id); err != nil {
-		if IsNotFoundError(err) {
-			return err
+	refs, err := s.commit(ctx, "transaction.Delete", func(ctx context.Context) ([]MirrorRef, error) {
+		t, err := s.load(ctx, tc, id, "transaction.Delete")
+		if err != nil {
+			return nil, err
 		}
-		return s.unexpected(ctx, "transaction.Delete: delete", err, "transaction_id", id)
+		if !t.Kind.IsUserRecorded() {
+			return nil, &SystemRecordedError{Kind: string(t.Kind)}
+		}
+		if err := s.refusePeriodLocked(ctx, tc, t.PeriodID); err != nil {
+			return nil, err
+		}
+		if err := s.store.Delete(ctx, id); err != nil {
+			if IsNotFoundError(err) {
+				return nil, err
+			}
+			return nil, s.unexpected(ctx, "transaction.Delete: delete", err, "transaction_id", id)
+		}
+		return touched(t, true), nil
+	})
+	if err != nil {
+		span.RecordError(err)
+		return err
 	}
+	s.mirror.Kick(ctx, refs...)
 	return nil
 }
 
@@ -375,23 +434,29 @@ func (s *Service) SuggestCategory(ctx context.Context, note string) (uuid.UUID, 
 	return id, ok, nil
 }
 
-// RecordOpening writes a wallet's starting balance on behalf of by, which need not be the ctx user.
-func (s *Service) RecordOpening(ctx context.Context, walletID uuid.UUID, amount money.Amount, at time.Time, by uuid.UUID) error {
+// RecordOpening writes a wallet's starting balance on behalf of by, which need not be the ctx user, and returns its id. NOTE: it runs inside the caller's unit of work (wallet.OpenWorkflow) and marks without kicking; the caller kicks after its commit.
+func (s *Service) RecordOpening(ctx context.Context, walletID uuid.UUID, amount money.Amount, at time.Time, by uuid.UUID) (uuid.UUID, error) {
 	ctx, span := tracer.Start(ctx, "transaction.RecordOpening",
 		trace.WithAttributes(attribute.String("wallet.id", walletID.String())))
 	defer span.End()
 
 	tc, err := tenant.From(ctx)
 	if err != nil {
-		return err
+		return uuid.Nil, err
 	}
-	_, err = s.record(ctx, tc, RecordInput{
+	t, err := s.record(ctx, tc, RecordInput{
 		WalletID:   walletID,
 		Kind:       KindOpening,
 		Amount:     amount,
 		OccurredAt: at,
 	}, by)
-	return err
+	if err != nil {
+		return uuid.Nil, err
+	}
+	if err := s.mark(ctx, "transaction.RecordOpening", touched(t, false)); err != nil {
+		return uuid.Nil, err
+	}
+	return t.ID, nil
 }
 
 // Adjust writes the adjustment that brings walletID's derived balance to target. NOTE: needs a real UnitOfWork and locks only against other Adjust calls, so a concurrent Record, Revise or Delete can still move the final balance off target.
@@ -420,6 +485,7 @@ func (s *Service) Adjust(ctx context.Context, walletID uuid.UUID, target money.A
 	}
 
 	var out *Transaction
+	var refs []MirrorRef
 	err = s.uow(ctx, func(ctx context.Context) error {
 		if lErr := s.store.LockWallet(ctx, tc.OrgID, tc.ProjectID, walletID); lErr != nil {
 			return s.unexpected(ctx, "transaction.Adjust: lock wallet", lErr, "wallet_id", walletID)
@@ -453,11 +519,13 @@ func (s *Service) Adjust(ctx context.Context, walletID uuid.UUID, target money.A
 			return rErr
 		}
 		out = t
-		return nil
+		refs = touched(t, false)
+		return s.mark(ctx, "transaction.Adjust", refs)
 	})
 	if err != nil {
 		return nil, err
 	}
+	s.mirror.Kick(ctx, refs...)
 	return out, nil
 }
 

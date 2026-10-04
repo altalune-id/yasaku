@@ -117,6 +117,23 @@ const (
 	CodePeriodNotLatestClosed = "PRD007"
 	CodePeriodAuthorMissing   = "PRD008"
 
+	CodeOpensheetLinkNotFound        = "OSL001"
+	CodeOpensheetInvalidSetting      = "OSL002"
+	CodeOpensheetAPIKeyRequired      = "OSL003"
+	CodeOpensheetSheetUnreachable    = "OSL004"
+	CodeOpensheetShapeMismatch       = "OSL005"
+	CodeOpensheetNoIDColumn          = "OSL006"
+	CodeOpensheetSheetNotWritable    = "OSL007"
+	CodeOpensheetContractUnsatisfied = "OSL008"
+	CodeOpensheetUnavailable         = "OSL009"
+	CodeOpensheetNotVerified         = "OSL010"
+	CodeOpensheetLinkDisabled        = "OSL011"
+	CodeOpensheetSyncRefused         = "OSL012"
+	CodeOpensheetScopeMismatch       = "OSL013"
+	CodeOpensheetRowRefused          = "OSL014"
+	CodeOpensheetKeyUnreadable       = "OSL015"
+	CodeOpensheetPrivateEndpoint     = "OSL016"
+
 	CodeMCPUnauthenticated = "MCP001"
 
 	CodeAPIKeyUnknownScope       = "APK001"

@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/go-resty/resty/v2"
 )
@@ -18,6 +19,8 @@ type SheetCapabilities struct {
 	ContractReason    string   `json:"contractReason"`
 	RowCount          int64    `json:"rowCount"`
 	Generation        int64    `json:"generation"`
+	// ValidatedAt is when opensheet last checked the tab against its contract, or nil if it never has.
+	ValidatedAt *time.Time `json:"validatedAt"`
 }
 
 const maxBatchRows = 500
@@ -39,7 +42,7 @@ func convertRow(row Row, numericSet map[string]bool) (map[string]any, error) {
 		}
 		n, err := strconv.ParseFloat(v, 64)
 		if err != nil {
-			return nil, &ValidationError{Code: "client", Message: "column " + k + " is not numeric: " + err.Error()}
+			return nil, &ValidationError{Code: "client", Message: "column " + k + " is not numeric"}
 		}
 		body[k] = n
 	}
@@ -72,7 +75,7 @@ func (c *Client) CreateRow(ctx context.Context, slug string, row Row, opts ...Wr
 		return nil, "", err
 	}
 	var out Row
-	resp, err := c.do(ctx, c.writeClient(o), http.MethodPost, c.sheetURL(slug), body, headersFor(o), &out)
+	resp, err := c.do(ctx, c.writeClient(o), http.MethodPost, c.sheetURL(slug, "rows"), body, headersFor(o), &out)
 	if err != nil {
 		return nil, "", annotate(err, slug, "")
 	}
@@ -116,7 +119,7 @@ func (c *Client) ReplaceRow(ctx context.Context, slug, id string, row Row, opts 
 		return nil, "", err
 	}
 	var out Row
-	resp, err := c.do(ctx, c.safe, http.MethodPut, c.sheetURL(slug, id), body, headersFor(o), &out)
+	resp, err := c.do(ctx, c.safe, http.MethodPut, c.sheetURL(slug, "rows", id), body, headersFor(o), &out)
 	if err != nil {
 		return nil, "", annotate(err, slug, id)
 	}
@@ -131,7 +134,7 @@ func (c *Client) PatchRow(ctx context.Context, slug, id string, patch Row, opts 
 		return nil, "", err
 	}
 	var out Row
-	resp, err := c.do(ctx, c.safe, http.MethodPatch, c.sheetURL(slug, id), body, headersFor(o), &out)
+	resp, err := c.do(ctx, c.safe, http.MethodPatch, c.sheetURL(slug, "rows", id), body, headersFor(o), &out)
 	if err != nil {
 		return nil, "", annotate(err, slug, id)
 	}
@@ -141,7 +144,7 @@ func (c *Client) PatchRow(ctx context.Context, slug, id string, patch Row, opts 
 // DeleteRow deletes row id.
 func (c *Client) DeleteRow(ctx context.Context, slug, id string, opts ...WriteOption) error {
 	o := collectOpts(opts)
-	_, err := c.do(ctx, c.safe, http.MethodDelete, c.sheetURL(slug, id), nil, headersFor(o), nil)
+	_, err := c.do(ctx, c.safe, http.MethodDelete, c.sheetURL(slug, "rows", id), nil, headersFor(o), nil)
 	if err != nil {
 		return annotate(err, slug, id)
 	}

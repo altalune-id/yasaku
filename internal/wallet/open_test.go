@@ -25,13 +25,20 @@ type recordedOpening struct {
 }
 
 type fakeRecorder struct {
-	calls []recordedOpening
-	err   error
+	calls    []recordedOpening
+	err      error
+	onRecord func()
 }
 
-func (r *fakeRecorder) RecordOpening(_ context.Context, walletID uuid.UUID, amount money.Amount, at time.Time, by uuid.UUID) error {
+func (r *fakeRecorder) RecordOpening(_ context.Context, walletID uuid.UUID, amount money.Amount, at time.Time, by uuid.UUID) (uuid.UUID, error) {
 	r.calls = append(r.calls, recordedOpening{walletID: walletID, amount: amount, at: at, by: by})
-	return r.err
+	if r.onRecord != nil {
+		r.onRecord()
+	}
+	if r.err != nil {
+		return uuid.Nil, r.err
+	}
+	return uuid.New(), nil
 }
 
 type fakeDater struct {
