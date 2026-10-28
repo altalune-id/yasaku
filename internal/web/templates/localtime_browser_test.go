@@ -120,7 +120,6 @@ func runLocaltime(t *testing.T, browserTZ string, body string) localtimeReport {
 	return rep
 }
 
-// gmtNow returns zone's current UTC offset in the hint's "GMT+N" form.
 func gmtNow(t *testing.T, zone string) string {
 	t.Helper()
 	loc, err := time.LoadLocation(zone)
