@@ -55,7 +55,7 @@ Copy `entity/postgres/orgs.go` for the shape: typed columns, an `AllColumns` lis
 
 - **Do not add a `MutableColumns` field** — it was removed repo-wide because nothing read it.
 - **SQLite timestamp columns are `ColumnString`**, not a time type.
-- A migration that only adds a column (`009_blog_version.sql`) still needs that column in both
+- A migration that only adds a column (`*_blog_version.sql`) still needs that column in both
   bindings _and_ in `AllColumns`
   ([`howto/module.md`](../../../../docs/howto/module.md#gotchas)).
 - Nullable columns go through the `Null*` helpers in the same packages, never a wrapped jet

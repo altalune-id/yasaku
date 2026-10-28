@@ -211,7 +211,7 @@ func TestOpensheet_SaveIsRefusedWith422ThenAllowed(t *testing.T) {
 	st, err := f.store.LinkByProject(t.Context(), f.OrgID, f.ProjectID)
 	require.NoError(t, err)
 	require.NotEmpty(t, st.APIKeySealed)
-	assert.NotContains(t, body, string(st.APIKeySealed), "the view never renders the sealed bytes (Revision 5)")
+	assert.NotContains(t, body, string(st.APIKeySealed), "the view never renders the sealed bytes")
 
 	on := f.doHTMX(t, f.mux, http.MethodPost, "/opensheet/enabled", url.Values{"enabled": {"true"}})
 	require.Equal(t, http.StatusOK, on.Code, on.Body.String())
@@ -276,7 +276,7 @@ func TestOpensheet_NavEntryIsHiddenWhenTheServerDoesNotMountTheModule(t *testing
 	assert.NotContains(t, rec.Body.String(), f.path("/opensheet"))
 }
 
-// NOTE: Revision 3 (C1): today's opensheet passes an empty tab, so the refusal of the first sync must be visible where the person re-runs Test.
+// NOTE: today's opensheet passes an empty tab, so the refusal of the first sync must be visible where the person re-runs Test.
 func TestOpensheet_TheChecklistShowsTheLastSyncError(t *testing.T) {
 	t.Parallel()
 	f := newOpensheetFixture(t)

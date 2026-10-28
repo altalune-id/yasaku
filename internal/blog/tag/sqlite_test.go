@@ -299,7 +299,7 @@ func TestSQLiteStore_Delete_InUse(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, f.store.Save(ctx, tg))
 
-	// NOTE: blog.Store cannot write these two tables yet (Task 7), so the referencing
+	// NOTE: blog.Store cannot write these two tables yet, so the referencing
 	// rows go in with raw SQL. The join row's org_id must match the post's: the composite
 	// FK (post_id, org_id) -> blog_posts(id, org_id) rejects a mismatch.
 	now := sqliteent.SQLiteTime(time.Now())

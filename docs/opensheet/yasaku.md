@@ -46,7 +46,7 @@ One Go table, `opensheetsync.Contract()`, drives the Test, the tutorial and the 
 | `yasaku-wallets`      | `id`, `name`, `kind`, `provider`, `currency`, `balance`, `exclude_from_total`, `archived`, `updated_at`, `deleted_at`                                                                                  |
 | `yasaku-categories`   | `id`, `name`, `kind`, `icon`, `color`, `archived`, `updated_at`, `deleted_at`                                                                                                                          |
 
-- Every tab needs `id` as its id column, must be writable, and needs a `deleted_at` column (U4).
+- Every tab needs `id` as its id column, must be writable, and needs a `deleted_at` column.
   opensheet writes `deleted_at` when yasaku deletes a row; yasaku never writes it. opensheet refuses a
   delete on a tab without it (`SHT029`).
 - Each tab has its own sheet slug; two tabs on one slug is `OSL002`.
@@ -127,7 +127,7 @@ few minutes), then run Test again. yasaku does not purge opensheet's cache: that
    PATCHes. A deleted row is DELETEd (tombstoned). It settles `synced_version` by compare-and-set;
    a mark during the push makes it push again, at most 3 times. It stops starting rows 10s before
    its deadline.
-4. **Fast drain (U2)**, queue on only: a job that got a full batch of 50, processed all of them and
+4. **Fast drain**, queue on only: a job that got a full batch of 50, processed all of them and
    pushed at least one, submits one follow-up job with the next 50 claimable dirty rows. Inline jobs
    never chain.
 5. **The reconciler** `opensheet-reconcile` runs every 5 minutes (30s jitter) per org, singleton,
@@ -182,7 +182,7 @@ few minutes), then run Test again. yasaku does not purge opensheet's cache: that
 `yasaku.v1.OpensheetService` on the control plane (S2), six procedures: `GetOpensheetLink`
 (`yasaku:read`), `TestOpensheetLink`, `SaveOpensheetLink`, `SetOpensheetLinkEnabled`,
 `SyncOpensheetNow` and `DeleteOpensheetLink` (`yasaku:write` and the owner or admin role). They
-exist only when `opensheet.baseURL` is set. NOTE (template gap T70): `/api/openapi.yaml` still lists
+exist only when `opensheet.baseURL` is set. NOTE: `/api/openapi.yaml` still lists
 them when it is empty, because `openAPI()` does not prune unmounted paths. The console routes are
 under `/orgs/{org}/projects/{project}/opensheet`.
 

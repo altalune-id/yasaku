@@ -64,7 +64,7 @@ flowchart LR
 ### Reads that run before a scope exists
 
 Resolving a slug is what _establishes_ a scope, so it cannot go through RLS. Six
-`SECURITY DEFINER` wrappers (`005_definer_functions.sql`, `012_resolve_system_org.sql`), `EXECUTE`
+`SECURITY DEFINER` wrappers (`005_definer_functions.sql`, `013_resolve_system_org.sql`), `EXECUTE`
 revoked from `PUBLIC`:
 
 | Wrapper                                | Read by                                                    |
