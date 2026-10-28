@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -119,6 +120,17 @@ func runLocaltime(t *testing.T, browserTZ string, body string) localtimeReport {
 	return rep
 }
 
+// gmtNow returns zone's current UTC offset in the hint's "GMT+N" form.
+func gmtNow(t *testing.T, zone string) string {
+	t.Helper()
+	loc, err := time.LoadLocation(zone)
+	if err != nil {
+		t.Fatalf("load %s: %v", zone, err)
+	}
+	_, offset := time.Now().In(loc).Zone()
+	return fmt.Sprintf("GMT%+d", offset/3600)
+}
+
 func renderLedgerPage(t *testing.T, ledgerTZ string) string {
 	t.Helper()
 	loc, err := time.LoadLocation(ledgerTZ)
@@ -142,6 +154,7 @@ func renderLedgerPage(t *testing.T, ledgerTZ string) string {
 }
 
 func TestLocaltime_FormatsInTheBrowserZoneAndPopsTheLedgerZone(t *testing.T) {
+	london := gmtNow(t, "Europe/London")
 	cases := []struct {
 		name, browser, ledger string
 		want                  []localtimeRow
@@ -154,7 +167,7 @@ func TestLocaltime_FormatsInTheBrowserZoneAndPopsTheLedgerZone(t *testing.T) {
 				{Text: "Nov 1, 2026, 4:55 PM", Armed: true, Described: true, Click: "popover", Pop: "Nov 1, 2026, 9:55 AM · Ledger time (Europe/London, GMT+0)"},
 				{Text: "Oct 1", Armed: true, Described: true, Click: "popover", Pop: "Recorded Oct 1, 2026, 5:00 AM · your time (GMT+7)"},
 			},
-			hint: "Times in your timezone (GMT+7) · Ledger: Europe/London (GMT+1)",
+			hint: "Times in your timezone (GMT+7) · Ledger: Europe/London (" + london + ")",
 		},
 		{
 			name: "london browser, jakarta ledger", browser: "Europe/London", ledger: "Asia/Jakarta",
@@ -163,7 +176,7 @@ func TestLocaltime_FormatsInTheBrowserZoneAndPopsTheLedgerZone(t *testing.T) {
 				{Text: "Nov 1, 2026, 9:55 AM", Armed: true, Described: true, Click: "popover", Pop: "Nov 1, 2026, 4:55 PM · Ledger time (Asia/Jakarta, GMT+7)"},
 				{Text: "Oct 1", Armed: true, Described: true, Click: "popover", Pop: "Recorded Sep 30, 2026, 11:00 PM · your time (GMT+1)"},
 			},
-			hint: "Times in your timezone (GMT+1) · Ledger: Asia/Jakarta (GMT+7)",
+			hint: "Times in your timezone (" + london + ") · Ledger: Asia/Jakarta (GMT+7)",
 		},
 		{
 			name: "same zone, no popover", browser: "Asia/Jakarta", ledger: "Asia/Jakarta",
