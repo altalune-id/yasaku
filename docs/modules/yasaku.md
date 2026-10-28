@@ -36,5 +36,4 @@ The transaction, wallet and category modules each declare their own `Mirror` por
 never import `opensheetsync`; boot adapts them in `internal/boot/opensheet_yasaku.go`. Their writes
 always run in the tenant unit of work, mounted or not. The console page is
 `internal/web/handlers/opensheet_yasaku.go`; the RPC is `yasaku.v1.OpensheetService`, whose six
-procedures exist only when `opensheet.baseURL` is set (`/api/openapi.yaml` still lists them, template
-gap T70).
+procedures exist only when `opensheet.baseURL` is set (`/api/openapi.yaml` still lists them).

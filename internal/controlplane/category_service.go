@@ -269,7 +269,7 @@ func defaultCategoryName(ctx context.Context, d category.Default) string {
 //nolint:gochecknoglobals // a fixed table, not runtime state.
 var chartColors = []string{"chart-1", "chart-2", "chart-3", "chart-4", "chart-5"}
 
-// NOTE: mirrors category.normalizeColor, which is unexported; see docs/BACKLOG.md.
+// NOTE: mirrors category.normalizeColor, which is unexported.
 func checkIconAndColor(icon, color string) *yasakuv1.Needs {
 	if icon = strings.TrimSpace(icon); icon != "" && !slices.Contains(category.AllowedIcons, icon) {
 		return needs("icon", icon+" is not an accepted icon", category.AllowedIcons...)

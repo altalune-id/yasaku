@@ -215,7 +215,7 @@ func TestOpensheetService_RefusalsCarryTheirOSLCodeAndConnectCode(t *testing.T) 
 	})
 }
 
-// SECURITY: D8, a key principal has no user, so even a yasaku:write key cannot re-point or switch the mirror.
+// SECURITY: a key principal has no user, so even a yasaku:write key cannot re-point or switch the mirror.
 func TestOpensheetService_AKeyReadsTheLinkButNeverChangesIt(t *testing.T) {
 	f := newOpensheetFixture(t)
 	ctx := t.Context()

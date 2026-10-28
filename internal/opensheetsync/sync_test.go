@@ -218,7 +218,7 @@ func TestSync_ALinkRefusalIsRecordedOnTheLinkAndTurnsItOffOnTheThird(t *testing.
 	require.NoError(t, e.syncer.Sync(e.ctx, e.tc.ProjectID, []opensheetsync.Ref{r}), "a link that is off does nothing")
 }
 
-// NOTE: Revision 3 (C1): the Test cannot see an empty tab's columns, so the first push is where a gap shows, and it is the tab's fault.
+// NOTE: the Test cannot see an empty tab's columns, so the first push is where a gap shows, and it is the tab's fault.
 func TestSync_AColumnMissingFromAnEmptyTabRefusesTheLinkNotTheRow(t *testing.T) {
 	e := newSyncEnv(t)
 	tab := mustTab(t, opensheetsync.EntityTransaction)
@@ -292,9 +292,9 @@ func TestSync_AnUnreadableKeyRefusesTheLinkAndCountsTowardAutoDisable(t *testing
 	for range opensheetsync.DisableAfter {
 		err := syncer.Sync(e.ctx, e.tc.ProjectID, []opensheetsync.Ref{r})
 		require.True(t, opensheetsync.IsSyncRefusedError(err))
-		require.True(t, opensheetsync.IsKeyUnreadableError(err), "the same type the service returns (Revision 5)")
+		require.True(t, opensheetsync.IsKeyUnreadableError(err), "the same type the service returns")
 	}
-	require.False(t, e.link(t).Enabled, "an unreadable key turns the link off after DisableAfter refusals (D11)")
+	require.False(t, e.link(t).Enabled, "an unreadable key turns the link off after DisableAfter refusals")
 	require.Zero(t, e.sheets.CountRequests(http.MethodPatch, "yasaku-transactions"))
 }
 

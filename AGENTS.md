@@ -67,6 +67,7 @@ lifecycle) · `cobra-viper` · `go-release` · `go-spec-reviewer` ·
 - **Comments — default NO comments.** Keep 1-line godoc on exported symbols,
   TODO/SECURITY/FIXME/NOTE markers, external URL references. Delete rationale, history and
   architecture prose. Enforced by `make comment-check` (`cmd/comment-lint`, CI job `comment-check`).
+- **No references to uncommitted files.** Never reference untracked files or IDs defined only in them.
 - **Config awareness tags.** Every `Config` field you add or change carries
   `awareness:"..."` (`required` / `bootstrap` / `secret` / `mode:<x>`; `-` opts out, and a
   nested struct inherits via `mergeAwareness`). Cloud mode ALLOWS `Genesis.Email` for
@@ -134,7 +135,7 @@ yasaku is a fork of the template. It adds a personal-finance domain on top of th
   [`docs/mcp/yasaku.md`](docs/mcp/yasaku.md).
 - **Queue** — yasaku services submit jobs through `svcs.jobs` (`internal/boot/submit_yasaku.go`), never
   `Kernel.Queue`: with the queue off, the job runs inline (20s budget, one level of chaining) instead
-  of being dropped (template gap T32). Seam and registration: [`docs/queue/yasaku.md`](docs/queue/yasaku.md);
+  of being dropped. Seam and registration: [`docs/queue/yasaku.md`](docs/queue/yasaku.md);
   NATS on Railway: [`docs/deployment/yasaku.md`](docs/deployment/yasaku.md).
 - **Opensheet** — optional one-way mirror of a project's wallets, categories and transactions to
   Google Sheets, unmounted unless `opensheet.baseURL` is set (it then needs `security.encryptionKey`).

@@ -46,7 +46,7 @@ func TestKernelQueueReachesNoYasakuService(t *testing.T) {
 			}
 			site := f + ": " + strings.TrimSpace(line)
 			if _, ok := allowed[site]; !ok {
-				t.Errorf("%s: a yasaku service takes svcs.jobs, never Kernel.Queue — a disabled queue drops a Submit (template gap T32)", site)
+				t.Errorf("%s: a yasaku service takes svcs.jobs, never Kernel.Queue — a disabled queue drops a Submit", site)
 				continue
 			}
 			allowed[site] = true

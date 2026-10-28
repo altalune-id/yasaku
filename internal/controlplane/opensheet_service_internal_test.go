@@ -75,7 +75,7 @@ func TestOpensheetLink_ToProtoNeverCarriesTheKey(t *testing.T) {
 	fields := p.ProtoReflect().Descriptor().Fields()
 	for i := range fields.Len() {
 		name := string(fields.Get(i).Name())
-		require.False(t, strings.Contains(name, "sealed") || name == "api_key", "OpensheetLink.%s could carry the key (Revision 5)", name)
+		require.False(t, strings.Contains(name, "sealed") || name == "api_key", "OpensheetLink.%s could carry the key", name)
 	}
 
 	synced := at.Add(time.Minute)

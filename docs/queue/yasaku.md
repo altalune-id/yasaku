@@ -6,7 +6,7 @@ NATS: [`deployment/yasaku.md`](../deployment/yasaku.md).
 
 ## Submit through `svcs.jobs`, never `Kernel.Queue`
 
-NOTE (template gap T32): with `queue.enabled=false` the template's `Submit` returns nil and drops the
+NOTE: with `queue.enabled=false` the template's `Submit` returns nil and drops the
 job. Yasaku services never receive `Kernel.Queue`. Boot hands them `svcs.jobs`, a `*jobSubmitter`
 (`internal/boot/submit_yasaku.go`), through the same one-method port the template uses:
 
