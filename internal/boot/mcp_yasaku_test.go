@@ -76,7 +76,7 @@ func TestMCP_SurfaceIsNotBehindTheOnboardingGate(t *testing.T) {
 			cfg := newSmokeCfg(t)
 			cfg.Mode = config.ModeCloud
 			cfg.HTTP.BasePath = basePath
-			cfg.OIDC = config.OIDCConfig{Issuer: issuer.url, ClientID: "mcp-client", ClientSecret: "mcp-secret"}
+			cfg.OIDC = config.OIDCConfig{Issuer: issuer.url, ClientID: "mcp-client", ClientSecret: "mcp-secret", CLIClientID: cliClientID}
 			cfg.API.Enabled = true
 			cfg.API.KeyPrefix = apikey.DefaultPrefix
 			cfg.Tokens = tokens.Config{Issuer: issuer.url, Audience: "http://127.0.0.1" + basePath + "/api"}
@@ -107,6 +107,10 @@ func TestMCP_SurfaceIsNotBehindTheOnboardingGate(t *testing.T) {
 			for _, path := range []string{rootMetadataPath, "/.well-known/oauth-protected-resource" + basePath + mcpPath} {
 				rec := serve(http.MethodGet, path)
 				require.Equal(t, http.StatusOK, rec.Code, "path=%s body=%s", path, rec.Body.String())
+				var doc map[string]any
+				require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &doc))
+				require.Equal(t, cfg.MCP.Audience, doc["resource"], "path=%s must serve the MCP document", path)
+				require.NotContains(t, doc, "cli_client_id", "path=%s served the API document", path)
 			}
 		})
 	}

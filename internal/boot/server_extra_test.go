@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"altalune.id/yasaku/internal/platform"
 	"altalune.id/yasaku/internal/platform/config"
 )
 
@@ -20,8 +21,7 @@ func discardLogger() *slog.Logger { return slog.New(slog.NewTextHandler(io.Disca
 func TestBootClient_Wires(t *testing.T) {
 	t.Parallel()
 	cfg := config.Defaults()
-	cfg.HTTP.BaseURL = "http://127.0.0.1:0"
-	c, err := BootClient(context.Background(), cfg, "sometoken")
+	c, err := BootClient(context.Background(), cfg, "http://127.0.0.1:0", "sometoken")
 	require.NoError(t, err)
 	require.NotNil(t, c)
 	assert.NotNil(t, c.Log)
@@ -158,4 +158,26 @@ func TestOnboardPolicyFrom_ModeCloud(t *testing.T) {
 	cfg.Mode = config.ModeCloud
 	pol := onboardPolicyFrom(cfg)
 	assert.NotEmpty(t, pol.Mode)
+}
+
+func TestAPIResource_ResolvedOnceAndWarnsOnABadAudience(t *testing.T) {
+	t.Parallel()
+	cfg := config.Defaults()
+	cfg.API.Enabled = true
+	cfg.Tokens.Issuer = "https://issuer.example.com"
+	cfg.Tokens.Audience = "https://app.example.com/api"
+
+	res := apiResource(cfg, discardLogger())
+	require.NotNil(t, res)
+	srv, _ := buildAPIHandler(cfg, &platform.Kernel{Log: discardLogger()}, &Services{}, res)
+	assert.Same(t, res, srv.Resource)
+
+	cfg.Tokens.Audience = "not a url"
+	rec := &warnRecorder{}
+	assert.Nil(t, apiResource(cfg, slog.New(rec)))
+	require.Len(t, rec.warns, 1)
+
+	cfg.Tokens.Audience = "https://app.example.com/api"
+	cfg.Tokens.Issuer = ""
+	assert.Nil(t, apiResource(cfg, discardLogger()))
 }

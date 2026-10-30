@@ -17,7 +17,7 @@ Worked examples: `internal/cli/blog.go` (remote, REST, API key) and `internal/cl
 
 3. Add it to the `root.AddCommand(...)` list in `internal/cli/root.go` with a `GroupID` of `runtime`, `auth`, `tenancy`, `domain` or `meta`.
 4. Keep the business logic outside `cmd/`. `cmd/yasaku` builds the tree, runs it, and maps the error to an exit code — it knows nothing about Cobra internals or Viper.
-5. Resolve the caller. Control-plane commands use `withPrincipal(cmd, bootClient, true)` then `connFromCmd`; data-plane commands use `blogTargetFrom(cmd)`, which resolves URL, credential and slugs in one place.
+5. Resolve the caller. Control-plane commands use `connFromCmd(cmd, bootClient)`, which resolves the URL and the credential and refreshes a profile's token; data-plane commands use `blogTargetFrom(cmd)`, which resolves URL, API key and slugs in one place. In-process commands use `withPrincipal(cmd)` (the local profile) and are wrapped in `markOperator` in `root.go`, so they refuse `--url`, `--token` and `--token-file`.
 6. Print through `internal/cli/render`: `render.Detect(cmd)`, then `render.Table`, `render.JSON` or `render.NDJSON`.
 7. Map failures to `apperror.New(code, message, grpcCode)` so `ExitCodeFor` in `internal/cli/exit.go` yields the documented exit code.
 8. Test against a fresh `NewRootCmd` in memory, with `cmd.SetOut` / `SetArgs`.
@@ -38,11 +38,12 @@ Worked examples: `internal/cli/blog.go` (remote, REST, API key) and `internal/cl
 
 ## Gotchas
 
-- `--org` and `--project` are **not** global tenant overrides. Only `blog` reads them; every other tenant-scoped command takes its org from the session principal and ignores both.
-- A saved profile's credential is withheld when `--url` names another host (`HostMismatchError`). An explicit `--token` is unambiguous intent and is sent to whatever `--url` names.
+- `--org` and `--project` are **not** global tenant overrides. Only `blog` reads them; every other tenant-scoped command takes its org from the principal and ignores both.
+- A profile's token is withheld when `--url` names another server (`ProfileHostMismatchError`). An explicit `--token` is unambiguous intent and is sent to whatever `--url` names.
+- A remote command never touches the session file itself: `connFromCmd` refreshes under the session file lock, and every write goes through `profileStore.edit`.
 - `ndjson` is `blog`-only. Every other command treats it as `json` and emits the `{"data": …}` envelope.
 - `--no-interactive`, `--log-level` and `--log-format` are declared but nothing reads the flags; the `YASAKU_*` env vars do work for the last two.
-- `healthz` never adopts a saved profile or `http.baseURL` — it must reach the listener beside it.
+- `healthz` never adopts a profile or `http.baseURL` — it must reach the listener beside it.
 
 ## Contracts
 

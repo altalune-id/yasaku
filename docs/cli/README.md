@@ -20,15 +20,17 @@ is a procedure, not a contract: [`howto/cli-command.md`](../howto/cli-command.md
 
 R11: the CLI owns no verbs. What a command calls decides which credential it needs.
 
-| Reaches                                    | Commands                                                                    | Credential          |
-| ------------------------------------------ | --------------------------------------------------------------------------- | ------------------- |
-| in-process services (`ServerBootFn`)       | `init`, `serve`, `migrate`, `scheduler`, `auth`, `org`, `project`, `invite` | session file, or DB |
-| control plane S2, Connect (`ClientBootFn`) | `todo`                                                                      | bearer token        |
-| data plane S3, REST                        | `blog`                                                                      | API key             |
-| nothing but `config.Load`                  | `version`, `healthz`, `completion`                                          | none                |
+| Reaches                                    | Commands                                                                                  | Credential                  |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------- | --------------------------- |
+| in-process services (`ServerBootFn`)       | `init`, `serve`, `migrate`, `scheduler`, `org`, `project`, `invite`, `auth login` (local) | local profile, or DB        |
+| control plane S2, Connect (`ClientBootFn`) | `todo`, `auth whoami`, `auth login --url` (its `Whoami`)                                  | profile token, or `--token` |
+| Othra, OAuth 2.0                           | `auth login --url` (RFC 8252 loopback), `auth logout` (RFC 7009), refreshes               | native public client, PKCE  |
+| data plane S3, REST                        | `blog`                                                                                    | API key                     |
+| nothing but `config.Load`                  | `version`, `healthz`, `completion`                                                        | none                        |
 
-`org`, `project`, `invite` and `todo` resolve a principal before doing anything, so they fail with
-`not signed in` without a session or `--token`.
+`org`, `project` and `invite` act as the local profile's principal and fail with exit `2` without
+one; they refuse `--url`, `--token` and `--token-file`. `todo` fails with exit `2` without a remote
+profile or `--token`. Profiles and precedence: [`resolution`](resolution.md).
 
 ## Command tree
 
@@ -37,7 +39,7 @@ Args, flags and what each command prints: [`commands`](commands.md).
 ```
 yasaku
 ├─ Runtime   init · serve · migrate {up,status,down-to} · scheduler {list,run}
-├─ Auth      auth {login,logout,whoami,token mint}
+├─ Auth      auth {login,logout,whoami}
 ├─ Tenancy   org {list,create} · project {list,create} · invite {list,send,revoke}
 ├─ Domain    todo {list,add,toggle,delete}                             control plane S2
 │            blog {list,get,create,update,publish,unpublish,delete}    data plane S3
@@ -119,12 +121,11 @@ does not depend on them.
 | ----------------------------------- | --------------------------------------------------------------- |
 | `--no-interactive`                  | never consulted; prompts still appear                           |
 | `--log-level`, `--log-format`       | flags ignored; `YASAKU_LOG_LEVEL` / `YASAKU_LOG_FORMAT` do work |
-| `auth login --print-token`          | plumbed into `loginOpts`, never read; no token is printed       |
 | `init --project-slug`               | echoed in the success line; no project is created               |
 | `--org`, `--project` outside `blog` | ignored; the session principal decides                          |
 
-No command writes a session profile (`saveProfile` has no production caller), so `blog` in practice
-needs an explicit `--token` / `YASAKU_TOKEN` plus `--org` and `--project`.
+`blog` needs an explicit `--token` / `--token-file` / `YASAKU_TOKEN` plus `--org` and `--project`: the
+data plane takes API keys only, so it never uses a profile.
 
 ## Not on this surface
 
