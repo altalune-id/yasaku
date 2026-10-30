@@ -30,7 +30,7 @@ func newBlogFixture(t *testing.T) *blogFixture {
 	t.Helper()
 	ctx := context.Background()
 	orgID := uuid.New()
-	h := newHarness(t, session.Principal{UserID: uuid.New(), Email: "a@b", ActiveOrgID: orgID})
+	h := newHarness(t, session.Principal{Source: session.SourceOIDC, UserID: uuid.New(), Email: "a@b", ActiveOrgID: orgID})
 
 	proj, err := project.New(orgID, "p1", "Project 1")
 	require.NoError(t, err)

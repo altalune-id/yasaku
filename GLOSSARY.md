@@ -30,14 +30,13 @@ listener at all: it either boots the graph in-process or speaks HTTP to a remote
 NOTE: the dispatch surface sends to **tenants**. `internal/platform/notify` sends to
 **operators**. They are never the same code path.
 
-Four names S7 introduces, all detailed in [`mcp`](docs/mcp/README.md):
+Three names S7 introduces, all detailed in [`mcp`](docs/mcp/README.md):
 
-| Term            | Where                                           | What it is                                                                                                               |
-| --------------- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| tool            | `option (mcp.v1.tool)` on an RPC in `api/*/v1/` | A control-plane RPC republished for an MCP host. A tool and its RPC are one verb reached two ways — never two impls.     |
-| `mcp.audience`  | derived: `baseURL` + `basePath` + `/mcp`        | The RFC 8707 resource id the token verifier pins. `mcp.audienceOverride` accepts one that differs from the mount.        |
-| challenge token | `mcp.challengeToken`                            | Issued by authl (Resource servers → the MCP one → Start), never generated locally. Rotating it breaks the deployment.    |
-| Apps UI         | `mcp.appsUI`, `internal/mcp/ui/`                | Optional: publishes the UI resource and binds `_meta.ui`. Assets are digest-pinned; re-vendor with `make mcp-ui-vendor`. |
+| Term           | Where                                           | What it is                                                                                                               |
+| -------------- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| tool           | `option (mcp.v1.tool)` on an RPC in `api/*/v1/` | A control-plane RPC republished for an MCP host. A tool and its RPC are one verb reached two ways — never two impls.     |
+| `mcp.audience` | derived: `baseURL` + `basePath` + `/mcp`        | The RFC 8707 resource id the token verifier pins. `mcp.audienceOverride` accepts one that differs from the mount.        |
+| Apps UI        | `mcp.appsUI`, `internal/mcp/ui/`                | Optional: publishes the UI resource and binds `_meta.ui`. Assets are digest-pinned; re-vendor with `make mcp-ui-vendor`. |
 
 ## Architecture
 
@@ -60,7 +59,7 @@ NOTE: "platform package" is a **category, not a directory**. Some live under
 `internal/platform/<name>/` (`authn`, `capabilities`, `config`, `db`, `events`, `notify`,
 `outbox`, `queue`, `sealer`, `session`, `surfaces`, `tenant`, `tokens`); others are exported
 roots (`worker/`, `scheduler/`, `logger/`, `telemetry/`, `mailer/`, `nanoid/`,
-`reqid/`, `authl/`, `httpclient/`, `mcp/`).
+`reqid/`, `httpclient/`, `mcp/`).
 
 ## Tenancy
 

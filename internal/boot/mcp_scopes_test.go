@@ -1,6 +1,7 @@
 package boot
 
 import (
+	"slices"
 	"testing"
 
 	"altalune.id/yasaku/internal/controlplane"
@@ -49,5 +50,17 @@ func TestEveryMCPToolHasAScope(t *testing.T) {
 		if _, ok := reg.Spec(name); !ok {
 			t.Errorf("mcp.ScopeTable() declares %q but no such tool is registered", name)
 		}
+	}
+}
+
+func TestMCPSurfacePublishesTheToolScopes(t *testing.T) {
+	reg := rootmcp.NewRegistry()
+	if err := registerTools(reg, &controlplane.Server{}); err != nil {
+		t.Fatalf("registerTools: %v", err)
+	}
+	got := registeredScopes(reg)
+	want := []string{authn.ScopeYasakuRead, authn.ScopeYasakuWrite}
+	if !slices.Equal(got, want) {
+		t.Fatalf("registeredScopes = %v, want %v", got, want)
 	}
 }

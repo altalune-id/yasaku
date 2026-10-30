@@ -140,7 +140,7 @@ func (f *mcpFixture) untenantedToken(t *testing.T) string {
 	const subject = "mcp-agent-no-project"
 
 	u, err := f.srv.Users.EnsureFromOIDC(t.Context(), user.Claims{
-		Issuer: f.issuer.url, Subject: subject, Email: "no-project@example.com", Name: "No Project",
+		Issuer: f.issuer.url, Subject: subject, Email: "no-project@example.com", EmailVerified: true, Name: "No Project",
 	})
 	require.NoError(t, err)
 	_, err = f.srv.Orgs.Create(t.Context(), org.CreateRequest{
@@ -149,7 +149,7 @@ func (f *mcpFixture) untenantedToken(t *testing.T) string {
 	require.NoError(t, err)
 
 	return f.issuer.mintWith(t, mcpAudience, []string{authn.ScopeYasakuRead}, map[string]any{
-		"sub": subject, "email": "no-project@example.com",
+		"sub": subject,
 	})
 }
 
@@ -159,7 +159,7 @@ func TestMCP_KeyNeverReachesASiblingProject(t *testing.T) {
 	ctx := t.Context()
 
 	owner, err := f.srv.Users.EnsureFromOIDC(ctx, user.Claims{
-		Issuer: f.issuer.url, Subject: tokenSubject, Email: tokenEmail, Name: "MCP Agent",
+		Issuer: f.issuer.url, Subject: tokenSubject, Email: tokenEmail, EmailVerified: true, Name: "MCP Agent",
 	})
 	require.NoError(t, err)
 	o, err := f.srv.Orgs.BySlug(ctx, "mcp-org")
@@ -202,7 +202,7 @@ func TestMCP_OrgKeyReachesOnlyItsGrantedProjects(t *testing.T) {
 	ctx := t.Context()
 
 	owner, err := f.srv.Users.EnsureFromOIDC(ctx, user.Claims{
-		Issuer: f.issuer.url, Subject: tokenSubject, Email: tokenEmail, Name: "MCP Agent",
+		Issuer: f.issuer.url, Subject: tokenSubject, Email: tokenEmail, EmailVerified: true, Name: "MCP Agent",
 	})
 	require.NoError(t, err)
 	o, err := f.srv.Orgs.BySlug(ctx, "mcp-org")
@@ -272,7 +272,7 @@ func TestMCP_PersonalTokenActsForItsOwner(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code, "body=%s", rec.Body.String())
 	require.Equal(t, []string{ownWallet}, walletNamesFromTool(t, rec), "a member's token must read what the member can; body=%s", rec.Body.String())
 
-	owner, err := f.srv.Users.EnsureFromOIDC(ctx, user.Claims{Issuer: f.issuer.url, Subject: tokenSubject, Email: tokenEmail, Name: "MCP Agent"})
+	owner, err := f.srv.Users.EnsureFromOIDC(ctx, user.Claims{Issuer: f.issuer.url, Subject: tokenSubject, Email: tokenEmail, EmailVerified: true, Name: "MCP Agent"})
 	require.NoError(t, err)
 	require.NoError(t, f.srv.Orgs.RemoveMember(tenant.Into(ctx, tenant.Context{OrgID: o.ID, UserID: owner.ID}), o.ID, member.ID))
 	rec = f.call(t, token, listWalletsIn("mcp-project"))
@@ -291,7 +291,7 @@ func TestMCP_MemberListIsAnOrgLevelRead(t *testing.T) {
 	ctx := t.Context()
 	seedForeignTenant(t, f)
 
-	owner, err := f.srv.Users.EnsureFromOIDC(ctx, user.Claims{Issuer: f.issuer.url, Subject: tokenSubject, Email: tokenEmail, Name: "MCP Agent"})
+	owner, err := f.srv.Users.EnsureFromOIDC(ctx, user.Claims{Issuer: f.issuer.url, Subject: tokenSubject, Email: tokenEmail, EmailVerified: true, Name: "MCP Agent"})
 	require.NoError(t, err)
 	o, err := f.srv.Orgs.BySlug(ctx, "mcp-org")
 	require.NoError(t, err)

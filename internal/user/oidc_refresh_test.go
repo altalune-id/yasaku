@@ -17,10 +17,10 @@ func TestEnsureFromOIDC_SubjectMatchRefreshesName(t *testing.T) {
 	svc := user.NewService(st, user.GenesisConfig{}, newTestLogger(), noopUnexpected())
 	ctx := context.Background()
 
-	first, err := svc.EnsureFromOIDC(ctx, user.Claims{Issuer: "https://idp", Subject: "sub-1", Email: "a@x.id", Name: "Old Name"})
+	first, err := svc.EnsureFromOIDC(ctx, user.Claims{Issuer: "https://idp", Subject: "sub-1", Email: "a@x.id", EmailVerified: true, Name: "Old Name"})
 	require.NoError(t, err)
 
-	second, err := svc.EnsureFromOIDC(ctx, user.Claims{Issuer: "https://idp", Subject: "sub-1", Email: "a@x.id", Name: "New Name"})
+	second, err := svc.EnsureFromOIDC(ctx, user.Claims{Issuer: "https://idp", Subject: "sub-1", Email: "a@x.id", EmailVerified: true, Name: "New Name"})
 	require.NoError(t, err)
 	require.Equal(t, first.ID, second.ID)
 	require.Equal(t, "New Name", second.Name)
@@ -32,9 +32,9 @@ func TestEnsureFromOIDC_DifferentSubjectSameIssuerStaysDistinct(t *testing.T) {
 	svc := user.NewService(st, user.GenesisConfig{}, newTestLogger(), noopUnexpected())
 	ctx := context.Background()
 
-	a, err := svc.EnsureFromOIDC(ctx, user.Claims{Issuer: "https://idp", Subject: "sub-a", Email: "a@x.id", Name: "A"})
+	a, err := svc.EnsureFromOIDC(ctx, user.Claims{Issuer: "https://idp", Subject: "sub-a", Email: "a@x.id", EmailVerified: true, Name: "A"})
 	require.NoError(t, err)
-	b, err := svc.EnsureFromOIDC(ctx, user.Claims{Issuer: "https://idp", Subject: "sub-b", Email: "b@x.id", Name: "B"})
+	b, err := svc.EnsureFromOIDC(ctx, user.Claims{Issuer: "https://idp", Subject: "sub-b", Email: "b@x.id", EmailVerified: true, Name: "B"})
 	require.NoError(t, err)
 	require.NotEqual(t, a.ID, b.ID)
 	require.Equal(t, 2, st.Len())
@@ -53,9 +53,9 @@ func TestEnsureFromOIDC_RejectsEmailConflictOnRefresh(t *testing.T) {
 	}
 	require.NoError(t, st.Save(ctx, a))
 
-	_, err := svc.EnsureFromOIDC(ctx, user.Claims{Issuer: "https://idp", Subject: "sub-b", Email: "b@x.id", Name: "B"})
+	_, err := svc.EnsureFromOIDC(ctx, user.Claims{Issuer: "https://idp", Subject: "sub-b", Email: "b@x.id", EmailVerified: true, Name: "B"})
 	require.NoError(t, err)
 
-	_, err = svc.EnsureFromOIDC(ctx, user.Claims{Issuer: "https://idp", Subject: "sub-b", Email: "a@x.id", Name: "B Updated"})
+	_, err = svc.EnsureFromOIDC(ctx, user.Claims{Issuer: "https://idp", Subject: "sub-b", Email: "a@x.id", EmailVerified: true, Name: "B Updated"})
 	require.True(t, user.IsAlreadyExistsError(err), "expected AlreadyExistsError, got %T: %v", err, err)
 }

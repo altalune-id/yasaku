@@ -39,7 +39,7 @@ func newDiscoveryFixture(t *testing.T, activeProject bool) *discoveryFixture {
 	foreign, err := project.New(foreignOrgID, "foreign", "Foreign Project")
 	require.NoError(t, err)
 
-	p := session.Principal{UserID: uuid.New(), Email: "agent@example.com", ActiveOrgID: orgID}
+	p := session.Principal{Source: session.SourceOIDC, UserID: uuid.New(), Email: "agent@example.com", ActiveOrgID: orgID}
 	if activeProject {
 		p.ActiveProjectID = own.ID
 	}

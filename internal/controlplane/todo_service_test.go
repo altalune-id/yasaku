@@ -14,7 +14,7 @@ import (
 )
 
 func TestTodo_List_MissingAuth_ReturnsUnauthenticated(t *testing.T) {
-	h := newHarness(t, session.Principal{UserID: uuid.New(), Email: "a@b", ActiveOrgID: uuid.New()})
+	h := newHarness(t, session.Principal{Source: session.SourceOIDC, UserID: uuid.New(), Email: "a@b", ActiveOrgID: uuid.New()})
 
 	client := h.authClient()
 	req := connect.NewRequest(&todov1.ListRequest{ProjectId: uuid.New().String()})
@@ -28,7 +28,7 @@ func TestTodo_List_MissingAuth_ReturnsUnauthenticated(t *testing.T) {
 func TestTodo_Create_And_List_HappyPath(t *testing.T) {
 	userID := uuid.New()
 	orgID := uuid.New()
-	p := session.Principal{UserID: userID, Email: "a@b", ActiveOrgID: orgID}
+	p := session.Principal{Source: session.SourceOIDC, UserID: userID, Email: "a@b", ActiveOrgID: orgID}
 	h := newHarness(t, p)
 
 	proj, err := project.New(orgID, "p1", "Project 1")
@@ -72,7 +72,7 @@ func TestTodo_Create_CrossTenantProject_ReturnsPermissionDenied(t *testing.T) {
 	userID := uuid.New()
 	orgA := uuid.New()
 	orgB := uuid.New()
-	p := session.Principal{UserID: userID, Email: "a@b", ActiveOrgID: orgA}
+	p := session.Principal{Source: session.SourceOIDC, UserID: userID, Email: "a@b", ActiveOrgID: orgA}
 	h := newHarness(t, p)
 
 	proj, err := project.New(orgB, "p1", "Foreign")
@@ -97,7 +97,7 @@ func TestTodo_Create_CrossTenantProject_ReturnsPermissionDenied(t *testing.T) {
 }
 
 func TestTodo_Create_InvalidProjectUUID_ReturnsInvalidArgument(t *testing.T) {
-	h := newHarness(t, session.Principal{UserID: uuid.New(), Email: "a@b", ActiveOrgID: uuid.New()})
+	h := newHarness(t, session.Principal{Source: session.SourceOIDC, UserID: uuid.New(), Email: "a@b", ActiveOrgID: uuid.New()})
 
 	client := h.authClient()
 	req := connect.NewRequest(&todov1.CreateRequest{ProjectId: "not-a-uuid", Title: "x"})
@@ -113,7 +113,7 @@ func TestTodo_Create_InvalidProjectUUID_ReturnsInvalidArgument(t *testing.T) {
 }
 
 func TestTodo_Create_ProjectNotFound_ReturnsNotFound(t *testing.T) {
-	h := newHarness(t, session.Principal{UserID: uuid.New(), Email: "a@b", ActiveOrgID: uuid.New()})
+	h := newHarness(t, session.Principal{Source: session.SourceOIDC, UserID: uuid.New(), Email: "a@b", ActiveOrgID: uuid.New()})
 
 	client := h.authClient()
 	req := connect.NewRequest(&todov1.CreateRequest{ProjectId: uuid.New().String(), Title: "x"})
@@ -131,7 +131,7 @@ func TestTodo_Create_ProjectNotFound_ReturnsNotFound(t *testing.T) {
 func TestTodo_Toggle_HappyPath(t *testing.T) {
 	userID := uuid.New()
 	orgID := uuid.New()
-	p := session.Principal{UserID: userID, Email: "a@b", ActiveOrgID: orgID}
+	p := session.Principal{Source: session.SourceOIDC, UserID: userID, Email: "a@b", ActiveOrgID: orgID}
 	h := newHarness(t, p)
 
 	td, err := todo.New(orgID, uuid.New(), "flip me")
@@ -157,7 +157,7 @@ func TestTodo_Toggle_HappyPath(t *testing.T) {
 
 func TestTodo_Toggle_CrossTenant_ReturnsPermissionDenied(t *testing.T) {
 	userID := uuid.New()
-	p := session.Principal{UserID: userID, Email: "a@b", ActiveOrgID: uuid.New()}
+	p := session.Principal{Source: session.SourceOIDC, UserID: userID, Email: "a@b", ActiveOrgID: uuid.New()}
 	h := newHarness(t, p)
 
 	td, err := todo.New(uuid.New(), uuid.New(), "not yours")
@@ -184,7 +184,7 @@ func TestTodo_Toggle_CrossTenant_ReturnsPermissionDenied(t *testing.T) {
 func TestTodo_Delete_HappyPath(t *testing.T) {
 	userID := uuid.New()
 	orgID := uuid.New()
-	p := session.Principal{UserID: userID, Email: "a@b", ActiveOrgID: orgID}
+	p := session.Principal{Source: session.SourceOIDC, UserID: userID, Email: "a@b", ActiveOrgID: orgID}
 	h := newHarness(t, p)
 
 	td, err := todo.New(orgID, uuid.New(), "gone")
@@ -208,7 +208,7 @@ func TestTodo_Delete_HappyPath(t *testing.T) {
 }
 
 func TestTodo_Delete_TodoNotFound_ReturnsNotFound(t *testing.T) {
-	h := newHarness(t, session.Principal{UserID: uuid.New(), Email: "a@b", ActiveOrgID: uuid.New()})
+	h := newHarness(t, session.Principal{Source: session.SourceOIDC, UserID: uuid.New(), Email: "a@b", ActiveOrgID: uuid.New()})
 
 	client := h.authClient()
 	req := connect.NewRequest(&todov1.DeleteRequest{TodoId: uuid.New().String()})

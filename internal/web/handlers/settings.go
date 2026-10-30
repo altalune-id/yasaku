@@ -30,19 +30,17 @@ var settingsTimezones = []string{
 //nolint:gochecknoglobals // immutable table
 var settingsCurrencies = []string{"IDR", "USD", "SGD", "MYR", "EUR", "JPY"}
 
-//nolint:gochecknoglobals // immutable table
-var settingsMCPScopes = []string{"yasaku:read", "yasaku:write"}
-
 // SettingsHandler serves the per-project ledger settings screen.
 type SettingsHandler struct {
 	Deps
-	Ledgers *ledger.Service
+	Ledgers   *ledger.Service
+	MCPScopes []string
 }
 
-// NewSettingsHandler wires the handler.
-func NewSettingsHandler(d Deps, projects *project.Service, ledgers *ledger.Service) *SettingsHandler {
+// NewSettingsHandler wires the handler; mcpScopes are the scopes the MCP surface publishes.
+func NewSettingsHandler(d Deps, projects *project.Service, ledgers *ledger.Service, mcpScopes []string) *SettingsHandler {
 	d.Projects = projects
-	return &SettingsHandler{Deps: d, Ledgers: ledgers}
+	return &SettingsHandler{Deps: d, Ledgers: ledgers, MCPScopes: mcpScopes}
 }
 
 // Register wires the settings routes onto mux.
@@ -137,7 +135,7 @@ func (h *SettingsHandler) view(sc ProjectScope) templates.SettingsView {
 	}
 	if h.Caps.MCPEnabled {
 		v.MCPEndpoint = h.Cfg.MCP.Audience
-		v.MCPScopes = settingsMCPScopes
+		v.MCPScopes = h.MCPScopes
 	}
 	return v
 }

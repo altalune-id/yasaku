@@ -38,7 +38,7 @@ func yasakuToolScopes() authn.ScopeTable {
 	}
 }
 
-// YasakuFineToolScopes is the target scope per tool once yasaku:* is retired. TODO(scopes): enforce this table instead of yasakuToolScopes, add its scopes to the authn catalogue and authl, then remove yasaku:*.
+// YasakuFineToolScopes is the target scope per tool once yasaku:* is retired. TODO(scopes): enforce this table instead of yasakuToolScopes, add its scopes to the authn catalogue and the Othra resources, then remove yasaku:*.
 func YasakuFineToolScopes() authn.ScopeTable {
 	return authn.ScopeTable{
 		yasakuv1mcp.ListProjectsToolName:          "ledgers:read",

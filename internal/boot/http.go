@@ -5,6 +5,7 @@ import (
 	"fmt"
 	stdlog "log"
 	"log/slog"
+	"maps"
 	"net/http"
 	"slices"
 	"strings"
@@ -16,9 +17,11 @@ import (
 	i18npkg "altalune.id/yasaku/internal/i18n"
 	"altalune.id/yasaku/internal/ingest"
 	"altalune.id/yasaku/internal/platform"
+	"altalune.id/yasaku/internal/platform/authn"
 	"altalune.id/yasaku/internal/platform/capabilities"
 	"altalune.id/yasaku/internal/platform/config"
 	"altalune.id/yasaku/internal/platform/session"
+	"altalune.id/yasaku/internal/platform/tokens"
 	"altalune.id/yasaku/internal/web"
 	webhandlers "altalune.id/yasaku/internal/web/handlers"
 	webmw "altalune.id/yasaku/internal/web/middleware"
@@ -42,7 +45,9 @@ func buildAPIHandler(cfg *config.Config, k *platform.Kernel, s *Services) (*cont
 		Opensheet:    s.Opensheet,
 	})
 	srv.Authn = s.Authn
-	srv.KeyPrefix = s.KeyAuthn.Scheme().Prefix()
+	if resource, err := apiResource(cfg); err == nil && cfg.Tokens.Issuer != "" {
+		srv.Resource = resource
+	}
 	srv.APIKeys = s.APIKeys
 	if !cfg.API.Enabled {
 		return srv, nil
@@ -100,7 +105,7 @@ func buildWebHandler(d webHandlerDeps) (handler http.Handler, routes []string) {
 	deps.I18n = d.Bundle
 	deps.ProjectLocation = svcs.Ledgers.Location
 
-	authHandler := webhandlers.NewAuthHandler(deps, svcs.Auth, svcs.Users, svcs.Orgs, svcs.Projects, kernel.AltAuth, d.Required)
+	authHandler := webhandlers.NewAuthHandler(deps, svcs.Auth, svcs.Users, svcs.Orgs, svcs.Projects, kernel.AltAuth, d.Required).WithStateSecret(kernel.OIDCStateSecret)
 	onboardingHandler := webhandlers.NewOnboardingHandler(deps, svcs.Users)
 	onboardHandler := webhandlers.NewOnboardHandler(deps, svcs.Users, svcs.Orgs, svcs.Projects, svcs.Onboards, d.Required, d.OnComplete, d.SetupToken)
 	homeHandler := webhandlers.NewHomeHandler(deps, svcs.Orgs, svcs.Projects)
@@ -122,7 +127,7 @@ func buildWebHandler(d webHandlerDeps) (handler http.Handler, routes []string) {
 	transactionHandler := webhandlers.NewTransactionHandler(deps, svcs.Projects, svcs.Wallets, svcs.Transactions, svcs.Periods, svcs.TxCategories, svcs.Ledgers)
 	periodHandler := webhandlers.NewPeriodHandler(deps, svcs.Projects, svcs.Periods, svcs.Reports, svcs.Ledgers)
 	reportHandler := webhandlers.NewReportHandler(deps, svcs.Projects, svcs.Reports, svcs.Periods)
-	settingsHandler := webhandlers.NewSettingsHandler(deps, svcs.Projects, svcs.Ledgers)
+	settingsHandler := webhandlers.NewSettingsHandler(deps, svcs.Projects, svcs.Ledgers, d.MCP.Scopes)
 
 	errTmpl := webmw.LogError{Log: slogger}
 
@@ -133,16 +138,51 @@ func buildWebHandler(d webHandlerDeps) (handler http.Handler, routes []string) {
 			authHandler, onboardingHandler, onboardHandler, homeHandler, orgHandler, projectHandler, todoHandler, blogHandler, apiKeyHandler, webhookHandler, inviteHandler, localeHandler, welcomeHandler, signupHandler, legalHandler,
 			overviewHandler, walletHandler, txCategoryHandler, transactionHandler, periodHandler, reportHandler, settingsHandler,
 		}, yasakuConsoleHandlers(deps, svcs)...)),
-		APIHandler:         d.APIHandler,
-		DataHandler:        d.DataHandler,
-		IngestHandler:      buildIngestHandler(cfg, slogger),
-		MCPHandler:         d.MCP.Handler,
-		MCPMetadataHandler: d.MCP.Metadata,
-		MCPMetadataPath:    d.MCP.MetadataPath,
-		MCPChallengeRoutes: d.MCP.ChallengeRoutes,
-		RobotsCfg:          &struct{ RobotsTxt string }{RobotsTxt: cfg.HTTP.RobotsTxt},
-		Chains:             surfaceChains(cfg, kernel, slogger, d.Reporter, errTmpl, d.Bundle, d.DefaultLoc, d.Required),
+		APIHandler:       d.APIHandler,
+		DataHandler:      d.DataHandler,
+		IngestHandler:    buildIngestHandler(cfg, slogger),
+		MCPHandler:       d.MCP.Handler,
+		ResourceMetadata: withRootMetadataAlias(resourceMetadata(cfg, slogger, d.MCP), d.MCP),
+		RobotsCfg:        &struct{ RobotsTxt string }{RobotsTxt: cfg.HTTP.RobotsTxt},
+		Chains:           surfaceChains(cfg, kernel, slogger, d.Reporter, errTmpl, d.Bundle, d.DefaultLoc, d.Required),
 	})
+}
+
+// NOTE: the control plane and MCP are separate protected resources, each with its own RFC 9728 document on the Probes chain.
+func resourceMetadata(cfg *config.Config, log *slog.Logger, mcp mcpSurface) map[string]http.Handler {
+	out := map[string]http.Handler{}
+	if mcp.Metadata != nil {
+		out[mcp.MetadataPath] = mcp.Metadata
+	}
+	if !cfg.API.Enabled || cfg.Tokens.Issuer == "" {
+		return out
+	}
+	resource, err := apiResource(cfg)
+	if err != nil {
+		log.Warn("boot: tokens.audience is not an http(s) resource identifier, so the API serves no RFC 9728 document",
+			slog.String("audience", cfg.Tokens.Audience), slog.String("err", err.Error()))
+		return out
+	}
+	out[resource.MetadataPath] = resource.MetadataHandler(cfg.Tokens.Issuer, apiScopes())
+	return out
+}
+
+func apiResource(cfg *config.Config) (*tokens.Resource, error) {
+	resource, err := tokens.NewResource(cfg.Tokens.Audience)
+	if err != nil {
+		return nil, err
+	}
+	return &resource, nil
+}
+
+func apiScopes() []string {
+	set := map[string]struct{}{}
+	for _, scope := range controlplane.ScopeTable() {
+		if authn.Mintable(scope) {
+			set[scope] = struct{}{}
+		}
+	}
+	return slices.Sorted(maps.Keys(set))
 }
 
 func surfaceChains(

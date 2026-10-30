@@ -2,6 +2,7 @@ package boot_test
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -38,6 +39,36 @@ func TestMCP_RootMetadataAliasIsUnmountedWithMCP(t *testing.T) {
 		"the root alias answered while mcp.enabled is false")
 }
 
+func TestMCP_RootMetadataAliasGivesWayToAnAPIResourceAtTheRoot(t *testing.T) {
+	issuer := newTokenIssuer(t)
+	cfg := newSmokeCfg(t)
+	cfg.Mode = config.ModeCloud
+	cfg.OIDC = config.OIDCConfig{Issuer: issuer.url, ClientID: "mcp-client", ClientSecret: "mcp-secret"}
+	cfg.API.Enabled = true
+	cfg.API.KeyPrefix = apikey.DefaultPrefix
+	cfg.Tokens = tokens.Config{Issuer: issuer.url, Audience: "http://127.0.0.1"}
+	cfg.MCP = config.MCPConfig{Enabled: true, Audience: mcpAudience}
+
+	srv, err := boot.BootServer(context.Background(), cfg, boot.WithOIDCHTTPClient(issuer.idp.Client()))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = srv.Close() })
+
+	resourceAt := func(path string) string {
+		rec := httptest.NewRecorder()
+		srv.Web.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		require.Equal(t, http.StatusOK, rec.Code, "path=%s body=%s", path, rec.Body.String())
+		var doc struct {
+			Resource string `json:"resource"`
+		}
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &doc))
+		return doc.Resource
+	}
+
+	require.Equal(t, "http://127.0.0.1", resourceAt(rootMetadataPath),
+		"an API resource at the host root owns the root document; the MCP alias must not replace it")
+	require.Equal(t, mcpAudience, resourceAt(mcpMetadataPath))
+}
+
 func TestMCP_SurfaceIsNotBehindTheOnboardingGate(t *testing.T) {
 	for _, basePath := range []string{"", "/app"} {
 		t.Run("base="+basePath, func(t *testing.T) {
@@ -45,13 +76,13 @@ func TestMCP_SurfaceIsNotBehindTheOnboardingGate(t *testing.T) {
 			cfg := newSmokeCfg(t)
 			cfg.Mode = config.ModeCloud
 			cfg.HTTP.BasePath = basePath
-			cfg.OIDC = config.OIDCConfig{Issuer: stubIssuer(t), ClientID: "mcp-client", ClientSecret: "mcp-secret"}
+			cfg.OIDC = config.OIDCConfig{Issuer: issuer.url, ClientID: "mcp-client", ClientSecret: "mcp-secret"}
 			cfg.API.Enabled = true
 			cfg.API.KeyPrefix = apikey.DefaultPrefix
 			cfg.Tokens = tokens.Config{Issuer: issuer.url, Audience: "http://127.0.0.1" + basePath + "/api"}
 			cfg.MCP = config.MCPConfig{Enabled: true, Audience: "http://127.0.0.1" + basePath + mcpPath}
 
-			srv, err := boot.BootServer(context.Background(), cfg)
+			srv, err := boot.BootServer(context.Background(), cfg, boot.WithOIDCHTTPClient(issuer.idp.Client()))
 			require.NoError(t, err)
 			t.Cleanup(func() { _ = srv.Close() })
 			require.False(t, srv.Onboarded, "the server must still be before onboarding")

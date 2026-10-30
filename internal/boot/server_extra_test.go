@@ -5,6 +5,8 @@ import (
 	"encoding/base64"
 	"io"
 	"log/slog"
+	"net/http"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -14,59 +16,6 @@ import (
 )
 
 func discardLogger() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }
-
-func TestResolveStateSecret_ExplicitBase64URL(t *testing.T) {
-	t.Parallel()
-	raw := make([]byte, 32)
-	for i := range raw {
-		raw[i] = byte(i)
-	}
-	cfg := &config.Config{}
-	cfg.HTTP.StateSecret = base64.RawURLEncoding.EncodeToString(raw)
-
-	got, err := resolveStateSecret(cfg, discardLogger())
-	require.NoError(t, err)
-	assert.Equal(t, raw, got)
-}
-
-func TestResolveStateSecret_ExplicitBase64Std(t *testing.T) {
-	t.Parallel()
-	raw := make([]byte, 32)
-	for i := range raw {
-		raw[i] = byte(i)
-	}
-	cfg := &config.Config{}
-	cfg.HTTP.StateSecret = base64.StdEncoding.EncodeToString(raw)
-
-	got, err := resolveStateSecret(cfg, discardLogger())
-	require.NoError(t, err)
-	assert.Equal(t, raw, got)
-}
-
-func TestResolveStateSecret_TooShortErrors(t *testing.T) {
-	t.Parallel()
-	cfg := &config.Config{}
-	cfg.HTTP.StateSecret = base64.RawURLEncoding.EncodeToString([]byte("short"))
-	_, err := resolveStateSecret(cfg, discardLogger())
-	require.Error(t, err)
-}
-
-func TestResolveStateSecret_InvalidBase64Errors(t *testing.T) {
-	t.Parallel()
-	cfg := &config.Config{}
-	cfg.HTTP.StateSecret = "not-base64!!$"
-	_, err := resolveStateSecret(cfg, discardLogger())
-	require.Error(t, err)
-}
-
-func TestResolveStateSecret_EmptyReturnsEphemeral(t *testing.T) {
-	t.Parallel()
-	cfg := &config.Config{}
-	got, err := resolveStateSecret(cfg, discardLogger())
-	require.NoError(t, err)
-	assert.NotEmpty(t, got)
-	assert.GreaterOrEqual(t, len(got), 32)
-}
 
 func TestBootClient_Wires(t *testing.T) {
 	t.Parallel()
@@ -81,13 +30,93 @@ func TestBootClient_Wires(t *testing.T) {
 	assert.Equal(t, cfg, c.Cfg)
 }
 
-func TestBuildAltAuth_NilWhenOIDCUnset(t *testing.T) {
+func TestBuildOIDCClient_NilWhenOIDCUnset(t *testing.T) {
 	t.Parallel()
 	cfg := config.Defaults()
 	cfg.OIDC.Issuer = ""
-	got, err := buildAltAuth(context.Background(), cfg, discardLogger())
+	rp, secret, err := buildOIDCClient(cfg, nil, discardLogger())
 	require.NoError(t, err)
-	assert.Nil(t, got)
+	assert.Nil(t, rp)
+	assert.Nil(t, secret)
+}
+
+type warnRecorder struct {
+	mu    sync.Mutex
+	warns []string
+}
+
+func (w *warnRecorder) Enabled(context.Context, slog.Level) bool { return true }
+
+func (w *warnRecorder) Handle(_ context.Context, r slog.Record) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if r.Level == slog.LevelWarn {
+		w.warns = append(w.warns, r.Message)
+	}
+	return nil
+}
+
+func (w *warnRecorder) WithAttrs([]slog.Attr) slog.Handler { return w }
+
+func (w *warnRecorder) WithGroup(string) slog.Handler { return w }
+
+func TestResolveStateSecret(t *testing.T) {
+	t.Parallel()
+	raw := make([]byte, 32)
+	for i := range raw {
+		raw[i] = byte(i)
+	}
+	tests := []struct {
+		name    string
+		secret  string
+		want    []byte
+		wantErr bool
+	}{
+		{"base64url", base64.RawURLEncoding.EncodeToString(raw), raw, false},
+		{"base64 std", base64.StdEncoding.EncodeToString(raw), raw, false},
+		{"too short", base64.RawURLEncoding.EncodeToString([]byte("short")), nil, true},
+		{"not base64", "not-base64!!$", nil, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &config.Config{}
+			cfg.HTTP.StateSecret = tt.secret
+			got, err := resolveStateSecret(cfg, discardLogger())
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestResolveStateSecret_EmptyMintsAnEphemeralKeyAndWarns(t *testing.T) {
+	t.Parallel()
+	rec := &warnRecorder{}
+	got, err := resolveStateSecret(&config.Config{}, slog.New(rec))
+	require.NoError(t, err)
+	assert.Len(t, got, 32)
+	assert.NotEqual(t, make([]byte, 32), got, "the ephemeral key must be random, never zero")
+	require.Len(t, rec.warns, 1)
+	assert.Contains(t, rec.warns[0], "using an ephemeral secret")
+}
+
+func TestBuildOIDCClient_RefusesAShortStateSecret(t *testing.T) {
+	t.Parallel()
+	cfg := config.Defaults()
+	cfg.OIDC.Issuer = "https://issuer.example.com"
+	cfg.HTTP.StateSecret = base64.RawURLEncoding.EncodeToString([]byte("short"))
+	_, _, err := buildOIDCClient(cfg, nil, discardLogger())
+	require.Error(t, err)
+}
+
+func TestOIDCHTTPClient_RefusesRedirects(t *testing.T) {
+	t.Parallel()
+	c := oidcHTTPClient()
+	require.NotNil(t, c.CheckRedirect)
+	assert.ErrorIs(t, c.CheckRedirect(nil, nil), http.ErrUseLastResponse)
 }
 
 // TestOIDCRedirectURL pins the /oauth/callback path so a typo can't silently break OIDC login.

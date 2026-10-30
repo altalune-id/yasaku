@@ -17,6 +17,7 @@ import (
 	"altalune.id/yasaku/civil"
 	yasakuv1 "altalune.id/yasaku/gen/go/yasaku/v1"
 	"altalune.id/yasaku/gen/go/yasaku/v1/yasakuv1connect"
+	"altalune.id/yasaku/internal/apikey"
 	"altalune.id/yasaku/internal/boot"
 	"altalune.id/yasaku/internal/org"
 	"altalune.id/yasaku/internal/platform/authn"
@@ -81,10 +82,11 @@ func newYasakuHarnessOn(t *testing.T, cfg *config.Config) *yasakuHarness {
 	t.Cleanup(func() { _ = srv.Close() })
 
 	u, err := srv.Users.EnsureFromOIDC(ctx, user.Claims{
-		Issuer:  testIssuer,
-		Subject: testSubject,
-		Email:   "owner@example.com",
-		Name:    "Owner",
+		Issuer:        testIssuer,
+		Subject:       testSubject,
+		Email:         "owner@example.com",
+		EmailVerified: true,
+		Name:          "Owner",
 	})
 	require.NoError(t, err)
 
@@ -95,14 +97,14 @@ func newYasakuHarnessOn(t *testing.T, cfg *config.Config) *yasakuHarness {
 	p, err := srv.Projects.Create(orgCtx, o.ID, "main", "Main")
 	require.NoError(t, err)
 
-	srv.Platform.Verifier = stubVerifier{principal: session.Principal{
+	srv.Platform.Verifier = stubVerifier{principal: fullTokenGrant(session.Principal{
 		UserID:     u.ID,
 		Email:      u.Email,
 		IDPIssuer:  testIssuer,
 		IDPSubject: testSubject,
-	}}
+	})}
 
-	srv.API.Authn = authn.Chain{tokens.NewAuthenticator(srv.Platform.Verifier)}
+	srv.API.Authn = authn.Chain{tokens.NewAuthenticator(srv.Platform.Verifier, authn.Scheme{Prefix: apikey.DefaultPrefix})}
 
 	ts := httptest.NewServer(srv.API.Handler(""))
 	t.Cleanup(ts.Close)
@@ -239,7 +241,7 @@ func TestScope_NonMemberOrgIsNotFound(t *testing.T) {
 	ctx := context.Background()
 
 	other, err := h.boot.Users.EnsureFromOIDC(ctx, user.Claims{
-		Issuer: testIssuer, Subject: "sub-other", Email: "other@example.com", Name: "Other",
+		Issuer: testIssuer, Subject: "sub-other", Email: "other@example.com", EmailVerified: true, Name: "Other",
 	})
 	require.NoError(t, err)
 	foreign, err := h.boot.Orgs.Create(ctx, org.CreateRequest{Slug: "foreign", Name: "Foreign", OwnerID: other.ID})

@@ -17,7 +17,7 @@ func TestEnvVarName(t *testing.T) {
 		{"http.addr", "YASAKU_HTTP_ADDR"},
 		{"http.baseURL", "YASAKU_HTTP_BASE_URL"},
 		{"telemetry.otlp.endpoint", "YASAKU_TELEMETRY_OTLP_ENDPOINT"},
-		{"tokens.jwksURL", "YASAKU_TOKENS_JWKS_URL"},
+		{"tokens.introspection.clientID", "YASAKU_TOKENS_INTROSPECTION_CLIENT_ID"},
 		{"db.autoMigrate", "YASAKU_DB_AUTO_MIGRATE"},
 		{"db.AutoMigrate", "YASAKU_DB_AUTO_MIGRATE"},
 		{"api.openapi.requireBasicAuth", "YASAKU_API_OPENAPI_REQUIRE_BASIC_AUTH"},
@@ -100,7 +100,8 @@ func TestWalkEnvKeys_IncludesKnownLeaves(t *testing.T) {
 		{"YASAKU_HTTP_STATE_SECRET", "http.stateSecret", "string"},
 		{"YASAKU_TELEMETRY_OTLP_ENDPOINT", "telemetry.otlp.endpoint", "string"},
 		{"YASAKU_TOKENS_CLOCK_SKEW", "tokens.clockSkew", "duration"},
-		{"YASAKU_TOKENS_SUPPORTED_ALGS", "tokens.supportedAlgs", "[]string"},
+		{"YASAKU_TOKENS_INTROSPECTION_CLIENT_SECRET", "tokens.introspection.clientSecret", "string"},
+		{"YASAKU_OIDC_CLI_CLIENT_ID", "oidc.cliClientID", "string"},
 		{"YASAKU_OIDC_REDIRECT_PORT", "oidc.redirectPort", "int"},
 	}
 	for _, want := range expect {
@@ -131,7 +132,8 @@ func TestWalkEnvKeys_Defaults(t *testing.T) {
 		{"YASAKU_HTTP_ADDR", ":5150"},
 		{"YASAKU_DB_DRIVER", "sqlite"},
 		{"YASAKU_LOG_LEVEL", "info"},
-		{"YASAKU_TOKENS_AUDIENCE", "urn:yasaku:api"},
+		{"YASAKU_TOKENS_CLOCK_SKEW", "60s"},
+		{"YASAKU_OIDC_END_SESSION_ON_LOGOUT", "true"},
 	}
 	for _, tc := range withDefaults {
 		got, ok := byEnv[tc.env]

@@ -71,7 +71,7 @@ func TestScope_NonMemberOrgIsNotFoundOnPostgres(t *testing.T) {
 	ctx := t.Context()
 
 	other, err := h.boot.Users.EnsureFromOIDC(ctx, user.Claims{
-		Issuer: testIssuer, Subject: "sub-other", Email: "other@example.com", Name: "Other",
+		Issuer: testIssuer, Subject: "sub-other", Email: "other@example.com", EmailVerified: true, Name: "Other",
 	})
 	require.NoError(t, err)
 	_, err = h.boot.Orgs.Create(ctx, org.CreateRequest{Slug: "foreign", Name: "Foreign", OwnerID: other.ID})
