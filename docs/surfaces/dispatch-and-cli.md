@@ -90,10 +90,10 @@ resolve without its project.
 **Output, retargeting and credential binding are already contracts of this repo.** Output is
 `--output=text|json|ndjson` through `internal/cli/render` — do not adopt another tool's output
 flags, `ndjson` already covers the streaming case. Every fork is self-hostable, so the CLI is
-retargetable without editing a config file: a root persistent `--url` / `YASAKU_URL` and a saved
-profile keyed by URL (`internal/cli/url.go`, `internal/cli/profile.go`), which is why
-`credentialFor` answers `HostMismatchError` rather than forwarding a saved credential to a
-host named on the command line. The envelopes and the exit codes are [`cli`](../cli/README.md);
+retargetable without editing a config file: a root persistent `--url` / `YASAKU_URL` and named
+profiles (`--profile` / `YASAKU_PROFILE`, `internal/cli/url.go`, `internal/cli/profile.go`), each
+bound to the URL it signed in to, which is why the CLI answers `ProfileHostMismatchError` rather
+than forwarding a profile's token to a server named on the command line. The envelopes and the exit codes are [`cli`](../cli/README.md);
 the flags, the precedence, the `healthz` carve-out and that SECURITY note are
 [`cli resolution`](../cli/resolution.md).
 

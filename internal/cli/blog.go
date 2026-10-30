@@ -235,51 +235,40 @@ type blogTarget struct {
 	project string
 }
 
-// SECURITY: the key always comes from credentialFor, never straight off the session file, so a credential saved for one instance is never offered to another.
+// SECURITY: the data plane takes API keys only, so the key comes from --token, --token-file or YASAKU_TOKEN and never from a profile.
 func blogTargetFrom(cmd *cobra.Command) (blogTarget, error) {
 	cfg, err := withCfg(cmd)
 	if err != nil {
 		return blogTarget{}, err
 	}
-	instance := resolveURL(cmd)
+	instance := invocation{cfg: cfg, url: explicitURL(cmd)}.baseURL(nil)
 	if instance == "" {
-		return blogTarget{}, errors.New("blog: no instance URL — pass --url, set YASAKU_URL, or configure http.baseURL")
+		return blogTarget{}, &MissingURLError{}
 	}
-	prof, err := loadProfile(cfg.Session.Path, instance)
-	if err != nil {
-		return blogTarget{}, err
-	}
-	explicit, _, err := readToken(cmd)
-	if err != nil {
-		return blogTarget{}, err
-	}
-	key, err := credentialFor(instance, prof, explicit)
+	key, err := resolveToken(cmd)
 	if err != nil {
 		return blogTarget{}, err
 	}
 	if key == "" {
 		return blogTarget{}, apperror.New(
 			apperror.CodeUnauthenticated,
-			"blog: no API key for "+instance+" — pass --token, set YASAKU_TOKEN, or run `yasaku auth login`",
+			"blog: no API key for "+instance+" — pass --token or set "+envVar("TOKEN"),
 			codes.Unauthenticated,
 		)
 	}
-	org := blogSlug(cmd, "org", "YASAKU_ORG", prof.Org)
-	project := blogSlug(cmd, "project", "YASAKU_PROJECT", prof.Project)
+	org := blogSlug(cmd, "org", envVar("ORG"))
+	project := blogSlug(cmd, "project", envVar("PROJECT"))
 	if org == "" || project == "" {
 		return blogTarget{}, errors.New("blog: no active org or project — pass --org and --project")
 	}
 	return blogTarget{client: dataplane.NewClient(instance, key), org: org, project: project}, nil
 }
 
-func blogSlug(cmd *cobra.Command, flag, env, fallback string) string {
+func blogSlug(cmd *cobra.Command, flag, env string) string {
 	if f := cmd.Root().PersistentFlags().Lookup(flag); f != nil && f.Changed {
 		return strings.TrimSpace(f.Value.String())
 	}
-	if v := strings.TrimSpace(os.Getenv(env)); v != "" {
-		return v
-	}
-	return fallback
+	return strings.TrimSpace(os.Getenv(env))
 }
 
 func renderPosts(cmd *cobra.Command, posts []dataplane.Post) error {

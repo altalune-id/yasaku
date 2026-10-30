@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 type recordingServer struct {
@@ -103,69 +104,26 @@ func TestBlogList_RendersTable(t *testing.T) {
 	}
 }
 
-// TestBlog_CredentialIsNeverSentToAnotherHost is the host-binding guard. SECURITY: a device credential saved for one instance must not leave for another.
-func TestBlog_CredentialIsNeverSentToAnotherHost(t *testing.T) {
-	sessPath := setSelfhostedEnv(t)
-	issuer := newRecordingServer(t, http.StatusOK, `{"posts":[]}`)
-	other := newRecordingServer(t, http.StatusOK, `{"posts":[]}`)
-
-	if err := saveProfile(sessPath, profile{
-		URL: issuer.URL, Org: "acme", Project: "main", Device: "key_for_issuer",
-	}); err != nil {
-		t.Fatal(err)
-	}
-
-	out, err := runBlog(t, "blog", "list", "--url", other.URL, "--output", "json")
-	if err == nil {
-		t.Fatalf("listing against another host with only the issuer's credential must fail: %s", out)
-	}
-	if other.sawCredential("key_for_issuer") {
-		t.Fatal("the issuer's device credential was sent to a different host")
-	}
-	if other.hits() != 0 {
-		t.Fatalf("no request may be made without a credential for that host, got %d", other.hits())
-	}
-}
-
-// TestBlog_HostMismatchProfileIsRefused covers a stored profile whose recorded URL is not the one being targeted.
-func TestBlog_HostMismatchProfileIsRefused(t *testing.T) {
-	sessPath := setSelfhostedEnv(t)
-	other := newRecordingServer(t, http.StatusOK, `{"posts":[]}`)
-
-	sf := &sessionFile{Profiles: map[string]profile{
-		other.URL: {URL: "https://issuer.example", Org: "acme", Project: "main", Device: "key_for_issuer"},
-	}}
-	if err := saveSessionFile(sessPath, sf); err != nil {
-		t.Fatal(err)
-	}
-
-	out, err := runBlog(t, "blog", "list", "--url", other.URL, "--output", "json")
-	if err == nil {
-		t.Fatalf("a profile bound to another host must be refused: %s", out)
-	}
-	if !IsHostMismatchError(err) {
-		t.Fatalf("want a HostMismatchError, got %#v", err)
-	}
-	if other.sawCredential("key_for_issuer") {
-		t.Fatal("the mismatched credential was sent anyway")
-	}
-}
-
-func TestBlog_UsesSavedProfileForItsOwnHost(t *testing.T) {
+// TestBlog_NeverSendsAProfileToken keeps the data plane on API keys. SECURITY: a signed-in profile's access token is for the control plane only.
+func TestBlog_NeverSendsAProfileToken(t *testing.T) {
 	sessPath := setSelfhostedEnv(t)
 	srv := newRecordingServer(t, http.StatusOK, `{"posts":[]}`)
+	writeRemoteProfile(t, sessPath, defaultProfile, profile{
+		URL: srv.URL, ExpiresAt: time.Now().Add(time.Hour), Token: &profileToken{Access: "profile_access_token"},
+	})
 
-	if err := saveProfile(sessPath, profile{
-		URL: srv.URL, Org: "acme", Project: "main", Device: "key_for_srv",
-	}); err != nil {
-		t.Fatal(err)
+	out, err := runBlog(t, "blog", "list", "--url", srv.URL, "--org", "acme", "--project", "main", "--output", "json")
+	if err == nil {
+		t.Fatalf("blog without --token must fail: %s", out)
 	}
-
-	if out, err := runBlog(t, "blog", "list", "--url", srv.URL, "--output", "json"); err != nil {
-		t.Fatalf("execute: %v (%s)", err, out)
+	if ExitCodeFor(err) != ExitUnauth {
+		t.Fatalf("exit = %d, want %d (%v)", ExitCodeFor(err), ExitUnauth, err)
 	}
-	if !srv.sawCredential("key_for_srv") {
-		t.Error("a profile bound to this host must supply both the credential and the tenant slugs")
+	if strings.Contains(err.Error(), "auth login") {
+		t.Fatalf("the hint must not send people to auth login, which issues no API key: %v", err)
+	}
+	if srv.hits() != 0 || srv.sawCredential("profile_access_token") {
+		t.Fatal("blog reached the data plane with a profile token")
 	}
 }
 
