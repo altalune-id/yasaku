@@ -95,6 +95,7 @@ func TestValidate_ModeInvariants(t *testing.T) {
 			Genesis:  GenesisConfig{Email: "root@example.com", Password: "x"},
 			Security: validSecurity(),
 		}
+		c.HTTP.StateSecret = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 		c.Tenant.SingletonOrg.Slug = "default"
 		c.Tenant.SingletonOrg.Name = "Default Organization"
 		return c
@@ -176,6 +177,22 @@ func TestValidate_ModeInvariants(t *testing.T) {
 				c.Security.EncryptionKey = ""
 			},
 			wantSub: "mode=cloud requires security.encryptionKey",
+		},
+		{
+			name: "cloud without a state secret fails",
+			mutate: func(c *Config) {
+				c.Mode = ModeCloud
+				c.OIDC = OIDCConfig{Issuer: "https://iss.example.com", ClientID: "c", ClientSecret: "s"}
+				c.DB.Driver = "postgres"
+				c.Genesis = GenesisConfig{Email: "root@example.com"}
+				c.HTTP.StateSecret = ""
+			},
+			wantSub: "mode=cloud requires http.stateSecret",
+		},
+		{
+			name:    "selfhosted without a state secret is allowed",
+			mutate:  func(c *Config) { c.HTTP.StateSecret = "" },
+			wantSub: "",
 		},
 		{
 			name: "cloud with full oidc + postgres + genesis + singleton org (no break-glass) is allowed",

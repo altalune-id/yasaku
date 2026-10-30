@@ -339,7 +339,10 @@ func validateCloud(c *Config) error {
 	if err := validateAutoMigrateNeedsMigrator(c); err != nil {
 		return err
 	}
-	return validateCloudEncryptionKey(c)
+	if err := validateCloudEncryptionKey(c); err != nil {
+		return err
+	}
+	return validateCloudStateSecret(c)
 }
 
 func validateCloudOIDC(c *Config) error {
@@ -428,6 +431,13 @@ func validatePostgresNeedsEncryptionKey(c *Config) error {
 func validateCloudEncryptionKey(c *Config) error {
 	if c.Security.EncryptionKey == "" {
 		return errors.New("config: mode=cloud requires security.encryptionKey — 32 bytes hex or base64; without it persisted sessions cannot be sealed and every login fails (set YASAKU_SECURITY_ENCRYPTION_KEY)")
+	}
+	return nil
+}
+
+func validateCloudStateSecret(c *Config) error {
+	if c.HTTP.StateSecret == "" {
+		return errors.New("config: mode=cloud requires http.stateSecret — without it a fresh key is minted every boot and every session stops verifying after a restart; generate one with `openssl rand -hex 32` (set YASAKU_HTTP_STATE_SECRET)")
 	}
 	return nil
 }
