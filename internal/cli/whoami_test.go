@@ -46,6 +46,9 @@ func TestWhoami_AfterLogoutWithNoServerURLIsNotSignedIn(t *testing.T) {
 	if !IsNotSignedInError(err) || ExitCodeFor(err) != ExitUnauth {
 		t.Fatalf("err = %v (exit %d), want NotSignedInError exiting 2", err, ExitCodeFor(err))
 	}
+	if want := "not signed in (profile prod); run `yasaku auth login --url <server> --profile prod`"; err.Error() != want {
+		t.Fatalf("err = %q, want %q: a local login here would open a local database", err, want)
+	}
 }
 
 func TestWhoami_LocalProfilePrintsTheStoredPrincipal(t *testing.T) {
