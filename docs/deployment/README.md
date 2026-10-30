@@ -208,6 +208,7 @@ podman run -d --name yasaku-pg -e POSTGRES_PASSWORD=dev -p 5432:5432 postgres:18
 export YASAKU_MODE=cloud YASAKU_DB_DRIVER=postgres YASAKU_DB_ALLOW_BYPASS_RLS=true \
   YASAKU_DB_DSN='postgres://postgres:dev@127.0.0.1:5432/postgres?sslmode=disable' \
   YASAKU_SECURITY_ENCRYPTION_KEY="$(openssl rand -hex 32)" \
+  YASAKU_HTTP_STATE_SECRET="$(openssl rand -hex 32)" \
   YASAKU_GENESIS_EMAIL=you@example.com \
   YASAKU_HTTP_ADDR=:5150 YASAKU_HTTP_BASE_URL=http://localhost:5150 \
   YASAKU_MCP_ENABLED=true

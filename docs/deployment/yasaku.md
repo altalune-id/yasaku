@@ -112,6 +112,7 @@ Production values are Railway service variables, never committed.
    `<base>` built from the production `YASAKU_HTTP_BASE_URL` and `YASAKU_HTTP_BASE_PATH`.
 2. Set in Railway:
    - `YASAKU_OIDC_ISSUER` and `YASAKU_TOKENS_ISSUER`: the Othra project's issuer, identical in both.
+   - `YASAKU_HTTP_STATE_SECRET`: required in cloud mode; generate it with `openssl rand -hex 32`.
    - `YASAKU_OIDC_CLIENT_ID` and `YASAKU_OIDC_CLIENT_SECRET`: the web client.
    - `YASAKU_TOKENS_AUDIENCE`: `<base>/api`.
    - `YASAKU_OIDC_CLI_CLIENT_ID`: the CLI's public native client, for `yasaku auth login`.
