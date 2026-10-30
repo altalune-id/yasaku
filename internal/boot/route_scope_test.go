@@ -204,7 +204,7 @@ func probeCookie(t *testing.T, srv *boot.Server, p session.Principal) *http.Cook
 	require.NoError(t, srv.Platform.Sessions.Save(context.Background(), sid, p, time.Now().Add(time.Hour)))
 	return &http.Cookie{
 		Name:  web.SessionCookieName,
-		Value: web.SignCookie([]byte(srv.Cfg.HTTP.StateSecret), sid),
+		Value: web.SignCookie(web.DeriveKey(srv.Platform.StateSecret, web.PurposeSession), sid),
 	}
 }
 

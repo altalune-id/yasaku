@@ -2,6 +2,7 @@ package handlers_test
 
 import (
 	"context"
+	"crypto/tls"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -116,7 +117,6 @@ func newTxFixture(t *testing.T) *txFixture {
 	t.Helper()
 	cfg := &config.Config{}
 	cfg.HTTP.BasePath = ""
-	cfg.HTTP.StateSecret = "0123456789abcdef0123456789abcdef"
 	cfg.HTTP.BaseURL = "http://localhost"
 	caps := capabilities.Capabilities{OrgCreation: true, LocalIdentity: true}
 	sessions := session.NewMemoryStore()
@@ -156,7 +156,8 @@ func newTxFixture(t *testing.T) *txFixture {
 		OrgSlug: o.Slug, ProjSlug: proj.Slug,
 	}
 	f.Deps = handlers.Deps{
-		Cfg: cfg, Caps: caps, Sessions: sessions, Logger: discardStdLogger(),
+		Secret: []byte("0123456789abcdef0123456789abcdef"),
+		Cfg:    cfg, Caps: caps, Sessions: sessions, Logger: discardStdLogger(),
 		Orgs: orgs, Projects: projects, I18n: bundle, ProjectLocation: ledgers.Location,
 	}
 
@@ -240,7 +241,7 @@ func (f *txFixture) request(t *testing.T, method, target string, form url.Values
 	if htmx {
 		r.Header.Set("HX-Request", "true")
 	}
-	r.AddCookie(&http.Cookie{Name: web.SessionCookieName, Value: web.SignCookie([]byte(f.Cfg.HTTP.StateSecret), sid)})
+	r.AddCookie(&http.Cookie{Name: web.SessionCookieName, Value: web.SignCookie(f.Deps.Key(web.PurposeSession), sid)})
 	ctx := session.PrincipalInto(r.Context(), f.Principal)
 	ctx = i18n.LocaleInto(ctx, i18n.IdID)
 	ctx = i18n.TranslatorInto(ctx, f.Bundle.For(i18n.IdID))
@@ -283,7 +284,7 @@ func TestOverviewHandler_Get_RemembersTheProject(t *testing.T) {
 
 	c, err := r.Cookie(web.SessionCookieName)
 	require.NoError(t, err)
-	sid, err := web.VerifyCookie([]byte(f.Cfg.HTTP.StateSecret), c.Value)
+	sid, err := web.VerifyCookie(f.Deps.Key(web.PurposeSession), c.Value)
 	require.NoError(t, err)
 	p, ok, err := f.Sessions.Load(context.Background(), sid)
 	require.NoError(t, err)
@@ -1101,4 +1102,34 @@ func TestTransactionCreateRefusalWithoutHTMXRendersTheFormPage(t *testing.T) {
 	assert.Contains(t, body, "Nasi Padang")
 	assert.Empty(t, txDialogRe.FindString(body),
 		"without JS a dialog never opens, so the typed values must not hide in one")
+}
+
+// SECURITY: the last-wallet cookie set over TLS is Secure even when http.cookieSecure is off.
+func TestTransactionHandler_PostCreate_LastWalletCookieIsSecureOverTLS(t *testing.T) {
+	t.Parallel()
+	f := newTxFixture(t)
+	f.Cfg.HTTP.CookieSecure = false
+	mux := http.NewServeMux()
+	f.txHandler().Register(mux)
+
+	form := url.Values{
+		"kind":      {"expense"},
+		"amount":    {"40.000"},
+		"wallet_id": {f.Cash.String()},
+		"date":      {civil.DateOf(time.Now(), time.UTC).String()},
+	}
+	req := f.request(t, http.MethodPost, f.path("/transactions"), form, true)
+	req.TLS = &tls.ConnectionState{}
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code, "body=%s", rec.Body.String())
+	var last *http.Cookie
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == handlers.LastWalletCookie {
+			last = c
+		}
+	}
+	require.NotNil(t, last, "the create must remember the wallet")
+	assert.True(t, last.Secure)
 }

@@ -10,6 +10,9 @@ import (
 // EnvPrefix is the environment variable namespace. NOTE: a fork that renames the binary renames it here only.
 const EnvPrefix = "YASAKU"
 
+// EnvVar returns the environment variable name for a dotted config key.
+func EnvVar(key string) string { return envVarName(EnvPrefix, key) }
+
 func bindEnv(v *viper.Viper, prefix string, t reflect.Type) {
 	for t.Kind() == reflect.Pointer {
 		t = t.Elem()

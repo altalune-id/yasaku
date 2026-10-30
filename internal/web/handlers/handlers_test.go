@@ -70,7 +70,6 @@ func newFixture(t *testing.T) *handlerFixture {
 	t.Helper()
 	cfg := &config.Config{}
 	cfg.HTTP.BasePath = ""
-	cfg.HTTP.StateSecret = "0123456789abcdef0123456789abcdef"
 	cfg.HTTP.BaseURL = "http://localhost"
 	caps := capabilities.Capabilities{OrgCreation: true, LocalIdentity: true}
 	sessions := session.NewMemoryStore()
@@ -100,6 +99,7 @@ func newFixture(t *testing.T) *handlerFixture {
 		Logger:   discardStdLogger(),
 		Orgs:     orgs,
 		Projects: projects,
+		Secret:   []byte("0123456789abcdef0123456789abcdef"),
 	}
 	return &handlerFixture{
 		Deps: deps, Cfg: cfg, Sessions: sessions,
@@ -117,7 +117,7 @@ func (f *handlerFixture) seedSession(t *testing.T, p session.Principal) string {
 	sid, err := web.NewSID()
 	require.NoError(t, err)
 	require.NoError(t, f.Sessions.Save(context.Background(), sid, p, time.Now().Add(web.SessionTTL)))
-	return web.SignCookie([]byte(f.Cfg.HTTP.StateSecret), sid)
+	return web.SignCookie(f.Deps.Key(web.PurposeSession), sid)
 }
 
 func (f *handlerFixture) authedRequest(t *testing.T, method, target string, body string, p session.Principal) *http.Request {
@@ -920,6 +920,24 @@ func TestDeps_ClearSession_RemovesRow(t *testing.T) {
 	assert.Contains(t, rec.Header().Get("Set-Cookie"), web.SessionCookieName)
 }
 
+func TestDeps_ClearSessionMatchesWriteSessionSecure(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	r := httptest.NewRequest(http.MethodPost, "https://app.example.com/", nil)
+	write := httptest.NewRecorder()
+	require.NoError(t, f.Deps.WriteSession(write, r, session.Principal{UserID: uuid.New()}))
+	written := write.Result().Cookies()
+	require.Len(t, written, 1)
+	require.True(t, written[0].Secure, "a session written over TLS is Secure")
+
+	r.AddCookie(written[0])
+	clearRec := httptest.NewRecorder()
+	f.Deps.ClearSession(clearRec, r)
+	cleared := clearRec.Result().Cookies()
+	require.Len(t, cleared, 1)
+	assert.Equal(t, written[0].Secure, cleared[0].Secure, "clearing must use the Secure rule that set the cookie")
+}
+
 func TestDeps_UpdateSession(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
@@ -1183,4 +1201,41 @@ func setTenant(ctx context.Context, orgID, userID uuid.UUID) context.Context {
 
 func setTenantProject(ctx context.Context, orgID, projectID, userID uuid.UUID) context.Context {
 	return tenant.Into(ctx, tenant.Context{OrgID: orgID, ProjectID: projectID, UserID: userID})
+}
+
+// SECURITY: a cookie set over TLS is Secure even when http.cookieSecure is off.
+func TestDeps_SecureCookieFollowsTheConfigOrTLS(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name   string
+		secure bool
+		target string
+		want   bool
+	}{
+		{"plain http, config off", false, "http://app.example.com/", false},
+		{"TLS, config off", false, "https://app.example.com/", true},
+		{"plain http, config on", true, "http://app.example.com/", true},
+	} {
+		f := newFixture(t)
+		f.Cfg.HTTP.CookieSecure = tc.secure
+		r := httptest.NewRequest(http.MethodGet, tc.target, nil)
+		assert.Equal(t, tc.want, f.Deps.SecureCookie(r), tc.name)
+	}
+}
+
+// SECURITY: the locale cookie set over TLS is Secure even when http.cookieSecure is off.
+func TestLocale_CookieIsSecureOverTLS(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.Cfg.HTTP.CookieSecure = false
+	f.Deps.I18n = i18n.NewEmbeddedBundle(i18n.EnUS)
+	mux := http.NewServeMux()
+	handlers.NewLocaleHandler(f.Deps, f.Users).Register(mux)
+	req := httptest.NewRequest(http.MethodPost, "https://app.example.com/locale", strings.NewReader("locale=en-US&redirect=/"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	cookies := rec.Result().Cookies()
+	require.Len(t, cookies, 1, "status=%d", rec.Code)
+	assert.True(t, cookies[0].Secure)
 }

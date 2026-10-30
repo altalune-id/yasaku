@@ -85,7 +85,6 @@ func newWalletFixture(t *testing.T) *walletFixture {
 
 	cfg := config.Defaults()
 	cfg.HTTP.BasePath = ""
-	cfg.HTTP.StateSecret = "0123456789abcdef0123456789abcdef"
 	cfg.HTTP.BaseURL = "http://localhost"
 	cfg.DB.Driver = db.DriverSQLite
 	cfg.DB.DSN = filepath.Join(t.TempDir(), "yasaku-web.db")
@@ -122,6 +121,7 @@ func newWalletFixture(t *testing.T) *walletFixture {
 
 	bundle := i18n.NewEmbeddedBundle(i18n.EnUS)
 	deps := handlers.Deps{
+		Secret:   []byte("0123456789abcdef0123456789abcdef"),
 		Cfg:      cfg,
 		Caps:     caps,
 		Sessions: session.NewMemoryStore(),
@@ -225,7 +225,7 @@ func (f *walletFixture) send(t *testing.T, mux *http.ServeMux, method, sub strin
 	}
 	r.AddCookie(&http.Cookie{
 		Name:  web.SessionCookieName,
-		Value: web.SignCookie([]byte(f.Cfg.HTTP.StateSecret), sid),
+		Value: web.SignCookie(f.Deps.Key(web.PurposeSession), sid),
 	})
 	ctx := session.PrincipalInto(r.Context(), f.Principal)
 	r = r.WithContext(f.withLocale(ctx))

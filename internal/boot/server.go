@@ -155,12 +155,14 @@ func BootServer(ctx context.Context, cfg *config.Config, opts ...Option) (*Serve
 		return nil, fmt.Errorf("boot: tokens: %w", err)
 	}
 
-	altAuth, stateSecret, err := buildOIDCClient(cfg, oidcHTTP, log)
+	stateSecret, err := resolveStateSecret(cfg, log)
 	if err != nil {
 		_ = pool.Close()
 		_ = shutdownOTel(context.Background())
-		return nil, fmt.Errorf("boot: oidc: %w", err)
+		return nil, fmt.Errorf("boot: %w", err)
 	}
+
+	altAuth := buildOIDCClient(cfg, oidcHTTP)
 
 	sl, err := buildSealer(cfg, log)
 	if err != nil {
@@ -173,22 +175,22 @@ func BootServer(ctx context.Context, cfg *config.Config, opts ...Option) (*Serve
 	caps := capabilities.From(cfg)
 
 	kernel := &platform.Kernel{
-		Pool:            pool,
-		PgConn:          pgConn,
-		Log:             log,
-		Reporter:        reporter,
-		Sessions:        sessions,
-		Sealer:          sl,
-		Verifier:        verifier,
-		Mail:            mail,
-		AltAuth:         altAuth,
-		OIDCStateSecret: stateSecret,
-		Tracer:          tp.Tracer("altalune.id/yasaku"),
-		Meter:           mp.Meter("altalune.id/yasaku"),
-		Notify:          sinks,
-		Nano:            nanoid.New,
-		Caps:            caps,
-		Outbox:          outbox.NewStore(cfg.DB, pool, pgConn),
+		Pool:        pool,
+		PgConn:      pgConn,
+		Log:         log,
+		Reporter:    reporter,
+		Sessions:    sessions,
+		Sealer:      sl,
+		Verifier:    verifier,
+		Mail:        mail,
+		AltAuth:     altAuth,
+		StateSecret: stateSecret,
+		Tracer:      tp.Tracer("altalune.id/yasaku"),
+		Meter:       mp.Meter("altalune.id/yasaku"),
+		Notify:      sinks,
+		Nano:        nanoid.New,
+		Caps:        caps,
+		Outbox:      outbox.NewStore(cfg.DB, pool, pgConn),
 	}
 	for _, s := range sinks {
 		if c, ok := s.(io.Closer); ok {
@@ -473,13 +475,9 @@ func oidcRedirectURL(cfg *config.Config) string {
 }
 
 // NOTE: nil without oidc.issuer; private hosts are allowed because the issuer is operator config, like a webhook URL is.
-func buildOIDCClient(cfg *config.Config, client *http.Client, log *slog.Logger) (*oidcrp.Client, []byte, error) {
+func buildOIDCClient(cfg *config.Config, client *http.Client) *oidcrp.Client {
 	if cfg.OIDC.Issuer == "" {
-		return nil, nil, nil
-	}
-	secret, err := resolveStateSecret(cfg, log)
-	if err != nil {
-		return nil, nil, err
+		return nil
 	}
 	return oidcrp.New(oidcrp.Config{
 		Issuer:       cfg.OIDC.Issuer,
@@ -488,7 +486,7 @@ func buildOIDCClient(cfg *config.Config, client *http.Client, log *slog.Logger) 
 		RedirectURI:  oidcRedirectURL(cfg),
 		Scopes:       cfg.OIDC.Scopes,
 		HTTPClient:   client,
-	}), secret, nil
+	})
 }
 
 func resolveStateSecret(cfg *config.Config, log *slog.Logger) ([]byte, error) {

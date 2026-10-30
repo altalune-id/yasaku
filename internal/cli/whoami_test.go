@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"altalune.id/yasaku/internal/boot"
+	"altalune.id/yasaku/internal/controlplane"
 	"altalune.id/yasaku/internal/platform/config"
 )
 
@@ -26,6 +28,21 @@ func TestWhoami_NotSignedIn(t *testing.T) {
 	setSelfhostedEnv(t)
 	clearCLIEnv(t)
 	_, err := runCLI(t, stubClientBoot, "auth", "whoami")
+	if !IsNotSignedInError(err) || ExitCodeFor(err) != ExitUnauth {
+		t.Fatalf("err = %v (exit %d), want NotSignedInError exiting 2", err, ExitCodeFor(err))
+	}
+}
+
+func TestWhoami_AfterLogoutWithNoServerURLIsNotSignedIn(t *testing.T) {
+	sessPath := setSelfhostedEnv(t)
+	clearCLIEnv(t)
+	t.Setenv("YASAKU_HTTP_BASEURL", "")
+	writeRemoteProfile(t, sessPath, "prod", profile{URL: "https://app.example.com"})
+	if _, err := runCLI(t, stubClientBoot, "--profile", "prod", "auth", "logout"); err != nil {
+		t.Fatalf("logout: %v", err)
+	}
+
+	_, err := runCLI(t, stubClientBoot, "--profile", "prod", "auth", "whoami")
 	if !IsNotSignedInError(err) || ExitCodeFor(err) != ExitUnauth {
 		t.Fatalf("err = %v (exit %d), want NotSignedInError exiting 2", err, ExitCodeFor(err))
 	}
@@ -60,6 +77,9 @@ func TestWhoami_RemoteProfileAsksTheServerAndRefreshesThePrincipal(t *testing.T)
 	}
 	if !strings.Contains(out, testEmail) || !strings.Contains(out, f.app.projectID) || !strings.Contains(out, "prod") {
 		t.Fatalf("output = %q", out)
+	}
+	if !strings.Contains(out, "source:     token") {
+		t.Fatalf("output = %q, want the server's principal source", out)
 	}
 	if got := f.profile(t, "prod").Principal.Email; got != testEmail {
 		t.Fatalf("stored principal email = %q, want whoami's", got)
@@ -163,5 +183,29 @@ func TestLogin_LocalSavesALocalProfileTheInProcessCommandsUse(t *testing.T) {
 	root.SetArgs([]string{"--profile", "ops", "--output", "json", "org", "list"})
 	if err := root.ExecuteContext(context.Background()); err != nil {
 		t.Fatalf("org list as the local profile: %v (%s)", err, buf.String())
+	}
+}
+
+// SECURITY: an http.baseURL from a config file found in the working directory never decides where a token goes.
+func TestRemoteCommands_IgnoreADiscoveredConfigBaseURL(t *testing.T) {
+	setSelfhostedEnv(t)
+	t.Setenv("YASAKU_HTTP_BASEURL", "")
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "yasaku.yaml"), []byte("http:\n  baseURL: \"https://attacker.example\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(dir)
+	var dialed string
+	bootClient := func(_ context.Context, cfg *config.Config, baseURL, token string) (*boot.Client, error) {
+		dialed = baseURL
+		return &boot.Client{Cfg: cfg, Conn: controlplane.NewClient(baseURL, token)}, nil
+	}
+
+	_, err := runCLI(t, bootClient, "--token", "not-a-real-token", "auth", "whoami")
+	if !IsMissingURLError(err) {
+		t.Fatalf("err = %v, want MissingURLError: a discovered config file must not pick the server", err)
+	}
+	if dialed != "" {
+		t.Fatalf("the token was sent to %q", dialed)
 	}
 }

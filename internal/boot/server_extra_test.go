@@ -34,10 +34,7 @@ func TestBuildOIDCClient_NilWhenOIDCUnset(t *testing.T) {
 	t.Parallel()
 	cfg := config.Defaults()
 	cfg.OIDC.Issuer = ""
-	rp, secret, err := buildOIDCClient(cfg, nil, discardLogger())
-	require.NoError(t, err)
-	assert.Nil(t, rp)
-	assert.Nil(t, secret)
+	assert.Nil(t, buildOIDCClient(cfg, nil))
 }
 
 type warnRecorder struct {
@@ -101,15 +98,6 @@ func TestResolveStateSecret_EmptyMintsAnEphemeralKeyAndWarns(t *testing.T) {
 	assert.NotEqual(t, make([]byte, 32), got, "the ephemeral key must be random, never zero")
 	require.Len(t, rec.warns, 1)
 	assert.Contains(t, rec.warns[0], "using an ephemeral secret")
-}
-
-func TestBuildOIDCClient_RefusesAShortStateSecret(t *testing.T) {
-	t.Parallel()
-	cfg := config.Defaults()
-	cfg.OIDC.Issuer = "https://issuer.example.com"
-	cfg.HTTP.StateSecret = base64.RawURLEncoding.EncodeToString([]byte("short"))
-	_, _, err := buildOIDCClient(cfg, nil, discardLogger())
-	require.Error(t, err)
 }
 
 func TestOIDCHTTPClient_RefusesRedirects(t *testing.T) {
@@ -180,4 +168,13 @@ func TestAPIResource_ResolvedOnceAndWarnsOnABadAudience(t *testing.T) {
 	cfg.Tokens.Audience = "https://app.example.com/api"
 	cfg.Tokens.Issuer = ""
 	assert.Nil(t, apiResource(cfg, discardLogger()))
+}
+
+func TestMCPTokensConfig_IntrospectionBudgetFallsBackToTokens(t *testing.T) {
+	t.Parallel()
+	cfg := config.Defaults()
+	cfg.Tokens.Introspection.MaxPerMinute = 300
+	assert.Equal(t, 300, mcpTokensConfig(cfg).Introspection.MaxPerMinute)
+	cfg.MCP.Introspection.MaxPerMinute = 60
+	assert.Equal(t, 60, mcpTokensConfig(cfg).Introspection.MaxPerMinute)
 }

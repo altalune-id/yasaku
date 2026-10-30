@@ -59,7 +59,6 @@ func newReportFixture(t *testing.T) *reportFixture {
 	t.Helper()
 	cfg := &config.Config{}
 	cfg.HTTP.BasePath = ""
-	cfg.HTTP.StateSecret = "0123456789abcdef0123456789abcdef"
 	cfg.HTTP.BaseURL = "http://localhost"
 	caps := capabilities.Capabilities{OrgCreation: true, LocalIdentity: true}
 	sessions := session.NewMemoryStore()
@@ -79,7 +78,8 @@ func newReportFixture(t *testing.T) *reportFixture {
 
 	return &reportFixture{
 		Deps: handlers.Deps{
-			Cfg: cfg, Caps: caps, Sessions: sessions, Logger: discardStdLogger(),
+			Secret: []byte("0123456789abcdef0123456789abcdef"),
+			Cfg:    cfg, Caps: caps, Sessions: sessions, Logger: discardStdLogger(),
 			Orgs: orgs, Projects: projects,
 		},
 		Cfg: cfg, Sessions: sessions, Users: users, Orgs: orgs, Projects: projects,
@@ -140,7 +140,7 @@ func (f *reportFixture) authedRequest(t *testing.T, method, target string, p ses
 	require.NoError(t, err)
 	require.NoError(t, f.Sessions.Save(context.Background(), sid, p, time.Now().Add(web.SessionTTL)))
 	r := httptest.NewRequest(method, target, nil)
-	r.AddCookie(&http.Cookie{Name: web.SessionCookieName, Value: web.SignCookie([]byte(f.Cfg.HTTP.StateSecret), sid)})
+	r.AddCookie(&http.Cookie{Name: web.SessionCookieName, Value: web.SignCookie(f.Deps.Key(web.PurposeSession), sid)})
 	return r.WithContext(session.PrincipalInto(r.Context(), p))
 }
 

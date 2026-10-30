@@ -295,3 +295,11 @@ func TestBlogPublish_TakesExactlyOneSlug(t *testing.T) {
 		t.Fatal("blog unpublish takes exactly one positional argument")
 	}
 }
+
+func TestBlog_RefusesAPlainHTTPRemoteHost(t *testing.T) {
+	setSelfhostedEnv(t)
+	_, err := runBlog(t, "blog", "list", "--url", "http://blog.example.com", "--token", "key_secret", "--org", "acme", "--project", "main")
+	if !IsInsecureURLError(err) {
+		t.Fatalf("err = %v, want an InsecureURLError before any request", err)
+	}
+}

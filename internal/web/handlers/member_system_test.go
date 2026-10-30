@@ -52,7 +52,6 @@ func TestPostRemoveMember_SystemProtected_Returns409(t *testing.T) {
 
 	cfg := &config.Config{}
 	cfg.HTTP.BasePath = ""
-	cfg.HTTP.StateSecret = "0123456789abcdef0123456789abcdef"
 	sessions := session.NewMemoryStore()
 
 	principal := session.Principal{
@@ -71,14 +70,14 @@ func TestPostRemoveMember_SystemProtected_Returns409(t *testing.T) {
 	if err := sessions.Save(ctx, sid, principal, time.Now().Add(web.SessionTTL)); err != nil {
 		t.Fatal(err)
 	}
-	cookieValue := web.SignCookie([]byte(cfg.HTTP.StateSecret), sid)
-
 	deps := handlers.Deps{
 		Cfg:      cfg,
 		Caps:     capabilities.Capabilities{OrgCreation: true},
 		Sessions: sessions,
 		Logger:   log.New(io.Discard, "", 0),
+		Secret:   []byte("0123456789abcdef0123456789abcdef"),
 	}
+	cookieValue := web.SignCookie(deps.Key(web.PurposeSession), sid)
 	h := handlers.NewOrgHandler(deps, orgSvc)
 
 	mux := http.NewServeMux()
