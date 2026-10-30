@@ -299,12 +299,12 @@ func TestLoad_MCPDefaultsOff(t *testing.T) {
 
 func TestEnvKeys_MCPKeysAreRuntime(t *testing.T) {
 	want := map[string][]string{
-		"YASAKU_MCP_ENABLED":           nil,
-		"YASAKU_MCP_AUDIENCE":          nil,
-		"YASAKU_MCP_AUDIENCE_OVERRIDE": nil,
-		"YASAKU_MCP_APPS_UI":           nil,
-		"YASAKU_MCP_CHALLENGE_TOKEN":   nil,
-		"YASAKU_MCP_CHALLENGE_PREFIX":  nil,
+		"YASAKU_MCP_ENABLED":                     nil,
+		"YASAKU_MCP_AUDIENCE":                    nil,
+		"YASAKU_MCP_AUDIENCE_OVERRIDE":           nil,
+		"YASAKU_MCP_APPS_UI":                     nil,
+		"YASAKU_MCP_INTROSPECTION_CLIENT_ID":     nil,
+		"YASAKU_MCP_INTROSPECTION_CLIENT_SECRET": {"secret"},
 	}
 	seen := map[string]bool{}
 	for _, k := range WalkEnvKeys(EnvPrefix) {

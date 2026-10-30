@@ -324,7 +324,8 @@ func stubIssuer(t *testing.T) string {
 			"jwks_uri": "` + ts.URL + `/jwks",
 			"response_types_supported": ["code"],
 			"subject_types_supported": ["public"],
-			"id_token_signing_alg_values_supported": ["RS256"]
+			"id_token_signing_alg_values_supported": ["RS256"],
+			"code_challenge_methods_supported": ["S256"]
 		}`))
 	})
 	mux.HandleFunc("/jwks", func(w http.ResponseWriter, _ *http.Request) {

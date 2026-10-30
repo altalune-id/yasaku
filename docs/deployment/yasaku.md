@@ -103,6 +103,36 @@ Set it once and never change it: a new key logs everyone out and makes every sav
 unreadable (`OSL015`), so each link turns itself off after 3 syncs until its project's key is entered
 again and saved. Generate one with `openssl rand -hex 32`.
 
+## Signing in through Othra
+
+yasaku signs people in through Othra and accepts Othra access tokens on its API and MCP surface.
+Production values are Railway service variables, never committed.
+
+1. Register yasaku in Othra as in [Register in Othra](../mcp/yasaku.md#register-in-othra), with
+   `<base>` built from the production `YASAKU_HTTP_BASE_URL` and `YASAKU_HTTP_BASE_PATH`.
+2. Set in Railway:
+   - `YASAKU_OIDC_ISSUER` and `YASAKU_TOKENS_ISSUER`: the Othra project's issuer, identical in both.
+   - `YASAKU_OIDC_CLIENT_ID` and `YASAKU_OIDC_CLIENT_SECRET`: the web client.
+   - `YASAKU_TOKENS_AUDIENCE`: `<base>/api`.
+   - `YASAKU_OIDC_CLI_CLIENT_ID`: the CLI's public native client, for `yasaku auth login`.
+   - `YASAKU_MCP_AUDIENCE`: `<base>/mcp`.
+   - `YASAKU_TOKENS_INTROSPECTION_CLIENT_ID` and `YASAKU_TOKENS_INTROSPECTION_CLIENT_SECRET`: the
+     API resource's introspection credentials, so `othra_pt_` personal tokens work on `/api`.
+   - `YASAKU_MCP_INTROSPECTION_CLIENT_ID` and `YASAKU_MCP_INTROSPECTION_CLIENT_SECRET`: the same
+     for the MCP resource.
+3. Delete `YASAKU_OIDC_RESOURCE`, `YASAKU_TOKENS_JWKS_URL`, `YASAKU_TOKENS_JWKS_CACHE_TTL`,
+   `YASAKU_TOKENS_SUPPORTED_ALGS`, `YASAKU_TOKENS_ACCEPT_RS256`, `YASAKU_MCP_CHALLENGE_TOKEN` and
+   `YASAKU_MCP_CHALLENGE_PREFIX` if they are set. yasaku no longer reads them.
+   `YASAKU_OIDC_END_SESSION_ON_LOGOUT` now defaults to `true`, so signing out of yasaku also ends
+   the Othra session; set it to `false` only to keep the Othra session.
+4. Existing users keep their accounts. On a person's first sign-in through Othra, yasaku finds the
+   account by email and relinks it to the Othra identity, but only when Othra reports the email as
+   verified. A person whose Othra email is unverified, or differs from the one in yasaku, must fix
+   that in Othra first. Their API keys keep working; access tokens from the previous issuer stop
+   working, so CLI and MCP clients sign in again.
+5. A person who only uses MCP or tokens gets 401 until they sign in once on the web or with
+   `yasaku auth login`: only that sign-in relinks their account to the Othra issuer.
+
 ## Local dev
 
 The queue is off by default, so jobs run inline. To run against NATS:

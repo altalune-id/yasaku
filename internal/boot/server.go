@@ -3,6 +3,7 @@ package boot
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -13,7 +14,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"altalune.id/yasaku/authl"
+	"github.com/altalune-id/oidcrp"
+
 	"altalune.id/yasaku/httpclient"
 	"altalune.id/yasaku/internal/apikey"
 	"altalune.id/yasaku/internal/apperror"
@@ -49,6 +51,11 @@ import (
 )
 
 const setupTokenLen = 32
+
+const (
+	oidcTimeout    = 10 * time.Second
+	stateSecretLen = 32
+)
 
 const (
 	webhookTimeout       = 10 * time.Second
@@ -136,18 +143,23 @@ func BootServer(ctx context.Context, cfg *config.Config, opts ...Option) (*Serve
 		return nil, err
 	}
 
-	verifier, err := tokens.NewVerifier(ctx, cfg.Tokens)
+	oidcHTTP := o.oidcHTTP
+	if oidcHTTP == nil {
+		oidcHTTP = oidcHTTPClient()
+	}
+	tokenKeys := tokens.NewKeySource(cfg.Tokens, oidcHTTP)
+	verifier, err := tokens.NewVerifier(cfg.Tokens, tokenKeys)
 	if err != nil {
 		_ = pool.Close()
 		_ = shutdownOTel(context.Background())
 		return nil, fmt.Errorf("boot: tokens: %w", err)
 	}
 
-	altAuth, err := buildAltAuth(ctx, cfg, log)
+	altAuth, stateSecret, err := buildOIDCClient(cfg, oidcHTTP, log)
 	if err != nil {
 		_ = pool.Close()
 		_ = shutdownOTel(context.Background())
-		return nil, fmt.Errorf("boot: authl: %w", err)
+		return nil, fmt.Errorf("boot: oidc: %w", err)
 	}
 
 	sl, err := buildSealer(cfg, log)
@@ -161,21 +173,22 @@ func BootServer(ctx context.Context, cfg *config.Config, opts ...Option) (*Serve
 	caps := capabilities.From(cfg)
 
 	kernel := &platform.Kernel{
-		Pool:     pool,
-		PgConn:   pgConn,
-		Log:      log,
-		Reporter: reporter,
-		Sessions: sessions,
-		Sealer:   sl,
-		Verifier: verifier,
-		Mail:     mail,
-		AltAuth:  altAuth,
-		Tracer:   tp.Tracer("altalune.id/yasaku"),
-		Meter:    mp.Meter("altalune.id/yasaku"),
-		Notify:   sinks,
-		Nano:     nanoid.New,
-		Caps:     caps,
-		Outbox:   outbox.NewStore(cfg.DB, pool, pgConn),
+		Pool:            pool,
+		PgConn:          pgConn,
+		Log:             log,
+		Reporter:        reporter,
+		Sessions:        sessions,
+		Sealer:          sl,
+		Verifier:        verifier,
+		Mail:            mail,
+		AltAuth:         altAuth,
+		OIDCStateSecret: stateSecret,
+		Tracer:          tp.Tracer("altalune.id/yasaku"),
+		Meter:           mp.Meter("altalune.id/yasaku"),
+		Notify:          sinks,
+		Nano:            nanoid.New,
+		Caps:            caps,
+		Outbox:          outbox.NewStore(cfg.DB, pool, pgConn),
 	}
 	for _, s := range sinks {
 		if c, ok := s.(io.Closer); ok {
@@ -302,12 +315,11 @@ func BootServer(ctx context.Context, cfg *config.Config, opts ...Option) (*Serve
 	apiSrv, apiHandler := buildAPIHandler(cfg, kernel, svcs)
 	dataHandler := buildDataHandler(cfg, caps, log, svcs)
 
-	mcpSurf, err := buildMCPSurface(ctx, cfg, log, svcs, apiSrv)
+	mcpSurf, err := buildMCPSurface(cfg, log, svcs, apiSrv, tokenKeys)
 	if err != nil {
 		abort()
 		return nil, err
 	}
-	mcpSurf = withRootMetadataAlias(mcpSurf)
 
 	bundle, defaultLoc, err := buildI18nBundle(cfg)
 	if err != nil {
@@ -458,28 +470,23 @@ func oidcRedirectURL(cfg *config.Config) string {
 		strings.TrimRight(cfg.HTTP.BaseURL, "/"), cfg.HTTP.BasePath)
 }
 
-func buildAltAuth(ctx context.Context, cfg *config.Config, log *slog.Logger) (*authl.Client, error) {
+// NOTE: nil without oidc.issuer; private hosts are allowed because the issuer is operator config, like a webhook URL is.
+func buildOIDCClient(cfg *config.Config, client *http.Client, log *slog.Logger) (*oidcrp.Client, []byte, error) {
 	if cfg.OIDC.Issuer == "" {
-		return nil, nil
+		return nil, nil, nil
 	}
 	secret, err := resolveStateSecret(cfg, log)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	redirect := oidcRedirectURL(cfg)
-	return authl.NewClient(ctx, authl.Config{
-		Issuer:           cfg.OIDC.Issuer,
-		ClientID:         cfg.OIDC.ClientID,
-		ClientSecret:     cfg.OIDC.ClientSecret,
-		RedirectURL:      redirect,
-		Scopes:           cfg.OIDC.Scopes,
-		Resource:         cfg.OIDC.Resource,
-		RememberLastUser: true,
-		LastUserCookie:   "yasaku_last_user",
-		StateCookie:      "yasaku_oidc_state",
-		StateSecret:      secret,
-		CookieSecure:     cfg.HTTP.CookieSecure,
-	})
+	return oidcrp.New(oidcrp.Config{
+		Issuer:       cfg.OIDC.Issuer,
+		ClientID:     cfg.OIDC.ClientID,
+		ClientSecret: cfg.OIDC.ClientSecret,
+		RedirectURI:  oidcRedirectURL(cfg),
+		Scopes:       cfg.OIDC.Scopes,
+		HTTPClient:   client,
+	}), secret, nil
 }
 
 func resolveStateSecret(cfg *config.Config, log *slog.Logger) ([]byte, error) {
@@ -493,17 +500,24 @@ func resolveStateSecret(cfg *config.Config, log *slog.Logger) ([]byte, error) {
 				return nil, fmt.Errorf("config: http.stateSecret must be base64url — %w", err)
 			}
 		}
-		if len(buf) < 32 {
+		if len(buf) < stateSecretLen {
 			return nil, errors.New("config: http.stateSecret must decode to >= 32 bytes")
 		}
 		return buf, nil
 	}
-	ephemeral, err := authl.GenerateStateSecret()
-	if err != nil {
+	ephemeral := make([]byte, stateSecretLen)
+	if _, err := rand.Read(ephemeral); err != nil {
 		return nil, fmt.Errorf("mint ephemeral state secret: %w", err)
 	}
 	log.Warn("http.stateSecret is empty — using an ephemeral secret; set YASAKU_HTTP_STATE_SECRET to persist")
 	return ephemeral, nil
+}
+
+// SECURITY: oidcrp and oauthrs need a client that never follows a redirect off the issuer.
+func oidcHTTPClient() *http.Client {
+	c := httpclient.New(httpclient.WithAllowPrivateHosts(true), httpclient.WithTimeout(oidcTimeout))
+	c.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	return c
 }
 
 func mailerConfig(m config.MailConfig) mailer.Config {

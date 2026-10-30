@@ -223,10 +223,9 @@ func TestServer_MountsMCPMetadataOutsideBasePath(t *testing.T) {
 	required := &atomic.Bool{}
 	required.Store(true)
 	ts := httptest.NewServer(web.NewServer(web.ServerOpts{
-		BasePath:           "/app",
-		MCPMetadataHandler: prm,
-		MCPMetadataPath:    "/.well-known/oauth-protected-resource",
-		Chains:             web.SurfaceChains{Console: []web.Middleware{webhandlers.OnboardingGate("/app", required)}},
+		BasePath:         "/app",
+		ResourceMetadata: map[string]http.Handler{"/.well-known/oauth-protected-resource": prm},
+		Chains:           web.SurfaceChains{Console: []web.Middleware{webhandlers.OnboardingGate("/app", required)}},
 	}))
 	t.Cleanup(ts.Close)
 

@@ -62,7 +62,7 @@ func yasakuProcedureScopes() authn.ScopeTable {
 	}
 }
 
-// YasakuFineProcedureScopes is the target scope per procedure once yasaku:* is retired. TODO(scopes): enforce this table instead of yasakuProcedureScopes, add its scopes to the authn catalogue and authl, then remove yasaku:*.
+// YasakuFineProcedureScopes is the target scope per procedure once yasaku:* is retired. TODO(scopes): enforce this table instead of yasakuProcedureScopes, add its scopes to the authn catalogue and the Othra resources, then remove yasaku:*.
 func YasakuFineProcedureScopes() authn.ScopeTable {
 	return authn.ScopeTable{
 		yasakuv1connect.WorkspaceServiceListProjectsProcedure: "ledgers:read",

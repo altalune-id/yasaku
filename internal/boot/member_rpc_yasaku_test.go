@@ -19,7 +19,7 @@ func TestControlPlane_ListMembersIsAnOrgLevelRead(t *testing.T) {
 	ctx := t.Context()
 	seedForeignTenant(t, f)
 
-	owner, err := f.srv.Users.EnsureFromOIDC(ctx, user.Claims{Issuer: f.issuer.url, Subject: tokenSubject, Email: tokenEmail, Name: "MCP Agent"})
+	owner, err := f.srv.Users.EnsureFromOIDC(ctx, user.Claims{Issuer: f.issuer.url, Subject: tokenSubject, Email: tokenEmail, EmailVerified: true, Name: "MCP Agent"})
 	require.NoError(t, err)
 	o, err := f.srv.Orgs.BySlug(ctx, "mcp-org")
 	require.NoError(t, err)

@@ -3,14 +3,29 @@
 What yasaku adds to the template MCP surface. Endpoint, auth, errors, adding a tool and testing are in
 [`README.md`](README.md); this file holds only the yasaku tool set and its UI bundle.
 
-## Operator setup in authl
+## Register in Othra
 
-1. Register yasaku as a resource server whose identifier is exactly
-   `mcp.audience`, with the two scopes `yasaku:read` and `yasaku:write`.
-2. Register a public PKCE client for each MCP host that will connect
-   (Claude Desktop, an IDE, an agent runtime). Dynamic client registration is
-   not yet available — see [authl#2](https://github.com/altalune-id/authl/issues/2).
-3. Point `tokens.issuer` at the authl issuer URL and boot with `mcp.enabled=true`.
+`<base>` is `http.baseURL` followed by `http.basePath`. In the Othra project whose issuer yasaku trusts:
+
+1. Add two resource servers and verify each one; Othra reads its RFC 9728 document:
+   - MCP: identifier `<base>/mcp` (`mcp.audience`), scopes `yasaku:read` and `yasaku:write`.
+   - API: identifier `<base>/api` (`tokens.audience`), scopes `yasaku:read`, `yasaku:write`,
+     `apikeys:read` and `members:read`.
+2. Add the clients:
+   - Web: redirect URI `<base>/oauth/callback`, sign-out return URI `<base>/`. Its client ID and
+     secret go in `oidc.clientID` and `oidc.clientSecret`.
+   - CLI: a public native client with redirect URI `http://127.0.0.1/callback` and PKCE, linked to
+     the API resource with all four of its scopes. Its client ID goes in `oidc.cliClientID`.
+   - MCP hosts: a host that publishes a client metadata document signs in with it once the MCP
+     resource admits that host. Otherwise, register a public PKCE client for the host and link it to
+     the MCP resource.
+3. Set `oidc.issuer` and `tokens.issuer` to the project's issuer, `https://<othra>/p/<handle>`, the
+   same string in both, and boot with `mcp.enabled=true`.
+4. To accept `othra_pt_` personal tokens, set each resource's introspection credentials in
+   `tokens.introspection.*` (API) and `mcp.introspection.*` (MCP).
+
+The host root `/.well-known/oauth-protected-resource` also serves the MCP document, for hosts that
+probe the root. It gives way to an API resource whose identifier is the host root itself.
 
 ## Targeting a project
 

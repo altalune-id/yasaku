@@ -223,7 +223,7 @@ func (f *periodFixture) mux(t *testing.T) *http.ServeMux {
 	t.Helper()
 	mux := http.NewServeMux()
 	handlers.NewPeriodHandler(f.Deps, f.Projects, f.Periods, f.Reports, f.Ledgers).Register(mux)
-	handlers.NewSettingsHandler(f.Deps, f.Projects, f.Ledgers).Register(mux)
+	handlers.NewSettingsHandler(f.Deps, f.Projects, f.Ledgers, []string{"yasaku:read", "wallets:read"}).Register(mux)
 	return mux
 }
 
@@ -498,7 +498,7 @@ func TestSettings_GetSettings_MCPBlockFollowsTheCapability(t *testing.T) {
 	off := newPeriodFixture(t, defaultCaps())
 	rec := off.do(t, http.MethodGet, off.path("/settings"), nil)
 	require.Equal(t, http.StatusOK, rec.Code)
-	assert.NotContains(t, rec.Body.String(), "yasaku:write")
+	assert.NotContains(t, rec.Body.String(), "yasaku:read")
 
 	caps := defaultCaps()
 	caps.MCPEnabled = true
@@ -508,7 +508,8 @@ func TestSettings_GetSettings_MCPBlockFollowsTheCapability(t *testing.T) {
 	body := rec.Body.String()
 	assert.Contains(t, body, "http://localhost/mcp")
 	assert.Contains(t, body, "yasaku:read")
-	assert.Contains(t, body, "yasaku:write")
+	assert.Contains(t, body, "wallets:read", "the page lists the scopes the MCP surface publishes, not a copy of them")
+	assert.NotContains(t, body, "yasaku:write")
 }
 
 func (f *periodFixture) seedClosed(ctx context.Context, t *testing.T, start, end civil.Date) *period.Period {

@@ -33,6 +33,7 @@ import (
 	"altalune.id/yasaku/internal/platform"
 	"altalune.id/yasaku/internal/platform/authn"
 	"altalune.id/yasaku/internal/platform/config"
+	"altalune.id/yasaku/internal/platform/tokens"
 	"altalune.id/yasaku/internal/project"
 	"altalune.id/yasaku/internal/report"
 	"altalune.id/yasaku/internal/transaction"
@@ -70,7 +71,7 @@ type Server struct {
 	Projects *project.Service
 	Invites  *invite.Service
 
-	// APIKeys is set by boot after New returns, mirroring Authn/KeyPrefix below.
+	// APIKeys is set by boot after New returns, mirroring Authn below.
 	APIKeys *apikey.Service
 
 	AuthSvc    *AuthService
@@ -87,8 +88,9 @@ type Server struct {
 	ReportSvc      *ReportService
 	OpensheetSvc   *OpensheetService
 
-	Authn     authn.Chain
-	KeyPrefix string
+	Authn authn.Chain
+	// Resource is the control plane's protected resource, named in every 401 and 403 challenge; nil sends none.
+	Resource *tokens.Resource
 
 	OpenAPIEnabled   bool
 	OpenAPIBasicAuth *BasicAuth
@@ -242,8 +244,8 @@ func (s *Server) handlerOptions() []connect.HandlerOption {
 	}
 	ics = append(ics,
 		interceptor.Wrap(s.unexpected()),
-		translateAuthnErrors(),
-		authn.Interceptor(s.Authn, authn.Scheme{Prefix: s.KeyPrefix}, ScopeTable()),
+		translateAuthnErrors(s.Resource),
+		authn.Interceptor(s.Authn, ScopeTable()),
 		interceptor.Tenant(),
 	)
 	return []connect.HandlerOption{
