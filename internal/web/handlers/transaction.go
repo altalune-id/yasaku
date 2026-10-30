@@ -198,7 +198,7 @@ func (h *TransactionHandler) PostCreate(w http.ResponseWriter, r *http.Request) 
 		h.refuse(w, sc, err, txDraft{in: in, filled: true})
 		return
 	}
-	h.rememberWallet(w, t.WalletID)
+	h.rememberWallet(w, sc.req, t.WalletID)
 	h.succeed(w, sc, t)
 }
 
@@ -227,7 +227,7 @@ func (h *TransactionHandler) PostUpdate(w http.ResponseWriter, r *http.Request) 
 		h.refuse(w, sc, err, txDraft{in: in, id: t.ID.String(), filled: true})
 		return
 	}
-	h.rememberWallet(w, updated.WalletID)
+	h.rememberWallet(w, sc.req, updated.WalletID)
 	h.succeed(w, sc, updated)
 }
 
@@ -395,12 +395,12 @@ func (h *TransactionHandler) occurredAt(sc ProjectScope, in txInput) time.Time {
 	return in.Date.In(h.location(sc)).Add(12 * time.Hour)
 }
 
-func (h *TransactionHandler) rememberWallet(w http.ResponseWriter, id uuid.UUID) {
+func (h *TransactionHandler) rememberWallet(w http.ResponseWriter, r *http.Request, id uuid.UUID) {
 	web.SetCookie(w, web.CookieOpts{
 		Name:         LastWalletCookie,
 		Value:        id.String(),
 		BasePath:     h.Cfg.HTTP.BasePath,
-		CookieSecure: h.Cfg.HTTP.CookieSecure,
+		CookieSecure: h.SecureCookie(r),
 		MaxAge:       lastWalletMaxAge,
 	})
 }

@@ -13,6 +13,7 @@ import (
 	"altalune.id/yasaku/internal/apperror"
 	"altalune.id/yasaku/internal/cli/render"
 	"altalune.id/yasaku/internal/dataplane"
+	"altalune.id/yasaku/internal/platform/config"
 )
 
 func newBlogCmd() *cobra.Command {
@@ -241,9 +242,12 @@ func blogTargetFrom(cmd *cobra.Command) (blogTarget, error) {
 	if err != nil {
 		return blogTarget{}, err
 	}
-	instance := invocation{cfg: cfg, url: explicitURL(cmd)}.baseURL(nil)
+	instance := invocation{cfg: cfg, explicitConfig: explicitConfig(cmd), url: explicitURL(cmd)}.baseURL(nil)
 	if instance == "" {
 		return blogTarget{}, &MissingURLError{}
+	}
+	if err := checkServerURL(instance); err != nil {
+		return blogTarget{}, err
 	}
 	key, err := resolveToken(cmd)
 	if err != nil {
@@ -252,12 +256,12 @@ func blogTargetFrom(cmd *cobra.Command) (blogTarget, error) {
 	if key == "" {
 		return blogTarget{}, apperror.New(
 			apperror.CodeUnauthenticated,
-			"blog: no API key for "+instance+" — pass --token or set "+envVar("TOKEN"),
+			"blog: no API key for "+instance+" — pass --token or set "+config.EnvVar("token"),
 			codes.Unauthenticated,
 		)
 	}
-	org := blogSlug(cmd, "org", envVar("ORG"))
-	project := blogSlug(cmd, "project", envVar("PROJECT"))
+	org := blogSlug(cmd, "org", config.EnvVar("org"))
+	project := blogSlug(cmd, "project", config.EnvVar("project"))
 	if org == "" || project == "" {
 		return blogTarget{}, errors.New("blog: no active org or project — pass --org and --project")
 	}

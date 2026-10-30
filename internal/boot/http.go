@@ -99,12 +99,13 @@ type webHandlerDeps struct {
 func buildWebHandler(d webHandlerDeps) (handler http.Handler, routes []string) { //nolint:nonamedreturns // two return values differ in role
 	cfg, kernel, slogger, svcs := d.Cfg, d.Kernel, d.Log, d.Services
 	deps := newWebDeps(cfg, d.Caps, kernel.Sessions, slogger)
+	deps.Secret = kernel.StateSecret
 	deps.Orgs = svcs.Orgs
 	deps.Projects = svcs.Projects
 	deps.I18n = d.Bundle
 	deps.ProjectLocation = svcs.Ledgers.Location
 
-	authHandler := webhandlers.NewAuthHandler(deps, svcs.Auth, svcs.Users, svcs.Orgs, svcs.Projects, kernel.AltAuth, d.Required).WithStateSecret(kernel.OIDCStateSecret)
+	authHandler := webhandlers.NewAuthHandler(deps, svcs.Auth, svcs.Users, svcs.Orgs, svcs.Projects, kernel.AltAuth, d.Required)
 	onboardingHandler := webhandlers.NewOnboardingHandler(deps, svcs.Users)
 	onboardHandler := webhandlers.NewOnboardHandler(deps, svcs.Users, svcs.Orgs, svcs.Projects, svcs.Onboards, d.Required, d.OnComplete, d.SetupToken)
 	homeHandler := webhandlers.NewHomeHandler(deps, svcs.Orgs, svcs.Projects)
@@ -204,11 +205,11 @@ func surfaceChains(
 			webmw.Recover(reporter.Unexpected, nil),
 		}),
 		Console: slices.Concat(edge, []web.Middleware{
-			webmw.CSP(cspOptions(cfg.HTTP.CSP)),
+			webmw.CSP(cspOptions(cfg)),
 			webmw.Recover(reporter.Unexpected, errTmpl),
 			webmw.Session(webmw.SessionConfig{
 				Store:  kernel.Sessions,
-				Secret: []byte(cfg.HTTP.StateSecret),
+				Secret: web.DeriveKey(kernel.StateSecret, web.PurposeSession),
 			}),
 			webmw.Tenant,
 			i18npkg.Middleware(i18npkg.MiddlewareOpts{
@@ -275,10 +276,14 @@ func (w logSlogWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-func cspOptions(cfg config.CSPConfig) webmw.CSPOptions {
-	return webmw.CSPOptions{
-		Enabled:    cfg.Enabled,
-		ReportOnly: cfg.ReportOnly,
-		ReportURI:  cfg.ReportURI,
+func cspOptions(cfg *config.Config) webmw.CSPOptions {
+	opts := webmw.CSPOptions{
+		Enabled:    cfg.HTTP.CSP.Enabled,
+		ReportOnly: cfg.HTTP.CSP.ReportOnly,
+		ReportURI:  cfg.HTTP.CSP.ReportURI,
 	}
+	if origin := web.Origin(cfg.OIDC.Issuer); origin != "" && cfg.OIDC.EndSessionOnLogout {
+		opts.ExtraFormAction = []string{origin}
+	}
+	return opts
 }

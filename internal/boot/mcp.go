@@ -97,6 +97,9 @@ func mcpTokensConfig(cfg *config.Config) tokens.Config {
 	c := cfg.Tokens
 	c.Audience = cfg.MCP.Audience
 	c.Introspection = cfg.MCP.Introspection
+	if c.Introspection.MaxPerMinute == 0 {
+		c.Introspection.MaxPerMinute = cfg.Tokens.Introspection.MaxPerMinute
+	}
 	return c
 }
 

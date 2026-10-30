@@ -129,7 +129,6 @@ func newPeriodFixture(t *testing.T, caps capabilities.Capabilities) *periodFixtu
 	cfg.DB.DSN = filepath.Join(t.TempDir(), "web-period.db")
 	cfg.HTTP.BasePath = ""
 	cfg.HTTP.BaseURL = "http://localhost"
-	cfg.HTTP.StateSecret = "0123456789abcdef0123456789abcdef"
 	cfg.MCP.Audience = "http://localhost/mcp"
 
 	sqlDB, err := db.Open(t.Context(), cfg.DB, nil)
@@ -199,6 +198,7 @@ func newPeriodFixture(t *testing.T, caps capabilities.Capabilities) *periodFixtu
 		Sibling:  sibling,
 	}
 	f.Deps = handlers.Deps{
+		Secret:   []byte("0123456789abcdef0123456789abcdef"),
 		Cfg:      cfg,
 		Caps:     caps,
 		Sessions: f.Sessions,
@@ -240,7 +240,7 @@ func (f *periodFixture) do(t *testing.T, method, target string, form url.Values)
 		r = httptest.NewRequest(method, target, strings.NewReader(form.Encode()))
 		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	}
-	r.AddCookie(&http.Cookie{Name: web.SessionCookieName, Value: web.SignCookie([]byte(f.Cfg.HTTP.StateSecret), sid)})
+	r.AddCookie(&http.Cookie{Name: web.SessionCookieName, Value: web.SignCookie(f.Deps.Key(web.PurposeSession), sid)})
 	r = r.WithContext(session.PrincipalInto(r.Context(), f.Principal))
 
 	rec := httptest.NewRecorder()
@@ -317,7 +317,7 @@ func TestPeriods_GetClose_HTMXReturnsOnlyThePreviewFragment(t *testing.T) {
 	require.NoError(t, f.Sessions.Save(t.Context(), sid, f.Principal, time.Now().Add(web.SessionTTL)))
 	r := httptest.NewRequest(http.MethodGet, f.path("/periods/"+cur.ID.String()+"/close?end_date="+f.today(t).String()), nil)
 	r.Header.Set("HX-Request", "true")
-	r.AddCookie(&http.Cookie{Name: web.SessionCookieName, Value: web.SignCookie([]byte(f.Cfg.HTTP.StateSecret), sid)})
+	r.AddCookie(&http.Cookie{Name: web.SessionCookieName, Value: web.SignCookie(f.Deps.Key(web.PurposeSession), sid)})
 	r = r.WithContext(session.PrincipalInto(r.Context(), f.Principal))
 	rec := httptest.NewRecorder()
 	f.mux(t).ServeHTTP(rec, r)

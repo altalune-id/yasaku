@@ -789,7 +789,7 @@ func (h *yasakuHarness) consoleGet(path string) string {
 	p := session.Principal{UserID: h.user.ID, Email: h.user.Email, ActiveOrgID: h.org.ID, ActiveProjectID: h.project.ID, IssuedAt: time.Now().UTC()}
 	require.NoError(h.t, h.boot.Platform.Sessions.Save(context.Background(), sid, p, time.Now().Add(time.Hour)))
 	r := httptest.NewRequest(http.MethodGet, "/orgs/"+h.org.Slug+"/projects/"+h.project.Slug+path, nil)
-	r.AddCookie(&http.Cookie{Name: web.SessionCookieName, Value: web.SignCookie([]byte(h.boot.Cfg.HTTP.StateSecret), sid)})
+	r.AddCookie(&http.Cookie{Name: web.SessionCookieName, Value: web.SignCookie(web.DeriveKey(h.boot.Platform.StateSecret, web.PurposeSession), sid)})
 	rec := httptest.NewRecorder()
 	h.boot.Web.ServeHTTP(rec, r)
 	require.Equal(h.t, http.StatusOK, rec.Code, "GET %s -> %s", path, rec.Header().Get("Location"))

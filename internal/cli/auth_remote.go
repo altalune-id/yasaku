@@ -88,11 +88,15 @@ func (l remoteLogin) run(ctx context.Context, rawURL, name string) error {
 	return nil
 }
 
-// SECURITY: RFC 7009: a profile signed in again first revokes the refresh token it replaces, under the lock.
 func (l remoteLogin) save(ctx context.Context, name string, p profile) error {
-	return l.store.edit(ctx, func(profiles map[string]profile) (bool, error) {
+	return replaceProfile(ctx, l.store, l.httpClient, l.errOut, name, p)
+}
+
+// SECURITY: RFC 7009: a profile signed in again, remotely or locally, first revokes the refresh token it replaces, under the lock.
+func replaceProfile(ctx context.Context, store profileStore, httpClient *http.Client, errOut io.Writer, name string, p profile) error {
+	return store.edit(ctx, func(profiles map[string]profile) (bool, error) {
 		if old, ok := profiles[name]; ok && old.Token != nil && old.Token.Refresh != "" {
-			revokeRefresh(ctx, l.httpClient, *old.Token, l.errOut)
+			revokeRefresh(ctx, httpClient, *old.Token, errOut)
 		}
 		profiles[name] = p
 		return true, nil
@@ -251,7 +255,10 @@ func whoami(ctx context.Context, in invocation, bootClient ClientBootFn, out io.
 		if err != nil {
 			return err
 		}
-		if p != nil && p.URL == "" {
+		if p == nil {
+			return &NotSignedInError{Profile: in.profile, URL: in.baseURL(nil)}
+		}
+		if p.URL == "" {
 			return printWhoami(out, format, in.profile, "", p.Principal)
 		}
 	}
@@ -289,7 +296,7 @@ func principalOfWhoami(w *authv1.WhoamiResponse) principalView {
 	return principalView{
 		UserID: w.GetUserId(), Email: w.GetEmail(), Name: w.GetName(),
 		ActiveOrgID: w.GetActiveOrgId(), ActiveOrgSlug: w.GetActiveOrgSlug(), ActiveProjectID: w.GetActiveProjectId(),
-		Scopes: w.GetScopes(),
+		Scopes: w.GetScopes(), Source: w.GetSource(),
 	}
 }
 

@@ -71,6 +71,9 @@ func Load(path string, opts ...Option) (*Config, error) {
 	if err := v.Unmarshal(&cfg, decode); err != nil {
 		return nil, fmt.Errorf("config: unmarshal: %w", err)
 	}
+	if v.GetString("http.cookieSecure") == "" {
+		cfg.HTTP.CookieSecure = strings.HasPrefix(strings.ToLower(cfg.HTTP.BaseURL), "https://")
+	}
 
 	if err := cfg.Validate(); err != nil {
 		return nil, err
@@ -82,7 +85,6 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("mode", string(ModeSelfhosted))
 
 	v.SetDefault("http.addr", ":5150")
-	v.SetDefault("http.cookieSecure", false)
 	v.SetDefault("http.csp.enabled", true)
 	v.SetDefault("http.csp.reportOnly", false)
 
@@ -144,6 +146,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("i18n.defaultLocale", "en-US")
 
 	v.SetDefault("tokens.clockSkew", "60s")
+	v.SetDefault("tokens.introspection.maxPerMinute", 0)
 }
 
 // Defaults returns a Config with the seeded defaults materialised as a typed value.
