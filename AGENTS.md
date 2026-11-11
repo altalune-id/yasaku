@@ -140,7 +140,7 @@ yasaku is a fork of the template. It adds a personal-finance domain on top of th
   NATS on Railway: [`docs/deployment/yasaku.md`](docs/deployment/yasaku.md).
 - **Opensheet** — optional one-way mirror of a project's wallets, categories and transactions to
   Google Sheets, unmounted unless `opensheet.baseURL` is set (it then needs `security.encryptionKey`).
-  Mark inside the write's unit of work, Kick after the commit; the `opensheet.sync` job and the 5-minute
+  Mark inside the write's unit of work, Kick after the commit; the `opensheet.sync` job and the 15-minute
   reconciler push. Contract: [`docs/opensheet/yasaku.md`](docs/opensheet/yasaku.md).
 - **opensheet-api skill** — `.claude/skills/opensheet-api` is yasaku-only. Use it when calling the
   opensheet HTTP data plane.

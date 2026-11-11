@@ -102,6 +102,8 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("scheduler.timezone", "UTC")
 	v.SetDefault("scheduler.shutdownGrace", "30s")
 
+	v.SetDefault("outbox.idlePoll", "5s")
+
 	v.SetDefault("queue.enabled", false)
 	v.SetDefault("queue.connectTimeout", "10s")
 

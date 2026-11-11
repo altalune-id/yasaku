@@ -46,6 +46,7 @@ type Config struct {
 	Telemetry     telemetry.Config    `yaml:"telemetry"     mapstructure:"telemetry"`
 	Scheduler     SchedulerConfig     `yaml:"scheduler"     mapstructure:"scheduler"`
 	Queue         QueueConfig         `yaml:"queue"         mapstructure:"queue"`
+	Outbox        OutboxConfig        `yaml:"outbox"        mapstructure:"outbox"`
 	Observability ObservabilityConfig `yaml:"observability" mapstructure:"observability"`
 	Mail          MailConfig          `yaml:"mail"          mapstructure:"mail"`
 	I18n          I18nConfig          `yaml:"i18n"          mapstructure:"i18n"`
@@ -215,6 +216,11 @@ type SchedulerConfig struct {
 // SchedulerJobConfig overrides per-job scheduler settings by job name.
 type SchedulerJobConfig struct {
 	Timezone string `yaml:"timezone" mapstructure:"timezone" awareness:"-"`
+}
+
+// OutboxConfig tunes the outbox dispatch worker.
+type OutboxConfig struct {
+	IdlePoll time.Duration `yaml:"idlePoll" mapstructure:"idlePoll" awareness:"-" validate:"gte=0"`
 }
 
 // QueueConfig configures the NATS JetStream connection behind queue.Submit and the consumer.
