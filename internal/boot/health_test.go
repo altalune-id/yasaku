@@ -4,9 +4,9 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
-	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"altalune.id/yasaku/internal/boot"
 )
@@ -78,11 +78,11 @@ func TestBootServer_SchedulerDisabled_ReadyzStillTracksSnapshot(t *testing.T) {
 	_ = srv.Health.Probe(context.Background())
 
 	if got := statusOf(t, srv.Web, "/readyz"); got != http.StatusServiceUnavailable {
-		t.Fatalf("GET /readyz on a no-scheduler replica: status=%d, want 503 — the db-health worker runs regardless of the scheduler", got)
+		t.Fatalf("GET /readyz on a no-scheduler replica: status=%d, want 503 — readiness does not depend on the scheduler", got)
 	}
 }
 
-func TestBootServer_HealthWorkerIsRegisteredRegardlessOfScheduler(t *testing.T) {
+func TestBootServer_ReadyzProbesOnDemandRegardlessOfScheduler(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		opts []boot.Option
@@ -93,6 +93,7 @@ func TestBootServer_HealthWorkerIsRegisteredRegardlessOfScheduler(t *testing.T) 
 		t.Run(tc.name, func(t *testing.T) {
 			cfg := newSmokeCfg(t)
 			cfg.Scheduler.Enabled = true
+			cfg.DB.Health.Interval = time.Nanosecond
 
 			srv, err := boot.BootServer(context.Background(), cfg, tc.opts...)
 			if err != nil {
@@ -100,12 +101,14 @@ func TestBootServer_HealthWorkerIsRegisteredRegardlessOfScheduler(t *testing.T) 
 			}
 			t.Cleanup(func() { _ = srv.Close() })
 
-			var names []string
 			for _, w := range srv.Supervisor.Workers() {
-				names = append(names, w.Name())
+				if w.Name() == "db-health" {
+					t.Fatal("a db-health ticker would keep an idle database awake")
+				}
 			}
-			if !slices.Contains(names, "db-health") {
-				t.Fatalf("supervisor workers = %v, want a db-health worker", names)
+			_ = srv.Platform.Pool.W.Close()
+			if got := statusOf(t, srv.Web, "/readyz"); got != http.StatusServiceUnavailable {
+				t.Fatalf("GET /readyz with a dead pool and a stale snapshot: status=%d, want 503", got)
 			}
 		})
 	}

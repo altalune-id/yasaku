@@ -10,8 +10,8 @@ import (
 
 const (
 	reconcileJobName = "opensheet-reconcile"
-	reconcileEvery   = 5 * time.Minute
-	reconcileJitter  = 30 * time.Second
+	reconcileEvery   = 15 * time.Minute
+	reconcileJitter  = 90 * time.Second
 	// NOTE: the scheduler applies Timeout per tenant, not per tick; 60s leaves room for two inline jobs per org (submitHeadroom), and a queued reconcile only publishes.
 	reconcileTimeout = time.Minute
 )

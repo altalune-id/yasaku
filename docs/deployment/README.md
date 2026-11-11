@@ -97,14 +97,14 @@ reach yasaku on its listen port directly, so their config survives a remount; an
 typically route only `example.com/<basePath>/*`, keeping `/healthz` off the public surface.
 
 - `/healthz` — the process is serving. Never touches the DB.
-- `/readyz` — every DB handle passed the most recent probe (200), else **503**. Reads the snapshot.
+- `/readyz` — every DB handle passed the most recent probe (200), else **503**.
 
 Boot probes once synchronously before the listener accepts traffic, so `/readyz` is accurate from
-the first request — no unready window on rollout. `db-health` then refreshes the snapshot every
-`db.health.interval`, so readiness lags a DB outage by up to one interval. It is a standalone `Worker`
-on the HTTP listener's `Supervisor`, not a scheduler job, so it runs in **every** replica regardless
-of `scheduler.enabled` or `serve --no-scheduler`. Each replica probes its own pool; the snapshot is
-never shared. A probe failure is logged and the worker keeps ticking — it never reaches the
+the first request — no unready window on rollout. After that, `/readyz` reuses a probe younger than
+`db.health.interval` and pings again only when it is older, so readiness lags a DB outage by up to one
+interval and an unprobed replica sends no query. It is not a scheduler job, so it works in **every**
+replica regardless of `scheduler.enabled` or `serve --no-scheduler`. Each replica probes its own
+pool; the snapshot is never shared. A probe failure is logged and answers 503 — it never reaches the
 notification sinks and never fails the process.
 
 **`yasaku healthz`** is the compose and k8s healthcheck: a self-contained probe that needs no

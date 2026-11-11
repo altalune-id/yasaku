@@ -261,7 +261,7 @@ func TestReconcile_StartsOneProjectLaterEachTick(t *testing.T) {
 		_, err := e.mirror.Reconcile(orgCtx)
 		require.NoError(t, err)
 		first[e.payloads(t)[0].ProjectID] = true
-		e.now = e.now.Add(5 * time.Minute)
+		e.now = e.now.Add(15 * time.Minute)
 	}
 	require.Len(t, first, len(projects), "over three ticks every project goes first once")
 }

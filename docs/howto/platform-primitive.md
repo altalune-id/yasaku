@@ -11,7 +11,7 @@ anti-patterns: [`platform`](../platform/README.md).
    case it is a root package and every signature change costs every fork.
 2. **Write `<name>.go`** — package godoc plus the port type. Copy the nearest analogue:
    `internal/platform/session/` for an adapter over several backends, `internal/platform/outbox/`
-   or `db.HealthMonitor` (`internal/platform/db/health.go`) for a loop.
+   for a loop.
 3. **One constructor.** `New` for a single type, `New<Thing>` for a factory. Required inputs are
    positional; `*slog.Logger` and `apperror.UnexpectedFunc` are injected, never reached for. No
    package-level singletons, no `Init()`, no goroutine started at construction.
@@ -38,8 +38,8 @@ type Worker interface {
   (`worker/supervisor.go`) runs every worker under one errgroup and returns the first non-nil
   error, cancelling every sibling. A worker reporting its own clean shutdown as an error takes the
   process down.
-- **A periodic loop logs per-tick failures instead of returning them.** `db.HealthMonitor` swallows
-  probe errors so a database blip cannot kill the process.
+- **A periodic loop logs per-tick failures instead of returning them.** The outbox dispatch worker
+  logs claim errors so a database blip cannot kill the process.
 - **Stay inside the 10s graceful window** — `worker.HTTP`'s shutdown budget.
 - **Ticker plus `ctx.Done()`**, never `time.Sleep` in a loop.
 

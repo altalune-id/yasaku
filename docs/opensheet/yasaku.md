@@ -130,7 +130,7 @@ few minutes), then run Test again. yasaku does not purge opensheet's cache: that
 4. **Fast drain**, queue on only: a job that got a full batch of 50, processed all of them and
    pushed at least one, submits one follow-up job with the next 50 claimable dirty rows. Inline jobs
    never chain.
-5. **The reconciler** `opensheet-reconcile` runs every 5 minutes (30s jitter) per org, singleton,
+5. **The reconciler** `opensheet-reconcile` runs every 15 minutes (90s jitter) per org, singleton,
    60s per org. It re-submits rows still dirty a minute after their last mark or failed push that
    are not leased, not waiting on `retry_after` and not given up: one page of 50 per project when queued, up to two
    pages (100) per project inline. Each tick starts one project later, so a long backlog cannot keep
@@ -139,10 +139,10 @@ few minutes), then run Test again. yasaku does not purge opensheet's cache: that
    50 dirty rows. It runs on every off→on, on a Save that points an enabled link at other sheets, and
    on "Sync everything now".
 
-| `queue.enabled` | A write waits for                         | A backfill drains                                     |
-| --------------- | ----------------------------------------- | ----------------------------------------------------- |
-| `true`          | the publish only                          | 50 rows per job, job after job (fast drain)           |
-| `false`         | one inline job of up to 50 rows (20s cap) | 50 rows at once, then 100 per project every 5 minutes |
+| `queue.enabled` | A write waits for                         | A backfill drains                                      |
+| --------------- | ----------------------------------------- | ------------------------------------------------------ |
+| `true`          | the publish only                          | 50 rows per job, job after job (fast drain)            |
+| `false`         | one inline job of up to 50 rows (20s cap) | 50 rows at once, then 100 per project every 15 minutes |
 
 ## Failures
 
