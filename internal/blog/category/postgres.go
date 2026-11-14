@@ -100,6 +100,10 @@ func (s *postgresStore) Save(ctx context.Context, c *Category) error {
 			).WHERE(s.table.OrgID.EQ(postgres.UUID(tc.OrgID))),
 		)
 	res, execErr := stmt.ExecContext(ctx, tx)
+	// NOTE: the conflict clause's org guard refuses with zero rows, or with a row-level security refusal on Postgres 17.12+.
+	if pdb.IsRowSecurityViolation(execErr) {
+		return s.endTx(tx, owned, &NotFoundError{ID: c.ID.String()})
+	}
 	if execErr != nil {
 		if typed := translatePgError(execErr, c.Slug, c.ID.String()); typed != nil {
 			return s.endTx(tx, owned, typed)
