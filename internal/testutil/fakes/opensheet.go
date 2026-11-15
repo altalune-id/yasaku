@@ -29,6 +29,8 @@ type OpensheetRequest struct {
 	ID             string
 	IdempotencyKey string
 	Body           map[string]string
+	// Numbers lists, sorted, the body fields that arrived as JSON numbers.
+	Numbers []string
 }
 
 type opensheetTab struct {
@@ -170,11 +172,11 @@ const (
 )
 
 // NOTE: every handler holds f.mu for the whole request, so the fake is linearizable.
-func (f *Opensheet) admit(w http.ResponseWriter, r *http.Request, body map[string]string) (*opensheetTab, bool) {
+func (f *Opensheet) admit(w http.ResponseWriter, r *http.Request, body map[string]string, numbers []string) (*opensheetTab, bool) {
 	slug := r.PathValue("slug")
 	f.log = append(f.log, OpensheetRequest{
 		Method: r.Method, Slug: slug, ID: r.PathValue("id"),
-		IdempotencyKey: r.Header.Get("Idempotency-Key"), Body: body,
+		IdempotencyKey: r.Header.Get("Idempotency-Key"), Body: body, Numbers: numbers,
 	})
 	tab, ok := f.tabs[slug]
 	if !ok || r.Header.Get("Authorization") != "Bearer "+f.token ||
@@ -192,8 +194,8 @@ func (f *Opensheet) admit(w http.ResponseWriter, r *http.Request, body map[strin
 
 func (f *Opensheet) admitWrite(w http.ResponseWriter, r *http.Request) (*opensheetTab, map[string]string, bool) {
 	raw, err := io.ReadAll(r.Body)
-	body, valid := decodeOpensheetRow(raw)
-	tab, ok := f.admit(w, r, body)
+	body, numbers, valid := decodeOpensheetRow(raw)
+	tab, ok := f.admit(w, r, body, numbers)
 	if !ok {
 		return nil, nil, false
 	}
@@ -218,7 +220,7 @@ func (f *Opensheet) unrouted(w http.ResponseWriter, r *http.Request) {
 func (f *Opensheet) capabilities(w http.ResponseWriter, r *http.Request) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	tab, ok := f.admit(w, r, nil)
+	tab, ok := f.admit(w, r, nil, nil)
 	if !ok {
 		return
 	}
@@ -326,7 +328,7 @@ func (f *Opensheet) create(w http.ResponseWriter, r *http.Request) {
 func (f *Opensheet) read(w http.ResponseWriter, r *http.Request) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	tab, ok := f.admit(w, r, nil)
+	tab, ok := f.admit(w, r, nil, nil)
 	if !ok {
 		return
 	}
@@ -396,7 +398,7 @@ func (f *Opensheet) replace(w http.ResponseWriter, r *http.Request) {
 func (f *Opensheet) remove(w http.ResponseWriter, r *http.Request) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	tab, ok := f.admit(w, r, nil)
+	tab, ok := f.admit(w, r, nil, nil)
 	if !ok {
 		return
 	}
@@ -462,14 +464,15 @@ func visibleOpensheetRow(row map[string]string) map[string]string {
 	return out
 }
 
-func decodeOpensheetRow(raw []byte) (map[string]string, bool) {
+func decodeOpensheetRow(raw []byte) (row map[string]string, numbers []string, ok bool) { //nolint:nonamedreturns // three results differ in role
 	var fields map[string]any
 	if err := json.Unmarshal(raw, &fields); err != nil || fields == nil {
-		return nil, false
+		return nil, nil, false
 	}
 	delete(fields, "numeric_columns")
 	out := make(map[string]string, len(fields))
-	for k, v := range fields {
+	for _, k := range slices.Sorted(maps.Keys(fields)) {
+		v := fields[k]
 		switch t := v.(type) {
 		case nil:
 			out[k] = ""
@@ -479,11 +482,12 @@ func decodeOpensheetRow(raw []byte) (map[string]string, bool) {
 			out[k] = strconv.FormatBool(t)
 		case float64:
 			out[k] = strconv.FormatFloat(t, 'f', -1, 64)
+			numbers = append(numbers, k)
 		default:
-			return nil, false
+			return nil, nil, false
 		}
 	}
-	return out, true
+	return out, numbers, true
 }
 
 func opensheetHash(body map[string]string) string {

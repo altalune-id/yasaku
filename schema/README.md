@@ -132,11 +132,21 @@ pinned by `TestMigrateUp_DefinerFunctionsAreOwnedByTheMigrationRole`.
 ### Numbering
 
 yasaku keeps one numbering per dialect. Its own migrations (`007_yasaku`,
-`016_key_authorship` on Postgres; `005_yasaku`, `013_key_authorship` on
+`016_key_authorship`, `017_opensheet`, `018_opensheet_resync` on Postgres;
+`005_yasaku`, `013_key_authorship`, `014_opensheet`, `015_opensheet_resync` on
 SQLite) interleave with the template's. A template migration lands at yasaku's
 next free number with byte-identical content, so template `007_apikey` is
 yasaku `008_apikey`. Never renumber or edit an applied migration. Production has
 applied everything up to the version it ran.
+
+### Data migrations
+
+| Migration (Postgres / SQLite)                   | Effect                                                                                                                                                                                                           |
+| ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `018_opensheet_resync` / `015_opensheet_resync` | sets `opensheet_sync_state.synced_version = 0`, `attempts = 0` and `retry_after = NULL` on every row, so the sync and the reconciler rewrite each mirrored row once with numeric amounts, given-up rows included |
+
+It runs as the migration role, which holds `BYPASSRLS`, so it reaches every org's rows under
+`FORCE ROW LEVEL SECURITY`. Its Down is empty: nothing to undo.
 
 ### Ledger tables
 

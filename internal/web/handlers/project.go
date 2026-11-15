@@ -95,7 +95,13 @@ func (h *ProjectHandler) PostRename(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	o, proj, r := sc.org, sc.project, sc.req
+	p, o, proj, r := sc.principal, sc.org, sc.project, sc.req
+	// SECURITY: membership is org-wide, so a plain member reaches this route; only an owner or admin may rename, and a failed lookup refuses.
+	canManage, mErr := h.Orgs.IsManager(r.Context(), o.ID, p.UserID)
+	if mErr != nil || !canManage {
+		h.ErrorPage(w, r, http.StatusForbidden, "Not allowed", "You must be an admin or owner to rename this project.")
+		return
+	}
 	if err := r.ParseForm(); err != nil {
 		h.ErrorPage(w, r, http.StatusBadRequest, "Bad request", "Could not parse form body.")
 		return

@@ -49,7 +49,7 @@ for page, err := range c.Pages(ctx, "reservations", opensheet.Query{
 `CreateRow` accepts `WithIdempotencyKey` so a retried POST replays the original result
 instead of creating a duplicate row; only that call path retries POST requests.
 `WithNumericColumns` marks which row values should be sent as JSON numbers rather than
-strings. `ReplaceRow`, `PatchRow`, and `DeleteRow` accept `WithIfMatch(etag)` so the write
+strings; each value must be a JSON number literal and goes out byte for byte. `ReplaceRow`, `PatchRow`, and `DeleteRow` accept `WithIfMatch(etag)` so the write
 fails with `PreconditionFailedError` if the row changed since the caller last read it.
 
 ## The 404 mask

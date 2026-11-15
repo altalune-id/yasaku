@@ -52,6 +52,8 @@ One Go table, `opensheetsync.Contract()`, drives the Test, the tutorial and the 
 - Each tab has its own sheet slug; two tabs on one slug is `OSL002`.
 - `date` is the ledger day in the project timezone, `occurred_at` carries that zone's offset,
   `updated_at` is UTC, money is in major units.
+- `amount` (transactions) and `balance` (wallets) are sent as JSON numbers on every create and patch
+  (`Tab.Numeric`), their decimal text unchanged, so the cells sum. Categories have no numeric column.
 
 ## Setting up a project
 
