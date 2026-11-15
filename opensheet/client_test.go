@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -362,4 +363,36 @@ func TestCreateRow_ANonNumericValueNamesTheColumnOnly(t *testing.T) {
 	require.ErrorAs(t, err, &ve)
 	require.Equal(t, "client", ve.Code)
 	require.Equal(t, "column amount is not numeric", ve.Message, "no Go error text and no cell value")
+}
+
+func TestPatchRow_NumericColumnsKeepTheDecimalTextByteForByte(t *testing.T) {
+	var raw []byte
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/orgs/o1/projects/p1/sheets/s1/rows/r1", func(w http.ResponseWriter, r *http.Request) {
+		var err error
+		raw, err = io.ReadAll(r.Body)
+		require.NoError(t, err)
+		writeJSON(t, w, http.StatusOK, opensheet.Row{"id": "r1"})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	c := newTestClient(t, srv.URL)
+	_, _, err := c.PatchRow(t.Context(), "s1", "r1", opensheet.Row{"amount": "12500.50", "fee": "-0.10", "note": "7"}, opensheet.WithNumericColumns("amount", "fee"))
+	require.NoError(t, err)
+
+	body := string(raw)
+	require.Contains(t, body, `"amount":12500.50`, "the major-unit text goes out as a JSON number, trailing zero kept")
+	require.Contains(t, body, `"fee":-0.10`)
+	require.Contains(t, body, `"note":"7"`, "a column not marked numeric stays a string")
+}
+
+func TestCreateRow_ANumericColumnRefusesWhatIsNotAJSONNumber(t *testing.T) {
+	c := newTestClient(t, "http://127.0.0.1:1")
+	for _, v := range []string{"NaN", "Inf", "0x1p4", "1_000", "+1", ".5", ""} {
+		_, _, err := c.CreateRow(t.Context(), "s1", opensheet.Row{"amount": v}, opensheet.WithNumericColumns("amount"))
+		var ve *opensheet.ValidationError
+		require.ErrorAs(t, err, &ve, "%q must be refused before the request", v)
+		require.Equal(t, "column amount is not numeric", ve.Message)
+	}
 }

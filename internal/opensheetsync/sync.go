@@ -190,7 +190,8 @@ func (s *Syncer) push(ctx context.Context, c *opensheet.Client, l *Link, st Stat
 	if !found {
 		return remove(ctx, c, sheet, id)
 	}
-	return upsert(ctx, c, sheet, id, st.Version, row)
+	tab, _ := TabFor(st.Entity)
+	return upsert(ctx, c, sheet, id, st.Version, row, opensheet.WithNumericColumns(tab.Numeric...))
 }
 
 func (s *Syncer) rowOf(ctx context.Context, ref Ref) (row map[string]string, found bool, err error) {
@@ -220,24 +221,24 @@ func (s *Syncer) rowOf(ctx context.Context, ref Ref) (row map[string]string, fou
 }
 
 // NOTE: the PATCH body never carries id (opensheet refuses it) nor deleted_at, so a row the sheet tombstoned takes the edit and stays tombstoned.
-func upsert(ctx context.Context, c *opensheet.Client, sheet, id string, version int64, row map[string]string) error {
+func upsert(ctx context.Context, c *opensheet.Client, sheet, id string, version int64, row map[string]string, numeric opensheet.WriteOption) error {
 	patch := maps.Clone(row)
 	delete(patch, "id")
-	_, _, err := c.PatchRow(ctx, sheet, id, opensheet.Row(patch))
+	_, _, err := c.PatchRow(ctx, sheet, id, opensheet.Row(patch), numeric)
 	if err == nil {
 		return nil
 	}
 	if !rowMissing(err) {
 		return refusal(sheet, err)
 	}
-	_, _, err = c.CreateRow(ctx, sheet, opensheet.Row(row), opensheet.WithIdempotencyKey(id+":"+strconv.FormatInt(version, 10)))
+	_, _, err = c.CreateRow(ctx, sheet, opensheet.Row(row), numeric, opensheet.WithIdempotencyKey(id+":"+strconv.FormatInt(version, 10)))
 	if err == nil {
 		return nil
 	}
 	if !rowTaken(err) {
 		return refusal(sheet, err)
 	}
-	_, _, err = c.PatchRow(ctx, sheet, id, opensheet.Row(patch))
+	_, _, err = c.PatchRow(ctx, sheet, id, opensheet.Row(patch), numeric)
 	// NOTE: SHT013 here means the row left the tab by hand between the create and this patch; nothing is left to update.
 	if err == nil || rowMissing(err) {
 		return nil

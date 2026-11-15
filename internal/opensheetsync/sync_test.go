@@ -34,6 +34,7 @@ type stubSource struct {
 	mu       sync.Mutex
 	txs      map[uuid.UUID]opensheetsync.TransactionFacts
 	wallet   map[uuid.UUID]opensheetsync.WalletFacts
+	category map[uuid.UUID]opensheetsync.CategoryFacts
 	onRead   func()
 	honorCtx bool
 }
@@ -59,8 +60,11 @@ func (s *stubSource) Wallet(_ context.Context, id uuid.UUID) (opensheetsync.Wall
 	return f, ok, nil
 }
 
-func (s *stubSource) Category(context.Context, uuid.UUID) (opensheetsync.CategoryFacts, bool, error) {
-	return opensheetsync.CategoryFacts{}, false, nil
+func (s *stubSource) Category(_ context.Context, id uuid.UUID) (opensheetsync.CategoryFacts, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	f, ok := s.category[id]
+	return f, ok, nil
 }
 
 type syncEnv struct {
@@ -71,7 +75,7 @@ type syncEnv struct {
 
 func newSyncEnv(t *testing.T) *syncEnv {
 	t.Helper()
-	e := &syncEnv{serviceEnv: newServiceEnv(t), source: &stubSource{txs: map[uuid.UUID]opensheetsync.TransactionFacts{}, wallet: map[uuid.UUID]opensheetsync.WalletFacts{}}}
+	e := &syncEnv{serviceEnv: newServiceEnv(t), source: &stubSource{txs: map[uuid.UUID]opensheetsync.TransactionFacts{}, wallet: map[uuid.UUID]opensheetsync.WalletFacts{}, category: map[uuid.UUID]opensheetsync.CategoryFacts{}}}
 	addContractSheets(e.sheets, true)
 	_, _, err := e.svc.Save(e.ctx, settings(goodKey))
 	require.NoError(t, err)
@@ -768,4 +772,44 @@ func TestSync_APrivateHostNameIsALinkLevelConfigRefusal(t *testing.T) {
 	st, _ := e.store.State(e.tc.OrgID, r.Entity, r.ID)
 	require.NotContains(t, st.LastError, "localhost")
 	require.Zero(t, e.sheets.CountRequests(http.MethodPatch, "yasaku-transactions"))
+}
+
+func TestSync_SendsMoneyColumnsAsNumbersOnCreateAndPatch(t *testing.T) {
+	e := newSyncEnv(t)
+	walletID, categoryID := uuid.New(), uuid.New()
+	e.source.mu.Lock()
+	e.source.wallet[walletID] = opensheetsync.WalletFacts{ID: walletID, Name: "BCA", Kind: "bank", Balance: money.New(-1_250_050, money.IDR), UpdatedAt: e.now}
+	e.source.category[categoryID] = opensheetsync.CategoryFacts{ID: categoryID, Name: "Food", Kind: "expense", UpdatedAt: e.now}
+	e.source.mu.Unlock()
+	tx := e.tx(t, "nasi goreng")
+
+	for _, tc := range []struct {
+		ref   opensheetsync.Ref
+		sheet string
+		want  []string
+	}{
+		{tx, "yasaku-transactions", []string{"amount"}},
+		{ref(opensheetsync.EntityWallet, walletID), "yasaku-wallets", []string{"balance"}},
+		{ref(opensheetsync.EntityCategory, categoryID), "yasaku-categories", nil},
+	} {
+		t.Run(tc.sheet, func(t *testing.T) {
+			require.NoError(t, e.mirror.Mark(e.ctx, tc.ref))
+			require.NoError(t, e.syncer.Sync(e.ctx, e.tc.ProjectID, []opensheetsync.Ref{tc.ref}), "the create")
+			require.NoError(t, e.mirror.Mark(e.ctx, tc.ref))
+			require.NoError(t, e.syncer.Sync(e.ctx, e.tc.ProjectID, []opensheetsync.Ref{tc.ref}), "the patch")
+
+			methods := map[string]int{}
+			for _, r := range e.sheets.Requests() {
+				if r.Slug != tc.sheet || r.Method == http.MethodGet {
+					continue
+				}
+				methods[r.Method]++
+				require.Equal(t, tc.want, r.Numbers, "%s %s sent the wrong numeric columns", r.Method, tc.sheet)
+			}
+			require.Equal(t, 1, methods[http.MethodPost], "one create")
+			require.Equal(t, 2, methods[http.MethodPatch], "the patch that found no row, then the update")
+		})
+	}
+	row, _ := e.sheets.Row("yasaku-wallets", walletID.String())
+	require.Equal(t, "-12500.5", row["balance"], "a negative balance with cents survives as a number")
 }

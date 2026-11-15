@@ -207,6 +207,7 @@ func surfaceChains(
 		Console: slices.Concat(edge, []web.Middleware{
 			webmw.CSP(cspOptions(cfg)),
 			webmw.Recover(reporter.Unexpected, errTmpl),
+			crossOrigin(cfg.HTTP.BaseURL, slogger),
 			webmw.Session(webmw.SessionConfig{
 				Store:  kernel.Sessions,
 				Secret: web.DeriveKey(kernel.StateSecret, web.PurposeSession),
@@ -231,6 +232,19 @@ func surfaceChains(
 			webmw.RecoverJSON(reporter.Unexpected),
 		}),
 	}
+}
+
+// SECURITY: behind a proxy the Host header is not the public origin, so the configured baseURL origin is trusted explicitly.
+func crossOrigin(baseURL string, log *slog.Logger) web.Middleware {
+	cop := http.NewCrossOriginProtection()
+	origin := web.Origin(baseURL)
+	if origin == "" {
+		return cop.Handler
+	}
+	if err := cop.AddTrustedOrigin(origin); err != nil {
+		log.Warn("boot: http.baseURL origin is not trusted by the cross-origin check", slog.String("err", err.Error()))
+	}
+	return cop.Handler
 }
 
 func healthOnlyHandler(cfg *config.Config, healthOK func() bool) http.Handler {

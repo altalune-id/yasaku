@@ -4,11 +4,12 @@ import "strings"
 
 const deletedAtColumn = "deleted_at"
 
-// Tab is one sheet yasaku mirrors into: the entity, the slug the tutorial suggests and the header row it needs.
+// Tab is one sheet yasaku mirrors into: the entity, the slug the tutorial suggests, the header row it needs and the columns written as numbers.
 type Tab struct {
 	Entity      Entity
 	DefaultSlug string
 	Columns     []string
+	Numeric     []string
 }
 
 // Contract is the sheet contract, in tutorial order. NOTE: changing it breaks every linked sheet; TestContract_IsPinned guards it.
@@ -17,10 +18,10 @@ func Contract() []Tab {
 		{Entity: EntityTransaction, DefaultSlug: "yasaku-transactions", Columns: []string{
 			"id", "date", "occurred_at", "kind", "amount", "currency", "wallet", "wallet_id", "to_wallet", "to_wallet_id",
 			"category", "category_id", "note", "period", "recurring_id", "updated_at", deletedAtColumn,
-		}},
+		}, Numeric: []string{"amount"}},
 		{Entity: EntityWallet, DefaultSlug: "yasaku-wallets", Columns: []string{
 			"id", "name", "kind", "provider", "currency", "balance", "exclude_from_total", "archived", "updated_at", deletedAtColumn,
-		}},
+		}, Numeric: []string{"balance"}},
 		{Entity: EntityCategory, DefaultSlug: "yasaku-categories", Columns: []string{
 			"id", "name", "kind", "icon", "color", "archived", "updated_at", deletedAtColumn,
 		}},

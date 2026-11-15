@@ -2,6 +2,7 @@ package opensheet
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"strconv"
 	"time"
@@ -40,11 +41,10 @@ func convertRow(row Row, numericSet map[string]bool) (map[string]any, error) {
 			body[k] = v
 			continue
 		}
-		n, err := strconv.ParseFloat(v, 64)
-		if err != nil {
+		if _, err := strconv.ParseFloat(v, 64); err != nil || !json.Valid([]byte(v)) {
 			return nil, &ValidationError{Code: "client", Message: "column " + k + " is not numeric"}
 		}
-		body[k] = n
+		body[k] = json.Number(v)
 	}
 	return body, nil
 }
