@@ -1,0 +1,46 @@
+package templates
+
+import "altalune.id/yasaku/internal/web"
+
+templ ThemeMetas(d web.LayoutData) {
+	for _, m := range d.Theme.Metas() {
+		if m.Media == "" {
+			<meta name="theme-color" content={ m.Color }/>
+		} else {
+			<meta name="theme-color" media={ m.Media } content={ m.Color }/>
+		}
+	}
+}
+
+templ ThemePicker(d web.LayoutData) {
+	<form method="post" action={ templ.SafeURL(d.Href("/theme")) } class="flex flex-col gap-2 p-2">
+		<input type="hidden" name="redirect" value={ d.CurrentPath }/>
+		if families := web.Families(); len(families) > 1 {
+			@FieldGroup(d.Tr("theme.family")) {
+				<div class="grid grid-cols-2 gap-x-2">
+					for _, f := range families {
+						<label class="flex min-h-11 cursor-pointer items-center gap-2 text-sm text-base-content">
+							<input type="radio" name="family" value={ f } class="radio radio-sm radio-primary" checked?={ f == d.Theme.Family }/>
+							<span class="truncate">{ d.Tr(themeFamilyKey(f)) }</span>
+						</label>
+					}
+				</div>
+			}
+		} else {
+			<input type="hidden" name="family" value={ d.Theme.Family }/>
+		}
+		@FieldGroup(d.Tr("theme.mode")) {
+			@themeModeOption(d, web.ModeLight, d.Tr("theme.light"))
+			@themeModeOption(d, web.ModeDark, d.Tr("theme.dark"))
+			@themeModeOption(d, web.ModeSystem, d.Tr("theme.system"))
+		}
+		<button type="submit" class="btn btn-sm btn-primary min-h-11">{ d.Tr("theme.apply") }</button>
+	</form>
+}
+
+templ themeModeOption(d web.LayoutData, mode, label string) {
+	<label class="flex min-h-11 cursor-pointer items-center gap-2 text-sm text-base-content">
+		<input type="radio" name="mode" value={ mode } class="radio radio-sm radio-primary" checked?={ d.Theme.Mode == mode }/>
+		<span>{ label }</span>
+	</label>
+}

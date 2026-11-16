@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"slices"
 	"sync"
 	"testing"
 
@@ -141,7 +142,7 @@ func TestLocalLogin_TableDriven(t *testing.T) {
 		},
 		{
 			name:           "ok existing user",
-			seed:           &auth.UserRef{ID: uuid.New(), Email: "admin@example.com", Name: "Root", Source: "genesis"},
+			seed:           &auth.UserRef{ID: uuid.New(), Email: "admin@example.com", Name: "Root", Source: "genesis", Theme: "fam", ColorMode: "light", TipsSeen: []string{"t1"}},
 			creds:          auth.Credentials{Email: "  Admin@Example.com ", Password: "root"},
 			wantSameUserID: true,
 		},
@@ -184,6 +185,12 @@ func TestLocalLogin_TableDriven(t *testing.T) {
 			}
 			if tc.wantSameUserID && tc.seed != nil && p.UserID != tc.seed.ID {
 				t.Errorf("userID=%v want %v", p.UserID, tc.seed.ID)
+			}
+			if tc.seed != nil && (p.Theme != tc.seed.Theme || p.ColorMode != tc.seed.ColorMode) {
+				t.Errorf("theme prefs not carried: %q %q", p.Theme, p.ColorMode)
+			}
+			if tc.seed != nil && !slices.Equal(p.TipsSeen, tc.seed.TipsSeen) {
+				t.Errorf("seen tips not carried: %v", p.TipsSeen)
 			}
 			if tc.wantSaved {
 				if _, err := store.ByEmail(context.Background(), "admin@example.com"); err != nil {

@@ -62,7 +62,7 @@ templ TagList(d web.LayoutData, v TagsView) {
 							required
 							value={ t.Name }
 							aria-label={ d.Tr("blog.tag_name") }
-							class="min-w-0 flex-1 rounded-md border border-border bg-card px-3 py-1.5 text-sm text-foreground shadow-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
+							class="input min-w-0 flex-1"
 						/>
 						<button type="submit" class="shrink-0 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-foreground/90 hover:bg-muted">
 							{ d.Tr("blog.tag_rename") }
@@ -85,7 +85,7 @@ templ TagList(d web.LayoutData, v TagsView) {
 						<button
 							type="submit"
 							aria-label={ d.Tr("blog.tag_delete") + ": " + t.Name }
-							class="rounded p-1.5 text-muted-foreground/70 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 dark:hover:text-red-400"
+							class="rounded p-1.5 text-muted-foreground/70 hover:bg-error/10 hover:text-error"
 						>
 							@icons.Icon("trash-2", "h-4 w-4")
 						</button>
@@ -121,14 +121,14 @@ templ TagsPage(d web.LayoutData, v TagsView) {
 				required
 				placeholder={ d.Tr("blog.tag_name") }
 				aria-label={ d.Tr("blog.tag_name") }
-				class="min-w-48 flex-1 rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/70 shadow-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
+				class="input min-w-48 flex-1"
 			/>
 			<input
 				name="slug"
 				type="text"
 				placeholder={ d.Tr("blog.tag_slug") }
 				aria-label={ d.Tr("blog.tag_slug") }
-				class="min-w-48 flex-1 rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/70 shadow-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
+				class="input min-w-48 flex-1"
 			/>
 			<button type="submit" class="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2">
 				{ d.Tr("blog.tag_add") }

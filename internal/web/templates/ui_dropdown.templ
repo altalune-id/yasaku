@@ -1,0 +1,18 @@
+package templates
+
+// AppDropdown renders a details dropdown: trigger fills the summary button and the children fill a panel that contentClass positions.
+templ AppDropdown(trigger templ.Component, label, class, triggerClass, contentClass string) {
+	<details class={ "dropdown", class }>
+		<summary
+			class={ "btn", triggerClass }
+			if label != "" {
+				aria-label={ label }
+			}
+		>
+			@trigger
+		</summary>
+		<div class={ "absolute z-40 rounded-box border border-base-300 bg-base-100 p-2 shadow-md", contentClass }>
+			{ children... }
+		</div>
+	</details>
+}

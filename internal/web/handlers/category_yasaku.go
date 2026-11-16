@@ -33,7 +33,7 @@ func (h *TxCategoryHandler) GetCategories(w http.ResponseWriter, r *http.Request
 	v, err := h.categoriesView(sc, banner{}, -1)
 	if err != nil {
 		h.LogErr("web category: list", err)
-		h.ErrorPage(w, sc.req, http.StatusInternalServerError, "List failed", "Could not load categories.", err)
+		h.ErrorPage(w, sc.req, http.StatusInternalServerError, pageTitle(sc.req, "error_title.list_failed"), "Could not load categories.", err)
 		return
 	}
 	Render(w, sc.req, templates.TxCategoriesLayout(h.txCategoryLayout(sc), v))
@@ -46,7 +46,7 @@ func (h *TxCategoryHandler) PostCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := sc.req.ParseForm(); err != nil {
-		h.ErrorPage(w, sc.req, http.StatusBadRequest, "Bad request", "Could not parse form body.")
+		h.ErrorPage(w, sc.req, http.StatusBadRequest, pageTitle(sc.req, "error_title.bad_request"), "Could not parse form body.")
 		return
 	}
 	kind, err := category.ParseKind(sc.req.PostForm.Get("kind"))
@@ -98,7 +98,7 @@ func (h *TxCategoryHandler) PostRename(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := sc.req.ParseForm(); err != nil {
-		h.ErrorPage(w, sc.req, http.StatusBadRequest, "Bad request", "Could not parse form body.")
+		h.ErrorPage(w, sc.req, http.StatusBadRequest, pageTitle(sc.req, "error_title.bad_request"), "Could not parse form body.")
 		return
 	}
 	name := strings.TrimSpace(sc.req.PostForm.Get("name"))
@@ -178,24 +178,24 @@ func (h *TxCategoryHandler) requireCategory(w http.ResponseWriter, r *http.Reque
 	}
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
-		h.ErrorPage(w, sc.req, http.StatusBadRequest, "Bad id", "Malformed category id.")
+		h.ErrorPage(w, sc.req, http.StatusBadRequest, pageTitle(sc.req, "error_title.bad_id"), "Malformed category id.")
 		return ProjectScope{}, nil, false
 	}
 	c, err := h.TxCategories.ByID(sc.req.Context(), id)
 	if err != nil {
 		if category.IsNotFoundError(err) {
-			h.ErrorPage(w, sc.req, http.StatusNotFound, "Not found", "That category no longer exists.", err)
+			h.ErrorPage(w, sc.req, http.StatusNotFound, pageTitle(sc.req, "error_title.not_found"), "That category no longer exists.", err)
 			return ProjectScope{}, nil, false
 		}
 		h.LogErr("web category: byID", err)
-		h.ErrorPage(w, sc.req, http.StatusInternalServerError, "Lookup failed", "Could not load that category.", err)
+		h.ErrorPage(w, sc.req, http.StatusInternalServerError, pageTitle(sc.req, "error_title.lookup_failed"), "Could not load that category.", err)
 		return ProjectScope{}, nil, false
 	}
 	return sc, c, true
 }
 
 func (h *TxCategoryHandler) txCategoryLayout(sc ProjectScope) web.LayoutData {
-	return h.LayoutForProject(sc.req, "Categories · "+sc.project.Name, sc.org.Slug, sc.project, "categories")
+	return h.LayoutForProject(sc.req, pageTitle(sc.req, "nav.categories", sc.project.Name), sc.org.Slug, sc.project, "categories")
 }
 
 //i18n:use category.expense
@@ -241,7 +241,7 @@ func (h *TxCategoryHandler) writeTxCategoryListSeeded(w http.ResponseWriter, sc 
 	v, err := h.categoriesView(sc, b, seeded)
 	if err != nil {
 		h.LogErr("web category: list", err)
-		h.ErrorPage(w, sc.req, http.StatusInternalServerError, "List failed", "Could not load categories.", err)
+		h.ErrorPage(w, sc.req, http.StatusInternalServerError, pageTitle(sc.req, "error_title.list_failed"), "Could not load categories.", err)
 		return
 	}
 	Render(w, sc.req, templates.TxCategoryList(h.txCategoryLayout(sc), v))

@@ -117,6 +117,8 @@ func buildWebHandler(d webHandlerDeps) (handler http.Handler, routes []string) {
 	webhookHandler := webhandlers.NewWebhookHandler(deps, svcs.Projects, svcs.Webhooks)
 	inviteHandler := webhandlers.NewInviteHandler(deps, svcs.Orgs, svcs.Invites)
 	localeHandler := webhandlers.NewLocaleHandler(deps, svcs.Users)
+	themeHandler := webhandlers.NewThemeHandler(deps, svcs.Users)
+	tipsHandler := webhandlers.NewTipsHandler(deps, svcs.Users)
 	welcomeHandler := webhandlers.NewWelcomeHandler(deps, svcs.Users)
 	signupHandler := webhandlers.NewSignupHandler(deps, svcs.Users, svcs.Orgs, svcs.Projects)
 	legalHandler := webhandlers.NewLegalHandler(deps)
@@ -135,7 +137,7 @@ func buildWebHandler(d webHandlerDeps) (handler http.Handler, routes []string) {
 		BasePath: cfg.HTTP.BasePath,
 		HealthOK: d.HealthOK,
 		AppHandlers: publishedConsoleHandlers(append([]web.Register{
-			authHandler, onboardingHandler, onboardHandler, homeHandler, orgHandler, projectHandler, todoHandler, blogHandler, apiKeyHandler, webhookHandler, inviteHandler, localeHandler, welcomeHandler, signupHandler, legalHandler,
+			authHandler, onboardingHandler, onboardHandler, homeHandler, orgHandler, projectHandler, todoHandler, blogHandler, apiKeyHandler, webhookHandler, inviteHandler, localeHandler, themeHandler, tipsHandler, welcomeHandler, signupHandler, legalHandler,
 			overviewHandler, walletHandler, txCategoryHandler, transactionHandler, periodHandler, reportHandler, settingsHandler,
 		}, yasakuConsoleHandlers(deps, svcs)...)),
 		APIHandler:       d.APIHandler,

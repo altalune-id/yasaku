@@ -104,7 +104,7 @@ templ reportPeriodPicker(d web.LayoutData, v ReportsView) {
 			id="report-period"
 			name="period"
 			data-autosubmit
-			class="min-w-[10rem] rounded-md border border-border bg-card px-3 py-1.5 text-sm text-foreground shadow-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
+			class="select min-w-[10rem]"
 		>
 			for _, o := range v.Periods {
 				if o.Selected {
@@ -139,35 +139,35 @@ templ reportSummarySection(d web.LayoutData, v ReportsView) {
 			<div class="mt-4 overflow-x-auto">
 				<table class="w-full min-w-[32rem] border-collapse text-sm">
 					<thead>
-						<tr class="border-b border-border text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
-							<th scope="col" class="py-2 pr-3">{ d.Tr("report.wallet") }</th>
-							<th scope="col" class="py-2 px-3 text-right">{ d.Tr("report.opening") }</th>
-							<th scope="col" data-report-col="in" class="py-2 px-3 text-right">{ d.Tr("report.wallet_in") }</th>
-							<th scope="col" data-report-col="out" class="py-2 px-3 text-right">{ d.Tr("report.wallet_out") }</th>
-							<th scope="col" class="py-2 pl-3 text-right">{ d.Tr("report.closing") }</th>
+						<tr class="border-b border-border text-start text-xs font-medium uppercase tracking-wide text-muted-foreground">
+							<th scope="col" class="py-2 pe-3">{ d.Tr("report.wallet") }</th>
+							<th scope="col" class="py-2 px-3 text-end">{ d.Tr("report.opening") }</th>
+							<th scope="col" data-report-col="in" class="py-2 px-3 text-end">{ d.Tr("report.wallet_in") }</th>
+							<th scope="col" data-report-col="out" class="py-2 px-3 text-end">{ d.Tr("report.wallet_out") }</th>
+							<th scope="col" class="py-2 ps-3 text-end">{ d.Tr("report.closing") }</th>
 						</tr>
 					</thead>
 					<tbody class="divide-y divide-border/50">
 						for _, wal := range v.Wallets {
 							<tr>
-								<th scope="row" class="py-2 pr-3 text-left font-normal text-foreground">
+								<th scope="row" class="py-2 pe-3 text-start font-normal text-foreground">
 									{ wal.Name }
 									if wal.Excluded {
-										<span class="ml-1 text-xs text-muted-foreground">({ d.Tr("wallet.exclude_from_total") })</span>
+										<span class="ms-1 text-xs text-muted-foreground">({ d.Tr("wallet.exclude_from_total") })</span>
 									}
 								</th>
-								<td class="py-2 px-3 text-right tabular-nums text-muted-foreground">{ wal.Opening }</td>
-								<td class="py-2 px-3 text-right tabular-nums text-foreground">{ wal.In }</td>
-								<td class="py-2 px-3 text-right tabular-nums text-foreground">{ wal.Out }</td>
-								<td class="py-2 pl-3 text-right tabular-nums font-medium text-foreground">{ wal.Closing }</td>
+								<td class="py-2 px-3 text-end tabular-nums text-muted-foreground">{ wal.Opening }</td>
+								<td class="py-2 px-3 text-end tabular-nums text-foreground">{ wal.In }</td>
+								<td class="py-2 px-3 text-end tabular-nums text-foreground">{ wal.Out }</td>
+								<td class="py-2 ps-3 text-end tabular-nums font-medium text-foreground">{ wal.Closing }</td>
 							</tr>
 						}
 					</tbody>
 					<tfoot>
 						for _, tot := range v.Totals {
 							<tr data-report-total={ tot.Kind } class="border-t border-border font-medium">
-								<th scope="row" colspan="4" class="py-2 pr-3 text-left text-foreground">{ tot.Label }</th>
-								<td class="py-2 pl-3 text-right tabular-nums text-foreground">{ tot.Closing }</td>
+								<th scope="row" colspan="4" class="py-2 pe-3 text-start text-foreground">{ tot.Label }</th>
+								<td class="py-2 ps-3 text-end tabular-nums text-foreground">{ tot.Closing }</td>
 							</tr>
 						}
 					</tfoot>
@@ -184,7 +184,7 @@ templ reportCategoryList(rows []ReportCategoryRow) {
 			<li class="flex items-baseline justify-between gap-3 py-2 text-sm">
 				<span class="min-w-0 flex-1 truncate text-foreground">{ c.Name }</span>
 				<span class="shrink-0 tabular-nums text-foreground">{ c.Amount }</span>
-				<span data-report-share="1" class="w-10 shrink-0 text-right text-xs tabular-nums text-muted-foreground">{ c.Share }</span>
+				<span data-report-share="1" class="w-10 shrink-0 text-end text-xs tabular-nums text-muted-foreground">{ c.Share }</span>
 			</li>
 		}
 	</ul>

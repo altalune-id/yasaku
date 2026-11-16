@@ -65,12 +65,12 @@ templ PostTagPicker(d web.LayoutData, v PostTagPickerView) {
 // postQuickTag is the inline tag-creation control. It is a div, not a form — a nested form inside the
 // post form is invalid HTML — so htmx posts the fields it names to the shared /tags/quick route.
 templ postQuickTag(d web.LayoutData, v PostFormView) {
-	<details class="relative mt-3" data-switcher>
+	<details class="dropdown mt-3 block">
 		<summary class="inline-flex w-fit items-center gap-2 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-foreground/90 hover:bg-muted">
 			@icons.Icon("plus", "h-3.5 w-3.5")
 			<span>{ d.Tr("blog.post_quick_tag") }</span>
 		</summary>
-		<div class="absolute start-0 top-full z-40 mt-2 w-72 popover-surface p-3" style="background:hsl(var(--popover));color:hsl(var(--popover-foreground));">
+		<div class="absolute start-0 top-full z-40 mt-2 w-72 popover-surface p-3">
 			<p class="text-xs font-medium uppercase tracking-wider text-muted-foreground/70">{ d.Tr("blog.post_quick_tag") }</p>
 			<div id="quick-tag-fields" class="mt-2">
 				<input type="hidden" name="picker" value="1"/>
@@ -80,7 +80,7 @@ templ postQuickTag(d web.LayoutData, v PostFormView) {
 					type="text"
 					placeholder={ d.Tr("blog.post_quick_tag_name") }
 					aria-label={ d.Tr("blog.post_quick_tag_name") }
-					class="w-full rounded-md border border-border bg-card px-3 py-1.5 text-sm text-foreground placeholder:text-muted-foreground/70 shadow-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
+					class="input w-full"
 				/>
 			</div>
 			<button
@@ -179,7 +179,7 @@ templ PostFormPage(d web.LayoutData, v PostFormView) {
 						type="text"
 						required
 						value={ v.Title }
-						class="mt-1 w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground shadow-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
+						class="input mt-1 w-full"
 					/>
 				</div>
 				<div>
@@ -189,7 +189,7 @@ templ PostFormPage(d web.LayoutData, v PostFormView) {
 						name="slug"
 						type="text"
 						value={ v.Slug }
-						class="mt-1 w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground shadow-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
+						class="input mt-1 w-full"
 					/>
 				</div>
 				<div>
@@ -198,7 +198,7 @@ templ PostFormPage(d web.LayoutData, v PostFormView) {
 						id="post-category"
 						name="category_id"
 						required
-						class="mt-1 w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground shadow-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
+						class="select mt-1 w-full"
 					>
 						<option value="">{ d.Tr("blog.post_category_placeholder") }</option>
 						for _, c := range v.Categories {
@@ -233,7 +233,7 @@ templ PostFormPage(d web.LayoutData, v PostFormView) {
 						id="post-body"
 						name="body"
 						rows="18"
-						class="mt-1 w-full rounded-md border border-border bg-card px-3 py-2 font-mono text-sm text-foreground shadow-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
+						class="textarea mt-1 w-full font-mono"
 					>{ v.Body }</textarea>
 				</div>
 				<div>
@@ -253,7 +253,7 @@ templ PostFormPage(d web.LayoutData, v PostFormView) {
 						class="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-foreground/90 hover:bg-muted"
 					>
 						{ d.Tr("blog.post_preview") }
-						<span id="post-preview-spinner" class="htmx-indicator ml-1.5 inline-block align-middle">…</span>
+						<span id="post-preview-spinner" class="htmx-indicator ms-1.5 inline-block align-middle">…</span>
 					</button>
 					<div class="mt-2 rounded-lg border border-border bg-card p-4 shadow-sm">
 						@PostPreviewFragment(d, v.PreviewHTML)

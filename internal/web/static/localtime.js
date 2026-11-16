@@ -10,7 +10,7 @@
 
 	function fmt(opts, at) {
 		try {
-			return new Intl.DateTimeFormat(lang, opts).format(at);
+			return new Intl.DateTimeFormat(lang, Object.assign({ calendar: 'gregory' }, opts)).format(at);
 		} catch (e) {
 			return '';
 		}

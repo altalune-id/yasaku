@@ -65,7 +65,7 @@ templ YasakuOverviewPage(d web.LayoutData, v YasakuOverviewView) {
 			</div>
 			@TransactionList(d, v.List)
 		</div>
-		@ToastSlot()
+		@ToastHost()
 	</section>
 }
 
@@ -81,7 +81,7 @@ templ yasakuPeriodCard(d web.LayoutData, v YasakuOverviewView) {
 			<p class="mt-3 text-sm text-muted-foreground">{ d.Tr("period.no_period") }</p>
 		} else {
 			<dl class="mt-3 grid grid-cols-3 gap-2">
-				@yasakuStat(d.Tr("overview.income"), Money(d, v.Income), "text-emerald-600 dark:text-emerald-400")
+				@yasakuStat(d.Tr("overview.income"), Money(d, v.Income), "text-success")
 				@yasakuStat(d.Tr("overview.expense"), Money(d, v.Expense), "text-foreground")
 				@yasakuStat(d.Tr("overview.net"), SignedMoney(d, v.Net), "text-foreground")
 			</dl>

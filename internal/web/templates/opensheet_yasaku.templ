@@ -93,7 +93,6 @@ templ OpensheetPage(d web.LayoutData, v OpensheetView) {
 			<p class="mt-1 text-sm text-muted-foreground">{ d.Tr("opensheet.subtitle") }</p>
 		</header>
 		@OpensheetModule(d, v)
-		@copyScript(d.Nonce)
 	</section>
 }
 
@@ -132,7 +131,7 @@ templ OpensheetStatus(d web.LayoutData, v OpensheetView) {
 			<p role="status" data-opensheet-notice={ v.NoticeKey } class="mb-3 rounded-md border border-border bg-muted px-3 py-2 text-sm text-foreground">{ d.Tr(v.NoticeKey) }</p>
 		}
 		if v.AutoDisabled {
-			<p role="alert" data-opensheet-auto-disabled="1" class="mb-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-200">{ d.Tr("opensheet.status.auto_disabled") }</p>
+			<p role="alert" data-opensheet-auto-disabled="1" class="mb-3 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-warning">{ d.Tr("opensheet.status.auto_disabled") }</p>
 		}
 		<div class="flex flex-wrap items-center gap-3">
 			@opensheetAction(d, v, "/opensheet/enabled") {
@@ -167,13 +166,13 @@ templ OpensheetStatus(d web.LayoutData, v OpensheetView) {
 					<span data-opensheet-awaiting-first-sync="true">{ d.Tr("opensheet.status.awaiting_first_sync") }</span>
 				}
 				if v.Failing > 0 {
-					<span class="text-amber-700 dark:text-amber-300" data-opensheet-failing={ strconv.FormatInt(v.Failing, 10) }>{ d.TrN("opensheet.status.failing", int(v.Failing)) }</span>
+					<span class="text-warning" data-opensheet-failing={ strconv.FormatInt(v.Failing, 10) }>{ d.TrN("opensheet.status.failing", int(v.Failing)) }</span>
 				}
 				if v.GivenUp > 0 {
-					<span class="text-red-700 dark:text-red-300" data-opensheet-given-up={ strconv.FormatInt(v.GivenUp, 10) }>{ d.TrN("opensheet.status.given_up", int(v.GivenUp)) }</span>
+					<span class="text-error" data-opensheet-given-up={ strconv.FormatInt(v.GivenUp, 10) }>{ d.TrN("opensheet.status.given_up", int(v.GivenUp)) }</span>
 				}
 				if v.LastError != "" {
-					<span class="text-red-700 dark:text-red-300" data-opensheet-status-last-error="true">{ d.Tr("opensheet.status.last_error", "Error", v.LastError) }</span>
+					<span class="text-error" data-opensheet-status-last-error="true">{ d.Tr("opensheet.status.last_error", "Error", v.LastError) }</span>
 				}
 			</p>
 			if v.CanManage {
@@ -196,7 +195,7 @@ templ OpensheetStatus(d web.LayoutData, v OpensheetView) {
 						hx-status:5xx="target:#hx-error swap:innerHTML"
 						class="inline"
 					>
-						<button type="submit" class="rounded-md border border-border px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-950/40">
+						<button type="submit" class="rounded-md border border-border px-3 py-1.5 text-sm font-medium text-error hover:bg-error/10">
 							{ d.Tr("opensheet.remove") }
 						</button>
 					</form>
@@ -219,7 +218,7 @@ templ opensheetTutorial(d web.LayoutData, v OpensheetView) {
 								<span class="font-medium">{ d.Tr(tab.LabelKey) }</span>
 								@opensheetCopyButton(d, tab.HeaderTSV, d.Tr("opensheet.tutorial.copy_header"), d.Tr("opensheet.tutorial.copy_header")+": "+d.Tr(tab.LabelKey))
 							</div>
-							<code dir="ltr" class="mt-1 block overflow-x-auto whitespace-nowrap text-left font-mono text-xs text-muted-foreground" data-opensheet-header={ tab.Slug }>
+							<code dir="ltr" class="mt-1 block overflow-x-auto whitespace-nowrap text-start font-mono text-xs text-muted-foreground" data-opensheet-header={ tab.Slug }>
 								for i, col := range tab.Columns {
 									if i > 0 {
 										<span aria-hidden="true">{ " | " }</span>
@@ -268,7 +267,7 @@ templ opensheetField(d web.LayoutData, v OpensheetView, name, label, value strin
 			disabled?={ !v.CanManage }
 			autocomplete="off"
 			spellcheck="false"
-			class="mt-1 w-full rounded-md border border-border bg-card px-3 py-2 font-mono text-sm text-foreground shadow-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1 disabled:opacity-60"
+			class="input mt-1 w-full font-mono"
 		/>
 	</label>
 }
@@ -307,7 +306,7 @@ templ opensheetForm(d web.LayoutData, v OpensheetView) {
 					if v.KeyHint != "" {
 						placeholder={ "•••• " + v.KeyHint }
 					}
-					class="mt-1 w-full rounded-md border border-border bg-card px-3 py-2 font-mono text-sm text-foreground shadow-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1 disabled:opacity-60"
+					class="input mt-1 w-full font-mono"
 				/>
 				<span class="mt-1 block text-xs text-muted-foreground">
 					if v.KeyHint != "" {
@@ -347,7 +346,7 @@ templ opensheetForm(d web.LayoutData, v OpensheetView) {
 }
 
 templ opensheetCheckMark(d web.LayoutData, ok bool, labelKey string) {
-	<li class={ "flex items-center gap-1", templ.KV("text-foreground", ok), templ.KV("text-red-700 dark:text-red-300", !ok) } data-opensheet-check={ labelKey } data-ok={ strconv.FormatBool(ok) }>
+	<li class={ "flex items-center gap-1", templ.KV("text-foreground", ok), templ.KV("text-error", !ok) } data-opensheet-check={ labelKey } data-ok={ strconv.FormatBool(ok) }>
 		if ok {
 			@icons.Icon("check", "h-3.5 w-3.5")
 		} else {
@@ -364,7 +363,7 @@ templ OpensheetChecks(d web.LayoutData, v OpensheetView) {
 		if len(v.Checks) > 0 {
 			<h3 class="text-sm font-medium text-foreground">{ d.Tr("opensheet.check.title") }</h3>
 			if v.SyncErrorInChecks() {
-				<p class="text-xs text-red-700 dark:text-red-300" data-opensheet-last-sync-error="true">{ d.Tr("opensheet.check.last_sync_error", "Error", v.LastError) }</p>
+				<p class="text-xs text-error" data-opensheet-last-sync-error="true">{ d.Tr("opensheet.check.last_sync_error", "Error", v.LastError) }</p>
 			}
 			<ul class="space-y-2">
 				for _, c := range v.Checks {
@@ -372,15 +371,15 @@ templ OpensheetChecks(d web.LayoutData, v OpensheetView) {
 						<div class="flex flex-wrap items-center justify-between gap-2">
 							<span class="font-medium text-foreground">{ d.Tr(c.LabelKey) } <code dir="ltr" class="font-mono text-xs text-muted-foreground">{ c.Sheet }</code></span>
 							if c.OK {
-								<span class="text-xs font-medium text-emerald-700 dark:text-emerald-300">{ d.Tr("opensheet.check.ok") }</span>
+								<span class="text-xs font-medium text-success">{ d.Tr("opensheet.check.ok") }</span>
 							} else {
-								<span class="text-xs font-medium text-red-700 dark:text-red-300">{ d.Tr("opensheet.check.failed") } <code dir="ltr" class="font-mono">{ c.Code }</code></span>
+								<span class="text-xs font-medium text-error">{ d.Tr("opensheet.check.failed") } <code dir="ltr" class="font-mono">{ c.Code }</code></span>
 							}
 						</div>
 						if c.Unavailable {
 							<p class="mt-1 text-xs text-muted-foreground">{ d.Tr("opensheet.check.unavailable") }</p>
 						} else if c.PrivateEndpoint {
-							<p class="mt-1 text-xs text-red-700 dark:text-red-300" data-opensheet-private-endpoint={ c.Sheet }>{ d.Tr("opensheet.check.private_endpoint") }</p>
+							<p class="mt-1 text-xs text-error" data-opensheet-private-endpoint={ c.Sheet }>{ d.Tr("opensheet.check.private_endpoint") }</p>
 						} else {
 							<ul class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs">
 								@opensheetCheckMark(d, c.Reachable, "opensheet.check.reachable")
@@ -399,13 +398,13 @@ templ OpensheetChecks(d web.LayoutData, v OpensheetView) {
 								<p class="mt-1 text-xs text-muted-foreground">{ d.Tr("opensheet.check.unreachable_hint") }</p>
 							}
 							if c.Missing != "" {
-								<p class="mt-1 text-xs text-red-700 dark:text-red-300" data-opensheet-missing={ c.Sheet }>{ d.Tr("opensheet.check.missing", "Columns", c.Missing) }</p>
+								<p class="mt-1 text-xs text-error" data-opensheet-missing={ c.Sheet }>{ d.Tr("opensheet.check.missing", "Columns", c.Missing) }</p>
 							}
 							if c.MissingDeletedAt {
 								<p class="mt-1 text-xs text-muted-foreground" data-opensheet-deleted-at-hint={ c.Sheet }>{ d.Tr("opensheet.check.deleted_at_hint") }</p>
 							}
 							if c.ContractReason != "" {
-								<p class="mt-1 text-xs text-red-700 dark:text-red-300">{ d.Tr("opensheet.check.contract", "Reason", c.ContractReason) }</p>
+								<p class="mt-1 text-xs text-error">{ d.Tr("opensheet.check.contract", "Reason", c.ContractReason) }</p>
 							}
 						}
 					</li>

@@ -16,7 +16,7 @@ templ LoginPage(d web.LayoutData, v LoginView) {
 	<section class="mx-auto max-w-sm">
 		<h1 class="text-2xl font-semibold text-center">{ d.Tr("login.title") }</h1>
 		if v.Message != "" {
-			<div class="mt-4 p-3 rounded bg-emerald-50 text-emerald-800 text-sm border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-200 dark:border-emerald-900/50">{ v.Message }</div>
+			<div class="mt-4 p-3 rounded bg-success/10 text-success text-sm border border-success/30">{ v.Message }</div>
 		}
 		if v.Error != "" {
 			@ErrorBanner(d, v.Error, v.ErrorCode)
@@ -61,31 +61,31 @@ templ LoginPage(d web.LayoutData, v LoginView) {
 				if v.AdminForce {
 					<input type="hidden" name="admin" value="1"/>
 				}
-				<div>
-					<label for="email" class="block text-sm font-medium">{ d.Tr("login.email") }</label>
+				{{ emailField := FieldProps{ID: "email", Label: d.Tr("login.email")} }}
+				@FormField(emailField) {
 					<input
-						id="email"
+						{ emailField.Attrs()... }
 						name="email"
 						type="email"
 						required
 						autocomplete="username"
-						class="mt-1.5 block w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/70 shadow-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
+						class="input w-full"
 					/>
-				</div>
-				<div>
-					<label for="password" class="block text-sm font-medium">{ d.Tr("login.password") }</label>
+				}
+				{{ passwordField := FieldProps{ID: "password", Label: d.Tr("login.password")} }}
+				@FormField(passwordField) {
 					<input
-						id="password"
+						{ passwordField.Attrs()... }
 						name="password"
 						type="password"
 						required
 						autocomplete="current-password"
-						class="mt-1.5 block w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/70 shadow-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
+						class="input w-full"
 					/>
-				</div>
+				}
 				<button
 					type="submit"
-					class="w-full rounded-md bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+					class="btn btn-primary w-full"
 				>
 					{ d.Tr("login.submit") }
 				</button>

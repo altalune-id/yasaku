@@ -1,0 +1,17 @@
+package templates
+
+import "altalune.id/yasaku/internal/web"
+
+// ToastHost is the empty landing zone every page carrying a quick-add must render once.
+templ ToastHost() {
+	<div id="toast" class="toast toast-center toast-bottom z-50 max-lg:mb-20"></div>
+}
+
+// Toast replaces the ToastHost out of band with one status message.
+templ Toast(d web.LayoutData, msg string) {
+	<div id="toast" hx-swap-oob="true" hx-nonce={ d.Nonce } class="toast toast-center toast-bottom z-50 max-lg:mb-20">
+		if msg != "" {
+			<p role="status" class="alert alert-info" data-tx-toast="1">{ msg }</p>
+		}
+	</div>
+}

@@ -254,3 +254,19 @@ func IsIdentityConflictError(err error) bool {
 	_, ok := errors.AsType[*IdentityConflictError](err)
 	return ok
 }
+
+// TipsSeenContendedError signals MarkTipsSeen lost every compare-and-swap round to concurrent writers.
+type TipsSeenContendedError struct {
+	ID       string
+	Attempts int
+}
+
+func (e *TipsSeenContendedError) Error() string {
+	return fmt.Sprintf("user: tips_seen kept changing: id=%s attempts=%d", e.ID, e.Attempts)
+}
+
+// IsTipsSeenContendedError reports whether err's tree contains a *TipsSeenContendedError.
+func IsTipsSeenContendedError(err error) bool {
+	_, ok := errors.AsType[*TipsSeenContendedError](err)
+	return ok
+}

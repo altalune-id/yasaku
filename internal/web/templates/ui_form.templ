@@ -1,0 +1,92 @@
+package templates
+
+import "altalune.id/yasaku/internal/web/icons"
+
+// FieldProps names one labeled form control: its id, label, optional hint and optional error.
+type FieldProps struct {
+	ID       string
+	Label    string
+	Hint     string
+	HintIcon string
+	Error    string
+	Compact  bool
+}
+
+// HintID is the id of the field's hint or error line, empty when the field shows neither.
+func (p FieldProps) HintID() string {
+	if p.Hint == "" && p.Error == "" {
+		return ""
+	}
+	return p.ID + "-hint"
+}
+
+// Attrs returns the id and accessibility attributes the field's control carries.
+func (p FieldProps) Attrs() templ.Attributes {
+	a := templ.Attributes{"id": p.ID}
+	if id := p.HintID(); id != "" {
+		a["aria-describedby"] = id
+	}
+	if p.Error != "" {
+		a["aria-invalid"] = "true"
+	}
+	return a
+}
+
+// AppCollapse renders a daisyUI arrow collapse with daisyUI's own title sizing; class styles the box and children are the content.
+templ AppCollapse(id, class string, title templ.Component) {
+	<details
+		if id != "" {
+			id={ id }
+		}
+		class={ "collapse collapse-arrow", class }
+	>
+		<summary class="collapse-title flex items-center gap-2 text-sm" data-scan-asym="daisyUI collapse-title reserves its end padding for the arrow">
+			@title
+		</summary>
+		<div class="collapse-content">
+			{ children... }
+		</div>
+	</details>
+}
+
+// FormSection renders a bordered card holding one daisyUI fieldset, with its legend inside the card padding.
+templ FormSection(legend string) {
+	<div class="min-w-0 rounded-box border border-base-300 p-4">
+		<fieldset class="fieldset min-w-0 gap-3 py-0">
+			if legend != "" {
+				<legend class="fieldset-legend mb-3 pt-0">{ legend }</legend>
+			}
+			{ children... }
+		</fieldset>
+	</div>
+}
+
+// FieldGroup renders a borderless daisyUI fieldset with its legend, for a group of related choices.
+templ FieldGroup(legend string) {
+	<fieldset class="fieldset min-w-0 py-0">
+		<legend class="fieldset-legend mb-2">{ legend }</legend>
+		{ children... }
+	</fieldset>
+}
+
+// FormField renders a daisyUI label, the control passed as children, and the hint or error line under it.
+templ FormField(p FieldProps) {
+	<div class={ "grid min-w-0 gap-1.5", templ.KV("max-w-sm", p.Compact) }>
+		<label class="label text-sm text-base-content" for={ p.ID }>{ p.Label }</label>
+		{ children... }
+		if p.Error != "" {
+			<p id={ p.HintID() } class="label text-xs whitespace-normal text-error">{ p.Error }</p>
+		} else if p.Hint != "" {
+			<p id={ p.HintID() } class="label text-xs whitespace-normal text-base-content/70">
+				if p.HintIcon != "" {
+					@icons.Icon(p.HintIcon, "size-3.5 shrink-0")
+				}
+				{ p.Hint }
+			</p>
+		}
+	</div>
+}
+
+templ textTitle(s string) {
+	{ s }
+}

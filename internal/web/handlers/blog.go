@@ -38,11 +38,11 @@ func (h *BlogHandler) GetCategories(w http.ResponseWriter, r *http.Request) {
 	v, err := h.categoriesView(sc, "", uuid.Nil, "")
 	if err != nil {
 		h.LogErr("web blog: list categories", err)
-		h.ErrorPage(w, sc.req, http.StatusInternalServerError, "List failed", "Could not load categories.", err)
+		h.ErrorPage(w, sc.req, http.StatusInternalServerError, pageTitle(sc.req, "error_title.list_failed"), "Could not load categories.", err)
 		return
 	}
 	Render(w, sc.req, templates.CategoriesLayout(
-		h.LayoutForProject(sc.req, "Categories · "+sc.project.Name, sc.org.Slug, sc.project, "categories"),
+		h.LayoutForProject(sc.req, pageTitle(sc.req, "nav.categories", sc.project.Name), sc.org.Slug, sc.project, "categories"),
 		v,
 	))
 }
@@ -54,7 +54,7 @@ func (h *BlogHandler) PostCategoryCreate(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	if err := r.ParseForm(); err != nil {
-		h.ErrorPage(w, r, http.StatusBadRequest, "Bad request", "Could not parse form body.")
+		h.ErrorPage(w, r, http.StatusBadRequest, pageTitle(r, "error_title.bad_request"), "Could not parse form body.")
 		return
 	}
 	name := strings.TrimSpace(r.PostForm.Get("name"))
@@ -74,7 +74,7 @@ func (h *BlogHandler) PostCategoryRename(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	if err := r.ParseForm(); err != nil {
-		h.ErrorPage(w, r, http.StatusBadRequest, "Bad request", "Could not parse form body.")
+		h.ErrorPage(w, r, http.StatusBadRequest, pageTitle(r, "error_title.bad_request"), "Could not parse form body.")
 		return
 	}
 	name := strings.TrimSpace(r.PostForm.Get("name"))
@@ -113,11 +113,11 @@ func (h *BlogHandler) GetTags(w http.ResponseWriter, r *http.Request) {
 	v, err := h.tagsView(sc, "", uuid.Nil, "")
 	if err != nil {
 		h.LogErr("web blog: list tags", err)
-		h.ErrorPage(w, sc.req, http.StatusInternalServerError, "List failed", "Could not load tags.", err)
+		h.ErrorPage(w, sc.req, http.StatusInternalServerError, pageTitle(sc.req, "error_title.list_failed"), "Could not load tags.", err)
 		return
 	}
 	Render(w, sc.req, templates.TagsLayout(
-		h.LayoutForProject(sc.req, "Tags · "+sc.project.Name, sc.org.Slug, sc.project, "tags"),
+		h.LayoutForProject(sc.req, pageTitle(sc.req, "nav.tags", sc.project.Name), sc.org.Slug, sc.project, "tags"),
 		v,
 	))
 }
@@ -129,7 +129,7 @@ func (h *BlogHandler) PostTagCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := r.ParseForm(); err != nil {
-		h.ErrorPage(w, r, http.StatusBadRequest, "Bad request", "Could not parse form body.")
+		h.ErrorPage(w, r, http.StatusBadRequest, pageTitle(r, "error_title.bad_request"), "Could not parse form body.")
 		return
 	}
 	name := strings.TrimSpace(r.PostForm.Get("name"))
@@ -149,7 +149,7 @@ func (h *BlogHandler) PostTagRename(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := r.ParseForm(); err != nil {
-		h.ErrorPage(w, r, http.StatusBadRequest, "Bad request", "Could not parse form body.")
+		h.ErrorPage(w, r, http.StatusBadRequest, pageTitle(r, "error_title.bad_request"), "Could not parse form body.")
 		return
 	}
 	name := strings.TrimSpace(r.PostForm.Get("name"))
@@ -186,7 +186,7 @@ func (h *BlogHandler) PostTagQuick(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := r.ParseForm(); err != nil {
-		h.ErrorPage(w, r, http.StatusBadRequest, "Bad request", "Could not parse form body.")
+		h.ErrorPage(w, r, http.StatusBadRequest, pageTitle(r, "error_title.bad_request"), "Could not parse form body.")
 		return
 	}
 	picker := r.PostForm.Get("picker") == "1"
@@ -217,17 +217,17 @@ func (h *BlogHandler) requireCategory(w http.ResponseWriter, r *http.Request) (P
 	}
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
-		h.ErrorPage(w, sc.req, http.StatusBadRequest, "Bad id", "Malformed category id.")
+		h.ErrorPage(w, sc.req, http.StatusBadRequest, pageTitle(sc.req, "error_title.bad_id"), "Malformed category id.")
 		return ProjectScope{}, nil, false
 	}
 	c, err := h.Categories.ByID(sc.req.Context(), id)
 	if err != nil {
 		if category.IsNotFoundError(err) {
-			h.ErrorPage(w, sc.req, http.StatusNotFound, "Not found", "That category no longer exists.", err)
+			h.ErrorPage(w, sc.req, http.StatusNotFound, pageTitle(sc.req, "error_title.not_found"), "That category no longer exists.", err)
 			return ProjectScope{}, nil, false
 		}
 		h.LogErr("web blog: category byID", err)
-		h.ErrorPage(w, sc.req, http.StatusInternalServerError, "Lookup failed", "Could not load that category.", err)
+		h.ErrorPage(w, sc.req, http.StatusInternalServerError, pageTitle(sc.req, "error_title.lookup_failed"), "Could not load that category.", err)
 		return ProjectScope{}, nil, false
 	}
 	return sc, c, true
@@ -240,22 +240,22 @@ func (h *BlogHandler) requireTag(w http.ResponseWriter, r *http.Request) (Projec
 	}
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
-		h.ErrorPage(w, sc.req, http.StatusBadRequest, "Bad id", "Malformed tag id.")
+		h.ErrorPage(w, sc.req, http.StatusBadRequest, pageTitle(sc.req, "error_title.bad_id"), "Malformed tag id.")
 		return ProjectScope{}, nil, false
 	}
 	t, err := h.Tags.ByID(sc.req.Context(), id)
 	if err != nil {
 		if tag.IsNotFoundError(err) {
-			h.ErrorPage(w, sc.req, http.StatusNotFound, "Not found", "That tag no longer exists.")
+			h.ErrorPage(w, sc.req, http.StatusNotFound, pageTitle(sc.req, "error_title.not_found"), "That tag no longer exists.")
 			return ProjectScope{}, nil, false
 		}
 		h.LogErr("web blog: tag byID", err)
-		h.ErrorPage(w, sc.req, http.StatusInternalServerError, "Lookup failed", "Could not load that tag.", err)
+		h.ErrorPage(w, sc.req, http.StatusInternalServerError, pageTitle(sc.req, "error_title.lookup_failed"), "Could not load that tag.", err)
 		return ProjectScope{}, nil, false
 	}
 	// SECURITY: tag.ByID does not compare the row's scope to the caller's; same 404 as a missing row.
 	if t.OrgID != sc.org.ID || t.ProjectID != sc.project.ID {
-		h.ErrorPage(w, sc.req, http.StatusNotFound, "Not found", "That tag no longer exists.")
+		h.ErrorPage(w, sc.req, http.StatusNotFound, pageTitle(sc.req, "error_title.not_found"), "That tag no longer exists.")
 		return ProjectScope{}, nil, false
 	}
 	return sc, t, true
@@ -325,7 +325,7 @@ func (h *BlogHandler) writeCategoryList(w http.ResponseWriter, sc ProjectScope, 
 	v, err := h.categoriesView(sc, errKind, inUseID, code)
 	if err != nil {
 		h.LogErr("web blog: list categories", err)
-		h.ErrorPage(w, sc.req, http.StatusInternalServerError, "List failed", "Could not load categories.", err)
+		h.ErrorPage(w, sc.req, http.StatusInternalServerError, pageTitle(sc.req, "error_title.list_failed"), "Could not load categories.", err)
 		return
 	}
 	Render(w, sc.req, templates.CategoryList(h.ProjectFragmentBase(sc), v))
@@ -335,7 +335,7 @@ func (h *BlogHandler) writeTagList(w http.ResponseWriter, sc ProjectScope, errKi
 	v, err := h.tagsView(sc, errKind, inUseID, code)
 	if err != nil {
 		h.LogErr("web blog: list tags", err)
-		h.ErrorPage(w, sc.req, http.StatusInternalServerError, "List failed", "Could not load tags.", err)
+		h.ErrorPage(w, sc.req, http.StatusInternalServerError, pageTitle(sc.req, "error_title.list_failed"), "Could not load tags.", err)
 		return
 	}
 	Render(w, sc.req, templates.TagList(h.ProjectFragmentBase(sc), v))
@@ -421,11 +421,11 @@ func (h *BlogHandler) GetPosts(w http.ResponseWriter, r *http.Request) {
 	v, err := h.postsView(sc, "", "")
 	if err != nil {
 		h.LogErr("web blog: list posts", err)
-		h.ErrorPage(w, sc.req, http.StatusInternalServerError, "List failed", "Could not load posts.", err)
+		h.ErrorPage(w, sc.req, http.StatusInternalServerError, pageTitle(sc.req, "error_title.list_failed"), "Could not load posts.", err)
 		return
 	}
 	Render(w, sc.req, templates.PostsLayout(
-		h.LayoutForProject(sc.req, "Posts · "+sc.project.Name, sc.org.Slug, sc.project, "posts"),
+		h.LayoutForProject(sc.req, pageTitle(sc.req, "nav.posts", sc.project.Name), sc.org.Slug, sc.project, "posts"),
 		v,
 	))
 }
@@ -455,7 +455,7 @@ func (h *BlogHandler) PostPostCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := r.ParseForm(); err != nil {
-		h.ErrorPage(w, r, http.StatusBadRequest, "Bad request", "Could not parse form body.")
+		h.ErrorPage(w, r, http.StatusBadRequest, pageTitle(r, "error_title.bad_request"), "Could not parse form body.")
 		return
 	}
 	d := draftFromForm("", r.PostForm)
@@ -493,7 +493,7 @@ func (h *BlogHandler) PostPostUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := r.ParseForm(); err != nil {
-		h.ErrorPage(w, sc.req, http.StatusBadRequest, "Bad request", "Could not parse form body.")
+		h.ErrorPage(w, sc.req, http.StatusBadRequest, pageTitle(sc.req, "error_title.bad_request"), "Could not parse form body.")
 		return
 	}
 	d := draftFromForm(p.ID.String(), r.PostForm)
@@ -565,7 +565,7 @@ func (h *BlogHandler) PostPostPreview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := r.ParseForm(); err != nil {
-		h.ErrorPage(w, sc.req, http.StatusBadRequest, "Bad request", "Could not parse form body.")
+		h.ErrorPage(w, sc.req, http.StatusBadRequest, pageTitle(sc.req, "error_title.bad_request"), "Could not parse form body.")
 		return
 	}
 	// SECURITY: blog.RenderHTML runs goldmark without WithUnsafe, so raw HTML in the body is dropped.
@@ -579,22 +579,22 @@ func (h *BlogHandler) requirePost(w http.ResponseWriter, r *http.Request) (Proje
 	}
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
-		h.ErrorPage(w, sc.req, http.StatusBadRequest, "Bad id", "Malformed post id.")
+		h.ErrorPage(w, sc.req, http.StatusBadRequest, pageTitle(sc.req, "error_title.bad_id"), "Malformed post id.")
 		return ProjectScope{}, nil, false
 	}
 	p, err := h.Posts.ByID(sc.req.Context(), id)
 	if err != nil {
 		if blog.IsNotFoundError(err) {
-			h.ErrorPage(w, sc.req, http.StatusNotFound, "Not found", "That post no longer exists.")
+			h.ErrorPage(w, sc.req, http.StatusNotFound, pageTitle(sc.req, "error_title.not_found"), "That post no longer exists.")
 			return ProjectScope{}, nil, false
 		}
 		h.LogErr("web blog: post byID", err)
-		h.ErrorPage(w, sc.req, http.StatusInternalServerError, "Lookup failed", "Could not load that post.", err)
+		h.ErrorPage(w, sc.req, http.StatusInternalServerError, pageTitle(sc.req, "error_title.lookup_failed"), "Could not load that post.", err)
 		return ProjectScope{}, nil, false
 	}
 	// SECURITY: blog.ByID scopes to the org but not the project; same 404 as a missing row.
 	if p.OrgID != sc.org.ID || p.ProjectID != sc.project.ID {
-		h.ErrorPage(w, sc.req, http.StatusNotFound, "Not found", "That post no longer exists.")
+		h.ErrorPage(w, sc.req, http.StatusNotFound, pageTitle(sc.req, "error_title.not_found"), "That post no longer exists.")
 		return ProjectScope{}, nil, false
 	}
 	return sc, p, true
@@ -744,7 +744,7 @@ func (h *BlogHandler) writePostList(w http.ResponseWriter, sc ProjectScope, errK
 	v, err := h.postsView(sc, errKind, code)
 	if err != nil {
 		h.LogErr("web blog: list posts", err)
-		h.ErrorPage(w, sc.req, http.StatusInternalServerError, "List failed", "Could not load posts.", err)
+		h.ErrorPage(w, sc.req, http.StatusInternalServerError, pageTitle(sc.req, "error_title.list_failed"), "Could not load posts.", err)
 		return
 	}
 	Render(w, sc.req, templates.PostList(h.ProjectFragmentBase(sc), v))
@@ -754,12 +754,12 @@ func (h *BlogHandler) writePostForm(w http.ResponseWriter, sc ProjectScope, d po
 	v, err := h.postFormView(sc, d, errKind, code)
 	if err != nil {
 		h.LogErr("web blog: post form", err)
-		h.ErrorPage(w, sc.req, http.StatusInternalServerError, "Load failed", "Could not load the post editor.", err)
+		h.ErrorPage(w, sc.req, http.StatusInternalServerError, pageTitle(sc.req, "error_title.load_failed"), "Could not load the post editor.", err)
 		return
 	}
-	title := "New post · " + sc.project.Name
+	title := pageTitle(sc.req, "title.post_new", sc.project.Name)
 	if d.id != "" {
-		title = "Edit post · " + sc.project.Name
+		title = pageTitle(sc.req, "title.post_edit", sc.project.Name)
 	}
 	Render(w, sc.req, templates.PostFormLayout(
 		h.LayoutForProject(sc.req, title, sc.org.Slug, sc.project, "posts"),
@@ -771,7 +771,7 @@ func (h *BlogHandler) writePostTagPicker(w http.ResponseWriter, sc ProjectScope,
 	v, err := h.postTagPicker(sc, selected, errKind, code)
 	if err != nil {
 		h.LogErr("web blog: list tags", err)
-		h.ErrorPage(w, sc.req, http.StatusInternalServerError, "List failed", "Could not load tags.", err)
+		h.ErrorPage(w, sc.req, http.StatusInternalServerError, pageTitle(sc.req, "error_title.list_failed"), "Could not load tags.", err)
 		return
 	}
 	Render(w, sc.req, templates.PostTagPicker(h.ProjectFragmentBase(sc), v))

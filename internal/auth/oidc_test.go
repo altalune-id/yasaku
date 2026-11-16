@@ -3,6 +3,7 @@ package auth_test
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 	"time"
 
@@ -106,7 +107,7 @@ func TestOIDCLogin_TypedEnsureErrorPropagates(t *testing.T) {
 
 func TestOIDCLogin_ExistingUser_NoOnboardWiredReturnsPrincipal(t *testing.T) {
 	t.Parallel()
-	u := &auth.UserRef{ID: uuid.New(), Email: "alice@example.com", Name: "Alice", Source: "oidc"}
+	u := &auth.UserRef{ID: uuid.New(), Email: "alice@example.com", Name: "Alice", Source: "oidc", Theme: "fam", ColorMode: "dark", TipsSeen: []string{"t1"}}
 	o := auth.NewOIDCLogin(
 		func(_ context.Context, c auth.EnsureClaims) (*auth.UserRef, bool, error) {
 			if c.Email != "alice@example.com" {
@@ -135,6 +136,12 @@ func TestOIDCLogin_ExistingUser_NoOnboardWiredReturnsPrincipal(t *testing.T) {
 	}
 	if p.ActiveOrgID != uuid.Nil {
 		t.Errorf("no onboarder wired: activeOrg=%v", p.ActiveOrgID)
+	}
+	if p.Theme != "fam" || p.ColorMode != "dark" {
+		t.Errorf("theme prefs not carried: %q %q", p.Theme, p.ColorMode)
+	}
+	if !slices.Equal(p.TipsSeen, []string{"t1"}) {
+		t.Errorf("seen tips not carried: %v", p.TipsSeen)
 	}
 }
 

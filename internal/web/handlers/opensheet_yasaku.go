@@ -46,7 +46,7 @@ func (h *OpensheetHandler) GetPage(w http.ResponseWriter, r *http.Request) {
 	v, err := h.view(sc, nil)
 	if err != nil {
 		h.LogErr("web opensheet: status", err)
-		h.ErrorPage(w, sc.req, http.StatusInternalServerError, "Load failed", "Could not load the Opensheet link.", err)
+		h.ErrorPage(w, sc.req, http.StatusInternalServerError, pageTitle(sc.req, "error_title.load_failed"), "Could not load the Opensheet link.", err)
 		return
 	}
 	Render(w, sc.req, templates.OpensheetLayout(h.opensheetLayout(sc), v))
@@ -93,7 +93,7 @@ func (h *OpensheetHandler) PostEnabled(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := sc.req.ParseForm(); err != nil {
-		h.ErrorPage(w, sc.req, http.StatusBadRequest, "Bad request", "Could not parse form body.")
+		h.ErrorPage(w, sc.req, http.StatusBadRequest, pageTitle(sc.req, "error_title.bad_request"), "Could not parse form body.")
 		return
 	}
 	on, _ := strconv.ParseBool(sc.req.PostForm.Get("enabled"))
@@ -136,7 +136,7 @@ func (h *OpensheetHandler) requireSettings(w http.ResponseWriter, r *http.Reques
 		return ProjectScope{}, opensheetsync.Settings{}, templates.OpensheetForm{}, false
 	}
 	if err := sc.req.ParseForm(); err != nil {
-		h.ErrorPage(w, sc.req, http.StatusBadRequest, "Bad request", "Could not parse form body.")
+		h.ErrorPage(w, sc.req, http.StatusBadRequest, pageTitle(sc.req, "error_title.bad_request"), "Could not parse form body.")
 		return ProjectScope{}, opensheetsync.Settings{}, templates.OpensheetForm{}, false
 	}
 	f := sc.req.PostForm
@@ -170,7 +170,7 @@ func (h *OpensheetHandler) module(w http.ResponseWriter, sc ProjectScope, notice
 	v, err := h.view(sc, nil)
 	if err != nil {
 		h.LogErr("web opensheet: status", err)
-		h.ErrorPage(w, sc.req, http.StatusInternalServerError, "Load failed", "Could not load the Opensheet link.", err)
+		h.ErrorPage(w, sc.req, http.StatusInternalServerError, pageTitle(sc.req, "error_title.load_failed"), "Could not load the Opensheet link.", err)
 		return
 	}
 	v.NoticeKey = notice
@@ -215,7 +215,7 @@ func (h *OpensheetHandler) respond(w http.ResponseWriter, sc ProjectScope, statu
 }
 
 func (h *OpensheetHandler) opensheetLayout(sc ProjectScope) web.LayoutData {
-	return h.LayoutForProject(sc.req, "Opensheet · "+sc.project.Name, sc.org.Slug, sc.project, "opensheet")
+	return h.LayoutForProject(sc.req, pageTitle(sc.req, "opensheet.title", sc.project.Name), sc.org.Slug, sc.project, "opensheet")
 }
 
 //i18n:use opensheet.tab.*

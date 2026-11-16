@@ -69,7 +69,9 @@ internal/web/static/.vendor-stamp: scripts/ui-vendor.sh
 	bash scripts/ui-vendor.sh
 	@touch $@
 
-internal/web/static/app.css: internal/web/static/.vendor-stamp internal/web/static/app.tailwind.css internal/web/tailwind.config.js $(UI_TEMPL_SRC)
+UI_CSS_SRC := $(wildcard internal/web/ui/*.css) $(filter-out %_test.go,$(wildcard internal/web/*.go)) $(shell find internal/web/templates -name '*.go' -not -name '*_test.go') $(filter-out %.min.js,$(wildcard internal/web/static/*.js))
+
+internal/web/static/app.css: internal/web/static/.vendor-stamp $(UI_CSS_SRC) $(UI_TEMPL_SRC)
 	bash scripts/ui-vendor.sh --css-only
 
 ui-vendor: internal/web/static/app.css ## Download the SHA-256 pinned static assets and compile app.css
@@ -79,7 +81,7 @@ ui-verify: ## Check the committed static assets against their pinned digests (no
 
 ui-vendor-check: ## Fail if the committed static assets drift from the pinned sources (CI check)
 	bash scripts/ui-vendor.sh --force
-	@git diff --exit-code -- internal/web/static/ || { echo "internal/web/static/ is stale — run \`make ui-vendor\` and commit the result."; exit 1; }
+	@git diff --exit-code -- internal/web/static/ internal/web/ui/ || { echo "internal/web/static/ or internal/web/ui/ is stale — run \`make ui-vendor\` and commit the result."; exit 1; }
 
 mcp-ui-vendor: ## Re-download the SHA-256 pinned MCP Apps assets into internal/mcp/ui/assets and mcp/testdata
 	bash scripts/mcp-ui-vendor.sh

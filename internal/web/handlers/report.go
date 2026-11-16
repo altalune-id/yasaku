@@ -50,7 +50,7 @@ func (h *ReportHandler) GetReports(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	d := h.LayoutForProject(sc.req, "", sc.org.Slug, sc.project, "reports")
-	d.Title = d.Tr("report.title") + " · " + sc.project.Name
+	d.Title = pageTitle(sc.req, "nav.reports", sc.project.Name)
 	v := templates.ReportsView{
 		ProjectSlug: sc.project.Slug,
 		ProjectName: sc.project.Name,
@@ -89,7 +89,7 @@ func (h *ReportHandler) selectPeriod(w http.ResponseWriter, sc ProjectScope, rec
 	if raw := strings.TrimSpace(sc.req.URL.Query().Get("period")); raw != "" {
 		id, parseErr := uuid.Parse(raw)
 		if parseErr != nil {
-			h.ErrorPage(w, sc.req, http.StatusBadRequest, "Bad period",
+			h.ErrorPage(w, sc.req, http.StatusBadRequest, pageTitle(sc.req, "error_title.bad_period"),
 				"That link carries a malformed period id.", parseErr)
 			return nil, false
 		}
@@ -98,7 +98,7 @@ func (h *ReportHandler) selectPeriod(w http.ResponseWriter, sc ProjectScope, rec
 			return p, true
 		}
 		if period.IsNotFoundError(err) {
-			h.ErrorPage(w, sc.req, http.StatusNotFound, "Period not found", "No period with that id in this project.", err)
+			h.ErrorPage(w, sc.req, http.StatusNotFound, pageTitle(sc.req, "error_title.period_not_found"), "No period with that id in this project.", err)
 			return nil, false
 		}
 		h.reportFailed(w, sc, "period byID", err)
@@ -176,7 +176,7 @@ func (h *ReportHandler) fill(
 
 func (h *ReportHandler) reportFailed(w http.ResponseWriter, sc ProjectScope, what string, err error) {
 	h.LogErr("web report: "+what, err)
-	h.ErrorPage(w, sc.req, http.StatusInternalServerError, "Report failed", "Could not load this report.", err)
+	h.ErrorPage(w, sc.req, http.StatusInternalServerError, pageTitle(sc.req, "error_title.report_failed"), "Could not load this report.", err)
 }
 
 func reportCashflowIDs(window []*period.Period) []uuid.UUID {

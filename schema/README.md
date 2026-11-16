@@ -11,8 +11,8 @@ domain interfaces — SQLite is dev/demo, Postgres is production.
 
 ```
 schema/
-├── migrations/postgres/    # 001_init … 016_key_authorship, VERSION
-├── migrations/sqlite/      # 001_init … 013_key_authorship, VERSION
+├── migrations/postgres/    # 001_init … 019_user_prefs, VERSION
+├── migrations/sqlite/      # 001_init … 016_user_prefs, VERSION
 ├── migrator.go             # goose runner, template rendering, embed FS
 ├── migrator_templatefs.go  # per-boot template-rendered file system
 ├── rls_guard.go            # boot-time BYPASSRLS assertion
@@ -49,6 +49,13 @@ erDiagram
     projects ||--o{ webhook_endpoints : "sends to"
     webhook_endpoints ||--o{ webhook_deliveries : "attempts"
 
+    users {
+        uuid id PK
+        text locale
+        text theme "theme family, '' until chosen"
+        text color_mode "light|dark|system, '' until chosen"
+        text tips_seen "JSON array, default []"
+    }
     memberships {
         uuid org_id FK
         uuid user_id FK
@@ -132,9 +139,9 @@ pinned by `TestMigrateUp_DefinerFunctionsAreOwnedByTheMigrationRole`.
 ### Numbering
 
 yasaku keeps one numbering per dialect. Its own migrations (`007_yasaku`,
-`016_key_authorship`, `017_opensheet`, `018_opensheet_resync` on Postgres;
-`005_yasaku`, `013_key_authorship`, `014_opensheet`, `015_opensheet_resync` on
-SQLite) interleave with the template's. A template migration lands at yasaku's
+`016_key_authorship`, `017_opensheet`, `018_opensheet_resync`, `019_user_prefs` on Postgres;
+`005_yasaku`, `013_key_authorship`, `014_opensheet`, `015_opensheet_resync`,
+`016_user_prefs` on SQLite) interleave with the template's. A template migration lands at yasaku's
 next free number with byte-identical content, so template `007_apikey` is
 yasaku `008_apikey`. Never renumber or edit an applied migration. Production has
 applied everything up to the version it ran.

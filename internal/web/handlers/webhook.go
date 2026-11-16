@@ -57,7 +57,7 @@ func (h *WebhookHandler) GetWebhooks(w http.ResponseWriter, r *http.Request) {
 	items, err := h.Webhooks.List(sc.req.Context())
 	if err != nil {
 		h.LogErr("web webhook: list", err)
-		h.ErrorPage(w, sc.req, http.StatusInternalServerError, "List failed", "Could not load webhook endpoints.", err)
+		h.ErrorPage(w, sc.req, http.StatusInternalServerError, pageTitle(sc.req, "error_title.list_failed"), "Could not load webhook endpoints.", err)
 		return
 	}
 	rows := make([]templates.WebhookRow, 0, len(items))
@@ -70,7 +70,7 @@ func (h *WebhookHandler) GetWebhooks(w http.ResponseWriter, r *http.Request) {
 		Limit:       webhook.MaxEndpointsPerProject,
 		Guide:       webhookGuide(len(rows) == 0),
 	}
-	Render(w, sc.req, templates.WebhooksLayout(h.layout(sc, "Webhooks · "+sc.project.Name), v))
+	Render(w, sc.req, templates.WebhooksLayout(h.layout(sc, pageTitle(sc.req, "webhooks.title", sc.project.Name)), v))
 }
 
 // GetWebhookNew renders the empty endpoint form.
@@ -89,7 +89,7 @@ func (h *WebhookHandler) PostWebhookCreate(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if err := r.ParseForm(); err != nil {
-		h.ErrorPage(w, sc.req, http.StatusBadRequest, "Bad request", "Could not parse form body.")
+		h.ErrorPage(w, sc.req, http.StatusBadRequest, pageTitle(sc.req, "error_title.bad_request"), "Could not parse form body.")
 		return
 	}
 	rawURL, desc, types := endpointFields(r)
@@ -122,7 +122,7 @@ func (h *WebhookHandler) PostWebhookUpdate(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if err := r.ParseForm(); err != nil {
-		h.ErrorPage(w, sc.req, http.StatusBadRequest, "Bad request", "Could not parse form body.")
+		h.ErrorPage(w, sc.req, http.StatusBadRequest, pageTitle(sc.req, "error_title.bad_request"), "Could not parse form body.")
 		return
 	}
 	rawURL, desc, types := endpointFields(r)
@@ -203,17 +203,17 @@ func (h *WebhookHandler) GetWebhookDelivery(w http.ResponseWriter, r *http.Reque
 	d, err := h.Webhooks.Delivery(sc.req.Context(), e.ID, did)
 	if err != nil {
 		if webhook.IsDeliveryNotFoundError(err) || webhook.IsNotFoundError(err) {
-			h.ErrorPage(w, sc.req, http.StatusNotFound, "Not found", "That delivery no longer exists.", err)
+			h.ErrorPage(w, sc.req, http.StatusNotFound, pageTitle(sc.req, "error_title.not_found"), "That delivery no longer exists.", err)
 			return
 		}
 		h.LogErr("web webhook: delivery", err)
-		h.ErrorPage(w, sc.req, http.StatusInternalServerError, "Load failed", "Could not load the delivery.", err)
+		h.ErrorPage(w, sc.req, http.StatusInternalServerError, pageTitle(sc.req, "error_title.load_failed"), "Could not load the delivery.", err)
 		return
 	}
 	items, err := h.Webhooks.Attempts(sc.req.Context(), e.ID, did)
 	if err != nil {
 		h.LogErr("web webhook: attempts", err)
-		h.ErrorPage(w, sc.req, http.StatusInternalServerError, "Load failed", "Could not load the delivery attempts.", err)
+		h.ErrorPage(w, sc.req, http.StatusInternalServerError, pageTitle(sc.req, "error_title.load_failed"), "Could not load the delivery attempts.", err)
 		return
 	}
 	rows := make([]templates.WebhookAttemptRow, 0, len(items))
@@ -243,7 +243,7 @@ func (h *WebhookHandler) PostWebhookRetry(w http.ResponseWriter, r *http.Request
 	v, err := h.deliveriesView(sc, e)
 	if err != nil {
 		h.LogErr("web webhook: deliveries", err)
-		h.ErrorPage(w, sc.req, http.StatusInternalServerError, "Load failed", "Could not load deliveries.", err)
+		h.ErrorPage(w, sc.req, http.StatusInternalServerError, pageTitle(sc.req, "error_title.load_failed"), "Could not load deliveries.", err)
 		return
 	}
 	i := slices.IndexFunc(v.Items, func(d templates.WebhookDeliveryRow) bool { return d.ID == did.String() })
@@ -292,17 +292,17 @@ func (h *WebhookHandler) requireEndpoint(w http.ResponseWriter, r *http.Request)
 	}
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
-		h.ErrorPage(w, sc.req, http.StatusBadRequest, "Bad id", "Malformed webhook endpoint id.")
+		h.ErrorPage(w, sc.req, http.StatusBadRequest, pageTitle(sc.req, "error_title.bad_id"), "Malformed webhook endpoint id.")
 		return ProjectScope{}, nil, false
 	}
 	e, err := h.Webhooks.ByID(sc.req.Context(), id)
 	if err != nil {
 		if webhook.IsNotFoundError(err) {
-			h.ErrorPage(w, sc.req, http.StatusNotFound, "Not found", "That webhook endpoint no longer exists.", err)
+			h.ErrorPage(w, sc.req, http.StatusNotFound, pageTitle(sc.req, "error_title.not_found"), "That webhook endpoint no longer exists.", err)
 			return ProjectScope{}, nil, false
 		}
 		h.LogErr("web webhook: byID", err)
-		h.ErrorPage(w, sc.req, http.StatusInternalServerError, "Lookup failed", "Could not load that webhook endpoint.", err)
+		h.ErrorPage(w, sc.req, http.StatusInternalServerError, pageTitle(sc.req, "error_title.lookup_failed"), "Could not load that webhook endpoint.", err)
 		return ProjectScope{}, nil, false
 	}
 	return sc, e, true
@@ -315,7 +315,7 @@ func (h *WebhookHandler) requireDelivery(w http.ResponseWriter, r *http.Request)
 	}
 	did, err := uuid.Parse(r.PathValue("did"))
 	if err != nil {
-		h.ErrorPage(w, sc.req, http.StatusBadRequest, "Bad id", "Malformed delivery id.")
+		h.ErrorPage(w, sc.req, http.StatusBadRequest, pageTitle(sc.req, "error_title.bad_id"), "Malformed delivery id.")
 		return ProjectScope{}, nil, uuid.Nil, false
 	}
 	return sc, e, did, true
@@ -325,7 +325,7 @@ func (h *WebhookHandler) reloadDetail(w http.ResponseWriter, sc ProjectScope, id
 	e, err := h.Webhooks.ByID(sc.req.Context(), id)
 	if err != nil {
 		h.LogErr("web webhook: byID", err)
-		h.ErrorPage(w, sc.req, http.StatusInternalServerError, "Lookup failed", "Could not load that webhook endpoint.", err)
+		h.ErrorPage(w, sc.req, http.StatusInternalServerError, pageTitle(sc.req, "error_title.lookup_failed"), "Could not load that webhook endpoint.", err)
 		return
 	}
 	h.writeDetail(w, sc, e, o)
@@ -335,7 +335,7 @@ func (h *WebhookHandler) writeDetail(w http.ResponseWriter, sc ProjectScope, e *
 	deliveries, err := h.deliveriesView(sc, e)
 	if err != nil {
 		h.LogErr("web webhook: deliveries", err)
-		h.ErrorPage(w, sc.req, http.StatusInternalServerError, "Load failed", "Could not load deliveries.", err)
+		h.ErrorPage(w, sc.req, http.StatusInternalServerError, pageTitle(sc.req, "error_title.load_failed"), "Could not load deliveries.", err)
 		return
 	}
 	form := webhookForm(e.ID.String(), e.URL, e.Description, e.Active, e.EventTypes)
@@ -363,7 +363,7 @@ func (h *WebhookHandler) writeDetail(w http.ResponseWriter, sc ProjectScope, e *
 		Render(w, sc.req, templates.WebhookDetailPage(h.ProjectFragmentBase(sc), v))
 		return
 	}
-	Render(w, sc.req, templates.WebhookDetailLayout(h.layout(sc, "Webhook · "+sc.project.Name), v))
+	Render(w, sc.req, templates.WebhookDetailLayout(h.layout(sc, pageTitle(sc.req, "title.webhook", sc.project.Name)), v))
 }
 
 func (h *WebhookHandler) writeNewForm(w http.ResponseWriter, sc ProjectScope, form templates.WebhookFormView, werr templates.WebhookError) {
@@ -372,14 +372,14 @@ func (h *WebhookHandler) writeNewForm(w http.ResponseWriter, sc ProjectScope, fo
 		Render(w, sc.req, templates.WebhookNewPage(h.ProjectFragmentBase(sc), form))
 		return
 	}
-	Render(w, sc.req, templates.WebhookNewLayout(h.layout(sc, "New webhook · "+sc.project.Name), form))
+	Render(w, sc.req, templates.WebhookNewLayout(h.layout(sc, pageTitle(sc.req, "title.webhook_new", sc.project.Name)), form))
 }
 
 func (h *WebhookHandler) writeDeliveries(w http.ResponseWriter, sc ProjectScope, e *webhook.Endpoint, notice templates.WebhookNotice, werr templates.WebhookError) {
 	v, err := h.deliveriesView(sc, e)
 	if err != nil {
 		h.LogErr("web webhook: deliveries", err)
-		h.ErrorPage(w, sc.req, http.StatusInternalServerError, "Load failed", "Could not load deliveries.", err)
+		h.ErrorPage(w, sc.req, http.StatusInternalServerError, pageTitle(sc.req, "error_title.load_failed"), "Could not load deliveries.", err)
 		return
 	}
 	v.Notice, v.Error = notice, werr

@@ -40,7 +40,7 @@ func TestOverview_LinksToPosts(t *testing.T) {
 	assert.Equal(t, 1, strings.Count(body, "bg-primary px-4 py-2"), "at most one primary quick action")
 }
 
-var noncedCopyScript = regexp.MustCompile(`<script nonce="[^"]*">[^<]*navigator\.clipboard`)
+var noncedCopyScript = regexp.MustCompile(`<script src="[^"]*/static/copy\.js[^"]*" nonce="`)
 
 func TestOverview_CopyScriptCarriesNonce(t *testing.T) {
 	x := newTodoFixture(t)

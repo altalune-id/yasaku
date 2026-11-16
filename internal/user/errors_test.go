@@ -172,3 +172,10 @@ func TestOIDCRefusalErrors_KeepTheEmailOutOfLogs(t *testing.T) {
 		assert.NotContains(t, err.Error(), "email=", "an error message reaches the logs")
 	}
 }
+
+func TestTipsSeenContendedError(t *testing.T) {
+	err := fmt.Errorf("wrap: %w", &user.TipsSeenContendedError{ID: "abc", Attempts: 3})
+	assert.True(t, user.IsTipsSeenContendedError(err))
+	assert.False(t, user.IsTipsSeenContendedError(&user.NotFoundError{ID: "abc"}))
+	assert.Equal(t, "user: tips_seen kept changing: id=abc attempts=3", (&user.TipsSeenContendedError{ID: "abc", Attempts: 3}).Error())
+}

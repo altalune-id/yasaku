@@ -129,7 +129,7 @@ func webhookGuideNote(text, header string) templ.Component {
 			return templ_7745c5c3_Err
 		}
 		if header != "" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "<code class=\"ml-1 rounded bg-muted px-1 py-0.5 font-mono text-xs text-foreground\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "<code class=\"ms-1 rounded bg-muted px-1 py-0.5 font-mono text-xs text-foreground\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

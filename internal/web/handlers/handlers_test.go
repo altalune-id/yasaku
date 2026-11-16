@@ -180,8 +180,7 @@ func TestHome_GetHome_RedirectsUnauth(t *testing.T) {
 	assert.Equal(t, "/login", rec.Header().Get("Location"))
 }
 
-// TestHome_GetRoot_RedirectsToTheLastUsedOrg covers the new root: it names no org, so it forwards to one.
-func TestHome_GetRoot_RedirectsToTheLastUsedOrg(t *testing.T) {
+func TestHome_GetRoot_WithNoProjectGoesToTheOrgList(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	ctx := context.Background()
@@ -199,7 +198,7 @@ func TestHome_GetRoot_RedirectsToTheLastUsedOrg(t *testing.T) {
 	mux.ServeHTTP(rec, f.authedRequest(t, http.MethodGet, "/", "", p))
 
 	assert.Equal(t, http.StatusSeeOther, rec.Code)
-	assert.Equal(t, "/orgs/acme", rec.Header().Get("Location"))
+	assert.Equal(t, "/orgs", rec.Header().Get("Location"))
 }
 
 func TestHome_GetOverview_RendersForAuthedUser(t *testing.T) {
@@ -407,7 +406,7 @@ func TestProjectHandler_PostCreate_DuplicateSlug(t *testing.T) {
 func TestProjectHandler_PostRename_MissingProject(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
-	h := handlers.NewProjectHandler(f.Deps, f.Projects)
+	h := handlers.NewSettingsHandler(f.Deps, f.Projects, nil, nil)
 	mux := http.NewServeMux()
 	h.Register(mux)
 	rec := httptest.NewRecorder()
@@ -609,7 +608,7 @@ func TestOnboardHandler_Register_MountsRoutes(t *testing.T) {
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/onboard", nil))
 	assert.Equal(t, http.StatusOK, rec.Code)
-	assert.Contains(t, rec.Body.String(), "First-time setup")
+	assert.Contains(t, rec.Body.String(), "<title>onboard.title</title>")
 }
 
 func TestOnboardHandler_GetOnboard_RedirectsWhenNotRequired(t *testing.T) {
@@ -803,7 +802,7 @@ func TestOnboardingHandler_GetOnboarding_OK(t *testing.T) {
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, f.authedRequest(t, http.MethodGet, "/onboarding", "", session.Principal{UserID: u.ID, Email: u.Email, Name: u.Name}))
 	assert.Equal(t, http.StatusOK, rec.Code)
-	assert.Contains(t, rec.Body.String(), "Welcome")
+	assert.Contains(t, rec.Body.String(), "<title>welcome.eyebrow</title>")
 }
 
 func TestOnboardingHandler_PostOnboarding_ValidationErrors(t *testing.T) {
@@ -966,7 +965,7 @@ func TestAuthHandler_GetLogin_UnauthedRenders(t *testing.T) {
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/login", nil))
 	assert.Equal(t, http.StatusOK, rec.Code)
-	assert.Contains(t, rec.Body.String(), "Sign in")
+	assert.Contains(t, rec.Body.String(), "<title>login.title</title>")
 }
 
 func TestAuthHandler_GetLogin_AuthedRedirects(t *testing.T) {

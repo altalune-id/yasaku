@@ -59,11 +59,11 @@ func (h *WalletHandler) GetWallets(w http.ResponseWriter, r *http.Request) {
 	v, err := h.walletsView(sc, banner{})
 	if err != nil {
 		h.LogErr("web wallet: list", err)
-		h.ErrorPage(w, sc.req, http.StatusInternalServerError, "List failed", "Could not load wallets.", err)
+		h.ErrorPage(w, sc.req, http.StatusInternalServerError, pageTitle(sc.req, "error_title.list_failed"), "Could not load wallets.", err)
 		return
 	}
 	v.OpeningMovedTo = h.openingMovedTo(sc)
-	Render(w, sc.req, templates.WalletsLayout(h.walletLayout(sc, "Wallets"), v))
+	Render(w, sc.req, templates.WalletsLayout(h.walletLayout(sc, "nav.wallets"), v))
 }
 
 // GetNew renders the empty wallet form.
@@ -75,7 +75,7 @@ func (h *WalletHandler) GetNew(w http.ResponseWriter, r *http.Request) {
 	currency, err := h.currency(sc)
 	if err != nil {
 		h.LogErr("web wallet: settings", err)
-		h.ErrorPage(w, sc.req, http.StatusInternalServerError, "Load failed", "Could not load project settings.", err)
+		h.ErrorPage(w, sc.req, http.StatusInternalServerError, pageTitle(sc.req, "error_title.load_failed"), "Could not load project settings.", err)
 		return
 	}
 	v := templates.WalletFormView{
@@ -83,7 +83,7 @@ func (h *WalletHandler) GetNew(w http.ResponseWriter, r *http.Request) {
 		Currency:    string(currency),
 		Kinds:       walletKindOptions(wallet.KindCash),
 	}
-	Render(w, sc.req, templates.WalletFormLayout(h.walletLayout(sc, "New wallet"), v))
+	Render(w, sc.req, templates.WalletFormLayout(h.walletLayout(sc, "title.wallet_new"), v))
 }
 
 // PostCreate opens a wallet, recording any opening balance as its first transaction.
@@ -93,13 +93,13 @@ func (h *WalletHandler) PostCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := sc.req.ParseForm(); err != nil {
-		h.ErrorPage(w, sc.req, http.StatusBadRequest, "Bad request", "Could not parse form body.")
+		h.ErrorPage(w, sc.req, http.StatusBadRequest, pageTitle(sc.req, "error_title.bad_request"), "Could not parse form body.")
 		return
 	}
 	currency, err := h.currency(sc)
 	if err != nil {
 		h.LogErr("web wallet: settings", err)
-		h.ErrorPage(w, sc.req, http.StatusInternalServerError, "Load failed", "Could not load project settings.", err)
+		h.ErrorPage(w, sc.req, http.StatusInternalServerError, pageTitle(sc.req, "error_title.load_failed"), "Could not load project settings.", err)
 		return
 	}
 
@@ -115,7 +115,7 @@ func (h *WalletHandler) PostCreate(w http.ResponseWriter, r *http.Request) {
 		Kinds:       walletKindOptions(kind),
 	}
 	if kindErr != nil {
-		h.writeWalletForm(w, sc, v, bannerFrom(kindErr), "New wallet")
+		h.writeWalletForm(w, sc, v, bannerFrom(kindErr), "title.wallet_new")
 		return
 	}
 
@@ -123,7 +123,7 @@ func (h *WalletHandler) PostCreate(w http.ResponseWriter, r *http.Request) {
 	if v.Opening != "" {
 		amount, pErr := parseAmount(v.Opening, currency)
 		if pErr != nil {
-			h.writeWalletForm(w, sc, v, bannerFrom(pErr), "New wallet")
+			h.writeWalletForm(w, sc, v, bannerFrom(pErr), "title.wallet_new")
 			return
 		}
 		opening = &amount
@@ -139,7 +139,7 @@ func (h *WalletHandler) PostCreate(w http.ResponseWriter, r *http.Request) {
 	created, dated, err := h.Open.Run(sc.req.Context(), params, opening, time.Now().UTC())
 	if err != nil {
 		h.LogErr("web wallet: create", err)
-		h.writeWalletForm(w, sc, v, bannerFrom(err), "New wallet")
+		h.writeWalletForm(w, sc, v, bannerFrom(err), "title.wallet_new")
 		return
 	}
 	if dated.Moved {
@@ -194,7 +194,7 @@ func (h *WalletHandler) GetEdit(w http.ResponseWriter, r *http.Request) {
 	if wl.IsArchived() {
 		b = bannerFrom(&wallet.ArchivedError{ID: wl.ID.String()})
 	}
-	h.writeWalletForm(w, sc, walletFormFrom(sc, wl), b, "Edit wallet")
+	h.writeWalletForm(w, sc, walletFormFrom(sc, wl), b, "title.wallet_edit")
 }
 
 // PostUpdate replaces a wallet's name, kind, provider and exclude-from-total flag in one save.
@@ -204,7 +204,7 @@ func (h *WalletHandler) PostUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := sc.req.ParseForm(); err != nil {
-		h.ErrorPage(w, sc.req, http.StatusBadRequest, "Bad request", "Could not parse form body.")
+		h.ErrorPage(w, sc.req, http.StatusBadRequest, pageTitle(sc.req, "error_title.bad_request"), "Could not parse form body.")
 		return
 	}
 	form := sc.req.PostForm
@@ -215,12 +215,12 @@ func (h *WalletHandler) PostUpdate(w http.ResponseWriter, r *http.Request) {
 	v.Exclude = form.Get("exclude_from_total") != ""
 	v.Kinds = walletKindOptions(kind)
 	if kindErr != nil {
-		h.writeWalletForm(w, sc, v, bannerFrom(kindErr), "Edit wallet")
+		h.writeWalletForm(w, sc, v, bannerFrom(kindErr), "title.wallet_edit")
 		return
 	}
 	if _, err := h.Wallets.Edit(sc.req.Context(), wl.ID, v.Name, kind, v.Provider, v.Exclude); err != nil {
 		h.LogErr("web wallet: edit", err)
-		h.writeWalletForm(w, sc, v, bannerFrom(err), "Edit wallet")
+		h.writeWalletForm(w, sc, v, bannerFrom(err), "title.wallet_edit")
 		return
 	}
 	h.redirectToWallets(w, sc)
@@ -288,7 +288,7 @@ func (h *WalletHandler) PostAdjust(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := sc.req.ParseForm(); err != nil {
-		h.ErrorPage(w, sc.req, http.StatusBadRequest, "Bad request", "Could not parse form body.")
+		h.ErrorPage(w, sc.req, http.StatusBadRequest, pageTitle(sc.req, "error_title.bad_request"), "Could not parse form body.")
 		return
 	}
 	raw := strings.TrimSpace(sc.req.PostForm.Get("target"))
@@ -374,24 +374,24 @@ func (h *WalletHandler) requireWallet(w http.ResponseWriter, r *http.Request) (P
 	}
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
-		h.ErrorPage(w, sc.req, http.StatusBadRequest, "Bad id", "Malformed wallet id.")
+		h.ErrorPage(w, sc.req, http.StatusBadRequest, pageTitle(sc.req, "error_title.bad_id"), "Malformed wallet id.")
 		return ProjectScope{}, nil, false
 	}
 	wl, err := h.Wallets.ByID(sc.req.Context(), id)
 	if err != nil {
 		if wallet.IsNotFoundError(err) {
-			h.ErrorPage(w, sc.req, http.StatusNotFound, "Not found", "That wallet no longer exists.", err)
+			h.ErrorPage(w, sc.req, http.StatusNotFound, pageTitle(sc.req, "error_title.not_found"), "That wallet no longer exists.", err)
 			return ProjectScope{}, nil, false
 		}
 		h.LogErr("web wallet: byID", err)
-		h.ErrorPage(w, sc.req, http.StatusInternalServerError, "Lookup failed", "Could not load that wallet.", err)
+		h.ErrorPage(w, sc.req, http.StatusInternalServerError, pageTitle(sc.req, "error_title.lookup_failed"), "Could not load that wallet.", err)
 		return ProjectScope{}, nil, false
 	}
 	return sc, wl, true
 }
 
-func (h *WalletHandler) walletLayout(sc ProjectScope, title string) web.LayoutData {
-	return h.LayoutForProject(sc.req, title+" · "+sc.project.Name, sc.org.Slug, sc.project, "wallets")
+func (h *WalletHandler) walletLayout(sc ProjectScope, titleKey string) web.LayoutData {
+	return h.LayoutForProject(sc.req, pageTitle(sc.req, titleKey, sc.project.Name), sc.org.Slug, sc.project, "wallets")
 }
 
 func (h *WalletHandler) currency(sc ProjectScope) (money.Currency, error) {
@@ -481,15 +481,15 @@ func (h *WalletHandler) writeWalletList(w http.ResponseWriter, sc ProjectScope, 
 	v, err := h.walletsView(sc, b)
 	if err != nil {
 		h.LogErr("web wallet: list", err)
-		h.ErrorPage(w, sc.req, http.StatusInternalServerError, "List failed", "Could not load wallets.", err)
+		h.ErrorPage(w, sc.req, http.StatusInternalServerError, pageTitle(sc.req, "error_title.list_failed"), "Could not load wallets.", err)
 		return
 	}
-	Render(w, sc.req, templates.WalletList(h.walletLayout(sc, "Wallets"), v))
+	Render(w, sc.req, templates.WalletList(h.walletLayout(sc, "nav.wallets"), v))
 }
 
-func (h *WalletHandler) writeWalletForm(w http.ResponseWriter, sc ProjectScope, v templates.WalletFormView, b banner, title string) {
+func (h *WalletHandler) writeWalletForm(w http.ResponseWriter, sc ProjectScope, v templates.WalletFormView, b banner, titleKey string) {
 	v.ErrorKey, v.ErrorMsg, v.ErrorCode = b.Key, b.Msg, b.Code
-	Render(w, sc.req, templates.WalletFormLayout(h.walletLayout(sc, title), v))
+	Render(w, sc.req, templates.WalletFormLayout(h.walletLayout(sc, titleKey), v))
 }
 
 func (h *WalletHandler) writeWalletDetail(w http.ResponseWriter, sc ProjectScope, wl *wallet.Wallet, state string, b banner) {
@@ -497,13 +497,13 @@ func (h *WalletHandler) writeWalletDetail(w http.ResponseWriter, sc ProjectScope
 	balance, err := h.Transactions.Balance(ctx, wl.ID)
 	if err != nil {
 		h.LogErr("web wallet: balance", err)
-		h.ErrorPage(w, sc.req, http.StatusInternalServerError, "Load failed", "Could not load that wallet.", err)
+		h.ErrorPage(w, sc.req, http.StatusInternalServerError, pageTitle(sc.req, "error_title.load_failed"), "Could not load that wallet.", err)
 		return
 	}
 	items, _, err := h.Transactions.List(ctx, transaction.ListOpts{WalletID: &wl.ID, Limit: walletRecentLimit})
 	if err != nil {
 		h.LogErr("web wallet: list transactions", err)
-		h.ErrorPage(w, sc.req, http.StatusInternalServerError, "Load failed", "Could not load that wallet.", err)
+		h.ErrorPage(w, sc.req, http.StatusInternalServerError, pageTitle(sc.req, "error_title.load_failed"), "Could not load that wallet.", err)
 		return
 	}
 	v := templates.WalletDetailView{
@@ -523,7 +523,7 @@ func (h *WalletHandler) writeAdjustForm(w http.ResponseWriter, sc ProjectScope, 
 	balance, err := h.Transactions.Balance(sc.req.Context(), wl.ID)
 	if err != nil {
 		h.LogErr("web wallet: balance", err)
-		h.ErrorPage(w, sc.req, http.StatusInternalServerError, "Load failed", "Could not load that wallet.", err)
+		h.ErrorPage(w, sc.req, http.StatusInternalServerError, pageTitle(sc.req, "error_title.load_failed"), "Could not load that wallet.", err)
 		return
 	}
 	v := templates.WalletAdjustView{
@@ -536,7 +536,7 @@ func (h *WalletHandler) writeAdjustForm(w http.ResponseWriter, sc ProjectScope, 
 		ErrorMsg:    b.Msg,
 		ErrorCode:   b.Code,
 	}
-	Render(w, sc.req, templates.WalletAdjustLayout(h.walletLayout(sc, "Adjust balance"), v))
+	Render(w, sc.req, templates.WalletAdjustLayout(h.walletLayout(sc, "title.wallet_adjust"), v))
 }
 
 func (h *WalletHandler) redirectToWallet(w http.ResponseWriter, sc ProjectScope, id uuid.UUID, state string) {

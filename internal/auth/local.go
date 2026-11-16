@@ -35,6 +35,9 @@ type UserRef struct {
 	Source          string
 	IsAdmin         bool
 	Locale          string
+	Theme           string
+	ColorMode       string
+	TipsSeen        []string
 	PasswordHash    string
 	TermsAcceptedAt *time.Time
 }
@@ -165,13 +168,16 @@ func sourceFor(u *UserRef) session.Source {
 
 func principalFromRef(u *UserRef, src session.Source, now time.Time) session.Principal {
 	p := session.Principal{
-		UserID:   u.ID,
-		Email:    u.Email,
-		Name:     u.Name,
-		Source:   src,
-		IsAdmin:  u.IsAdmin,
-		Locale:   u.Locale,
-		IssuedAt: now,
+		UserID:    u.ID,
+		Email:     u.Email,
+		Name:      u.Name,
+		Source:    src,
+		IsAdmin:   u.IsAdmin,
+		Locale:    u.Locale,
+		Theme:     u.Theme,
+		ColorMode: u.ColorMode,
+		TipsSeen:  u.TipsSeen,
+		IssuedAt:  now,
 	}
 	if u.TermsAcceptedAt != nil {
 		p.TermsAcceptedAt = *u.TermsAcceptedAt

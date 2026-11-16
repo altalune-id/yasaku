@@ -45,6 +45,9 @@ func IsHTMXRequest(r *http.Request) bool { return r.Header.Get("HX-Request") == 
 // HeaderPushURL is the htmx response header that pushes a URL onto the browser history after the swap.
 const HeaderPushURL = "HX-Push-Url"
 
+// HeaderRedirect is the htmx response header that makes the browser load a URL as a full page.
+const HeaderRedirect = "HX-Redirect"
+
 // HeaderRetarget is the htmx response header that replaces the requesting element's swap target.
 const HeaderRetarget = "HX-Retarget"
 
@@ -75,10 +78,11 @@ type ActiveNav struct {
 
 // ActiveOrg is what the org switcher pill and menu heading show.
 type ActiveOrg struct {
-	ID   string
-	Slug string
-	Name string
-	Role string
+	ID     string
+	Slug   string
+	Name   string
+	Role   string
+	System bool
 }
 
 // ActiveProject is what the project switcher pill and sidebar heading show.
@@ -90,14 +94,16 @@ type ActiveProject struct {
 
 // LayoutData is the shape every page-level templ component receives.
 type LayoutData struct {
-	Title         string
-	BasePath      string
-	BaseURL       string
-	Version       string
-	Caps          capabilities.Capabilities
-	Principal     *session.Principal
-	Flash         *FlashMessage
-	Content       templ.Component
+	Title     string
+	BasePath  string
+	BaseURL   string
+	Version   string
+	Caps      capabilities.Capabilities
+	Principal *session.Principal
+	Flash     *FlashMessage
+	Content   templ.Component
+	// Dialogs renders in the body-level dialog host, outside every swap target.
+	Dialogs       templ.Component
 	ActiveOrg     *ActiveOrg
 	OtherOrgs     []ActiveOrg
 	ActiveProject *ActiveProject
@@ -108,8 +114,12 @@ type LayoutData struct {
 	Translator    *i18n.Translator
 	CurrentPath   string
 	SupportedLocs []i18n.Locale
-	Themes        []Theme
-	ColorModes    []ColorMode
+	// Theme is the resolved choice the picker shows checked.
+	Theme ThemePref
+	// ThemeAttr is the data-theme rendered on <html>; empty for System.
+	ThemeAttr string
+	// FamilyAttr is the data-family rendered on <html>; set only for System with a non-default family.
+	FamilyAttr string
 	// RequestID is echoed on every user-visible error so a report can be matched to a log line.
 	RequestID string
 	// SECURITY: every <script> the layout renders must carry this, or the browser refuses to run it.
@@ -207,6 +217,12 @@ func (d LayoutData) OIDCButtonLogoURL() string {
 		return s
 	}
 	return d.Static("altalune-logo.png")
+}
+
+// WithDialogs returns a copy of d with Dialogs set.
+func WithDialogs(d LayoutData, c templ.Component) LayoutData {
+	d.Dialogs = c
+	return d
 }
 
 // WithContent returns a copy of d with Content set.

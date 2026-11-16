@@ -217,7 +217,7 @@ func TransactionForm(d web.LayoutData, v TxFormView) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "\" class=\"w-full min-w-0 border-0 bg-transparent p-0 text-3xl font-semibold tabular-nums text-foreground tracking-tight placeholder:text-muted-foreground/40 focus:outline-none focus:ring-0\"></div><fieldset class=\"mt-4\"><legend class=\"sr-only\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "\" class=\"input input-ghost h-auto w-full min-w-0 px-2 py-1 text-3xl font-semibold tabular-nums tracking-tight\"></div><fieldset class=\"mt-4\"><legend class=\"sr-only\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -299,7 +299,7 @@ func TransactionForm(d web.LayoutData, v TxFormView) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		var templ_7745c5c3_Var13 = []any{txControlClass}
+		var templ_7745c5c3_Var13 = []any{txSelectClass, "mt-1"}
 		templ_7745c5c3_Err = templ.RenderCSSItems(ctx, templ_7745c5c3_Buffer, templ_7745c5c3_Var13...)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
@@ -428,7 +428,7 @@ func TransactionForm(d web.LayoutData, v TxFormView) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		var templ_7745c5c3_Var22 = []any{txControlClass}
+		var templ_7745c5c3_Var22 = []any{txSelectClass, "mt-1"}
 		templ_7745c5c3_Err = templ.RenderCSSItems(ctx, templ_7745c5c3_Buffer, templ_7745c5c3_Var22...)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
@@ -509,7 +509,7 @@ func TransactionForm(d web.LayoutData, v TxFormView) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		var templ_7745c5c3_Var27 = []any{txControlClass, "mt-0 flex-1"}
+		var templ_7745c5c3_Var27 = []any{txInputClass, "flex-1"}
 		templ_7745c5c3_Err = templ.RenderCSSItems(ctx, templ_7745c5c3_Buffer, templ_7745c5c3_Var27...)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
@@ -566,7 +566,7 @@ func TransactionForm(d web.LayoutData, v TxFormView) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 48, "\" class=\"shrink-0 rounded-md border border-border px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground aria-pressed:border-primary aria-pressed:bg-primary aria-pressed:font-medium aria-pressed:text-primary-foreground\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 48, "\" class=\"btn shrink-0 aria-pressed:btn-primary\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -604,7 +604,7 @@ func TransactionForm(d web.LayoutData, v TxFormView) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		var templ_7745c5c3_Var34 = []any{txControlClass}
+		var templ_7745c5c3_Var34 = []any{txInputClass, "mt-1"}
 		templ_7745c5c3_Err = templ.RenderCSSItems(ctx, templ_7745c5c3_Buffer, templ_7745c5c3_Var34...)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
@@ -687,7 +687,7 @@ func TransactionForm(d web.LayoutData, v TxFormView) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var40 = []any{txControlClass}
+			var templ_7745c5c3_Var40 = []any{txSelectClass, "mt-1"}
 			templ_7745c5c3_Err = templ.RenderCSSItems(ctx, templ_7745c5c3_Buffer, templ_7745c5c3_Var40...)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
@@ -1192,7 +1192,7 @@ func txFormAssets(nonce string) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 105, "\">\n\t(function () {\n\t\tconst form = document.currentScript && document.currentScript.closest(\"form\");\n\t\tif (!form || form.dataset.txWired === \"1\") return;\n\t\tform.dataset.txWired = \"1\";\n\n\t\tconst amount = form.querySelector(\"[name=amount]\");\n\t\tconst group = () => {\n\t\t\tif (!amount || amount.dataset.txGroup !== \"1\") return;\n\t\t\tconst digits = amount.value.replace(/\\D/g, \"\");\n\t\t\tamount.value = digits === \"\" ? \"\" : digits.replace(/\\B(?=(\\d{3})+(?!\\d))/g, \".\");\n\t\t};\n\t\tif (amount) {\n\t\t\tamount.addEventListener(\"input\", group);\n\t\t\tgroup();\n\t\t}\n\n\t\tform.addEventListener(\"htmx:after:request\", (e) => {\n\t\t\tconst ctx = e.detail && e.detail.ctx;\n\t\t\tconst status = ctx && ctx.response && ctx.response.status;\n\t\t\tif (e.target !== form || typeof status !== \"number\" || status >= 400) return;\n\t\t\tconst errors = form.querySelector(\"#tx-form-errors\");\n\t\t\tif (errors) errors.innerHTML = \"\";\n\t\t\tform.removeAttribute(\"data-category-picked\");\n\t\t\tif (amount) setTimeout(() => amount.focus(), 0);\n\t\t});\n\n\t\tform.addEventListener(\"change\", (e) => {\n\t\t\tif (e.target && e.target.name === \"category_id\") form.setAttribute(\"data-category-picked\", \"1\");\n\t\t});\n\t\tconst keepPick = (e) => {\n\t\t\tconst ctx = e.detail && e.detail.ctx;\n\t\t\tconst target = ctx && ctx.target;\n\t\t\tif (target && target.id === \"tx-category\" && form.hasAttribute(\"data-category-picked\")) e.preventDefault();\n\t\t};\n\t\tform.addEventListener(\"htmx:before:request\", keepPick);\n\t\tform.addEventListener(\"htmx:before:swap\", keepPick);\n\n\t\tconst walletSelect = form.querySelector(\"[name=wallet_id]\");\n\t\tconst symbolSlot = form.querySelector(\"[data-tx-symbol-slot]\");\n\t\tconst syncCurrency = () => {\n\t\t\tconst opt = walletSelect && walletSelect.selectedOptions[0];\n\t\t\tif (!opt || opt.dataset.txGroup === undefined) return;\n\t\t\tif (symbolSlot) symbolSlot.textContent = opt.dataset.txSymbol || \"\";\n\t\t\tif (!amount) return;\n\t\t\tif (amount.dataset.txGroup !== opt.dataset.txGroup) amount.value = \"\";\n\t\t\tamount.dataset.txGroup = opt.dataset.txGroup;\n\t\t\tgroup();\n\t\t};\n\t\tif (walletSelect) walletSelect.addEventListener(\"change\", syncCurrency);\n\t\tsyncCurrency();\n\n\t\tconst to = form.querySelector(\"[data-tx-to-wallet]\");\n\t\tconst chips = form.querySelector(\"#tx-category\");\n\t\tconst sync = () => {\n\t\t\tconst kind = form.querySelector(\"[name=kind]:checked\");\n\t\t\tconst transfer = kind && kind.value === \"transfer\";\n\t\t\tif (to) to.classList.toggle(\"hidden\", !transfer);\n\t\t\tif (chips) chips.classList.toggle(\"hidden\", transfer);\n\t\t};\n\t\tform.querySelectorAll(\"[data-tx-kind]\").forEach((el) => el.addEventListener(\"change\", sync));\n\t\tsync();\n\n\t\tconst yesterday = form.querySelector(\"[data-tx-yesterday]\");\n\t\tconst date = form.querySelector(\"[name=date]\");\n\t\tif (yesterday && date) {\n\t\t\tconst syncYesterday = () => {\n\t\t\t\tyesterday.setAttribute(\"aria-pressed\", date.value === yesterday.dataset.txYesterday ? \"true\" : \"false\");\n\t\t\t};\n\t\t\tyesterday.addEventListener(\"click\", () => {\n\t\t\t\tdate.value = yesterday.dataset.txYesterday;\n\t\t\t\tdate.dispatchEvent(new Event(\"change\", { bubbles: true }));\n\t\t\t});\n\t\t\tdate.addEventListener(\"input\", syncYesterday);\n\t\t\tdate.addEventListener(\"change\", syncYesterday);\n\t\t\tsyncYesterday();\n\t\t}\n\t})();\n\t</script>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 105, "\">\n\t(function () {\n\t\tconst form = document.currentScript && document.currentScript.closest(\"form\");\n\t\tif (!form || form.dataset.txWired === \"1\") return;\n\t\tform.dataset.txWired = \"1\";\n\n\t\tconst amount = form.querySelector(\"[name=amount]\");\n\t\tconst group = () => {\n\t\t\tif (!amount || amount.dataset.txGroup !== \"1\") return;\n\t\t\tconst digits = amount.value.replace(/\\D/g, \"\");\n\t\t\tamount.value = digits === \"\" ? \"\" : digits.replace(/\\B(?=(\\d{3})+(?!\\d))/g, \".\");\n\t\t};\n\t\tif (amount) {\n\t\t\tamount.addEventListener(\"input\", group);\n\t\t\tgroup();\n\t\t}\n\n\t\tform.addEventListener(\"htmx:after:request\", (e) => {\n\t\t\tconst ctx = e.detail && e.detail.ctx;\n\t\t\tconst status = ctx && ctx.response && ctx.response.status;\n\t\t\tif (e.target !== form || typeof status !== \"number\" || status >= 400) return;\n\t\t\tconst errors = form.querySelector(\"#tx-form-errors\");\n\t\t\tif (errors) errors.innerHTML = \"\";\n\t\t\tform.removeAttribute(\"data-category-picked\");\n\t\t\tconst dlg = form.closest(\"dialog\");\n\t\t\tif (amount) setTimeout(() => { if (!dlg || dlg.open) amount.focus(); }, 0);\n\t\t});\n\n\t\tform.addEventListener(\"change\", (e) => {\n\t\t\tif (e.target && e.target.name === \"category_id\") form.setAttribute(\"data-category-picked\", \"1\");\n\t\t});\n\t\tconst keepPick = (e) => {\n\t\t\tconst ctx = e.detail && e.detail.ctx;\n\t\t\tconst target = ctx && ctx.target;\n\t\t\tif (target && target.id === \"tx-category\" && form.hasAttribute(\"data-category-picked\")) e.preventDefault();\n\t\t};\n\t\tform.addEventListener(\"htmx:before:request\", keepPick);\n\t\tform.addEventListener(\"htmx:before:swap\", keepPick);\n\n\t\tconst walletSelect = form.querySelector(\"[name=wallet_id]\");\n\t\tconst symbolSlot = form.querySelector(\"[data-tx-symbol-slot]\");\n\t\tconst syncCurrency = () => {\n\t\t\tconst opt = walletSelect && walletSelect.selectedOptions[0];\n\t\t\tif (!opt || opt.dataset.txGroup === undefined) return;\n\t\t\tif (symbolSlot) symbolSlot.textContent = opt.dataset.txSymbol || \"\";\n\t\t\tif (!amount) return;\n\t\t\tif (amount.dataset.txGroup !== opt.dataset.txGroup) amount.value = \"\";\n\t\t\tamount.dataset.txGroup = opt.dataset.txGroup;\n\t\t\tgroup();\n\t\t};\n\t\tif (walletSelect) walletSelect.addEventListener(\"change\", syncCurrency);\n\t\tsyncCurrency();\n\n\t\tconst to = form.querySelector(\"[data-tx-to-wallet]\");\n\t\tconst chips = form.querySelector(\"#tx-category\");\n\t\tconst sync = () => {\n\t\t\tconst kind = form.querySelector(\"[name=kind]:checked\");\n\t\t\tconst transfer = kind && kind.value === \"transfer\";\n\t\t\tif (to) to.classList.toggle(\"hidden\", !transfer);\n\t\t\tif (chips) chips.classList.toggle(\"hidden\", transfer);\n\t\t};\n\t\tform.querySelectorAll(\"[data-tx-kind]\").forEach((el) => el.addEventListener(\"change\", sync));\n\t\tsync();\n\n\t\tconst yesterday = form.querySelector(\"[data-tx-yesterday]\");\n\t\tconst date = form.querySelector(\"[name=date]\");\n\t\tif (yesterday && date) {\n\t\t\tconst syncYesterday = () => {\n\t\t\t\tyesterday.setAttribute(\"aria-pressed\", date.value === yesterday.dataset.txYesterday ? \"true\" : \"false\");\n\t\t\t};\n\t\t\tyesterday.addEventListener(\"click\", () => {\n\t\t\t\tdate.value = yesterday.dataset.txYesterday;\n\t\t\t\tdate.dispatchEvent(new Event(\"change\", { bubbles: true }));\n\t\t\t});\n\t\t\tdate.addEventListener(\"input\", syncYesterday);\n\t\t\tdate.addEventListener(\"change\", syncYesterday);\n\t\t\tsyncYesterday();\n\t\t}\n\t})();\n\t</script>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1200,7 +1200,10 @@ func txFormAssets(nonce string) templ.Component {
 	})
 }
 
-const txControlClass = "mt-1 w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground shadow-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring"
+const (
+	txSelectClass = "select w-full"
+	txInputClass  = "input w-full"
+)
 
 const txChipClass = "inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-xs text-muted-foreground peer-checked:border-primary peer-checked:bg-primary/10 peer-checked:text-foreground peer-focus-visible:ring-2 peer-focus-visible:ring-ring"
 

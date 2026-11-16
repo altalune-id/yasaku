@@ -220,7 +220,7 @@ func YasakuOverviewPage(d web.LayoutData, v YasakuOverviewView) templ.Component 
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = ToastSlot().Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = ToastHost().Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -316,7 +316,7 @@ func yasakuPeriodCard(d web.LayoutData, v YasakuOverviewView) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = yasakuStat(d.Tr("overview.income"), Money(d, v.Income), "text-emerald-600 dark:text-emerald-400").Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = yasakuStat(d.Tr("overview.income"), Money(d, v.Income), "text-success").Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

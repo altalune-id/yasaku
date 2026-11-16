@@ -80,6 +80,11 @@ var localtimeOut = regexp.MustCompile(`(?s)<pre id="out">(.*?)</pre>`)
 
 func runLocaltime(t *testing.T, browserTZ string, body string) localtimeReport {
 	t.Helper()
+	return runLocaltimeIn(t, "en-US", browserTZ, body)
+}
+
+func runLocaltimeIn(t *testing.T, lang, browserTZ, body string) localtimeReport {
+	t.Helper()
 	bin := localtimeBrowser(t)
 	script, err := os.ReadFile(filepath.Join(repoRoot(t), "internal/web/static/localtime.js"))
 	if err != nil {
@@ -89,7 +94,7 @@ func runLocaltime(t *testing.T, browserTZ string, body string) localtimeReport {
 	if err != nil {
 		t.Fatal(err)
 	}
-	page := `<!doctype html><html lang="en-US"><head><style>` + string(css) + `</style></head><body>` + body +
+	page := `<!doctype html><html lang="` + lang + `"><head><style>` + string(css) + `</style></head><body>` + body +
 		`<pre id="out"></pre><script>` + localtimeProbe + `</script><script>` + string(script) + `</script></body></html>`
 	dir := t.TempDir()
 	file := filepath.Join(dir, "localtime.html")
@@ -162,20 +167,20 @@ func TestLocaltime_FormatsInTheBrowserZoneAndPopsTheLedgerZone(t *testing.T) {
 		{
 			name: "jakarta browser, london ledger", browser: "Asia/Jakarta", ledger: "Europe/London",
 			want: []localtimeRow{
-				{Text: "Oct 2, 2026, 4:55 PM", Armed: true, Described: true, Click: "popover", Pop: "Oct 2, 2026, 10:55 AM · Ledger time (Europe/London, GMT+1)"},
-				{Text: "Nov 1, 2026, 4:55 PM", Armed: true, Described: true, Click: "popover", Pop: "Nov 1, 2026, 9:55 AM · Ledger time (Europe/London, GMT+0)"},
+				{Text: "Oct 2, 2026, 4:55 PM", Armed: true, Described: true, Click: "popover", Pop: "Oct 2, 2026, 10:55 AM · Project time (Europe/London, GMT+1)"},
+				{Text: "Nov 1, 2026, 4:55 PM", Armed: true, Described: true, Click: "popover", Pop: "Nov 1, 2026, 9:55 AM · Project time (Europe/London, GMT+0)"},
 				{Text: "Oct 1", Armed: true, Described: true, Click: "popover", Pop: "Recorded Oct 1, 2026, 5:00 AM · your time (GMT+7)"},
 			},
-			hint: "Times in your timezone (GMT+7) · Ledger: Europe/London (" + london + ")",
+			hint: "Times in your timezone (GMT+7) · Project: Europe/London (" + london + ")",
 		},
 		{
 			name: "london browser, jakarta ledger", browser: "Europe/London", ledger: "Asia/Jakarta",
 			want: []localtimeRow{
-				{Text: "Oct 2, 2026, 10:55 AM", Armed: true, Described: true, Click: "popover", Pop: "Oct 2, 2026, 4:55 PM · Ledger time (Asia/Jakarta, GMT+7)"},
-				{Text: "Nov 1, 2026, 9:55 AM", Armed: true, Described: true, Click: "popover", Pop: "Nov 1, 2026, 4:55 PM · Ledger time (Asia/Jakarta, GMT+7)"},
+				{Text: "Oct 2, 2026, 10:55 AM", Armed: true, Described: true, Click: "popover", Pop: "Oct 2, 2026, 4:55 PM · Project time (Asia/Jakarta, GMT+7)"},
+				{Text: "Nov 1, 2026, 9:55 AM", Armed: true, Described: true, Click: "popover", Pop: "Nov 1, 2026, 4:55 PM · Project time (Asia/Jakarta, GMT+7)"},
 				{Text: "Oct 1", Armed: true, Described: true, Click: "popover", Pop: "Recorded Sep 30, 2026, 11:00 PM · your time (GMT+1)"},
 			},
-			hint: "Times in your timezone (" + london + ") · Ledger: Asia/Jakarta (GMT+7)",
+			hint: "Times in your timezone (" + london + ") · Project: Asia/Jakarta (GMT+7)",
 		},
 		{
 			name: "same zone, no popover", browser: "Asia/Jakarta", ledger: "Asia/Jakarta",
@@ -201,5 +206,25 @@ func TestLocaltime_FormatsInTheBrowserZoneAndPopsTheLedgerZone(t *testing.T) {
 				t.Errorf("hint = %q, want %q", rep.Hint, tc.hint)
 			}
 		})
+	}
+}
+
+func TestLocaltime_ArabicUsesTheGregorianCalendar(t *testing.T) {
+	rep := runLocaltimeIn(t, "ar-SA-u-ca-islamic-umalqura", "Asia/Jakarta", renderLedgerPage(t, "Asia/Jakarta"))
+	if len(rep.Rows) != 3 {
+		t.Fatalf("rows = %+v", rep.Rows)
+	}
+	for i, row := range rep.Rows {
+		if strings.Contains(row.Text, "هـ") || strings.Contains(row.Text, "١٤٤٨") || strings.Contains(row.Text, "ربيع") {
+			t.Errorf("row %d %q is in the Hijri calendar", i, row.Text)
+		}
+	}
+	for i := range 2 {
+		if !strings.Contains(rep.Rows[i].Text, "٢٠٢٦") {
+			t.Errorf("row %d %q lacks the Gregorian year in Arabic digits", i, rep.Rows[i].Text)
+		}
+	}
+	if !strings.Contains(rep.Rows[2].Text, "أكتوبر") {
+		t.Errorf("row 2 %q lacks the Gregorian Arabic month name", rep.Rows[2].Text)
 	}
 }

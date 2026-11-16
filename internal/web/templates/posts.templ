@@ -54,7 +54,7 @@ templ postBanner(d web.LayoutData, kind, code string) {
 
 templ postStatusBadge(d web.LayoutData, published bool) {
 	if published {
-		<span class="shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-200">
+		<span class="shrink-0 rounded-full bg-success/10 px-2 py-0.5 text-xs font-medium text-success">
 			{ d.Tr("blog.post_status_published") }
 		</span>
 	} else {
@@ -141,7 +141,7 @@ templ PostList(d web.LayoutData, v PostsView) {
 						<button
 							type="submit"
 							aria-label={ d.Tr("blog.post_delete") + ": " + p.Title }
-							class="rounded p-1.5 text-muted-foreground/70 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 dark:hover:text-red-400"
+							class="rounded p-1.5 text-muted-foreground/70 hover:bg-error/10 hover:text-error"
 						>
 							@icons.Icon("trash-2", "h-4 w-4")
 						</button>

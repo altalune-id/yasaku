@@ -19,6 +19,9 @@ type loadOptions struct {
 	requireFile bool
 }
 
+// DefaultSingletonOrgName is the singleton org name used when the operator sets none; the console shows it translated.
+const DefaultSingletonOrgName = "Default Organization"
+
 // WithRequireFile makes Load fail when the config file is missing.
 func WithRequireFile() Option { return func(o *loadOptions) { o.requireFile = true } }
 
@@ -138,7 +141,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("tenant.personalOrgSlugFallback", "personal")
 	v.SetDefault("tenant.personalProjectSlug", "")
 	v.SetDefault("tenant.singletonOrg.slug", "")
-	v.SetDefault("tenant.singletonOrg.name", "Default Organization")
+	v.SetDefault("tenant.singletonOrg.name", DefaultSingletonOrgName)
 
 	v.SetDefault("genesis.breakGlass", false)
 

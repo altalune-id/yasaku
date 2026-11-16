@@ -98,7 +98,7 @@ templ walletRowActions(d web.LayoutData, v WalletsView, r WalletRow) {
 			hx-status:5xx="target:#hx-error swap:innerHTML"
 			class="inline"
 		>
-			<button type="submit" aria-label={ d.Tr("wallet.delete") + ": " + r.Name } class="rounded p-2 text-muted-foreground/70 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 dark:hover:text-red-400">
+			<button type="submit" aria-label={ d.Tr("wallet.delete") + ": " + r.Name } class="rounded p-2 text-muted-foreground/70 hover:bg-error/10 hover:text-error">
 				@icons.Icon("trash-2", "h-4 w-4")
 			</button>
 		</form>
@@ -116,7 +116,7 @@ templ walletListRow(d web.LayoutData, v WalletsView, r WalletRow) {
 				}
 			</span>
 		</a>
-		<span class="shrink-0 text-right text-base font-medium tabular-nums text-foreground">
+		<span class="shrink-0 text-end text-base font-medium tabular-nums text-foreground">
 			{ Money(d, r.Balance) }
 			if r.Excluded {
 				<span class="mt-0.5 block text-xs font-normal text-muted-foreground">{ d.Tr("wallet.exclude_from_total") }</span>
@@ -131,7 +131,7 @@ templ WalletList(d web.LayoutData, v WalletsView) {
 	<div id="wallet-list" class="mt-6 space-y-4">
 		@pageBanner(d, v.ErrorKey, v.ErrorMsg, v.ErrorCode)
 		if v.OpeningMovedTo != "" {
-			<div data-wallet-notice="opening-moved" role="status" class="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800 dark:border-emerald-900/50 dark:bg-emerald-950/40 dark:text-emerald-200">
+			<div data-wallet-notice="opening-moved" role="status" class="rounded-md border border-success/30 bg-success/10 p-3 text-sm text-success">
 				{ d.Tr("wallet.opening_moved", "Date", v.OpeningMovedTo) }
 			</div>
 		}
@@ -145,13 +145,12 @@ templ WalletList(d web.LayoutData, v WalletsView) {
 		if len(v.Active) == 0 && len(v.Archived) == 0 {
 			<div class="rounded-lg border border-dashed border-border bg-card px-4 py-10 text-center">
 				<p class="text-sm text-muted-foreground">{ d.Tr("wallet.empty") }</p>
-				<a
-					href={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/wallets/new")) }
-					class="mt-4 inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-				>
-					@icons.Icon("circle-plus", "h-4 w-4")
-					<span>{ d.Tr("wallet.new") }</span>
-				</a>
+				<div class="mt-4">
+					@AppButton(d.ProjectPath(v.ProjectSlug, "/wallets/new"), "btn-primary", nil) {
+						@icons.Icon("circle-plus", "size-4")
+						{ d.Tr("wallet.new") }
+					}
+				</div>
 			</div>
 		} else if len(v.Active) > 0 {
 			<ul class="divide-y divide-border/50 overflow-hidden rounded-lg border border-border bg-card shadow-sm">
@@ -177,19 +176,12 @@ templ WalletList(d web.LayoutData, v WalletsView) {
 
 templ WalletsPage(d web.LayoutData, v WalletsView) {
 	<section>
-		<header class="flex flex-wrap items-baseline justify-between gap-3 border-b border-border pb-4">
-			<div class="min-w-0">
-				<h1 class="text-2xl font-semibold text-foreground">{ d.Tr("wallet.title") }</h1>
-				<p class="mt-1 truncate text-sm text-muted-foreground">{ v.ProjectName }</p>
-			</div>
-			<a
-				href={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/wallets/new")) }
-				class="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-			>
-				@icons.Icon("circle-plus", "h-4 w-4")
-				<span>{ d.Tr("wallet.new") }</span>
-			</a>
-		</header>
+		@PageHeader(d.Tr("wallet.title"), v.ProjectName) {
+			@AppButton(d.ProjectPath(v.ProjectSlug, "/wallets/new"), "btn-primary", nil) {
+				@icons.Icon("circle-plus", "size-4")
+				{ d.Tr("wallet.new") }
+			}
+		}
 		@WalletList(d, v)
 	</section>
 }

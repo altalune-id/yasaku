@@ -1,0 +1,61 @@
+package templates
+
+import (
+	"altalune.id/yasaku/internal/web"
+	"altalune.id/yasaku/internal/web/icons"
+)
+
+// Tip renders a registered tip the principal has not dismissed: an inline alert, or a card that tips.js anchors to its data-tour target.
+templ Tip(d web.LayoutData, id string) {
+	if t, ok := web.LookupTip(id); ok && d.Principal != nil && !d.TipSeen(id) {
+		if t.Target == "" {
+			<div
+				data-tip={ t.ID }
+				data-tip-flow={ t.Flow }
+				role="note"
+				tabindex="-1"
+				aria-label={ d.Tr("tips.label") }
+				class="alert alert-vertical items-start outline-none border-neutral bg-neutral p-4 text-neutral-content max-sm:grid-cols-[auto_minmax(0,1fr)] max-sm:justify-items-start max-sm:text-start sm:alert-horizontal sm:items-center"
+			>
+				@icons.Icon("lightbulb", "size-5 shrink-0")
+				<span class="text-sm">{ d.Tr(t.TextKey) }</span>
+				@tipActions(d, t, "flex flex-wrap justify-end gap-2 max-sm:col-span-2 max-sm:justify-self-end")
+			</div>
+		} else {
+			<div
+				data-tip={ t.ID }
+				data-tip-flow={ t.Flow }
+				data-tip-for={ t.Target }
+				role="note"
+				tabindex="-1"
+				aria-label={ d.Tr("tips.label") }
+				hidden
+				class="card fixed z-20 w-72 outline-none max-w-[calc(100vw-2rem)] bg-neutral text-neutral-content shadow-xl"
+			>
+				<div class="card-body gap-3 p-4">
+					<p class="flex items-start gap-3 text-sm">
+						@icons.Icon("lightbulb", "size-5 shrink-0")
+						<span class="min-w-0 flex-1">{ d.Tr(t.TextKey) }</span>
+					</p>
+					@tipActions(d, t, "card-actions justify-end")
+				</div>
+			</div>
+		}
+	}
+}
+
+templ tipActions(d web.LayoutData, t web.Tip, class string) {
+	<form
+		method="post"
+		action={ templ.SafeURL(d.Href("/tips/" + t.ID + "/seen")) }
+		hx-post={ d.Href("/tips/" + t.ID + "/seen") }
+		hx-nonce={ d.Nonce }
+		hx-swap="none"
+		data-tip-form
+		class={ class }
+	>
+		<input type="hidden" name="redirect" value={ d.CurrentPath }/>
+		<button type="submit" name="all" value="1" class="btn btn-ghost text-neutral-content lg:btn-sm">{ d.Tr("tips.skip_all") }</button>
+		<button type="submit" class="btn lg:btn-sm">{ d.Tr("tips.got_it") }</button>
+	</form>
+}

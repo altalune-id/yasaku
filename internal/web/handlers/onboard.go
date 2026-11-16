@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"altalune.id/yasaku/internal/i18n"
 	"altalune.id/yasaku/internal/onboard"
 	"altalune.id/yasaku/internal/org"
 	"altalune.id/yasaku/internal/platform/config"
@@ -107,7 +108,7 @@ func constantTimeEqual(got, want string) bool {
 
 // SECURITY: the refusal never reveals whether a token was supplied but wrong.
 func (h *OnboardHandler) denySetup(w http.ResponseWriter, r *http.Request) {
-	h.ErrorPage(w, r, http.StatusForbidden, "Setup is locked",
+	h.ErrorPage(w, r, http.StatusForbidden, pageTitle(r, "error_title.setup_is_locked"),
 		"First-time setup requires the one-time setup token printed in the server logs.")
 }
 
@@ -135,7 +136,7 @@ func (h *OnboardHandler) GetOnboard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.rememberSetupToken(w, r)
-	Render(w, r, templates.OnboardLayout(h.Base(r, "First-time setup"), h.defaultView()))
+	Render(w, r, templates.OnboardLayout(h.Base(r, pageTitle(r, "onboard.title")), h.defaultView(r)))
 }
 
 // PostLocal handles the local-admin bootstrap form.
@@ -151,13 +152,13 @@ func (h *OnboardHandler) PostLocal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := r.ParseForm(); err != nil {
-		h.renderErr(w, r, "Bad form.", h.defaultView())
+		h.renderErr(w, r, "Bad form.", h.defaultView(r))
 		return
 	}
 	email := strings.TrimSpace(r.PostForm.Get("email"))
 	name := strings.TrimSpace(r.PostForm.Get("name"))
 	password := r.PostForm.Get("password")
-	view := h.defaultView()
+	view := h.defaultView(r)
 	view.Email, view.Name = email, name
 	h.applyPostedOrgAndProject(r, &view)
 
@@ -287,7 +288,7 @@ func (h *OnboardHandler) GetOIDCComplete(w http.ResponseWriter, r *http.Request)
 		http.Redirect(w, r, web.Path(h.Cfg.HTTP.BasePath, "/login"), http.StatusSeeOther)
 		return
 	}
-	h.render(w, r, h.oidcFinalizeView(p, "", nil))
+	h.render(w, r, h.oidcFinalizeView(r, p, "", nil))
 }
 
 //nolint:gocyclo,funlen // linear setup flow reads more clearly as one function.
@@ -306,10 +307,10 @@ func (h *OnboardHandler) PostOIDCComplete(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if err := r.ParseForm(); err != nil {
-		h.render(w, r, h.oidcFinalizeView(p, "Bad form.", nil))
+		h.render(w, r, h.oidcFinalizeView(r, p, "Bad form.", nil))
 		return
 	}
-	view := h.oidcFinalizeView(p, "", nil)
+	view := h.oidcFinalizeView(r, p, "", nil)
 	h.applyPostedOrgAndProject(r, &view)
 
 	checkOnboardOrgAndProject(view)
@@ -373,7 +374,7 @@ func (h *OnboardHandler) stillRequired(w http.ResponseWriter, r *http.Request) b
 	required, err := h.Onboards.Required(r.Context())
 	if err != nil {
 		h.LogErr("web onboard: re-check required", err)
-		h.ErrorPage(w, r, http.StatusServiceUnavailable, "Setup unavailable", "Could not confirm the onboarding state. Please try again.")
+		h.ErrorPage(w, r, http.StatusServiceUnavailable, pageTitle(r, "error_title.setup_unavailable"), "Could not confirm the onboarding state. Please try again.")
 		return false
 	}
 	if required {
@@ -392,7 +393,7 @@ func (h *OnboardHandler) completed(ctx context.Context) {
 	}
 }
 
-func (h *OnboardHandler) oidcFinalizeView(p session.Principal, errMsg string, fieldErrs map[string]string) templates.OnboardView {
+func (h *OnboardHandler) oidcFinalizeView(r *http.Request, p session.Principal, errMsg string, fieldErrs map[string]string) templates.OnboardView {
 	if fieldErrs == nil {
 		fieldErrs = map[string]string{}
 	}
@@ -401,26 +402,42 @@ func (h *OnboardHandler) oidcFinalizeView(p session.Principal, errMsg string, fi
 		Email:        p.Email,
 		Name:         cmp.Or(strings.TrimSpace(p.Name), strings.TrimSpace(p.Email)),
 		OrgSlug:      firstRunSlug(h.Cfg.Tenant.SingletonOrg.Slug),
-		OrgName:      strings.TrimSpace(h.Cfg.Tenant.SingletonOrg.Name),
+		OrgName:      h.defaultOrgName(r),
 		ProjectSlug:  firstRunSlug(h.Cfg.Tenant.PersonalProjectSlug),
-		ProjectName:  defaultProjectName,
+		ProjectName:  localizedDefault(r, "onboard.default_project_name", defaultProjectName),
 		FieldErrors:  fieldErrs,
 		Error:        errMsg,
 		SetupToken:   h.SetupToken,
 	}
 }
 
-func (h *OnboardHandler) defaultView() templates.OnboardView {
+func (h *OnboardHandler) defaultView(r *http.Request) templates.OnboardView {
 	return templates.OnboardView{
 		LocalAuth:   h.localOnboardAllowed(),
 		OIDCAuth:    h.Caps.ExternalIdentity,
 		OrgSlug:     firstRunSlug(h.Cfg.Tenant.SingletonOrg.Slug),
-		OrgName:     h.Cfg.Tenant.SingletonOrg.Name,
+		OrgName:     h.defaultOrgName(r),
 		ProjectSlug: firstRunSlug(h.Cfg.Tenant.PersonalProjectSlug),
-		ProjectName: defaultProjectName,
+		ProjectName: localizedDefault(r, "onboard.default_project_name", defaultProjectName),
 		FieldErrors: map[string]string{},
 		SetupToken:  h.SetupToken,
 	}
+}
+
+//i18n:use onboard.default_org_name
+func (h *OnboardHandler) defaultOrgName(r *http.Request) string {
+	name := strings.TrimSpace(h.Cfg.Tenant.SingletonOrg.Name)
+	if name == config.DefaultSingletonOrgName {
+		return localizedDefault(r, "onboard.default_org_name", name)
+	}
+	return name
+}
+
+func localizedDefault(r *http.Request, key, fallback string) string {
+	if s := i18n.TranslatorFrom(r.Context()).T(key); s != key {
+		return s
+	}
+	return fallback
 }
 
 func firstRunSlug(configured string) string {
@@ -431,7 +448,7 @@ func (h *OnboardHandler) applyPostedOrgAndProject(r *http.Request, view *templat
 	view.OrgSlug = cmp.Or(strings.TrimSpace(r.PostForm.Get("org_slug")), strings.TrimSpace(h.Cfg.Tenant.SingletonOrg.Slug))
 	view.OrgName = strings.TrimSpace(r.PostForm.Get("org_name"))
 	view.ProjectSlug = cmp.Or(strings.TrimSpace(r.PostForm.Get("project_slug")), strings.TrimSpace(h.Cfg.Tenant.PersonalProjectSlug))
-	view.ProjectName = cmp.Or(strings.TrimSpace(r.PostForm.Get("project_name")), defaultProjectName)
+	view.ProjectName = cmp.Or(strings.TrimSpace(r.PostForm.Get("project_name")), localizedDefault(r, "onboard.default_project_name", defaultProjectName))
 }
 
 //i18n:use onboard.error.*
@@ -504,7 +521,7 @@ func (h *OnboardHandler) localOnboardAllowed() bool {
 }
 
 func (h *OnboardHandler) render(w http.ResponseWriter, r *http.Request, view templates.OnboardView) {
-	Render(w, r, templates.OnboardLayout(h.Base(r, "First-time setup"), view))
+	Render(w, r, templates.OnboardLayout(h.Base(r, pageTitle(r, "onboard.title")), view))
 }
 
 func (h *OnboardHandler) renderErr(w http.ResponseWriter, r *http.Request, msg string, view templates.OnboardView) {

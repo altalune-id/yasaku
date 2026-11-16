@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"cmp"
 	"net/http"
 
 	"github.com/google/uuid"
@@ -26,20 +27,22 @@ func NewHomeHandler(d Deps, orgs *org.Service, projects *project.Service) *HomeH
 func (h *HomeHandler) Register(mux web.Mux) {
 	mux.HandleFunc("GET /{$}", h.GetRoot)
 	mux.HandleFunc("GET /orgs/{org}", h.GetOverview)
+	mux.HandleFunc("GET /orgs/{org}/switch", h.GetSwitch)
 }
 
-// GetRoot sends the bare root to the session's last-used org, the only thing that hint is still for.
+// GetRoot lands a signed-in caller on their last project, else their only project, else the org list.
 func (h *HomeHandler) GetRoot(w http.ResponseWriter, r *http.Request) {
 	p, _, ok := h.LoadSession(r)
 	if !ok || p.UserID == uuid.Nil {
 		http.Redirect(w, r, web.Path(h.Cfg.HTTP.BasePath, "/login"), http.StatusSeeOther)
 		return
 	}
-	http.Redirect(w, r, web.Path(h.Cfg.HTTP.BasePath, h.landingPath(r, p)), http.StatusSeeOther) //nolint:gosec // G710: the slug comes from the store and passed org.validateSlug on creation
+	http.Redirect(w, r, web.Path(h.Cfg.HTTP.BasePath, h.landingPath(r, p)), http.StatusSeeOther) //nolint:gosec // G710: slugs come from the store and passed their slug patterns on creation
 }
 
+// SECURITY: the target is built only from stored slugs of orgs Orgs.List returns, so a stale or foreign session id never lands the caller outside a current membership.
 func (h *HomeHandler) landingPath(r *http.Request, p session.Principal) string {
-	if h.Orgs == nil {
+	if h.Orgs == nil || h.Projects == nil {
 		return "/orgs"
 	}
 	orgs, err := h.Orgs.List(r.Context(), p.UserID)
@@ -51,11 +54,58 @@ func (h *HomeHandler) landingPath(r *http.Request, p session.Principal) string {
 		return "/orgs/new"
 	}
 	for _, o := range orgs {
-		if o.ID == p.ActiveOrgID {
-			return "/orgs/" + o.Slug
+		if path := h.lastProjectPath(r, p, o); path != "" {
+			return path
 		}
 	}
-	return "/orgs/" + orgs[0].Slug
+	if len(orgs) == 1 {
+		if path := h.onlyProjectPath(r, p, orgs[0]); path != "" {
+			return path
+		}
+	}
+	return "/orgs"
+}
+
+// GetSwitch lands a member of the path's org on its last project, else its only project, else its overview.
+func (h *HomeHandler) GetSwitch(w http.ResponseWriter, r *http.Request) {
+	sc, ok := h.RequireOrg(w, r)
+	if !ok {
+		return
+	}
+	path := h.lastProjectPath(sc.req, sc.principal, sc.org)
+	if path == "" {
+		path = cmp.Or(h.onlyProjectPath(sc.req, sc.principal, sc.org), "/orgs/"+sc.org.Slug)
+	}
+	http.Redirect(w, r, web.Path(h.Cfg.HTTP.BasePath, path), http.StatusSeeOther) //nolint:gosec // G710: slugs come from the store and passed their slug patterns on creation
+}
+
+// SECURITY: the session's project counts only when the store finds it inside o, so a stale or foreign id never names the target.
+func (h *HomeHandler) lastProjectPath(r *http.Request, p session.Principal, o *org.Org) string {
+	if o.ID != p.ActiveOrgID || p.ActiveProjectID == uuid.Nil {
+		return ""
+	}
+	pr, err := h.Projects.ByID(orgScopedRequest(r, p, o).Context(), p.ActiveProjectID)
+	if err != nil {
+		if !project.IsNotFoundError(err) {
+			h.LogErr("home: active project", err)
+		}
+		return ""
+	}
+	if pr.OrgID != o.ID {
+		return ""
+	}
+	return projectPath(o.Slug, pr.Slug, "/overview")
+}
+
+func (h *HomeHandler) onlyProjectPath(r *http.Request, p session.Principal, o *org.Org) string {
+	projects, err := h.Projects.List(orgScopedRequest(r, p, o).Context(), o.ID)
+	if err != nil {
+		h.LogErr("home: list projects", err)
+	}
+	if len(projects) != 1 {
+		return ""
+	}
+	return projectPath(o.Slug, projects[0].Slug, "/overview")
 }
 
 // GetOverview renders /orgs/{org} — that org's dashboard.
@@ -86,7 +136,7 @@ func (h *HomeHandler) GetOverview(w http.ResponseWriter, r *http.Request) {
 			view.Projects = append(view.Projects, templates.ProjectSummary{ID: pr.ID.String(), Slug: pr.Slug, Name: pr.Name, System: pr.System})
 		}
 	}
-	Render(w, r, templates.DashboardLayout(h.LayoutForOrg(r, "Overview · "+o.Name, o.Slug, "overview"), view))
+	Render(w, r, templates.DashboardLayout(h.LayoutForOrg(r, pageTitle(r, "nav.overview", o.Name), o.Slug, "overview"), view))
 }
 
 func (h *HomeHandler) remember(r *http.Request, sid string, p session.Principal, orgID uuid.UUID) {

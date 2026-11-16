@@ -33,6 +33,9 @@ type sqliteUserRow struct {
 	IDPSubject      sql.NullString `alias:"users.idp_subject"`
 	PasswordHash    string         `alias:"users.password_hash"`
 	Locale          string         `alias:"users.locale"`
+	Theme           string         `alias:"users.theme"`
+	ColorMode       string         `alias:"users.color_mode"`
+	TipsSeen        string         `alias:"users.tips_seen"`
 	TermsAcceptedAt sql.NullString `alias:"users.terms_accepted_at"`
 	CreatedAt       string         `alias:"users.created_at"`
 }
@@ -55,6 +58,9 @@ func (r *sqliteUserRow) toUser() (*User, error) {
 		PasswordHash: r.PasswordHash,
 		IsAdmin:      r.IsAdmin == 1,
 		Locale:       r.Locale,
+		Theme:        r.Theme,
+		ColorMode:    r.ColorMode,
+		TipsSeen:     parseTipsSeen(r.TipsSeen),
 		CreatedAt:    created,
 	}
 	u.Source = sourceFrom(u.IsAdmin, u.IDPIssuer != "", u.PasswordHash != "")
@@ -72,6 +78,7 @@ func (s *sqliteStore) userSelectCols() []sqlite.Projection {
 	return []sqlite.Projection{
 		s.table.ID, s.table.Email, s.table.Name, s.table.IsAdmin,
 		s.table.IDPIssuer, s.table.IDPSubject, s.table.PasswordHash, s.table.Locale,
+		s.table.Theme, s.table.ColorMode, s.table.TipsSeen,
 		s.table.TermsAcceptedAt, s.table.CreatedAt,
 	}
 }
@@ -183,6 +190,21 @@ func (s *sqliteStore) HasLocalUsers(ctx context.Context) (bool, error) {
 	return false, fmt.Errorf("user.sqlite.HasLocalUsers: %w", err)
 }
 
+func (s *sqliteStore) UpdateThemePrefs(ctx context.Context, id uuid.UUID, theme, colorMode string) error {
+	stmt := s.table.UPDATE(s.table.Theme, s.table.ColorMode, s.table.UpdatedAt).
+		SET(sqlite.String(theme), sqlite.String(colorMode), sqlite.String(sqliteent.SQLiteTime(time.Now()))).
+		WHERE(s.table.ID.EQ(sqlite.String(id.String())))
+	res, err := stmt.ExecContext(ctx, s.db)
+	if err != nil {
+		return fmt.Errorf("user.sqlite.UpdateThemePrefs: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err == nil && n == 0 {
+		return &NotFoundError{ID: id.String()}
+	}
+	return nil
+}
+
 func (s *sqliteStore) UpdateLocale(ctx context.Context, id uuid.UUID, locale string) error {
 	stmt := s.table.UPDATE(s.table.Locale, s.table.UpdatedAt).
 		SET(sqlite.String(locale), sqlite.String(sqliteent.SQLiteTime(time.Now()))).
@@ -219,4 +241,34 @@ func isSQLiteUnique(err error) bool {
 	}
 	msg := err.Error()
 	return strings.Contains(msg, "UNIQUE constraint failed") || strings.Contains(msg, "constraint failed: UNIQUE")
+}
+
+func (s *sqliteStore) MarkTipsSeen(ctx context.Context, id uuid.UUID, ids []string) ([]string, error) {
+	where := s.table.ID.EQ(sqlite.String(id.String()))
+	for range tipsSeenAttempts {
+		var row struct {
+			TipsSeen string `alias:"users.tips_seen"`
+		}
+		if err := sqlite.SELECT(s.table.TipsSeen).FROM(s.table).WHERE(where).LIMIT(1).QueryContext(ctx, s.db, &row); err != nil {
+			if errors.Is(err, qrm.ErrNoRows) || errors.Is(err, sql.ErrNoRows) {
+				return nil, &NotFoundError{ID: id.String()}
+			}
+			return nil, fmt.Errorf("user.sqlite.MarkTipsSeen: %w", err)
+		}
+		merged, raw := mergeTipsSeen(row.TipsSeen, ids)
+		if raw == row.TipsSeen {
+			return merged, nil
+		}
+		res, err := s.table.UPDATE(s.table.TipsSeen, s.table.UpdatedAt).
+			SET(sqlite.String(raw), sqlite.String(sqliteent.SQLiteTime(time.Now()))).
+			WHERE(where.AND(s.table.TipsSeen.EQ(sqlite.String(row.TipsSeen)))).
+			ExecContext(ctx, s.db)
+		if err != nil {
+			return nil, fmt.Errorf("user.sqlite.MarkTipsSeen: %w", err)
+		}
+		if n, err := res.RowsAffected(); err == nil && n == 1 {
+			return merged, nil
+		}
+	}
+	return nil, fmt.Errorf("user.sqlite.MarkTipsSeen: %w", &TipsSeenContendedError{ID: id.String(), Attempts: tipsSeenAttempts})
 }

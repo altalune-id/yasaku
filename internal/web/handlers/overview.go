@@ -81,7 +81,7 @@ func (h *OverviewHandler) GetOverview(w http.ResponseWriter, r *http.Request) {
 	v, err := h.view(sc, d)
 	if err != nil {
 		h.LogErr("web overview: build", err)
-		h.ErrorPage(w, sc.req, http.StatusInternalServerError, "Load failed", "Could not load project overview.", err)
+		h.ErrorPage(w, sc.req, http.StatusInternalServerError, pageTitle(sc.req, "error_title.load_failed"), "Could not load project overview.", err)
 		return
 	}
 	Render(w, sc.req, templates.YasakuOverviewLayout(d, v))
@@ -149,5 +149,5 @@ func (h *OverviewHandler) fillPeriod(sc ProjectScope, v *templates.YasakuOvervie
 }
 
 func (h *OverviewHandler) title(sc ProjectScope) string {
-	return h.Base(sc.req, "").Tr("nav.overview") + " · " + sc.project.Name
+	return pageTitle(sc.req, "nav.overview", sc.project.Name)
 }

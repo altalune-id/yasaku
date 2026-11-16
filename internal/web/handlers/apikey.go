@@ -46,7 +46,7 @@ func (h *APIKeyHandler) GetKeys(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	Render(w, sc.req, templates.APIKeysLayout(
-		h.LayoutForProject(sc.req, "API keys · "+sc.project.Name, sc.org.Slug, sc.project, "apikeys"),
+		h.LayoutForProject(sc.req, pageTitle(sc.req, "apikey.title", sc.project.Name), sc.org.Slug, sc.project, "apikeys"),
 		v,
 	))
 }
@@ -82,7 +82,7 @@ func (h *APIKeyHandler) GetOrgKeys(w http.ResponseWriter, r *http.Request) {
 		h.listFailed(w, sc.req, err)
 		return
 	}
-	Render(w, sc.req, templates.APIKeysLayout(h.LayoutForOrg(sc.req, "API keys · "+sc.org.Name, sc.org.Slug, "apikeys"), v))
+	Render(w, sc.req, templates.APIKeysLayout(h.LayoutForOrg(sc.req, pageTitle(sc.req, "apikey.title", sc.org.Name), sc.org.Slug, "apikeys"), v))
 }
 
 // PostOrgKeyCreate mints an org key and renders the refreshed list with the one-time plaintext reveal.
@@ -146,7 +146,7 @@ type mintInput struct {
 // SECURITY: the plaintext is rendered once and discarded — never logged, stored on a row, or put in the session.
 func (h *APIKeyHandler) mintInto(w http.ResponseWriter, r *http.Request, write listWriter, mint func(mintInput) (*apikey.APIKey, string, error)) {
 	if err := r.ParseForm(); err != nil {
-		h.ErrorPage(w, r, http.StatusBadRequest, "Bad request", "Could not parse form body.")
+		h.ErrorPage(w, r, http.StatusBadRequest, pageTitle(r, "error_title.bad_request"), "Could not parse form body.")
 		return
 	}
 	expiresAt, bad := expiryFor(r.PostForm.Get("expires_in"), time.Now().UTC())
@@ -171,12 +171,12 @@ func (h *APIKeyHandler) mintInto(w http.ResponseWriter, r *http.Request, write l
 
 func (h *APIKeyHandler) changeInto(w http.ResponseWriter, r *http.Request, write listWriter, change keyChange) {
 	if err := r.ParseForm(); err != nil {
-		h.ErrorPage(w, r, http.StatusBadRequest, "Bad request", "Could not parse form body.")
+		h.ErrorPage(w, r, http.StatusBadRequest, pageTitle(r, "error_title.bad_request"), "Could not parse form body.")
 		return
 	}
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
-		h.ErrorPage(w, r, http.StatusBadRequest, "Bad id", "Malformed API key id.")
+		h.ErrorPage(w, r, http.StatusBadRequest, pageTitle(r, "error_title.bad_id"), "Malformed API key id.")
 		return
 	}
 	if err := change(r.Context(), r, id); err != nil {
@@ -262,7 +262,7 @@ func (h *APIKeyHandler) orgWriter(w http.ResponseWriter, sc OrgScope) listWriter
 
 func (h *APIKeyHandler) listFailed(w http.ResponseWriter, r *http.Request, err error) {
 	h.LogErr("web apikey: list", err)
-	h.ErrorPage(w, r, http.StatusInternalServerError, "List failed", "Could not load API keys.", err)
+	h.ErrorPage(w, r, http.StatusInternalServerError, pageTitle(r, "error_title.list_failed"), "Could not load API keys.", err)
 }
 
 // Register wires the API key routes onto mux.

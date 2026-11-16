@@ -32,7 +32,7 @@ func (h *OnboardingHandler) GetOnboarding(w http.ResponseWriter, r *http.Request
 		http.Redirect(w, r, web.Path(h.Cfg.HTTP.BasePath, "/login"), http.StatusSeeOther)
 		return
 	}
-	Render(w, r, templates.OnboardingLayout(h.Base(r, "Welcome"), templates.OnboardingView{
+	Render(w, r, templates.OnboardingLayout(h.Base(r, pageTitle(r, "welcome.eyebrow")), templates.OnboardingView{
 		Email:       p.Email,
 		DisplayName: p.Name,
 		ReturnTo:    SanitizeReturnTo(r.URL.Query().Get("return_to")),
@@ -47,7 +47,7 @@ func (h *OnboardingHandler) PostOnboarding(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if err := r.ParseForm(); err != nil {
-		h.ErrorPage(w, r, http.StatusBadRequest, "Bad request", "Could not parse form body.")
+		h.ErrorPage(w, r, http.StatusBadRequest, pageTitle(r, "error_title.bad_request"), "Could not parse form body.")
 		return
 	}
 	returnTo := SanitizeReturnTo(r.PostForm.Get("return_to"))
@@ -124,7 +124,7 @@ func (h *OnboardingHandler) Register(mux web.Mux) {
 }
 
 func (h *OnboardingHandler) renderErr(w http.ResponseWriter, r *http.Request, p session.Principal, msg, name, returnTo string) {
-	Render(w, r, templates.OnboardingLayout(h.Base(r, "Welcome"), templates.OnboardingView{
+	Render(w, r, templates.OnboardingLayout(h.Base(r, pageTitle(r, "welcome.eyebrow")), templates.OnboardingView{
 		Email:       p.Email,
 		DisplayName: name,
 		ReturnTo:    returnTo,

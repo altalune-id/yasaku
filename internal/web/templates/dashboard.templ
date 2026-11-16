@@ -29,26 +29,16 @@ type ProjectSummary struct {
 
 templ DashboardPage(d web.LayoutData, v DashboardView) {
 	<section>
-		<header class="flex items-baseline justify-between border-b border-border pb-4">
-			<div>
-				<h1 class="text-2xl font-semibold text-foreground">
-					if v.OrgName != "" {
-						{ v.OrgName }
-					} else {
-						{ d.Tr("dashboard.title") }
-					}
-				</h1>
-				<p class="mt-1 text-sm text-muted-foreground">{ d.Tr("dashboard.subtitle") }</p>
-			</div>
-			<a href={ templ.SafeURL(d.OrgPath("/projects/new")) } class="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90">
-				@icons.Icon("plus", "h-4 w-4")
-				<span>{ d.Tr("dashboard.new_project") }</span>
-			</a>
-		</header>
+		@PageHeader(dashboardTitle(d, v), d.Tr("dashboard.subtitle")) {
+			@AppButton(d.OrgPath("/projects/new"), "btn-primary", nil) {
+				@icons.Icon("plus", "size-4")
+				{ d.Tr("dashboard.new_project") }
+			}
+		}
 		if len(v.Projects) == 0 {
 			<div class="mt-8 rounded-lg border border-dashed border-border bg-card p-8 text-center">
-				<p class="text-sm text-muted-foreground">No projects yet.</p>
-				<a href={ templ.SafeURL(d.OrgPath("/projects/new")) } class="mt-4 inline-block rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90">Create the first one</a>
+				<p class="text-sm text-muted-foreground">{ d.Tr("projects.empty") }</p>
+				<a href={ templ.SafeURL(d.OrgPath("/projects/new")) } class="btn btn-primary mt-4">{ d.Tr("projects.create_first") }</a>
 			</div>
 		} else {
 			<ul class="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -62,7 +52,7 @@ templ DashboardPage(d web.LayoutData, v DashboardView) {
 										<span class="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-foreground/90 ring-1 ring-inset ring-border">{ d.Tr("common.current") }</span>
 									}
 									if p.System {
-										<span class="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-800 ring-1 ring-inset ring-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:ring-amber-500/25">{ d.Tr("common.system") }</span>
+										<span class="inline-flex items-center rounded-full bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning ring-1 ring-inset ring-warning/30">{ d.Tr("common.system") }</span>
 									}
 								</div>
 							</div>
@@ -77,4 +67,11 @@ templ DashboardPage(d web.LayoutData, v DashboardView) {
 
 templ DashboardLayout(d web.LayoutData, v DashboardView) {
 	@Layout(web.WithContent(d, DashboardPage(d, v)))
+}
+
+func dashboardTitle(d web.LayoutData, v DashboardView) string {
+	if v.OrgName != "" {
+		return v.OrgName
+	}
+	return d.Tr("dashboard.title")
 }

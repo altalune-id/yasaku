@@ -24,7 +24,7 @@ templ ErrorPage(d web.LayoutData, v ErrorView) {
 		</p>
 		<h1 class="mt-2 text-2xl font-semibold">{ v.Title }</h1>
 		if v.Message != "" {
-			<p class="mt-2 text-muted-foreground">{ v.Message }</p>
+			<p dir="auto" class="mt-2 text-base-content/70">{ v.Message }</p>
 		}
 		<a href={ templ.SafeURL(d.Href("/")) } class="mt-6 inline-block text-primary hover:underline">{ d.Tr("error.return_home") }</a>
 		if v.Code != "" || v.RequestID != "" {
@@ -48,10 +48,10 @@ templ ErrorPage(d web.LayoutData, v ErrorView) {
 
 // ErrorFragment is the compact banner htmx requests get instead of a full page.
 templ ErrorFragment(d web.LayoutData, v ErrorView) {
-	<div class="alt-error rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300" role="alert" data-status={ strconv.Itoa(v.Status) }>
+	<div class="alt-error rounded-md border border-error/30 bg-error/10 p-3 text-sm text-error" role="alert" data-status={ strconv.Itoa(v.Status) }>
 		<strong class="font-medium">{ v.Title }</strong>
 		if v.Message != "" {
-			<span class="ml-1">{ v.Message }</span>
+			<span dir="auto" class="ms-1">{ v.Message }</span>
 		}
 		if v.Code != "" || v.RequestID != "" {
 			<p class="mt-1 space-x-3 text-xs opacity-80">
