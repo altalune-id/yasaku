@@ -29,11 +29,11 @@ func (h *ProjectHandler) GetList(w http.ResponseWriter, r *http.Request) {
 	items, err := h.Projects.List(r.Context(), o.ID)
 	if err != nil {
 		h.LogErr("web project: list", err)
-		h.ErrorPage(w, r, http.StatusInternalServerError, "List failed", "Could not load projects.", err)
+		h.ErrorPage(w, r, http.StatusInternalServerError, pageTitle(r, "error_title.list_failed"), "Could not load projects.", err)
 		return
 	}
 	Render(w, r, templates.ProjectsLayout(
-		h.LayoutForOrg(r, "Projects", o.Slug, "projects"),
+		h.LayoutForOrg(r, pageTitle(r, "projects.title"), o.Slug, "projects"),
 		templates.ProjectsView{OrgSlug: o.Slug, Projects: projectSummaries(items)},
 	))
 }
@@ -46,7 +46,7 @@ func (h *ProjectHandler) GetNew(w http.ResponseWriter, r *http.Request) {
 	}
 	o := sc.org
 	Render(w, r, templates.ProjectNewLayout(
-		h.LayoutForOrg(r, "Create project", o.Slug, "projects"),
+		h.LayoutForOrg(r, pageTitle(r, "nav.create_project"), o.Slug, "projects"),
 		templates.ProjectNewView{OrgSlug: o.Slug, Slug: slugs.Generate()},
 	))
 }
@@ -59,7 +59,7 @@ func (h *ProjectHandler) PostCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	p, sid, o, r := sc.principal, sc.sid, sc.org, sc.req
 	if err := r.ParseForm(); err != nil {
-		h.ErrorPage(w, r, http.StatusBadRequest, "Bad request", "Could not parse form body.")
+		h.ErrorPage(w, r, http.StatusBadRequest, pageTitle(r, "error_title.bad_request"), "Could not parse form body.")
 		return
 	}
 	slug := strings.TrimSpace(r.PostForm.Get("slug"))
@@ -75,7 +75,7 @@ func (h *ProjectHandler) PostCreate(w http.ResponseWriter, r *http.Request) {
 			slug = slugs.Generate()
 		}
 		Render(w, r, templates.ProjectNewLayout(
-			h.LayoutForOrg(r, "Create project", o.Slug, "projects"),
+			h.LayoutForOrg(r, pageTitle(r, "nav.create_project"), o.Slug, "projects"),
 			templates.ProjectNewView{OrgSlug: o.Slug, Slug: slug, Name: name, Error: msg, ErrorCode: ErrorRef(err)},
 		))
 		return
@@ -87,36 +87,6 @@ func (h *ProjectHandler) PostCreate(w http.ResponseWriter, r *http.Request) {
 		h.LogErr("web project: update session", err)
 	}
 	http.Redirect(w, r, web.Path(h.Cfg.HTTP.BasePath, projectPath(o.Slug, created.Slug, "/overview")), http.StatusSeeOther) //nolint:gosec // G710: both slugs are validated by their own slug patterns
-}
-
-// PostRename handles POST /orgs/{org}/projects/{project}/rename.
-func (h *ProjectHandler) PostRename(w http.ResponseWriter, r *http.Request) {
-	sc, ok := h.RequireProject(w, r)
-	if !ok {
-		return
-	}
-	p, o, proj, r := sc.principal, sc.org, sc.project, sc.req
-	// SECURITY: membership is org-wide, so a plain member reaches this route; only an owner or admin may rename, and a failed lookup refuses.
-	canManage, mErr := h.Orgs.IsManager(r.Context(), o.ID, p.UserID)
-	if mErr != nil || !canManage {
-		h.ErrorPage(w, r, http.StatusForbidden, "Not allowed", "You must be an admin or owner to rename this project.")
-		return
-	}
-	if err := r.ParseForm(); err != nil {
-		h.ErrorPage(w, r, http.StatusBadRequest, "Bad request", "Could not parse form body.")
-		return
-	}
-	name := strings.TrimSpace(r.PostForm.Get("name"))
-	if _, err := h.Projects.Rename(r.Context(), proj.ID, name); err != nil {
-		h.LogErr("web project: rename", err)
-		if project.IsSystemProtectedError(err) {
-			h.ErrorPage(w, r, http.StatusConflict, "Rename not allowed", "This project is system-protected.", err)
-			return
-		}
-		h.ErrorPage(w, r, http.StatusBadRequest, "Rename failed", err.Error())
-		return
-	}
-	http.Redirect(w, r, ResolveReturnTo(h.Cfg.HTTP.BasePath, "/orgs/"+o.Slug+"/projects"), http.StatusSeeOther) //nolint:gosec // G710: destination sanitized via ResolveReturnTo → SanitizeReturnTo
 }
 
 func projectPath(orgSlug, projectSlug, suffix string) string {
@@ -136,5 +106,4 @@ func (h *ProjectHandler) Register(mux web.Mux) {
 	mux.HandleFunc("GET /orgs/{org}/projects", h.GetList)
 	mux.HandleFunc("GET /orgs/{org}/projects/new", h.GetNew)
 	mux.HandleFunc("POST /orgs/{org}/projects", h.PostCreate)
-	mux.HandleFunc("POST /orgs/{org}/projects/{project}/rename", h.PostRename)
 }

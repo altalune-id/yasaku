@@ -2,6 +2,7 @@ package fakes
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"sync"
 
@@ -153,6 +154,34 @@ func (f *User) HasLocalUsers(_ context.Context) (bool, error) {
 		}
 	}
 	return false, nil
+}
+
+// UpdateThemePrefs sets the stored user's theme family and color mode.
+func (f *User) UpdateThemePrefs(_ context.Context, id uuid.UUID, theme, colorMode string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	u, ok := f.byID[id]
+	if !ok {
+		return &user.NotFoundError{ID: id.String()}
+	}
+	u.Theme, u.ColorMode = theme, colorMode
+	return nil
+}
+
+// MarkTipsSeen appends ids to the stored user's seen tips, once each.
+func (f *User) MarkTipsSeen(_ context.Context, id uuid.UUID, ids []string) ([]string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	u, ok := f.byID[id]
+	if !ok {
+		return nil, &user.NotFoundError{ID: id.String()}
+	}
+	for _, t := range ids {
+		if !slices.Contains(u.TipsSeen, t) {
+			u.TipsSeen = append(u.TipsSeen, t)
+		}
+	}
+	return slices.Clone(u.TipsSeen), nil
 }
 
 // UpdateLocale sets the stored user's locale.

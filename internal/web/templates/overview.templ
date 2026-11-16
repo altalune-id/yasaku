@@ -28,7 +28,6 @@ templ OverviewPage(d web.LayoutData, v OverviewView) {
 				<span aria-hidden="true" class="text-muted-foreground/70">·</span>
 				@copyValue(d, v.ProjectID)
 			</div>
-			@copyScript(d.Nonce)
 		</header>
 		<div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
 			@statCard(d.Tr("nav.todos"), fmt.Sprintf("%d", v.TotalTodos))
@@ -69,42 +68,6 @@ templ copyButton(d web.LayoutData, value, text, label string) {
 		aria-label={ label }
 		class="rounded-md font-mono text-xs text-muted-foreground hover:text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
 	>{ text }</button>
-}
-
-templ copyScript(nonce string) {
-	<script nonce={ nonce }>
-	if (!window.yasakuCopyBound) {
-	window.yasakuCopyBound = true;
-	document.addEventListener('click', function(e) {
-		if (!e.target || !e.target.closest) return;
-		var btn = e.target.closest('[data-copy]');
-		if (!btn) return;
-		var text = btn.getAttribute('data-copy');
-		var shown = btn.getAttribute('data-copy-text') || text;
-		var done = function() {
-			btn.textContent = btn.getAttribute('data-copied-label');
-			btn.setAttribute('aria-label', btn.getAttribute('data-copied-label'));
-			setTimeout(function() {
-				btn.textContent = shown;
-				btn.setAttribute('aria-label', btn.getAttribute('data-copy-label'));
-			}, 1500);
-		};
-		if (navigator.clipboard && navigator.clipboard.writeText) {
-			navigator.clipboard.writeText(text).then(done, function() {});
-			return;
-		}
-		var ta = document.createElement('textarea');
-		ta.value = text;
-		ta.setAttribute('readonly', '');
-		ta.style.position = 'fixed';
-		ta.style.opacity = '0';
-		document.body.appendChild(ta);
-		ta.select();
-		try { document.execCommand('copy'); done(); } catch (err) {}
-		document.body.removeChild(ta);
-	});
-	}
-	</script>
 }
 
 templ statCard(label, value string) {

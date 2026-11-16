@@ -331,6 +331,19 @@ func (s *Service) UpdateLocale(ctx context.Context, id uuid.UUID, locale string)
 	return nil
 }
 
+// UpdateThemePrefs persists the user's theme family and color mode; the caller validates both.
+func (s *Service) UpdateThemePrefs(ctx context.Context, id uuid.UUID, theme, colorMode string) error {
+	ctx, span := tracer.Start(ctx, "user.UpdateThemePrefs")
+	defer span.End()
+	if err := s.store.UpdateThemePrefs(ctx, id, theme, colorMode); err != nil {
+		if IsNotFoundError(err) {
+			return err
+		}
+		return s.unexpected(ctx, "user.UpdateThemePrefs", err, slog.String("user_id", id.String()))
+	}
+	return nil
+}
+
 // ByID looks up a user by aggregate id.
 func (s *Service) ByID(ctx context.Context, id uuid.UUID) (*User, error) {
 	ctx, span := tracer.Start(ctx, "user.ByID")
@@ -363,4 +376,18 @@ func (s *Service) Rename(ctx context.Context, id uuid.UUID, name string) error {
 		return s.unexpected(ctx, "user.Rename: save", err, slog.String("user_id", id.String()))
 	}
 	return nil
+}
+
+// MarkTipsSeen records tip ids as seen by the user and returns the full seen list; the caller validates the ids.
+func (s *Service) MarkTipsSeen(ctx context.Context, id uuid.UUID, ids []string) ([]string, error) {
+	ctx, span := tracer.Start(ctx, "user.MarkTipsSeen")
+	defer span.End()
+	seen, err := s.store.MarkTipsSeen(ctx, id, ids)
+	if err != nil {
+		if IsNotFoundError(err) {
+			return nil, err
+		}
+		return nil, s.unexpected(ctx, "user.MarkTipsSeen", err, slog.String("user_id", id.String()))
+	}
+	return seen, nil
 }

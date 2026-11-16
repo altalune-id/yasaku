@@ -207,7 +207,7 @@ func buildServices(cfg *config.Config, k *platform.Kernel, caps capabilities.Cap
 			if err != nil {
 				return nil, false, err
 			}
-			return &auth.UserRef{ID: u.ID, Email: u.Email, Name: u.Name, Source: u.Source, IsAdmin: u.IsAdmin, Locale: u.Locale, TermsAcceptedAt: u.TermsAcceptedAt}, false, nil
+			return &auth.UserRef{ID: u.ID, Email: u.Email, Name: u.Name, Source: u.Source, IsAdmin: u.IsAdmin, Locale: u.Locale, Theme: u.Theme, ColorMode: u.ColorMode, TipsSeen: u.TipsSeen, TermsAcceptedAt: u.TermsAcceptedAt}, false, nil
 		},
 		func(ctx context.Context, req auth.OnboardRequest) (auth.OnboardResult, error) {
 			res, err := onboardWorkflow.Onboard(ctx, req.UserID, req.Email)

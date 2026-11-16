@@ -107,14 +107,14 @@ templ WalletFormPage(d web.LayoutData, v WalletFormView) {
 					required
 					autofocus
 					value={ v.Name }
-					class="block w-full rounded-md border border-border bg-card px-3 py-2 text-base text-foreground shadow-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
+					class="input w-full text-base"
 				/>
 			</label>
 			<label class="block">
 				@walletFormField(d.Tr("wallet.kind"))
 				<select
 					name="kind"
-					class="block w-full rounded-md border border-border bg-card px-3 py-2 text-base text-foreground shadow-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
+					class="select w-full text-base"
 				>
 					for _, k := range v.Kinds {
 						if k.Selected {
@@ -131,7 +131,7 @@ templ WalletFormPage(d web.LayoutData, v WalletFormView) {
 					name="provider"
 					type="text"
 					value={ v.Provider }
-					class="block w-full rounded-md border border-border bg-card px-3 py-2 text-base text-foreground shadow-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
+					class="input w-full text-base"
 				/>
 			</label>
 			if v.ID == "" {
@@ -144,7 +144,7 @@ templ WalletFormPage(d web.LayoutData, v WalletFormView) {
 							type="text"
 							inputmode="numeric"
 							value={ v.Opening }
-							class="block w-full rounded-md border border-border bg-card px-3 py-2 text-base tabular-nums text-foreground shadow-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
+							class="input w-full text-base tabular-nums"
 						/>
 					</div>
 				</label>
@@ -162,7 +162,7 @@ templ WalletFormPage(d web.LayoutData, v WalletFormView) {
 				</span>
 			</label>
 			<div class="flex flex-wrap items-center gap-3 pt-2">
-				<button type="submit" class="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2">
+				<button type="submit" class="btn btn-primary">
 					if v.ID == "" {
 						{ d.Tr("wallet.new") }
 					} else {
@@ -206,12 +206,12 @@ templ WalletAdjustPage(d web.LayoutData, v WalletAdjustView) {
 					required
 					autofocus
 					value={ v.Target }
-					class="block w-full rounded-md border border-border bg-card px-3 py-2 text-base tabular-nums text-foreground shadow-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
+					class="input w-full text-base tabular-nums"
 				/>
 				<span class="mt-1.5 block text-xs text-muted-foreground">{ d.Tr("wallet.adjust_hint") }</span>
 			</label>
 			<div class="flex flex-wrap items-center gap-3">
-				<button type="submit" class="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2">
+				<button type="submit" class="btn btn-primary">
 					{ d.Tr("wallet.adjust") }
 				</button>
 				<a href={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/wallets/"+v.WalletID)) } class="text-sm text-muted-foreground hover:text-foreground">

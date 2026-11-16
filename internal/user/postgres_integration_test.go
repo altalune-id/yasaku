@@ -117,3 +117,15 @@ func TestPostgres_User_SaveIsUpsert(t *testing.T) {
 }
 
 func ptrTime(t time.Time) *time.Time { return &t }
+
+func TestPostgres_User_UpdateThemePrefs(t *testing.T) {
+	assertThemePrefs(t, newPostgresStoreForTest(t))
+}
+
+func TestPostgres_User_MarkTipsSeen(t *testing.T) {
+	assertTipsSeen(t, newPostgresStoreForTest(t))
+}
+
+func TestPostgres_User_MarkTipsSeenConcurrent(t *testing.T) {
+	assertTipsSeenConcurrent(t, newPostgresStoreForTest(t))
+}

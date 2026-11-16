@@ -1,0 +1,71 @@
+# route<TAB>state<TAB>seed step. Widths: 390, 768, 1024, 1280. Modes: light, dark. Placeholders: {o} org slug, {p} project slug, {id} seeded record id. Pass the drawer selector for every signed-in route.
+/login	default	none, signed out
+/login	error	submit a wrong credential
+/admin-login	default	none, signed out
+/terms	default	none, signed out
+/privacy	default	none, signed out
+/does-not-exist	error	none, any session (404 page)
+/welcome	default	sign in as a fresh user with no org
+/onboarding	default	sign in as a fresh user with no org
+/onboarding	error	submit the form with an empty name
+/signup/complete	default	finish an invite or sign-up flow
+/invites/accept	default	open an invite link from the Invites page
+/orgs	empty	sign in as a user with no org
+/orgs	data	create 2 orgs
+/orgs	dropdown open	open the org switcher in the shell
+/orgs/new	default	none
+/orgs/new	error	submit with an empty name
+/orgs/{o}	default	create an org
+/orgs/{o}/projects	empty	create an org
+/orgs/{o}/projects	data	create 2 projects
+/orgs/{o}/projects/new	default	none
+/orgs/{o}/projects/new	error	submit with an empty name
+/orgs/{o}/members	data	create an org, invite one person
+/orgs/{o}/invites	empty	create an org
+/orgs/{o}/invites	data	create 2 invites
+/orgs/{o}/invites	dialog open	open the invite dialog
+/orgs/{o}/apikeys	empty	create an org
+/orgs/{o}/apikeys	data	create 2 org API keys
+/orgs/{o}/apikeys	dialog open	open the create-key dialog
+/settings/tokens	empty	sign in
+/settings/tokens	data	create a personal token
+/settings/tokens/projects	default	create a personal token
+/orgs/{o}/projects/{p}/overview	empty	create a project
+/orgs/{o}/projects/{p}/overview	data	create a wallet, record 3 transactions
+/orgs/{o}/projects/{p}/wallets	empty	create a project
+/orgs/{o}/projects/{p}/wallets	data	create 3 wallets, one archived
+/orgs/{o}/projects/{p}/wallets/new	default	none
+/orgs/{o}/projects/{p}/wallets/new	error	submit with an empty name
+/orgs/{o}/projects/{p}/wallets/{id}	data	create a wallet via the Wallets page, record 3 transactions
+/orgs/{o}/projects/{p}/wallets/{id}/edit	default	create a wallet
+/orgs/{o}/projects/{p}/wallets/{id}/adjust	default	create a wallet
+/orgs/{o}/projects/{p}/wallets/{id}/adjust	error	submit an empty amount
+/orgs/{o}/projects/{p}/transactions	empty	create a wallet
+/orgs/{o}/projects/{p}/transactions	data	record 25 transactions across 2 wallets
+/orgs/{o}/projects/{p}/transactions	dropdown open	open the filter menu with data present
+/orgs/{o}/projects/{p}/transactions/new	default	create a wallet and a category
+/orgs/{o}/projects/{p}/transactions/new	error	submit an empty amount
+/orgs/{o}/projects/{p}/transactions/{id}/edit	default	record a transaction
+/orgs/{o}/projects/{p}/categories	empty	create a project
+/orgs/{o}/projects/{p}/categories	data	seed default categories, archive one
+/orgs/{o}/projects/{p}/categories	dialog open	open the rename dialog
+/orgs/{o}/projects/{p}/tags	empty	create a project
+/orgs/{o}/projects/{p}/tags	data	create 5 tags
+/orgs/{o}/projects/{p}/periods	empty	create a project
+/orgs/{o}/projects/{p}/periods	data	record transactions, close one period
+/orgs/{o}/projects/{p}/periods/{id}/close	default	record 3 transactions, open a period close
+/orgs/{o}/projects/{p}/reports	empty	create a project
+/orgs/{o}/projects/{p}/reports	data	record 25 transactions over 2 periods
+/orgs/{o}/projects/{p}/todos	empty	create a project
+/orgs/{o}/projects/{p}/todos	data	add 4 todos, tick 1
+/orgs/{o}/projects/{p}/posts	empty	create a project
+/orgs/{o}/projects/{p}/posts	data	create 3 posts, publish 1
+/orgs/{o}/projects/{p}/posts/new	default	none
+/orgs/{o}/projects/{p}/posts/{id}/edit	default	create a post
+/orgs/{o}/projects/{p}/opensheet	default	create a project
+/orgs/{o}/projects/{p}/apikeys	empty	create a project
+/orgs/{o}/projects/{p}/apikeys	data	create 2 project API keys
+/orgs/{o}/projects/{p}/apikeys	dialog open	open the create-key dialog
+/orgs/{o}/projects/{p}/settings	default	create a project
+/orgs/{o}/projects/{p}/settings	error	submit an invalid value
+/orgs/{o}/projects/{p}/overview	dropdown open	open the user menu and the language menu in the shell

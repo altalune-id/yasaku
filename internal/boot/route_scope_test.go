@@ -55,6 +55,7 @@ func probeRoutes() []probeRoute {
 		{http.MethodGet, "/orgs", nil},
 		{http.MethodGet, "/orgs/new", nil},
 		{http.MethodGet, base, nil},
+		{http.MethodGet, base + "/switch", nil},
 		{http.MethodGet, base + "/members", nil},
 		{http.MethodGet, base + "/invites", nil},
 		{http.MethodGet, base + "/apikeys", nil},
@@ -150,6 +151,8 @@ func probeRoutes() []probeRoute {
 		{http.MethodPost, "/onboard/complete", url.Values{}},
 		{http.MethodPost, "/logout", url.Values{}},
 		{http.MethodPost, "/locale", url.Values{"locale": {"en-US"}, "redirect": {"/"}}},
+		{http.MethodPost, "/theme", url.Values{"mode": {"dark"}, "redirect": {"/"}}},
+		{http.MethodPost, "/tips/" + web.Tips()[0].ID + "/seen", url.Values{"redirect": {"/"}}},
 	}
 }
 
@@ -303,6 +306,7 @@ func templatize(path string) string {
 		path = strings.Replace(path, "/members/{id}/", "/members/{user}/", 1)
 	}
 	path = strings.Replace(path, "/deliveries/{id}", "/deliveries/{did}", 1)
+	path = strings.Replace(path, "/tips/"+web.Tips()[0].ID+"/", "/tips/{id}/", 1)
 	if path == "/" {
 		return "/{$}"
 	}
@@ -432,7 +436,7 @@ func TestOrgSwitcher_PinnedOrgIsNotAlsoOfferedToSwitchTo(t *testing.T) {
 
 func orgSwitcherPanel(t *testing.T, body string) string {
 	t.Helper()
-	i := strings.Index(body, "data-switcher")
+	i := strings.Index(body, `data-org-switcher="rail"`)
 	require.GreaterOrEqual(t, i, 0, "no org switcher rendered")
 	rest := body[i:]
 	open := strings.Index(rest, "</summary>")

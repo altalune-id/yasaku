@@ -387,7 +387,7 @@ func LedgerTimeFooter(d web.LayoutData) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "<template data-dt-template><span class=\"relative z-10\"><button type=\"button\" data-dt-trigger class=\"cursor-help rounded-sm text-inherit underline decoration-dotted underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring\"></button> <span popover data-dt-pop class=\"m-0 inset-auto max-w-[calc(100vw-2rem)] rounded-md border border-border bg-popover px-3 py-2 text-xs font-normal text-popover-foreground shadow-md\"></span></span></template><script defer src=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "<template data-dt-template><span class=\"relative z-10\"><button type=\"button\" data-dt-trigger class=\"cursor-help rounded-xs text-inherit underline decoration-dotted underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring\"></button> <span popover data-dt-pop class=\"m-0 inset-auto max-w-[calc(100vw-2rem)] rounded-md border border-border bg-popover px-3 py-2 text-xs font-normal text-popover-foreground shadow-md\"></span></span></template><script defer src=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

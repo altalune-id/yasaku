@@ -78,7 +78,7 @@ templ periodStatusBadge(d web.LayoutData, closed bool) {
 			{ d.Tr("period.status_closed") }
 		</span>
 	} else {
-		<span class="inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300">
+		<span class="inline-flex shrink-0 items-center gap-1 rounded-full bg-success/10 px-2 py-0.5 text-xs font-medium text-success">
 			@icons.Icon("lock-open", "h-3 w-3")
 			{ d.Tr("period.status_open") }
 		</span>
@@ -114,7 +114,7 @@ templ periodRenameForm(d web.LayoutData, projectSlug string, r PeriodRow) {
 			required
 			value={ r.Name }
 			aria-label={ d.Tr("period.rename") + ": " + r.Name }
-			class="min-w-0 flex-1 rounded-md border border-border bg-card px-3 py-1.5 text-sm text-foreground shadow-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
+			class="input min-w-0 flex-1"
 		/>
 		<button type="submit" class="shrink-0 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-foreground/90 hover:bg-muted">
 			{ d.Tr("period.rename") }
@@ -138,14 +138,14 @@ templ periodCurrentCard(d web.LayoutData, v PeriodsView) {
 		if v.Current.HasTotals {
 			@periodTotals(d, v.Current)
 		} else {
-			<p class="mt-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-200">
+			<p class="mt-4 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-warning">
 				{ d.Tr("period.totals_unavailable") }
 			</p>
 		}
 		<div class="mt-5 flex flex-wrap items-center gap-3">
 			<a
 				href={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/periods/"+v.Current.ID+"/close")) }
-				class="inline-flex w-full items-center justify-center gap-2 rounded-md bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 sm:w-auto"
+				class="btn btn-primary w-full sm:w-auto"
 			>
 				@icons.Icon("lock", "h-4 w-4")
 				{ d.Tr("period.close") }
@@ -343,7 +343,7 @@ templ ClosePeriodPage(d web.LayoutData, v ClosePeriodView) {
 					hx-swap="outerHTML"
 					hx-status:4xx="target:#hx-error swap:innerHTML"
 					hx-status:5xx="target:#hx-error swap:innerHTML"
-					class="mt-1.5 block w-full rounded-md border border-border bg-card px-3 py-2 text-base text-foreground shadow-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1 disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground sm:max-w-xs sm:text-sm"
+					class="input mt-1.5 w-full text-base sm:max-w-xs sm:text-sm"
 				/>
 				if v.DateLocked {
 					<input type="hidden" name="end_date" value={ v.EndDate }/>
@@ -355,13 +355,13 @@ templ ClosePeriodPage(d web.LayoutData, v ClosePeriodView) {
 				@ClosePreviewFragment(d, v)
 				<p class="mt-6 text-sm text-muted-foreground">{ d.Tr("period.close_confirm") }</p>
 				<div class="mt-3 flex flex-wrap gap-3">
-					<button type="submit" class="inline-flex w-full items-center justify-center gap-2 rounded-md bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 sm:w-auto">
+					<button type="submit" class="btn btn-primary w-full sm:w-auto">
 						@icons.Icon("lock", "h-4 w-4")
 						{ d.Tr("period.close") }
 					</button>
 					<a
 						href={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/periods")) }
-						class="inline-flex w-full items-center justify-center rounded-md border border-border px-4 py-2.5 text-sm font-medium text-foreground/90 hover:bg-muted sm:w-auto"
+						class="btn w-full sm:w-auto"
 					>
 						{ d.Tr("common.cancel") }
 					</a>

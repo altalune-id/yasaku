@@ -31,6 +31,9 @@ type pgUserRow struct {
 	IDPSubject      *string    `alias:"users.idp_subject"`
 	PasswordHash    string     `alias:"users.password_hash"`
 	Locale          string     `alias:"users.locale"`
+	Theme           string     `alias:"users.theme"`
+	ColorMode       string     `alias:"users.color_mode"`
+	TipsSeen        string     `alias:"users.tips_seen"`
 	TermsAcceptedAt *time.Time `alias:"users.terms_accepted_at"`
 	CreatedAt       time.Time  `alias:"users.created_at"`
 }
@@ -43,6 +46,9 @@ func (r *pgUserRow) toUser() *User {
 		IsAdmin:      r.IsAdmin,
 		PasswordHash: r.PasswordHash,
 		Locale:       r.Locale,
+		Theme:        r.Theme,
+		ColorMode:    r.ColorMode,
+		TipsSeen:     parseTipsSeen(r.TipsSeen),
 		CreatedAt:    r.CreatedAt.UTC(),
 	}
 	if r.IDPIssuer != nil {

@@ -98,15 +98,14 @@ check_asset() {
     fi
 }
 
-check_asset app.css          5000
-check_asset basecoat.css   100000
+check_asset app.css        100000
 check_asset htmx.min.js     20000
 check_asset hx-csp.min.js     500
 check_asset easymde.min.js 300000
 check_asset easymde.min.css 10000
 
 # A relative @import resolves against /static/ at render time and 404s silently.
-for css in app.css basecoat.css; do
+for css in app.css; do
     if grep -q '@import' "${tmpdir}/${css}"; then
         echo "/static/${css} contains an @import -- vendored CSS must be self-contained" >&2
         grep -n '@import' "${tmpdir}/${css}" >&2

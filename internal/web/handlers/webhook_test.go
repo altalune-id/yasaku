@@ -523,7 +523,7 @@ func TestWebhookHandler_DeliveryShowsThePayloadAndHeaders(t *testing.T) {
 		"the payload sits above the attempts")
 
 	page := x.do(t, http.MethodGet, webhookBase+"/"+e.ID.String(), nil)
-	assert.Contains(t, page.Body.String(), "yasakuCopyBound", "the detail page binds the copy handler the fragment's button needs")
+	assert.Contains(t, page.Body.String(), `/static/copy.js`, "the detail page loads the copy handler the fragment's button needs")
 }
 
 func TestWebhookHandler_DeliveryFallsBackToTheRawBody(t *testing.T) {

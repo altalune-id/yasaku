@@ -38,11 +38,11 @@ func (h *InviteHandler) GetList(w http.ResponseWriter, r *http.Request) {
 	items, err := h.Invites.ListPending(r.Context())
 	if err != nil {
 		h.LogErr("web invite: list", err)
-		h.ErrorPage(w, r, http.StatusInternalServerError, "List failed", "Could not load invites.", err)
+		h.ErrorPage(w, r, http.StatusInternalServerError, pageTitle(r, "error_title.list_failed"), "Could not load invites.", err)
 		return
 	}
 	canManage, _ := h.Orgs.IsManager(r.Context(), o.ID, p.UserID)
-	Render(w, r, templates.InvitesLayout(h.LayoutForOrg(r, "Invites", slug, "invites"), templates.InvitesView{
+	Render(w, r, templates.InvitesLayout(h.LayoutForOrg(r, pageTitle(r, "invites.title"), slug, "invites"), templates.InvitesView{
 		OrgSlug: slug, Invites: inviteRows(items), CanManage: canManage, Disabled: !h.Caps.InvitesEnabled,
 	}))
 }
@@ -57,27 +57,27 @@ func (h *InviteHandler) PostSend(w http.ResponseWriter, r *http.Request) {
 	slug := o.Slug
 	canManage, _ := h.Orgs.IsManager(r.Context(), o.ID, p.UserID)
 	if !canManage {
-		h.ErrorPage(w, r, http.StatusForbidden, "Not allowed", "Only owners and admins can invite.")
+		h.ErrorPage(w, r, http.StatusForbidden, pageTitle(r, "error_title.not_allowed"), "Only owners and admins can invite.")
 		return
 	}
 	if err := r.ParseForm(); err != nil {
-		h.ErrorPage(w, r, http.StatusBadRequest, "Bad request", "Could not parse form body.")
+		h.ErrorPage(w, r, http.StatusBadRequest, pageTitle(r, "error_title.bad_request"), "Could not parse form body.")
 		return
 	}
 	email := strings.TrimSpace(r.PostForm.Get("email"))
 	roleStr := strings.TrimSpace(r.PostForm.Get("role"))
 	role := invite.Role(roleStr)
 	if !role.IsValid() {
-		h.ErrorPage(w, r, http.StatusBadRequest, "Bad role", "Role must be admin or member.")
+		h.ErrorPage(w, r, http.StatusBadRequest, pageTitle(r, "error_title.bad_role"), "Role must be admin or member.")
 		return
 	}
 	if _, err := h.Invites.Send(r.Context(), invite.SendRequest{Email: email, Role: role}); err != nil {
 		h.LogErr("web invite: send", err)
 		if invite.IsInvitesDisabledError(err) {
-			h.ErrorPage(w, r, http.StatusConflict, "Invites disabled", err.Error(), err)
+			h.ErrorPage(w, r, http.StatusConflict, pageTitle(r, "error_title.invites_disabled"), err.Error(), err)
 			return
 		}
-		h.ErrorPage(w, r, http.StatusBadRequest, "Send failed", err.Error())
+		h.ErrorPage(w, r, http.StatusBadRequest, pageTitle(r, "error_title.send_failed"), err.Error())
 		return
 	}
 	http.Redirect(w, r, ResolveReturnTo(h.Cfg.HTTP.BasePath, "/orgs/"+slug+"/invites"), http.StatusSeeOther) //nolint:gosec // G710: destination sanitized via ResolveReturnTo → SanitizeReturnTo
@@ -93,22 +93,22 @@ func (h *InviteHandler) PostRevoke(w http.ResponseWriter, r *http.Request) {
 	slug := o.Slug
 	canManage, _ := h.Orgs.IsManager(r.Context(), o.ID, p.UserID)
 	if !canManage {
-		h.ErrorPage(w, r, http.StatusForbidden, "Not allowed", "Only owners and admins can revoke invites.")
+		h.ErrorPage(w, r, http.StatusForbidden, pageTitle(r, "error_title.not_allowed"), "Only owners and admins can revoke invites.")
 		return
 	}
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
-		h.ErrorPage(w, r, http.StatusBadRequest, "Bad id", "Malformed invite id.")
+		h.ErrorPage(w, r, http.StatusBadRequest, pageTitle(r, "error_title.bad_id"), "Malformed invite id.")
 		return
 	}
 	if err := h.Invites.Revoke(r.Context(), id); err != nil {
 		h.LogErr("web invite: revoke", err)
 		if invite.IsNotFoundError(err) {
-			h.ErrorPage(w, r, http.StatusNotFound, "Invite not found", "That invite no longer exists.", err)
+			h.ErrorPage(w, r, http.StatusNotFound, pageTitle(r, "error_title.invite_not_found"), "That invite no longer exists.", err)
 			return
 		}
 		// SECURITY: err.Error() names internal ids, so it stays in the log and never reaches the page.
-		h.ErrorPage(w, r, http.StatusInternalServerError, "Revoke failed", "Could not revoke that invite.")
+		h.ErrorPage(w, r, http.StatusInternalServerError, pageTitle(r, "error_title.revoke_failed"), "Could not revoke that invite.")
 		return
 	}
 	http.Redirect(w, r, ResolveReturnTo(h.Cfg.HTTP.BasePath, "/orgs/"+slug+"/invites"), http.StatusSeeOther) //nolint:gosec // G710: destination sanitized via ResolveReturnTo → SanitizeReturnTo
@@ -118,7 +118,7 @@ func (h *InviteHandler) PostRevoke(w http.ResponseWriter, r *http.Request) {
 func (h *InviteHandler) GetAccept(w http.ResponseWriter, r *http.Request) {
 	token := r.URL.Query().Get("token")
 	if token == "" {
-		h.ErrorPage(w, r, http.StatusBadRequest, "Missing token", "The invite link is malformed.")
+		h.ErrorPage(w, r, http.StatusBadRequest, pageTitle(r, "error_title.missing_token"), "The invite link is malformed.")
 		return
 	}
 	p, sid, authed := h.LoadSession(r)
@@ -141,15 +141,15 @@ func (h *InviteHandler) GetAccept(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case invite.IsNotFoundError(err), invite.IsExpiredError(err), invite.IsAlreadyUsedError(err):
-			h.ErrorPage(w, r, http.StatusGone, "Invite not usable", err.Error())
+			h.ErrorPage(w, r, http.StatusGone, pageTitle(r, "error_title.invite_not_usable"), err.Error())
 			return
 		case invite.IsTokenMismatchError(err):
-			h.ErrorPage(w, r, http.StatusForbidden, "Invite mismatch", "This invite is for a different email.")
+			h.ErrorPage(w, r, http.StatusForbidden, pageTitle(r, "error_title.invite_mismatch"), "This invite is for a different email.")
 			return
 		default:
 			h.LogErr("web invite: accept", err)
 			// SECURITY: err.Error() names internal ids, so the page shows the code and request id instead.
-			h.ErrorPage(w, r, http.StatusInternalServerError, "Accept failed", "Could not accept that invite.", err)
+			h.ErrorPage(w, r, http.StatusInternalServerError, pageTitle(r, "error_title.accept_failed"), "Could not accept that invite.", err)
 			return
 		}
 	}

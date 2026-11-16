@@ -12,9 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"altalune.id/yasaku/internal/org"
-	"altalune.id/yasaku/internal/platform/config"
 	"altalune.id/yasaku/internal/platform/session"
-	"altalune.id/yasaku/internal/user"
 	"altalune.id/yasaku/internal/web/handlers"
 )
 
@@ -111,49 +109,4 @@ func TestProjectHandler_PostCreate_TakenSlugIsReported(t *testing.T) {
 	mux.ServeHTTP(rec, f.authedRequest(t, http.MethodPost, "/orgs/acme/projects", "name=Alpha&slug=alpha", p))
 	require.Equal(t, http.StatusOK, rec.Code)
 	assert.Contains(t, rec.Body.String(), "Slug is already taken.")
-}
-
-func TestSignupHandler_PostSignup_GeneratesOrgSlugWhenBlank(t *testing.T) {
-	t.Parallel()
-	f := newFixture(t)
-	f.Cfg.Mode = config.ModeCloud
-	ctx := context.Background()
-	u, err := f.Users.Create(ctx, user.CreateRequest{Email: "alice@example.com", Name: "Alice", Source: user.SourceOIDC})
-	require.NoError(t, err)
-
-	mux := http.NewServeMux()
-	handlers.NewSignupHandler(f.Deps, f.Users, f.Orgs, f.Projects).Register(mux)
-
-	rec := httptest.NewRecorder()
-	body := "org_name=Acme&org_slug=&project_name=Main&project_slug=main"
-	mux.ServeHTTP(rec, f.authedRequest(t, http.MethodPost, "/signup/complete", body, session.Principal{UserID: u.ID, Email: u.Email, Name: u.Name}))
-	require.Equal(t, http.StatusSeeOther, rec.Code)
-
-	orgs, err := f.Orgs.List(ctx, u.ID)
-	require.NoError(t, err)
-	require.Len(t, orgs, 1)
-	assert.Equal(t, "/orgs/"+orgs[0].Slug+"/projects/main/overview", rec.Header().Get("Location"))
-}
-
-func TestSignupHandler_PostSignup_TakenOrgSlugIsAFieldError(t *testing.T) {
-	t.Parallel()
-	f := newFixture(t)
-	f.Cfg.Mode = config.ModeCloud
-	ctx := context.Background()
-	owner, err := f.Users.Create(ctx, user.CreateRequest{Email: "owner@example.com", Name: "Owner", Source: user.SourceOIDC})
-	require.NoError(t, err)
-	_, err = f.Orgs.Create(ctx, orgCreate("acme", "Acme", owner.ID))
-	require.NoError(t, err)
-
-	u, err := f.Users.Create(ctx, user.CreateRequest{Email: "alice@example.com", Name: "Alice", Source: user.SourceOIDC})
-	require.NoError(t, err)
-
-	mux := http.NewServeMux()
-	handlers.NewSignupHandler(f.Deps, f.Users, f.Orgs, f.Projects).Register(mux)
-
-	rec := httptest.NewRecorder()
-	body := "org_name=Acme&org_slug=acme&project_name=Main&project_slug=main"
-	mux.ServeHTTP(rec, f.authedRequest(t, http.MethodPost, "/signup/complete", body, session.Principal{UserID: u.ID, Email: u.Email, Name: u.Name}))
-	require.Equal(t, http.StatusOK, rec.Code)
-	assert.Contains(t, rec.Body.String(), "This slug is already taken.")
 }

@@ -41,6 +41,7 @@ promise to someone outside.
 | add a cache, queue, rate limiter or background loop   | [platform-primitive](platform-primitive.md) |
 | run work on the queue, or broadcast to every instance | [queue-consumer](queue-consumer.md)         |
 | add a config key                                      | [config-key](config-key.md)                 |
+| add a console theme family                            | [theme-family](theme-family.md)             |
 
 ## Errors
 

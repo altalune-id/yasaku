@@ -26,7 +26,7 @@ type WebhooksView struct {
 
 templ webhookEphemeralBanner(d web.LayoutData) {
 	if d.Caps.EphemeralEncryptionKey {
-		<div data-ephemeral-key class="mt-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
+		<div data-ephemeral-key class="mt-4 rounded-md border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
 			<p class="font-semibold">{ d.Tr("webhooks.ephemeral_heading") }</p>
 			<p class="mt-1 text-xs">{ d.Tr("webhooks.ephemeral_warning") }</p>
 		</div>
@@ -48,7 +48,7 @@ templ webhookErrorBanner(d web.LayoutData, e WebhookError) {
 
 templ webhookActiveBadge(d web.LayoutData, active bool) {
 	if active {
-		<span class="shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-200">{ d.Tr("webhooks.active") }</span>
+		<span class="shrink-0 rounded-full bg-success/10 px-2 py-0.5 text-xs font-medium text-success">{ d.Tr("webhooks.active") }</span>
 	} else {
 		<span class="shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">{ d.Tr("webhooks.inactive") }</span>
 	}
@@ -102,7 +102,7 @@ templ WebhooksPage(d web.LayoutData, v WebhooksView) {
 						</p>
 					</div>
 					if e.Rotating {
-						<span class="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-950/60 dark:text-amber-200">{ d.Tr("webhooks.rotating") }</span>
+						<span class="shrink-0 rounded-full bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning">{ d.Tr("webhooks.rotating") }</span>
 					}
 					@webhookActiveBadge(d, e.Active)
 				</li>

@@ -91,13 +91,13 @@ func (h *TransactionHandler) GetList(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	d := h.LayoutForProject(sc.req, h.title(sc, "tx.title"), sc.org.Slug, sc.project, "transactions")
+	d := h.LayoutForProject(sc.req, pageTitle(sc.req, "nav.transactions", sc.project.Name), sc.org.Slug, sc.project, "transactions")
 	q := sc.req.URL.Query()
 
 	list, err := h.listView(sc, d, q, txPageSize)
 	if err != nil {
 		h.LogErr("web transaction: list", err)
-		h.ErrorPage(w, sc.req, http.StatusInternalServerError, "List failed", "Could not load transactions.", err)
+		h.ErrorPage(w, sc.req, http.StatusInternalServerError, pageTitle(sc.req, "error_title.list_failed"), "Could not load transactions.", err)
 		return
 	}
 	if q.Get("after") != "" {
@@ -112,7 +112,7 @@ func (h *TransactionHandler) GetList(w http.ResponseWriter, r *http.Request) {
 	form, err := h.formView(sc, d, txInput{Kind: transaction.KindExpense}, "")
 	if err != nil {
 		h.LogErr("web transaction: form", err)
-		h.ErrorPage(w, sc.req, http.StatusInternalServerError, "List failed", "Could not load transactions.", err)
+		h.ErrorPage(w, sc.req, http.StatusInternalServerError, pageTitle(sc.req, "error_title.list_failed"), "Could not load transactions.", err)
 		return
 	}
 	v := templates.TransactionsView{
@@ -124,7 +124,7 @@ func (h *TransactionHandler) GetList(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := h.fillFilters(sc, d, &v, q); err != nil {
 		h.LogErr("web transaction: filters", err)
-		h.ErrorPage(w, sc.req, http.StatusInternalServerError, "List failed", "Could not load transactions.", err)
+		h.ErrorPage(w, sc.req, http.StatusInternalServerError, pageTitle(sc.req, "error_title.list_failed"), "Could not load transactions.", err)
 		return
 	}
 	Render(w, sc.req, templates.TransactionsLayout(d, v))
@@ -136,11 +136,11 @@ func (h *TransactionHandler) GetNew(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	d := h.LayoutForProject(sc.req, h.title(sc, "tx.new"), sc.org.Slug, sc.project, "transactions")
+	d := h.LayoutForProject(sc.req, pageTitle(sc.req, "title.tx_new", sc.project.Name), sc.org.Slug, sc.project, "transactions")
 	form, err := h.formView(sc, d, txInput{Kind: transaction.KindExpense}, "")
 	if err != nil {
 		h.LogErr("web transaction: form", err)
-		h.ErrorPage(w, sc.req, http.StatusInternalServerError, "Load failed", "Could not load the form.", err)
+		h.ErrorPage(w, sc.req, http.StatusInternalServerError, pageTitle(sc.req, "error_title.load_failed"), "Could not load the form.", err)
 		return
 	}
 	Render(w, sc.req, templates.TransactionFormLayout(d, form, d.Tr("tx.new")))
@@ -152,7 +152,7 @@ func (h *TransactionHandler) GetEdit(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	d := h.LayoutForProject(sc.req, h.title(sc, "tx.edit"), sc.org.Slug, sc.project, "transactions")
+	d := h.LayoutForProject(sc.req, pageTitle(sc.req, "title.tx_edit", sc.project.Name), sc.org.Slug, sc.project, "transactions")
 	in := txInput{
 		Kind:       t.Kind,
 		Amount:     t.Amount.Major(),
@@ -166,7 +166,7 @@ func (h *TransactionHandler) GetEdit(w http.ResponseWriter, r *http.Request) {
 	form, err := h.formView(sc, d, in, t.ID.String())
 	if err != nil {
 		h.LogErr("web transaction: form", err)
-		h.ErrorPage(w, sc.req, http.StatusInternalServerError, "Load failed", "Could not load that transaction.", err)
+		h.ErrorPage(w, sc.req, http.StatusInternalServerError, pageTitle(sc.req, "error_title.load_failed"), "Could not load that transaction.", err)
 		return
 	}
 	form.RecordedAt, form.UpdatedAt = t.CreatedAt, t.UpdatedAt
@@ -252,7 +252,7 @@ func (h *TransactionHandler) PostSuggest(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	if err := sc.req.ParseForm(); err != nil {
-		h.ErrorPage(w, sc.req, http.StatusBadRequest, "Bad request", "Could not parse form body.")
+		h.ErrorPage(w, sc.req, http.StatusBadRequest, pageTitle(sc.req, "error_title.bad_request"), "Could not parse form body.")
 		return
 	}
 	kind, err := parseUserKind(sc.req.PostForm.Get("kind"))
@@ -276,7 +276,7 @@ func (h *TransactionHandler) PostSuggest(w http.ResponseWriter, r *http.Request)
 	form, err := h.formView(sc, d, in, "")
 	if err != nil {
 		h.LogErr("web transaction: form", err)
-		h.ErrorPage(w, sc.req, http.StatusInternalServerError, "Load failed", "Could not load categories.", err)
+		h.ErrorPage(w, sc.req, http.StatusInternalServerError, pageTitle(sc.req, "error_title.load_failed"), "Could not load categories.", err)
 		return
 	}
 	Render(w, sc.req, templates.TxCategoryChips(d, form))
@@ -311,7 +311,7 @@ func (h *TransactionHandler) readForm(w http.ResponseWriter, sc ProjectScope, wa
 	in, err := h.parseForm(sc, want)
 	if err != nil {
 		if errors.Is(err, errBadForm) {
-			h.ErrorPage(w, sc.req, http.StatusBadRequest, "Bad request", "Could not read that form.")
+			h.ErrorPage(w, sc.req, http.StatusBadRequest, pageTitle(sc.req, "error_title.bad_request"), "Could not read that form.")
 			return txInput{}, money.Amount{}, false
 		}
 		h.refuse(w, sc, err, txDraft{id: id})
@@ -415,7 +415,7 @@ func (h *TransactionHandler) succeed(w http.ResponseWriter, sc ProjectScope, t *
 	list, err := h.listAfterWrite(sc, d)
 	if err != nil {
 		h.LogErr("web transaction: list", err)
-		h.ErrorPage(w, sc.req, http.StatusInternalServerError, "List failed", "Could not load transactions.", err)
+		h.ErrorPage(w, sc.req, http.StatusInternalServerError, pageTitle(sc.req, "error_title.list_failed"), "Could not load transactions.", err)
 		return
 	}
 	msg := ""
@@ -429,10 +429,10 @@ func (h *TransactionHandler) succeed(w http.ResponseWriter, sc ProjectScope, t *
 func (h *TransactionHandler) refuse(w http.ResponseWriter, sc ProjectScope, cause error, draft txDraft) {
 	ae, ok := apperror.AsAppError(cause)
 	if !ok {
-		h.ErrorPage(w, sc.req, http.StatusInternalServerError, "Save failed", "Could not record that transaction.", cause)
+		h.ErrorPage(w, sc.req, http.StatusInternalServerError, pageTitle(sc.req, "error_title.save_failed"), "Could not record that transaction.", cause)
 		return
 	}
-	d := h.LayoutForProject(sc.req, h.title(sc, "tx.title"), sc.org.Slug, sc.project, "transactions")
+	d := h.LayoutForProject(sc.req, pageTitle(sc.req, "nav.transactions", sc.project.Name), sc.org.Slug, sc.project, "transactions")
 	list, err := h.listAfterWrite(sc, d)
 	if err != nil {
 		h.LogErr("web transaction: list", err)
@@ -458,7 +458,7 @@ func (h *TransactionHandler) refusePage(w http.ResponseWriter, sc ProjectScope, 
 	form, err := h.formView(sc, d, in, draft.id)
 	if err != nil {
 		h.LogErr("web transaction: form", err)
-		h.ErrorPage(w, sc.req, http.StatusInternalServerError, "Save failed", "Could not record that transaction.", err)
+		h.ErrorPage(w, sc.req, http.StatusInternalServerError, pageTitle(sc.req, "error_title.save_failed"), "Could not record that transaction.", err)
 		return
 	}
 	if draft.filled || draft.id != "" {
@@ -474,7 +474,7 @@ func (h *TransactionHandler) refusePage(w http.ResponseWriter, sc ProjectScope, 
 	}
 	if err := h.fillFilters(sc, d, &v, h.activeFilters(sc)); err != nil {
 		h.LogErr("web transaction: filters", err)
-		h.ErrorPage(w, sc.req, http.StatusInternalServerError, "Save failed", "Could not record that transaction.", err)
+		h.ErrorPage(w, sc.req, http.StatusInternalServerError, pageTitle(sc.req, "error_title.save_failed"), "Could not record that transaction.", err)
 		return
 	}
 	Render(w, sc.req, templates.TransactionsLayout(d, v))
@@ -487,22 +487,22 @@ func (h *TransactionHandler) requireTransaction(w http.ResponseWriter, r *http.R
 	}
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
-		h.ErrorPage(w, sc.req, http.StatusBadRequest, "Bad id", "Malformed transaction id.")
+		h.ErrorPage(w, sc.req, http.StatusBadRequest, pageTitle(sc.req, "error_title.bad_id"), "Malformed transaction id.")
 		return ProjectScope{}, nil, false
 	}
 	t, err := h.Transactions.ByID(sc.req.Context(), id)
 	if err != nil {
 		if transaction.IsNotFoundError(err) {
-			h.ErrorPage(w, sc.req, http.StatusNotFound, "Not found", "That transaction no longer exists.")
+			h.ErrorPage(w, sc.req, http.StatusNotFound, pageTitle(sc.req, "error_title.not_found"), "That transaction no longer exists.")
 			return ProjectScope{}, nil, false
 		}
 		h.LogErr("web transaction: byID", err)
-		h.ErrorPage(w, sc.req, http.StatusInternalServerError, "Lookup failed", "Could not load that transaction.", err)
+		h.ErrorPage(w, sc.req, http.StatusInternalServerError, pageTitle(sc.req, "error_title.lookup_failed"), "Could not load that transaction.", err)
 		return ProjectScope{}, nil, false
 	}
 	// SECURITY: opening and adjustment rows are system-written; editing one rewrites a derived wallet balance.
 	if !t.Kind.IsUserRecorded() {
-		h.ErrorPage(w, sc.req, http.StatusNotFound, "Not editable",
+		h.ErrorPage(w, sc.req, http.StatusNotFound, pageTitle(sc.req, "error_title.not_editable"),
 			"That entry was recorded by yasaku, so it cannot be edited here.")
 		return ProjectScope{}, nil, false
 	}
@@ -827,10 +827,6 @@ func (h *TransactionHandler) currency(sc ProjectScope) money.Currency {
 		return money.IDR
 	}
 	return s.Currency
-}
-
-func (h *TransactionHandler) title(sc ProjectScope, key string) string {
-	return h.Base(sc.req, "").Tr(key) + " · " + sc.project.Name
 }
 
 func txCurrencySymbol(d web.LayoutData, c money.Currency) string {

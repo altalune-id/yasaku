@@ -5,10 +5,10 @@
 	window.__yasakuCharts = 1;
 
 	var DONUT_SLOTS = ['--chart-1', '--chart-4', '--chart-2', '--chart-5', '--chart-3'];
-	var FALLBACK_SLOT = '--muted-foreground';
 	var ENTITIES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 	var instances = [];
 	var resizeQueued = false;
+	var pixel = null;
 
 	// SECURITY: echarts assigns a string tooltip formatter's return value to innerHTML, so every
 	// payload-derived value (category, wallet and period names are user input) must be escaped here.
@@ -25,17 +25,37 @@
 		return 'hsl(' + raw + ')';
 	}
 
+	function rgba(value) {
+		var probe = document.createElement('span');
+		probe.style.display = 'none';
+		probe.style.color = value;
+		document.body.appendChild(probe);
+		var computed = getComputedStyle(probe).color;
+		probe.remove();
+		if (!pixel) {
+			var canvas = document.createElement('canvas');
+			canvas.width = canvas.height = 1;
+			pixel = canvas.getContext('2d', { willReadFrequently: true });
+		}
+		pixel.clearRect(0, 0, 1, 1);
+		pixel.fillStyle = computed;
+		pixel.fillRect(0, 0, 1, 1);
+		var d = pixel.getImageData(0, 0, 1, 1).data;
+		return 'rgba(' + d[0] + ',' + d[1] + ',' + d[2] + ',' + (d[3] / 255).toFixed(3) + ')';
+	}
+
 	function theme() {
+		var muted = rgba('color-mix(in oklab, var(--color-base-content) 70%, transparent)');
 		return {
 			series: DONUT_SLOTS.map(token),
 			income: token('--chart-2'),
 			expense: token('--chart-4'),
 			net: token('--chart-1'),
-			fallback: token(FALLBACK_SLOT),
-			ink: token('--foreground'),
-			muted: token('--muted-foreground'),
-			border: token('--border'),
-			surface: token('--card') || token('--background'),
+			fallback: muted,
+			ink: rgba('var(--color-base-content)'),
+			muted: muted,
+			border: rgba('var(--color-base-300)'),
+			surface: rgba('var(--color-base-100)'),
 		};
 	}
 
@@ -94,7 +114,7 @@
 	function emptyState(el, message) {
 		el.textContent = '';
 		var p = document.createElement('p');
-		p.className = 'flex h-full min-h-[16rem] items-center justify-center text-sm text-muted-foreground';
+		p.className = 'flex h-full min-h-[16rem] items-center justify-center text-sm text-base-content/70';
 		p.textContent = message || '';
 		el.appendChild(p);
 	}
@@ -345,7 +365,7 @@
 
 	new MutationObserver(renderAll).observe(document.documentElement, {
 		attributes: true,
-		attributeFilter: ['class', 'data-theme', 'data-color-mode'],
+		attributeFilter: ['data-theme', 'data-family'],
 	});
 	if (window.matchMedia) {
 		window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', renderAll);

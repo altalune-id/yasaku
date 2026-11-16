@@ -9,6 +9,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"altalune.id/yasaku/internal/web"
 )
 
 func postWithOrigin(t *testing.T, h http.Handler, path, fetchSite, origin string, header http.Header, body string) *httptest.ResponseRecorder {
@@ -73,4 +75,36 @@ func TestCrossOriginCheckLeavesBearerSurfacesAlone(t *testing.T) {
 		rec := postWithOrigin(t, f.srv.Web, mcpPath, "cross-site", "https://evil.example", header, string(raw))
 		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	})
+}
+
+// SECURITY: a sibling site must not flip a signed-in person's stored theme.
+func TestConsoleRefusesCrossOriginThemePost(t *testing.T) {
+	f := newEdgeFixture(t)
+	form := http.Header{"Content-Type": {"application/x-www-form-urlencoded"}}
+	body := url.Values{"mode": {"dark"}, "redirect": {"/"}}.Encode()
+
+	rec := postWithOrigin(t, f.srv.Web, "/theme", "cross-site", "https://evil.example", form, body)
+	require.Equal(t, http.StatusForbidden, rec.Code, rec.Body.String())
+}
+
+// SECURITY: a sibling site must not mark a signed-in person's tips as seen.
+func TestConsoleRefusesCrossOriginTipSeenPost(t *testing.T) {
+	f := newEdgeFixture(t)
+	form := http.Header{"Content-Type": {"application/x-www-form-urlencoded"}}
+	body := url.Values{"all": {"1"}, "redirect": {"/"}}.Encode()
+
+	rec := postWithOrigin(t, f.srv.Web, "/tips/"+web.Tips()[0].ID+"/seen", "cross-site", "https://evil.example", form, body)
+	require.Equal(t, http.StatusForbidden, rec.Code, rec.Body.String())
+}
+
+// SECURITY: a sibling site must not rename a project or provision a workspace for a signed-in person.
+func TestConsoleRefusesCrossOriginRenameAndSignupPosts(t *testing.T) {
+	f := newEdgeFixture(t)
+	form := http.Header{"Content-Type": {"application/x-www-form-urlencoded"}}
+	for _, path := range []string{"/orgs/acme/projects/alpha/rename", "/signup/complete"} {
+		t.Run(path, func(t *testing.T) {
+			rec := postWithOrigin(t, f.srv.Web, path, "cross-site", "https://evil.example", form, url.Values{"name": {"Evil"}}.Encode())
+			require.Equal(t, http.StatusForbidden, rec.Code, rec.Body.String())
+		})
+	}
 }

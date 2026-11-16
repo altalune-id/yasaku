@@ -15,4 +15,8 @@ type Store interface {
 	ByIDP(ctx context.Context, issuer, subject string) (*User, error)
 	HasLocalUsers(ctx context.Context) (bool, error)
 	UpdateLocale(ctx context.Context, id uuid.UUID, locale string) error
+	// UpdateThemePrefs stores the user's theme family and color mode.
+	UpdateThemePrefs(ctx context.Context, id uuid.UUID, theme, colorMode string) error
+	// MarkTipsSeen adds ids to the user's seen tips, once each, and returns the stored list.
+	MarkTipsSeen(ctx context.Context, id uuid.UUID, ids []string) ([]string, error)
 }

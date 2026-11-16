@@ -151,6 +151,9 @@ func (o *OIDCLogin) Execute(ctx context.Context, claims OIDCClaims) (session.Pri
 		ActiveProjectID: projectID,
 		IsAdmin:         u.IsAdmin,
 		Locale:          u.Locale,
+		Theme:           u.Theme,
+		ColorMode:       u.ColorMode,
+		TipsSeen:        u.TipsSeen,
 		IssuedAt:        o.now(),
 	}
 	if u.TermsAcceptedAt != nil {

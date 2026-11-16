@@ -65,7 +65,7 @@ func (h *PeriodHandler) GetClose(w http.ResponseWriter, r *http.Request) {
 		Render(w, sc.req, templates.ClosePreviewFragment(d, v))
 		return
 	}
-	d.Title = d.Tr("period.close") + " · " + sc.project.Name
+	d.Title = pageTitle(sc.req, "title.period_close", sc.project.Name)
 	Render(w, sc.req, templates.ClosePeriodLayout(d, v))
 }
 
@@ -76,7 +76,7 @@ func (h *PeriodHandler) PostClose(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := sc.req.ParseForm(); err != nil {
-		h.ErrorPage(w, sc.req, http.StatusBadRequest, "Bad request", "Could not parse form body.")
+		h.ErrorPage(w, sc.req, http.StatusBadRequest, pageTitle(sc.req, "error_title.bad_request"), "Could not parse form body.")
 		return
 	}
 	end, err := period.ParseEnd(sc.req.PostForm.Get("end_date"))
@@ -100,7 +100,7 @@ func (h *PeriodHandler) PostReopen(w http.ResponseWriter, r *http.Request) {
 	if _, err := h.Periods.Reopen(sc.req.Context(), p.ID); err != nil {
 		if !isPeriodDomainError(err) {
 			h.LogErr("web period: reopen", err)
-			h.ErrorPage(w, sc.req, http.StatusInternalServerError, "Reopen failed", "Could not reopen that period.", err)
+			h.ErrorPage(w, sc.req, http.StatusInternalServerError, pageTitle(sc.req, "error_title.reopen_failed"), "Could not reopen that period.", err)
 			return
 		}
 		h.renderPeriods(w, sc, err)
@@ -116,14 +116,14 @@ func (h *PeriodHandler) PostRename(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := sc.req.ParseForm(); err != nil {
-		h.ErrorPage(w, sc.req, http.StatusBadRequest, "Bad request", "Could not parse form body.")
+		h.ErrorPage(w, sc.req, http.StatusBadRequest, pageTitle(sc.req, "error_title.bad_request"), "Could not parse form body.")
 		return
 	}
 	name := strings.TrimSpace(sc.req.PostForm.Get("name"))
 	if _, err := h.Periods.Rename(sc.req.Context(), p.ID, name); err != nil {
 		if !isPeriodDomainError(err) {
 			h.LogErr("web period: rename", err)
-			h.ErrorPage(w, sc.req, http.StatusInternalServerError, "Rename failed", "Could not rename that period.", err)
+			h.ErrorPage(w, sc.req, http.StatusInternalServerError, pageTitle(sc.req, "error_title.rename_failed"), "Could not rename that period.", err)
 			return
 		}
 		h.renderPeriods(w, sc, err)
@@ -139,17 +139,17 @@ func (h *PeriodHandler) requirePeriod(w http.ResponseWriter, r *http.Request) (P
 	}
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
-		h.ErrorPage(w, sc.req, http.StatusNotFound, "Not found", "That period no longer exists.")
+		h.ErrorPage(w, sc.req, http.StatusNotFound, pageTitle(sc.req, "error_title.not_found"), "That period no longer exists.")
 		return ProjectScope{}, nil, false
 	}
 	p, err := h.Periods.ByID(sc.req.Context(), id)
 	if err != nil {
 		if period.IsNotFoundError(err) {
-			h.ErrorPage(w, sc.req, http.StatusNotFound, "Not found", "That period no longer exists.", err)
+			h.ErrorPage(w, sc.req, http.StatusNotFound, pageTitle(sc.req, "error_title.not_found"), "That period no longer exists.", err)
 			return ProjectScope{}, nil, false
 		}
 		h.LogErr("web period: byID", err)
-		h.ErrorPage(w, sc.req, http.StatusInternalServerError, "Lookup failed", "Could not load that period.", err)
+		h.ErrorPage(w, sc.req, http.StatusInternalServerError, pageTitle(sc.req, "error_title.lookup_failed"), "Could not load that period.", err)
 		return ProjectScope{}, nil, false
 	}
 	return sc, p, true
@@ -157,7 +157,7 @@ func (h *PeriodHandler) requirePeriod(w http.ResponseWriter, r *http.Request) (P
 
 func (h *PeriodHandler) layout(sc ProjectScope) web.LayoutData {
 	d := h.LayoutForProject(sc.req, "", sc.org.Slug, sc.project, periodNavKey)
-	d.Title = d.Tr("period.title") + " · " + sc.project.Name
+	d.Title = pageTitle(sc.req, "nav.periods", sc.project.Name)
 	return d
 }
 
@@ -171,7 +171,7 @@ func (h *PeriodHandler) renderPeriods(w http.ResponseWriter, sc ProjectScope, ca
 	v, err := h.periodsView(sc, cause)
 	if err != nil {
 		h.LogErr("web period: list", err)
-		h.ErrorPage(w, sc.req, http.StatusInternalServerError, "List failed", "Could not load periods.", err)
+		h.ErrorPage(w, sc.req, http.StatusInternalServerError, pageTitle(sc.req, "error_title.list_failed"), "Could not load periods.", err)
 		return
 	}
 	Render(w, sc.req, templates.PeriodsLayout(h.layout(sc), v))
@@ -183,7 +183,7 @@ func (h *PeriodHandler) renderClose(w http.ResponseWriter, sc ProjectScope, p *p
 		v.Error, v.ErrorCode = appErrorBanner(cause)
 	}
 	d := h.layout(sc)
-	d.Title = d.Tr("period.close") + " · " + sc.project.Name
+	d.Title = pageTitle(sc.req, "title.period_close", sc.project.Name)
 	Render(w, sc.req, templates.ClosePeriodLayout(d, v))
 }
 
@@ -199,7 +199,7 @@ func (h *PeriodHandler) closeFailed(w http.ResponseWriter, sc ProjectScope, p *p
 	}
 	if !isPeriodDomainError(err) {
 		h.LogErr("web period: close", err)
-		h.ErrorPage(w, sc.req, http.StatusInternalServerError, "Close failed", "Could not close that period.", err)
+		h.ErrorPage(w, sc.req, http.StatusInternalServerError, pageTitle(sc.req, "error_title.close_failed"), "Could not close that period.", err)
 		return
 	}
 	h.renderClose(w, sc, p, end, err)

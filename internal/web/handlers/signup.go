@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"cmp"
+	"context"
 	"net/http"
 	"strings"
 	"time"
@@ -16,8 +17,9 @@ import (
 	"altalune.id/yasaku/internal/user"
 	"altalune.id/yasaku/internal/web"
 	"altalune.id/yasaku/internal/web/templates"
-	slugs "altalune.id/yasaku/slug"
 )
+
+//i18n:use signup.error.*
 
 // SignupHandler owns /signup/complete — cloud-only workspace bootstrap for new OIDC users without a pre-existing membership.
 type SignupHandler struct {
@@ -43,7 +45,7 @@ func (h *SignupHandler) Register(mux web.Mux) {
 // GetSignup renders the signup-complete form.
 func (h *SignupHandler) GetSignup(w http.ResponseWriter, r *http.Request) {
 	if h.Cfg.Mode != config.ModeCloud {
-		h.ErrorPage(w, r, http.StatusNotFound, "Not found", "")
+		h.ErrorPage(w, r, http.StatusNotFound, pageTitle(r, "error_title.not_found"), "")
 		return
 	}
 	p, _, ok := h.LoadSession(r)
@@ -55,15 +57,15 @@ func (h *SignupHandler) GetSignup(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, web.Path(h.Cfg.HTTP.BasePath, "/"), http.StatusSeeOther)
 		return
 	}
-	Render(w, r, templates.SignupCompleteLayout(h.Base(r, "Complete signup"), h.defaultView(p)))
+	Render(w, r, templates.SignupCompleteLayout(h.Base(r, pageTitle(r, "title.complete_signup")), h.defaultView(p)))
 }
 
-// PostSignup validates the form, provisions the org + first project, stamps terms, and redirects to the project overview.
+// PostSignup provisions an org and its first project named after the caller, stamps terms, and redirects to the project overview.
 //
-//nolint:gocyclo,funlen // linear signup flow reads more clearly as one function.
+//nolint:funlen // linear signup flow reads more clearly as one function.
 func (h *SignupHandler) PostSignup(w http.ResponseWriter, r *http.Request) {
 	if h.Cfg.Mode != config.ModeCloud {
-		h.ErrorPage(w, r, http.StatusNotFound, "Not found", "")
+		h.ErrorPage(w, r, http.StatusNotFound, pageTitle(r, "error_title.not_found"), "")
 		return
 	}
 	p, sid, ok := h.LoadSession(r)
@@ -76,88 +78,54 @@ func (h *SignupHandler) PostSignup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := r.ParseForm(); err != nil {
-		h.ErrorPage(w, r, http.StatusBadRequest, "Bad request", "Could not parse form body.")
+		h.ErrorPage(w, r, http.StatusBadRequest, pageTitle(r, "error_title.bad_request"), "Could not parse form body.")
 		return
 	}
 	view := h.defaultView(p)
-	view.OrgName = strings.TrimSpace(r.PostForm.Get("org_name"))
-	view.OrgSlug = strings.TrimSpace(r.PostForm.Get("org_slug"))
-	view.ProjectName = strings.TrimSpace(r.PostForm.Get("project_name"))
-	view.ProjectSlug = strings.TrimSpace(r.PostForm.Get("project_slug"))
-	view.Name = strings.TrimSpace(r.PostForm.Get("name"))
-	view.ProjectName = cmp.Or(view.ProjectName, defaultProjectName)
-	view.ProjectSlug = cmp.Or(view.ProjectSlug, strings.TrimSpace(h.Cfg.Tenant.PersonalProjectSlug))
-
-	view.FieldErrors = map[string]string{}
-	if view.OrgName == "" {
-		view.FieldErrors["org_name"] = "Enter an organization name."
-	}
-	if view.AskDisplayName && view.Name == "" {
-		view.FieldErrors["name"] = "Enter your display name."
-	}
-	if len(view.FieldErrors) > 0 {
-		h.render(w, r, view)
-		return
+	if view.AskDisplayName {
+		view.Name = strings.TrimSpace(r.PostForm.Get("name"))
+		if view.Name == "" {
+			view.FieldErrors["name"] = "signup.error.name_required"
+			h.render(w, r, http.StatusUnprocessableEntity, view)
+			return
+		}
 	}
 	if view.AskAccept && r.PostForm.Get("accept_terms") != "1" {
-		view.Error = "Please accept the terms to continue."
-		h.render(w, r, view)
+		view.Error = "signup.error.accept_terms"
+		h.render(w, r, http.StatusUnprocessableEntity, view)
 		return
 	}
 
 	ctx := r.Context()
-	o, err := h.Orgs.Create(ctx, org.CreateRequest{Slug: view.OrgSlug, Name: view.OrgName, OwnerID: p.UserID})
+	o, err := h.Orgs.Create(ctx, org.CreateRequest{Name: view.Name, OwnerID: p.UserID})
 	if err != nil {
-		if org.IsAlreadyExistsError(err) {
-			view.FieldErrors["org_slug"] = "This slug is already taken."
-			h.render(w, r, view)
-			return
-		}
-		if org.IsInvalidSlugError(err) {
-			view.FieldErrors["org_slug"] = err.Error()
-			h.render(w, r, view)
-			return
-		}
 		if org.IsInvalidNameError(err) {
-			view.FieldErrors["org_name"] = err.Error()
-			h.render(w, r, view)
+			view.FieldErrors["name"] = "signup.error.name_invalid"
+			h.render(w, r, http.StatusUnprocessableEntity, view)
 			return
 		}
 		h.LogErr("signup: create org", err)
-		view.Error = "Could not create the organization."
+		view.Error = "signup.error.create_org"
 		view.ErrorCode = ErrorRef(err)
-		h.render(w, r, view)
+		h.render(w, r, http.StatusInternalServerError, view)
 		return
 	}
 
 	tctx := tenant.Into(ctx, tenant.Context{OrgID: o.ID, UserID: p.UserID})
-	proj, err := h.Projects.Create(tctx, o.ID, view.ProjectSlug, view.ProjectName)
+	proj, err := h.Projects.Create(tctx, o.ID, "", view.Name)
 	if err != nil {
-		if project.IsAlreadyExistsError(err) {
-			view.FieldErrors["project_slug"] = "This project slug is already taken."
-			h.render(w, r, view)
-			return
-		}
 		h.LogErr("signup: create project", err)
-		view.Error = "Could not create the first project."
+		view.Error = "signup.error.create_project"
 		view.ErrorCode = ErrorRef(err)
-		h.render(w, r, view)
+		h.render(w, r, http.StatusInternalServerError, view)
 		return
 	}
 
 	if view.AskDisplayName {
-		if err := h.Users.Rename(ctx, p.UserID, view.Name); err != nil {
-			h.LogErr("signup: rename", err)
-		} else {
-			p.Name = view.Name
-		}
+		h.rename(ctx, &p, view.Name)
 	}
 	if view.AskAccept {
-		if err := h.Users.AcceptTerms(ctx, p.UserID); err != nil {
-			h.LogErr("signup: accept terms", err)
-		} else {
-			p.TermsAcceptedAt = time.Now().UTC()
-		}
+		h.acceptTerms(ctx, &p)
 	}
 
 	p.ActiveOrgID = o.ID
@@ -165,7 +133,7 @@ func (h *SignupHandler) PostSignup(w http.ResponseWriter, r *http.Request) {
 	if err := h.UpdateSession(r, sid, p); err != nil {
 		h.LogErr("signup: update session", err)
 	}
-	http.Redirect(w, r, web.Path(h.Cfg.HTTP.BasePath, projectPath(o.Slug, proj.Slug, "/overview")), http.StatusSeeOther) //nolint:gosec // G710: slug is validated by project.Create's slug pattern
+	http.Redirect(w, r, web.Path(h.Cfg.HTTP.BasePath, projectPath(o.Slug, proj.Slug, "/overview")), http.StatusSeeOther) //nolint:gosec // G710: both slugs are generated and validated by their slug patterns
 }
 
 func (h *SignupHandler) hasMembership(r *http.Request, userID uuid.UUID) bool {
@@ -178,26 +146,41 @@ func (h *SignupHandler) hasMembership(r *http.Request, userID uuid.UUID) bool {
 }
 
 func (h *SignupHandler) defaultView(p session.Principal) templates.SignupCompleteView {
+	name := strings.TrimSpace(p.Name)
+	if !usableWorkspaceName(name) {
+		name = ""
+	}
 	return templates.SignupCompleteView{
 		Email:          p.Email,
-		Name:           p.Name,
-		AskDisplayName: strings.TrimSpace(p.Name) == "",
+		Name:           name,
+		AskDisplayName: name == "",
 		AskAccept:      h.Cfg.Compliance.RequireAcceptance && p.TermsAcceptedAt.IsZero(),
 		TermsURL:       cmp.Or(strings.TrimSpace(h.Cfg.Compliance.TermsURL), web.Path(h.Cfg.HTTP.BasePath, "/terms")),
 		PrivacyURL:     cmp.Or(strings.TrimSpace(h.Cfg.Compliance.PrivacyURL), web.Path(h.Cfg.HTTP.BasePath, "/privacy")),
-		OrgSlug:        slugs.Generate(),
-		ProjectName:    defaultProjectName,
-		ProjectSlug:    firstRunSlug(h.Cfg.Tenant.PersonalProjectSlug),
 		FieldErrors:    map[string]string{},
 	}
 }
 
-func (h *SignupHandler) render(w http.ResponseWriter, r *http.Request, view templates.SignupCompleteView) {
-	if view.OrgSlug == "" {
-		view.OrgSlug = slugs.Generate()
+func usableWorkspaceName(name string) bool {
+	return org.ValidateName(name) == nil && project.ValidateName(name) == nil
+}
+
+func (h *SignupHandler) render(w http.ResponseWriter, r *http.Request, status int, view templates.SignupCompleteView) {
+	RenderStatus(w, r, status, templates.SignupCompleteLayout(h.Base(r, pageTitle(r, "title.complete_signup")), view))
+}
+
+func (h *SignupHandler) rename(ctx context.Context, p *session.Principal, name string) {
+	if err := h.Users.Rename(ctx, p.UserID, name); err != nil {
+		h.LogErr("signup: rename", err)
+		return
 	}
-	if view.ProjectSlug == "" {
-		view.ProjectSlug = firstRunSlug(h.Cfg.Tenant.PersonalProjectSlug)
+	p.Name = name
+}
+
+func (h *SignupHandler) acceptTerms(ctx context.Context, p *session.Principal) {
+	if err := h.Users.AcceptTerms(ctx, p.UserID); err != nil {
+		h.LogErr("signup: accept terms", err)
+		return
 	}
-	Render(w, r, templates.SignupCompleteLayout(h.Base(r, "Complete signup"), view))
+	p.TermsAcceptedAt = time.Now().UTC()
 }

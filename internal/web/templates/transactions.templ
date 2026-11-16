@@ -129,44 +129,13 @@ templ txRowBody(d web.LayoutData, row TxRow, href string) {
 	</span>
 }
 
-// Toast is the out-of-band confirmation swapped in beside a successful quick-add.
-templ Toast(d web.LayoutData, msg string) {
-	<div id="toast" hx-swap-oob="true" hx-nonce={ d.Nonce } class="pointer-events-none fixed inset-x-0 bottom-4 z-50 flex justify-center px-4">
-		if msg != "" {
-			<p
-				role="status"
-				class="pointer-events-auto rounded-full bg-foreground px-4 py-2 text-sm font-medium text-background shadow-lg"
-				data-tx-toast="1"
-			>
-				{ msg }
-			</p>
-		}
-	</div>
-}
-
-// ToastSlot is the empty landing zone every page carrying a quick-add must render once.
-templ ToastSlot() {
-	<div id="toast" class="pointer-events-none fixed inset-x-0 bottom-4 z-50 flex justify-center px-4"></div>
-}
-
 templ TransactionsPage(d web.LayoutData, v TransactionsView) {
 	<section class="flex flex-col gap-4">
-		<header class="flex items-center justify-between gap-3">
-			<div class="min-w-0">
-				<h1 class="text-2xl font-semibold tracking-tight text-foreground">{ d.Tr("tx.title") }</h1>
-				<span class="text-sm text-muted-foreground">{ v.ProjectName }</span>
-			</div>
-			<a
-				href={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/transactions/new")) }
-				data-dialog-open="tx-add-dialog"
-				class="inline-flex shrink-0 items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-			>
-				@icons.Icon("plus", "h-4 w-4")
+		@PageHeader(d.Tr("tx.title"), v.ProjectName) {
+			@AppButton(d.ProjectPath(v.ProjectSlug, "/transactions/new"), "btn-primary", templ.Attributes{"data-dialog-open": "tx-add-dialog"}) {
+				@icons.Icon("plus", "size-4")
 				{ d.Tr("tx.add") }
-			</a>
-		</header>
-		@Dialog(d, "tx-add-dialog", d.Tr("tx.add")) {
-			@TransactionForm(d, txInDialog(v.Form))
+			}
 		}
 		<form
 			id="tx-filters"
@@ -186,7 +155,8 @@ templ TransactionsPage(d web.LayoutData, v TransactionsView) {
 				name="q"
 				value={ v.Search }
 				placeholder={ d.Tr("tx.search") }
-				class={ txControlClass, "col-span-2 mt-0 sm:col-span-1" }
+				aria-label={ d.Tr("tx.search") }
+				class={ txInputClass, "col-span-2 sm:col-span-1" }
 			/>
 			@txFilterSelect(d, "period", d.Tr("tx.period"), v.Periods)
 			@txFilterSelect(d, "wallet", d.Tr("tx.wallet"), v.Wallets)
@@ -194,12 +164,12 @@ templ TransactionsPage(d web.LayoutData, v TransactionsView) {
 			@txFilterSelect(d, "category", d.Tr("tx.category"), v.Categories)
 		</form>
 		@TransactionList(d, v.List)
-		@ToastSlot()
+		@ToastHost()
 	</section>
 }
 
 templ txFilterSelect(d web.LayoutData, name, label string, opts []TxFilter) {
-	<select name={ name } aria-label={ label } class={ txControlClass, "mt-0" }>
+	<select name={ name } aria-label={ label } class={ txSelectClass }>
 		<option value="">{ label + " · " + d.Tr("tx.filter_all") }</option>
 		for _, o := range opts {
 			<option value={ o.Value } selected?={ o.Selected }>{ o.Label }</option>
@@ -208,7 +178,13 @@ templ txFilterSelect(d web.LayoutData, name, label string, opts []TxFilter) {
 }
 
 templ TransactionsLayout(d web.LayoutData, v TransactionsView) {
-	@Layout(web.WithContent(d, TransactionsPage(d, v)))
+	@Layout(web.WithDialogs(web.WithContent(d, TransactionsPage(d, v)), txAddDialog(d, v)))
+}
+
+templ txAddDialog(d web.LayoutData, v TransactionsView) {
+	@AppModal(d, "tx-add-dialog", d.Tr("tx.add")) {
+		@TransactionForm(d, txInDialog(v.Form))
+	}
 }
 
 templ TransactionFormPage(d web.LayoutData, v TxFormView, title string) {
@@ -243,7 +219,7 @@ templ TransactionFormPage(d web.LayoutData, v TxFormView, title string) {
 		>
 			{ d.Tr("tx.title") }
 		</a>
-		@ToastSlot()
+		@ToastHost()
 	</section>
 }
 
@@ -282,7 +258,7 @@ func txSignedAmount(row TxRow) money.Amount {
 
 func txAmountClass(row TxRow) string {
 	if row.Inflow {
-		return "text-emerald-600 dark:text-emerald-400"
+		return "text-success"
 	}
 	return "text-foreground"
 }

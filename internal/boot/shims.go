@@ -70,6 +70,9 @@ func (s userStoreForAuth) ByEmail(ctx context.Context, email string) (*auth.User
 		Source:          u.Source,
 		IsAdmin:         u.IsAdmin,
 		Locale:          u.Locale,
+		Theme:           u.Theme,
+		ColorMode:       u.ColorMode,
+		TipsSeen:        u.TipsSeen,
 		PasswordHash:    u.PasswordHash,
 		TermsAcceptedAt: u.TermsAcceptedAt,
 	}, nil

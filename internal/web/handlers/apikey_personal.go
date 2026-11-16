@@ -20,7 +20,7 @@ func (h *APIKeyHandler) GetPersonalTokens(w http.ResponseWriter, r *http.Request
 		h.listFailed(w, r, err)
 		return
 	}
-	layout := h.Layout(r, "Personal access tokens", web.ActiveNav{Scope: web.NavScopeSettings, SettingsKey: "tokens"})
+	layout := h.Layout(r, pageTitle(r, "pat.title"), web.ActiveNav{Scope: web.NavScopeSettings, SettingsKey: "tokens"})
 	Render(w, r, templates.APIKeysLayout(layout, v))
 }
 

@@ -26,6 +26,9 @@ type User struct {
 	PasswordHash    string
 	IsAdmin         bool
 	Locale          string
+	Theme           string
+	ColorMode       string
+	TipsSeen        []string
 	TermsAcceptedAt *time.Time
 	CreatedAt       time.Time
 }

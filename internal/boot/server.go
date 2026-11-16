@@ -40,6 +40,7 @@ import (
 	"altalune.id/yasaku/internal/project"
 	"altalune.id/yasaku/internal/todo"
 	"altalune.id/yasaku/internal/user"
+	"altalune.id/yasaku/internal/web"
 	"altalune.id/yasaku/internal/webhook"
 	"altalune.id/yasaku/logger"
 	"altalune.id/yasaku/mailer"
@@ -108,11 +109,16 @@ type Server struct {
 	shutdownOTel func(context.Context) error
 }
 
+var loadThemes = web.LoadThemes //nolint:gochecknoglobals // swapped by a test to prove a broken theme source stops boot.
+
 // BootServer builds every dependency and returns a wired [Server].
 func BootServer(ctx context.Context, cfg *config.Config, opts ...Option) (*Server, error) {
 	o := newOptions()
 	for _, opt := range opts {
 		opt(o)
+	}
+	if err := loadThemes(); err != nil {
+		return nil, fmt.Errorf("boot: themes: %w", err)
 	}
 
 	log := o.logger

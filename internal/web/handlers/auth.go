@@ -120,7 +120,7 @@ func (h *AuthHandler) GetLogin(w http.ResponseWriter, r *http.Request) {
 	if h.AltAuth != nil {
 		lastEmail = h.lastUser(r)
 	}
-	Render(w, r, templates.LoginLayout(h.Base(r, "Sign in"), templates.LoginView{
+	Render(w, r, templates.LoginLayout(h.Base(r, pageTitle(r, "login.title")), templates.LoginView{
 		ReturnTo:  SanitizeReturnTo(r.URL.Query().Get("return_to")),
 		LastEmail: lastEmail,
 		LocalAuth: h.localAuthEnabled(r.Context()),
@@ -133,7 +133,7 @@ func (h *AuthHandler) GetAdminLogin(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, ResolveReturnTo(h.Cfg.HTTP.BasePath, ""), http.StatusSeeOther)
 		return
 	}
-	Render(w, r, templates.LoginLayout(h.Base(r, "Admin sign-in"), templates.LoginView{
+	Render(w, r, templates.LoginLayout(h.Base(r, pageTitle(r, "title.admin_sign_in")), templates.LoginView{
 		AdminForce: true,
 		LocalAuth:  h.localAuthEnabled(r.Context()),
 	}))
@@ -142,7 +142,7 @@ func (h *AuthHandler) GetAdminLogin(w http.ResponseWriter, r *http.Request) {
 // PostLogin verifies local credentials and mints a session on success.
 func (h *AuthHandler) PostLogin(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
-		h.ErrorPage(w, r, http.StatusBadRequest, "Bad request", "Could not parse form body.")
+		h.ErrorPage(w, r, http.StatusBadRequest, pageTitle(r, "error_title.bad_request"), "Could not parse form body.")
 		return
 	}
 	email := strings.TrimSpace(r.PostForm.Get("email"))
@@ -156,7 +156,7 @@ func (h *AuthHandler) PostLogin(w http.ResponseWriter, r *http.Request) {
 			h.LogErr("web auth: local login", err)
 			msg = "Sign-in failed."
 		}
-		Render(w, r, templates.LoginLayout(h.Base(r, "Sign in"), templates.LoginView{
+		Render(w, r, templates.LoginLayout(h.Base(r, pageTitle(r, "login.title")), templates.LoginView{
 			Error:      msg,
 			AdminForce: admin,
 			ReturnTo:   SanitizeReturnTo(r.PostForm.Get("return_to")),
@@ -167,7 +167,7 @@ func (h *AuthHandler) PostLogin(w http.ResponseWriter, r *http.Request) {
 	principal = h.reconcileGenesis(r.Context(), principal)
 	principal = h.resolveActiveTenant(r.Context(), principal)
 	if err := h.WriteSession(w, r, principal); err != nil {
-		h.ErrorPage(w, r, http.StatusInternalServerError, "Sign-in failed", "Could not persist session.")
+		h.ErrorPage(w, r, http.StatusInternalServerError, pageTitle(r, "error_title.sign_in_failed"), "Could not persist session.")
 		return
 	}
 	if dest := h.pendingInviteDest(r); dest != "" {
@@ -224,7 +224,7 @@ func (h *AuthHandler) OIDCComplete(ctx context.Context, w http.ResponseWriter, r
 	principal = h.resolveActiveTenant(ctx, principal)
 	if err := h.WriteSession(w, r, principal); err != nil {
 		h.LogErr("web auth: oidc write session", err)
-		h.ErrorPage(w, r, http.StatusInternalServerError, "Sign-in failed", "Could not persist session.", err)
+		h.ErrorPage(w, r, http.StatusInternalServerError, pageTitle(r, "error_title.sign_in_failed"), "Could not persist session.", err)
 		return
 	}
 	h.setLastUser(w, r, tok.Email)
@@ -264,7 +264,7 @@ func isNotInvitedApp(err error) bool {
 }
 
 func (h *AuthHandler) renderNotInvited(w http.ResponseWriter, r *http.Request) {
-	base := h.Base(r, "Not invited")
+	base := h.Base(r, pageTitle(r, "title.not_invited"))
 	tr := base.Translator
 	title := "You haven't been invited"
 	body := "This deployment is invite-only. Please contact an administrator to request an invitation."
@@ -284,6 +284,7 @@ func (h *AuthHandler) PostLogout(w http.ResponseWriter, r *http.Request) {
 		idToken = p.IDToken
 	}
 	h.ClearSession(w, r)
+	web.ClearCookie(w, web.ThemeCookieName, h.Cfg.HTTP.BasePath, h.SecureCookie(r))
 	if h.Cfg.OIDC.EndSessionOnLogout && h.AltAuth != nil && idToken != "" {
 		endURL, err := h.AltAuth.EndSessionURL(r.Context(), idToken, h.postLogoutRedirectURL(), "")
 		if err != nil {

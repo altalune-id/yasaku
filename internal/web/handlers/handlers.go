@@ -56,6 +56,7 @@ func (d Deps) Base(r *http.Request, title string) web.LayoutData {
 		dir = d.I18n.Dir(loc)
 		supported = d.I18n.All()
 	}
+	theme := themePref(r, pp)
 	return web.LayoutData{
 		Title:         title,
 		BasePath:      d.Cfg.HTTP.BasePath,
@@ -68,13 +69,21 @@ func (d Deps) Base(r *http.Request, title string) web.LayoutData {
 		Translator:    i18n.TranslatorFrom(r.Context()),
 		CurrentPath:   r.URL.RequestURI(),
 		SupportedLocs: supported,
-		Themes:        web.Themes(),
-		ColorModes:    web.ColorModes(),
+		Theme:         theme,
+		ThemeAttr:     theme.Attr(),
+		FamilyAttr:    theme.FamilyAttr(),
 		RequestID:     reqid.FromContext(r.Context()),
 		Nonce:         middleware.NonceFrom(r.Context()),
 		CSPEnforced:   d.Cfg.HTTP.CSP.Enabled && !d.Cfg.HTTP.CSP.ReportOnly,
 		Opensheet:     d.Cfg.Opensheet.Mounted(),
 	}
+}
+
+//i18n:use title.*
+//i18n:use error_title.*
+
+func pageTitle(r *http.Request, key string, scope ...string) string {
+	return strings.Join(append([]string{i18n.TranslatorFrom(r.Context()).T(key)}, scope...), " · ")
 }
 
 // Layout builds a LayoutData for a signed-in page and populates org/project switchers.
@@ -204,7 +213,7 @@ func (d Deps) projectZone(ctx context.Context, orgID, projectID uuid.UUID) *time
 func (d Deps) ProjectScopeFor(w http.ResponseWriter, r *http.Request, orgID uuid.UUID, slug string) (*project.Project, *http.Request, bool) {
 	proj, err := d.Projects.BySlug(r.Context(), orgID, slug)
 	if err != nil {
-		d.ErrorPage(w, r, http.StatusNotFound, "Project not found", "No project with that slug in this organization.", err)
+		d.ErrorPage(w, r, http.StatusNotFound, pageTitle(r, "error_title.project_not_found"), "No project with that slug in this organization.", err)
 		return nil, nil, false
 	}
 	ctx := context.WithValue(tenant.WithProject(r.Context(), proj.ID), zoneMemoKey{}, &zoneMemo{})
@@ -214,7 +223,7 @@ func (d Deps) ProjectScopeFor(w http.ResponseWriter, r *http.Request, orgID uuid
 func splitOrgs(items []*org.Org, activeID uuid.UUID) (active *web.ActiveOrg, others []web.ActiveOrg) { //nolint:nonamedreturns // two return values differ in role
 	others = make([]web.ActiveOrg, 0, len(items))
 	for _, o := range items {
-		summary := web.ActiveOrg{ID: o.ID.String(), Slug: o.Slug, Name: o.Name}
+		summary := web.ActiveOrg{ID: o.ID.String(), Slug: o.Slug, Name: o.Name, System: o.System}
 		if o.ID == activeID {
 			a := summary
 			active = &a
@@ -223,11 +232,11 @@ func splitOrgs(items []*org.Org, activeID uuid.UUID) (active *web.ActiveOrg, oth
 		others = append(others, summary)
 	}
 	if active == nil && len(items) > 0 {
-		a := web.ActiveOrg{ID: items[0].ID.String(), Slug: items[0].Slug, Name: items[0].Name}
+		a := web.ActiveOrg{ID: items[0].ID.String(), Slug: items[0].Slug, Name: items[0].Name, System: items[0].System}
 		active = &a
 		others = others[:0]
 		for _, o := range items[1:] {
-			others = append(others, web.ActiveOrg{ID: o.ID.String(), Slug: o.Slug, Name: o.Name})
+			others = append(others, web.ActiveOrg{ID: o.ID.String(), Slug: o.Slug, Name: o.Name, System: o.System})
 		}
 	}
 	return active, others
@@ -300,6 +309,8 @@ func RenderStatus(w http.ResponseWriter, r *http.Request, status int, c templ.Co
 // ErrorPage renders the error.templ full page with the given status/title/message.
 func (d Deps) ErrorPage(w http.ResponseWriter, r *http.Request, status int, title, msg string, cause ...error) {
 	base := d.Base(r, title)
+	// SECURITY: a failed request's query can carry upstream text, so the chrome's return path drops it.
+	base.CurrentPath = r.URL.EscapedPath()
 	view := templates.ErrorView{
 		Status: status, Title: title, Message: msg,
 		RequestID: reqid.FromContext(r.Context()),
@@ -326,12 +337,12 @@ func ErrorRef(errs ...error) string {
 func (d Deps) OrgScopeFor(w http.ResponseWriter, r *http.Request, p session.Principal, slug string) (*org.Org, *http.Request, bool) {
 	o, err := d.Orgs.BySlug(r.Context(), slug)
 	if err != nil {
-		d.ErrorPage(w, r, http.StatusNotFound, "Organization not found", "", err)
+		d.ErrorPage(w, r, http.StatusNotFound, pageTitle(r, "error_title.organization_not_found"), "", err)
 		return nil, nil, false
 	}
 	scoped := orgScopedRequest(r, p, o)
 	if _, err := d.Orgs.MembershipOf(scoped.Context(), o.ID, p.UserID); err != nil {
-		d.ErrorPage(w, r, http.StatusNotFound, "Organization not found", "", err)
+		d.ErrorPage(w, r, http.StatusNotFound, pageTitle(r, "error_title.organization_not_found"), "", err)
 		return nil, nil, false
 	}
 	return o, scoped, true
