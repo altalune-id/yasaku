@@ -307,6 +307,11 @@
       cursor: not-allowed;
       opacity: 30%;
     }
+  }
+  .\@container {
+    container-type: inline-size;
+  }
+  @layer daisyui.l1.l2.l3 {
     .modal {
       pointer-events: none;
       visibility: hidden;
@@ -4700,6 +4705,17 @@
         --btn-p: 0.75rem;
         --size: calc(var(--size-field, 0.25rem) * 8);
       }
+    }
+  }
+  @container (width >= 30rem) {
+    .\@min-\[30rem\]\:mt-0\.5 {
+      margin-top: calc(var(--spacing) * 0.5);
+    }
+    .\@min-\[30rem\]\:block {
+      display: block;
+    }
+    .\@min-\[30rem\]\:grid-cols-3 {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
     }
   }
   .rtl\:rotate-180:where(:dir(rtl), [dir="rtl"], [dir="rtl"] *) {
