@@ -288,6 +288,24 @@ func TestRecordExpense_AmbiguousWallet_NeedsAndRecordsNothing(t *testing.T) {
 	require.Empty(t, txs.Msg.GetTransactions(), "confirm with unresolved needs must commit nothing")
 }
 
+func TestRecordExpense_IDRDecimalIsInvalidArgument(t *testing.T) {
+	h := newYasakuHarness(t)
+	ctx := t.Context()
+	h.createWallet(ctx, "BCA", nil)
+
+	_, err := h.txClient().RecordExpense(ctx, connect.NewRequest(&yasakuv1.RecordExpenseRequest{
+		Wallet:  "BCA",
+		Amount:  &yasakuv1.Money{Amount: "12.500,50"},
+		Confirm: true,
+	}))
+	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+	require.Contains(t, err.Error(), "currency has no decimals")
+
+	txs, err := h.txClient().ListTransactions(ctx, connect.NewRequest(&yasakuv1.ListTransactionsRequest{}))
+	require.NoError(t, err)
+	require.Empty(t, txs.Msg.GetTransactions(), "a refused amount must never be saved inflated")
+}
+
 func TestClosePeriod_PreviewThenConfirm_ThenReopen(t *testing.T) {
 	h := newYasakuHarness(t)
 	ctx := t.Context()
