@@ -21,6 +21,8 @@ verbatim into forks, so signature changes here are expensive to propagate.
   over the outgoing range, but the durable gate is branch protection on `main`
   — `--no-verify` bypasses the hook, not the gate. The rest of what the hooks
   run is in [`.husky/README.md`](.husky/README.md).
+- `pre-push` tests only the packages changed against `origin/main`; CI runs the
+  full suite and is the gate for it. `PREPUSH_FULL=1 git push` runs every test.
 - Wrap errors with context: `fmt.Errorf("boot: migrate: %w", err)`.
 - Assert with `errors.Is` for sentinels, `errors.AsType[T]` for typed errors.
 
