@@ -119,6 +119,10 @@ func TestPgReader_Summary_Adjustments(t *testing.T) {
 	assertAdjustmentsNet(t, newPgSeed(t))
 }
 
+func TestPgReader_Summary_Openings(t *testing.T) {
+	assertOpeningsSum(t, newPgSeed(t))
+}
+
 func TestPgReader_SpendByCategory(t *testing.T) {
 	s := newPgSeed(t)
 	got, err := s.reader.SpendByCategory(s.ctx(), s.tc.OrgID, s.tc.ProjectID, s.periodAug, money.IDR)

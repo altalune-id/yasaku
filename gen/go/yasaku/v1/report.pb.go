@@ -224,7 +224,9 @@ type PeriodReportResponse struct {
 	IncomeByCategory []*CategorySlice       `protobuf:"bytes,7,rep,name=income_by_category,json=incomeByCategory,proto3" json:"income_by_category,omitempty"`
 	Wallets          []*WalletLine          `protobuf:"bytes,8,rep,name=wallets,proto3" json:"wallets,omitempty"`
 	// Signed net of balance adjustments in the period: adjustments in minus adjustments out. Never part of income, expense or net; opening balances are excluded.
-	Adjustments   *Money `protobuf:"bytes,9,opt,name=adjustments,proto3" json:"adjustments,omitempty"`
+	Adjustments *Money `protobuf:"bytes,9,opt,name=adjustments,proto3" json:"adjustments,omitempty"`
+	// Sum of the starting balances recorded in the period. Never part of income, expense or net.
+	Openings      *Money `protobuf:"bytes,10,opt,name=openings,proto3" json:"openings,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -318,6 +320,13 @@ func (x *PeriodReportResponse) GetWallets() []*WalletLine {
 func (x *PeriodReportResponse) GetAdjustments() *Money {
 	if x != nil {
 		return x.Adjustments
+	}
+	return nil
+}
+
+func (x *PeriodReportResponse) GetOpenings() *Money {
+	if x != nil {
+		return x.Openings
 	}
 	return nil
 }
@@ -436,7 +445,7 @@ const file_yasaku_v1_report_proto_rawDesc = "" +
 	"\x03net\x18\x04 \x01(\v2\x10.yasaku.v1.MoneyR\x03net\"X\n" +
 	"\x13PeriodReportRequest\x12)\n" +
 	"\x06target\x18\x01 \x01(\v2\x11.yasaku.v1.TargetR\x06target\x12\x16\n" +
-	"\x06period\x18\x02 \x01(\tR\x06period\"\xc9\x03\n" +
+	"\x06period\x18\x02 \x01(\tR\x06period\"\xf7\x03\n" +
 	"\x14PeriodReportResponse\x12)\n" +
 	"\x06period\x18\x01 \x01(\v2\x11.yasaku.v1.PeriodR\x06period\x12(\n" +
 	"\x06income\x18\x02 \x01(\v2\x10.yasaku.v1.MoneyR\x06income\x12*\n" +
@@ -446,15 +455,17 @@ const file_yasaku_v1_report_proto_rawDesc = "" +
 	"\x11spend_by_category\x18\x06 \x03(\v2\x18.yasaku.v1.CategorySliceR\x0fspendByCategory\x12F\n" +
 	"\x12income_by_category\x18\a \x03(\v2\x18.yasaku.v1.CategorySliceR\x10incomeByCategory\x12/\n" +
 	"\awallets\x18\b \x03(\v2\x15.yasaku.v1.WalletLineR\awallets\x122\n" +
-	"\vadjustments\x18\t \x01(\v2\x10.yasaku.v1.MoneyR\vadjustments\"\\\n" +
+	"\vadjustments\x18\t \x01(\v2\x10.yasaku.v1.MoneyR\vadjustments\x12,\n" +
+	"\bopenings\x18\n" +
+	" \x01(\v2\x10.yasaku.v1.MoneyR\bopenings\"\\\n" +
 	"\x15CashflowReportRequest\x12)\n" +
 	"\x06target\x18\x01 \x01(\v2\x11.yasaku.v1.TargetR\x06target\x12\x18\n" +
 	"\aperiods\x18\x02 \x01(\x05R\aperiods\"J\n" +
 	"\x16CashflowReportResponse\x120\n" +
-	"\x06points\x18\x01 \x03(\v2\x18.yasaku.v1.CashflowPointR\x06points2\xce\x06\n" +
-	"\rReportService\x12\xf2\x03\n" +
-	"\fPeriodReport\x12\x1e.yasaku.v1.PeriodReportRequest\x1a\x1f.yasaku.v1.PeriodReportResponse\"\xa0\x03\xca\xf3\x18\x9b\x03\n" +
-	"\rperiod_report\x12\x84\x03Report one period's totals: income, expense, net, adjustments (the signed net of balance fixes, never counted as income or expense), and the breakdown per category and per wallet. Period must be a period ID from list_periods or current_period, never a period name; leave it empty for the current period. Category slices are largest first and share is a fraction of that direction's total.*\x03app\x12\xc7\x02\n" +
+	"\x06points\x18\x01 \x03(\v2\x18.yasaku.v1.CashflowPointR\x06points2\xa0\a\n" +
+	"\rReportService\x12\xc4\x04\n" +
+	"\fPeriodReport\x12\x1e.yasaku.v1.PeriodReportRequest\x1a\x1f.yasaku.v1.PeriodReportResponse\"\xf2\x03\xca\xf3\x18\xed\x03\n" +
+	"\rperiod_report\x12\xd6\x03Report one period's totals: income, expense, net, adjustments (the signed net of balance fixes, never counted as income or expense), openings (the starting balances recorded in the period, never counted as income), and the breakdown per category and per wallet. Period must be a period ID from list_periods or current_period, never a period name; leave it empty for the current period. Category slices are largest first and share is a fraction of that direction's total.*\x03app\x12\xc7\x02\n" +
 	"\x0eCashflowReport\x12 .yasaku.v1.CashflowReportRequest\x1a!.yasaku.v1.CashflowReportResponse\"\xef\x01\xca\xf3\x18\xea\x01\n" +
 	"\x0fcashflow_report\x12\xd1\x01Plot the cashflow trend over the most recent periods, one point per period that has transactions. Periods defaults to the last 6 and is capped at 24. Points run oldest to newest so a trend reads left to right.*\x03appB\x8f\x01\n" +
 	"\rcom.yasaku.v1B\vReportProtoP\x01Z,altalune.id/yasaku/gen/go/yasaku/v1;yasakuv1\xa2\x02\x03YXX\xaa\x02\tYasaku.V1\xca\x02\tYasaku\\V1\xe2\x02\x15Yasaku\\V1\\GPBMetadata\xea\x02\n" +
@@ -502,17 +513,18 @@ var file_yasaku_v1_report_proto_depIdxs = []int32{
 	0,  // 12: yasaku.v1.PeriodReportResponse.income_by_category:type_name -> yasaku.v1.CategorySlice
 	10, // 13: yasaku.v1.PeriodReportResponse.wallets:type_name -> yasaku.v1.WalletLine
 	7,  // 14: yasaku.v1.PeriodReportResponse.adjustments:type_name -> yasaku.v1.Money
-	9,  // 15: yasaku.v1.CashflowReportRequest.target:type_name -> yasaku.v1.Target
-	1,  // 16: yasaku.v1.CashflowReportResponse.points:type_name -> yasaku.v1.CashflowPoint
-	2,  // 17: yasaku.v1.ReportService.PeriodReport:input_type -> yasaku.v1.PeriodReportRequest
-	4,  // 18: yasaku.v1.ReportService.CashflowReport:input_type -> yasaku.v1.CashflowReportRequest
-	3,  // 19: yasaku.v1.ReportService.PeriodReport:output_type -> yasaku.v1.PeriodReportResponse
-	5,  // 20: yasaku.v1.ReportService.CashflowReport:output_type -> yasaku.v1.CashflowReportResponse
-	19, // [19:21] is the sub-list for method output_type
-	17, // [17:19] is the sub-list for method input_type
-	17, // [17:17] is the sub-list for extension type_name
-	17, // [17:17] is the sub-list for extension extendee
-	0,  // [0:17] is the sub-list for field type_name
+	7,  // 15: yasaku.v1.PeriodReportResponse.openings:type_name -> yasaku.v1.Money
+	9,  // 16: yasaku.v1.CashflowReportRequest.target:type_name -> yasaku.v1.Target
+	1,  // 17: yasaku.v1.CashflowReportResponse.points:type_name -> yasaku.v1.CashflowPoint
+	2,  // 18: yasaku.v1.ReportService.PeriodReport:input_type -> yasaku.v1.PeriodReportRequest
+	4,  // 19: yasaku.v1.ReportService.CashflowReport:input_type -> yasaku.v1.CashflowReportRequest
+	3,  // 20: yasaku.v1.ReportService.PeriodReport:output_type -> yasaku.v1.PeriodReportResponse
+	5,  // 21: yasaku.v1.ReportService.CashflowReport:output_type -> yasaku.v1.CashflowReportResponse
+	20, // [20:22] is the sub-list for method output_type
+	18, // [18:20] is the sub-list for method input_type
+	18, // [18:18] is the sub-list for extension type_name
+	18, // [18:18] is the sub-list for extension extendee
+	0,  // [0:18] is the sub-list for field type_name
 }
 
 func init() { file_yasaku_v1_report_proto_init() }

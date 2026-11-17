@@ -271,7 +271,7 @@ func (h *PeriodHandler) currentRow(ctx context.Context, p *period.Period, row te
 		return row
 	}
 	row.HasTotals = true
-	row.Income, row.Expense, row.Net, row.Adjust, row.TxCount = sum.Income, sum.Expense, sum.Net, sum.Adjustments, sum.TxCount
+	row.Income, row.Expense, row.Net, row.Adjust, row.Openings, row.TxCount = sum.Income, sum.Expense, sum.Net, sum.Adjustments, sum.Openings, sum.TxCount
 	return row
 }
 
@@ -344,6 +344,7 @@ func applySnapshot(row *templates.PeriodRow, s *period.Snapshot) {
 	row.Expense = money.New(s.Expense, s.Currency)
 	row.Net = money.New(s.Net, s.Currency)
 	row.Adjust = money.New(s.Adjustments, s.Currency)
+	row.Openings = money.New(s.Openings, s.Currency)
 	row.TxCount = s.TxCount
 }
 
@@ -352,12 +353,13 @@ func previewFromSnapshot(s *period.Snapshot) (templates.ClosePreview, bool) {
 		return templates.ClosePreview{}, false
 	}
 	p := templates.ClosePreview{
-		Income:  money.New(s.Income, s.Currency),
-		Expense: money.New(s.Expense, s.Currency),
-		Net:     money.New(s.Net, s.Currency),
-		Adjust:  money.New(s.Adjustments, s.Currency),
-		TxCount: s.TxCount,
-		Wallets: make([]templates.CloseWalletRow, 0, len(s.Wallets)),
+		Income:   money.New(s.Income, s.Currency),
+		Expense:  money.New(s.Expense, s.Currency),
+		Net:      money.New(s.Net, s.Currency),
+		Adjust:   money.New(s.Adjustments, s.Currency),
+		Openings: money.New(s.Openings, s.Currency),
+		TxCount:  s.TxCount,
+		Wallets:  make([]templates.CloseWalletRow, 0, len(s.Wallets)),
 	}
 	for _, w := range s.Wallets {
 		p.Wallets = append(p.Wallets, templates.CloseWalletRow{Name: w.Name, Closing: money.New(w.Closing, s.Currency)})

@@ -33,6 +33,7 @@ type summaryTotals struct {
 	Income      int64 `alias:"totals.income"`
 	Expense     int64 `alias:"totals.expense"`
 	Adjustments int64 `alias:"totals.adjustments"`
+	Openings    int64 `alias:"totals.openings"`
 	TxCount     int   `alias:"totals.tx_count"`
 }
 
@@ -44,6 +45,7 @@ func assembleSummary(ref PeriodRef, currency money.Currency, totals summaryTotal
 		Expense:        money.New(totals.Expense, currency),
 		Net:            money.New(totals.Income-totals.Expense, currency),
 		Adjustments:    money.New(totals.Adjustments, currency),
+		Openings:       money.New(totals.Openings, currency),
 		TxCount:        totals.TxCount,
 		SpendableTotal: money.Zero(currency),
 		Total:          money.Zero(currency),

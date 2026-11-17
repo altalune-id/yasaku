@@ -47,11 +47,11 @@ func (f *txFixture) record(t *testing.T, kind transaction.Kind, minor int64, cat
 func (f *txFixture) withClock(at time.Time) *period.Service {
 	store := fakes.NewPeriod()
 	uow := period.UnitOfWork(txPassthroughUoW)
-	f.Periods = period.NewService(store, discardLogger(), passthroughUnexpected(), f.Ledgers, txSnapshotter{}, uow, time.Now)
+	f.Periods = period.NewService(store, discardLogger(), passthroughUnexpected(), f.Ledgers, f.Snapshots, uow, time.Now)
 	f.Transactions = transaction.NewService(fakes.NewTransaction(), discardLogger(), passthroughUnexpected(),
 		txWalletReader(f.Wallets), txCategoryReader(f.TxCategories),
 		txPeriodResolver{periods: f.Periods}, transaction.UnitOfWork(txPassthroughUoW))
-	return period.NewService(store, discardLogger(), passthroughUnexpected(), f.Ledgers, txSnapshotter{}, uow, func() time.Time { return at })
+	return period.NewService(store, discardLogger(), passthroughUnexpected(), f.Ledgers, f.Snapshots, uow, func() time.Time { return at })
 }
 
 var dayTotalRe = regexp.MustCompile(`data-day-total[^>]*>([^<]+)<`)
@@ -254,6 +254,47 @@ func TestHome_ShowsBalanceFixesOnlyWhenThereAreAny(t *testing.T) {
 	body := f.home(t, "/overview").Body.String()
 	assert.Contains(t, body, "data-balance-fixes")
 	assert.Contains(t, body, "−Rp\u00a050.000")
+}
+
+func TestHome_ShowsStartingBalancesOnlyWhenThereAreAny(t *testing.T) {
+	t.Parallel()
+	f := newTxFixture(t)
+	_, err := f.Periods.EnsureCurrent(f.projectCtx(t))
+	require.NoError(t, err)
+	f.record(t, transaction.KindExpense, 2500000, nil, "kopi")
+	assert.NotContains(t, f.home(t, "/overview").Body.String(), "data-starting-balances")
+
+	f.ReportReader.Summaries = report.PeriodSummary{Currency: money.IDR, Income: money.Zero(money.IDR), Expense: money.Zero(money.IDR), Net: money.Zero(money.IDR), Adjustments: money.New(-5000000, money.IDR), Openings: money.New(1397276900, money.IDR)}
+	body := f.home(t, "/overview").Body.String()
+	require.Contains(t, body, "data-starting-balances")
+	assert.Contains(t, body, "+Rp\u00a013.972.769")
+	assert.Less(t, strings.Index(body, "data-starting-balances"), strings.Index(body, "data-balance-fixes"), "starting balances sit just above balance fixes")
+}
+
+func TestHome_ClosedPeriodShowsItsStoredStartingBalances(t *testing.T) {
+	t.Parallel()
+	f := newTxFixture(t)
+	past := f.withClock(time.Now().AddDate(0, 0, -45))
+	ctx := f.projectCtx(t)
+	old, err := past.EnsureCurrent(ctx)
+	require.NoError(t, err)
+	_, err = f.Transactions.Record(ctx, transaction.RecordInput{
+		WalletID: f.Cash, Kind: transaction.KindExpense, Amount: money.New(2500000, money.IDR),
+		OccurredAt: time.Now().AddDate(0, 0, -44),
+	})
+	require.NoError(t, err)
+	end, err := f.Periods.SuggestedEnd(ctx, old.ID)
+	require.NoError(t, err)
+	f.Snapshots.openings = 1397276900
+	_, err = f.Periods.Close(ctx, old.ID, end, f.Principal.UserID)
+	require.NoError(t, err)
+	f.ReportReader.Summaries = report.PeriodSummary{Currency: money.IDR, Income: money.Zero(money.IDR), Expense: money.Zero(money.IDR), Net: money.Zero(money.IDR), Openings: money.New(100000000, money.IDR)}
+
+	body := f.home(t, "/overview?period="+old.ID.String()).Body.String()
+
+	require.Contains(t, body, "data-starting-balances")
+	assert.Contains(t, body, "+Rp\u00a013.972.769", "a closed period reads the starting balances stored when it closed")
+	assert.NotContains(t, body, "Rp\u00a01.000.000", "not today's live sum")
 }
 
 func TestHome_PeriodSwitcherAndClosedPeriod(t *testing.T) {

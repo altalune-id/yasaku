@@ -46,6 +46,7 @@ type YasakuOverviewView struct {
 	Entries      int
 	More         bool
 	Adjustments  money.Amount
+	Openings     money.Amount
 	Toast        *TxToastView
 }
 
@@ -157,6 +158,12 @@ templ homeSummary(d web.LayoutData, v YasakuOverviewView) {
 					<div class="stat-value text-lg tabular-nums">{ SignedMoney(d, v.Expense.Neg()) }</div>
 				</div>
 			</div>
+			if !v.Openings.IsZero() {
+				<p data-starting-balances class="flex min-w-0 items-baseline justify-between gap-2 px-1 text-sm text-base-content/80">
+					<span>{ d.Tr("overview.starting_balances") }</span>
+					<span class="shrink-0 whitespace-nowrap tabular-nums">{ SignedMoney(d, v.Openings) }</span>
+				</p>
+			}
 			if !v.Adjustments.IsZero() {
 				<p data-balance-fixes class="flex min-w-0 items-baseline justify-between gap-2 px-1 text-sm text-base-content/80">
 					<span>{ d.Tr("overview.balance_fixes") }</span>

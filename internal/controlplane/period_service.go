@@ -233,6 +233,7 @@ func summarySnapshot(sum report.PeriodSummary, computedAt time.Time) *yasakuv1.S
 		Expense:     toMoney(sum.Expense),
 		Net:         toMoney(sum.Net),
 		Adjustments: toMoney(sum.Adjustments),
+		Openings:    toMoney(sum.Openings),
 		TxCount:     int32(sum.TxCount), //nolint:gosec // a row count, far below int32.
 		ComputedAt:  toTimestamp(computedAt),
 		Wallets:     make([]*yasakuv1.WalletClosing, 0, len(sum.Wallets)),

@@ -14,14 +14,16 @@ const (
 	kindIncome        = "income"
 	kindAdjustmentIn  = "adjustment_in"
 	kindAdjustmentOut = "adjustment_out"
+	kindOpening       = "opening"
 )
 
-// NOTE: the one income and expense rule for every total: transfers, openings and adjustments move balances but are neither; adjustments net into their own signed total.
+// NOTE: the one income and expense rule for every total: transfers, openings and adjustments move balances but are neither; adjustments net into their own signed total and openings sum into their own.
 const (
 	sumIncome      = `SUM(CASE WHEN %[1]skind = '` + kindIncome + `' THEN %[1]samount_minor ELSE 0 END)`
 	sumExpense     = `SUM(CASE WHEN %[1]skind = '` + kindExpense + `' THEN %[1]samount_minor ELSE 0 END)`
 	sumAdjustments = `SUM(CASE WHEN %[1]skind = '` + kindAdjustmentIn + `' THEN %[1]samount_minor` +
 		` WHEN %[1]skind = '` + kindAdjustmentOut + `' THEN -%[1]samount_minor ELSE 0 END)`
+	sumOpenings = `SUM(CASE WHEN %[1]skind = '` + kindOpening + `' THEN %[1]samount_minor ELSE 0 END)`
 )
 
 func incomeExpenseSums(alias string) (income, expense string) {
@@ -30,6 +32,10 @@ func incomeExpenseSums(alias string) (income, expense string) {
 
 func adjustmentsSum(alias string) string {
 	return fmt.Sprintf(sumAdjustments, alias)
+}
+
+func openingsSum(alias string) string {
+	return fmt.Sprintf(sumOpenings, alias)
 }
 
 // NOTE: bounds the IN list so every bind token has the same width and none prefixes another.
@@ -68,10 +74,11 @@ func summaryTotalsSQL(t tableNames, pg bool) string {
 SELECT COALESCE(%[4]s, 0)%[2]s AS "totals.income",
        COALESCE(%[5]s, 0)%[2]s AS "totals.expense",
        COALESCE(%[6]s, 0)%[2]s AS "totals.adjustments",
+       COALESCE(%[7]s, 0)%[2]s AS "totals.openings",
        COALESCE(SUM(CASE WHEN kind IN ('income','expense') THEN 1 ELSE 0 END), 0)%[3]s AS "totals.tx_count"
   FROM %[1]s
  WHERE `+scopePredicate+` AND period_id = #periodID AND currency = #currency`,
-		t.txn, bigintCast(pg), intCast(pg), income, expense, adjustmentsSum(""))
+		t.txn, bigintCast(pg), intCast(pg), income, expense, adjustmentsSum(""), openingsSum(""))
 }
 
 const priorPredicate = `(

@@ -74,6 +74,7 @@ func sampleSnapshot() period.Snapshot {
 		Expense:     2_500_000,
 		Net:         6_500_000,
 		Adjustments: -15_000,
+		Openings:    13_972_769,
 		TxCount:     12,
 		Wallets: []period.WalletClosing{
 			{WalletID: uuid.MustParse("6b3f2f2a-1f4f-4d8e-9a2b-0b1c2d3e4f50"), Name: "BCA", Closing: 6_500_000},
@@ -130,6 +131,7 @@ func TestSQLiteStore_RoundTripsOpenAndClosedPeriods(t *testing.T) {
 	require.NotNil(t, got.Snapshot)
 	assert.Equal(t, snap.Net, got.Snapshot.Net)
 	assert.Equal(t, int64(-15_000), got.Snapshot.Adjustments, "a signed adjustments net survives the round trip")
+	assert.Equal(t, int64(13_972_769), got.Snapshot.Openings, "the starting balances survive the round trip")
 	assert.Equal(t, money.IDR, got.Snapshot.Currency)
 	require.Len(t, got.Snapshot.Wallets, 1)
 	assert.Equal(t, "BCA", got.Snapshot.Wallets[0].Name)
@@ -153,6 +155,7 @@ func TestSQLiteStore_SnapshotStoredBeforeAdjustmentsReadsZero(t *testing.T) {
 	require.NotNil(t, got.Snapshot)
 	assert.Equal(t, int64(6_500_000), got.Snapshot.Net)
 	assert.Zero(t, got.Snapshot.Adjustments)
+	assert.Zero(t, got.Snapshot.Openings, "a snapshot stored before openings reads zero")
 }
 
 func TestSQLiteStore_Current(t *testing.T) {
