@@ -119,13 +119,15 @@ func (x *Period) GetSnapshot() *Snapshot {
 
 // Snapshot is a period's totals, frozen on close or computed live for the current period.
 type Snapshot struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Income        *Money                 `protobuf:"bytes,1,opt,name=income,proto3" json:"income,omitempty"`
-	Expense       *Money                 `protobuf:"bytes,2,opt,name=expense,proto3" json:"expense,omitempty"`
-	Net           *Money                 `protobuf:"bytes,3,opt,name=net,proto3" json:"net,omitempty"`
-	TxCount       int32                  `protobuf:"varint,4,opt,name=tx_count,json=txCount,proto3" json:"tx_count,omitempty"`
-	Wallets       []*WalletClosing       `protobuf:"bytes,5,rep,name=wallets,proto3" json:"wallets,omitempty"`
-	ComputedAt    *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=computed_at,json=computedAt,proto3" json:"computed_at,omitempty"`
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	Income     *Money                 `protobuf:"bytes,1,opt,name=income,proto3" json:"income,omitempty"`
+	Expense    *Money                 `protobuf:"bytes,2,opt,name=expense,proto3" json:"expense,omitempty"`
+	Net        *Money                 `protobuf:"bytes,3,opt,name=net,proto3" json:"net,omitempty"`
+	TxCount    int32                  `protobuf:"varint,4,opt,name=tx_count,json=txCount,proto3" json:"tx_count,omitempty"`
+	Wallets    []*WalletClosing       `protobuf:"bytes,5,rep,name=wallets,proto3" json:"wallets,omitempty"`
+	ComputedAt *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=computed_at,json=computedAt,proto3" json:"computed_at,omitempty"`
+	// Signed net of balance adjustments in the period: adjustments in minus adjustments out. Never part of income, expense or net; opening balances are excluded.
+	Adjustments   *Money `protobuf:"bytes,7,opt,name=adjustments,proto3" json:"adjustments,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -198,6 +200,13 @@ func (x *Snapshot) GetWallets() []*WalletClosing {
 func (x *Snapshot) GetComputedAt() *timestamppb.Timestamp {
 	if x != nil {
 		return x.ComputedAt
+	}
+	return nil
+}
+
+func (x *Snapshot) GetAdjustments() *Money {
+	if x != nil {
+		return x.Adjustments
 	}
 	return nil
 }
@@ -948,7 +957,7 @@ const file_yasaku_v1_period_proto_rawDesc = "" +
 	"\bend_date\x18\x04 \x01(\tR\aendDate\x12\x16\n" +
 	"\x06status\x18\x05 \x01(\tR\x06status\x127\n" +
 	"\tclosed_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\bclosedAt\x12/\n" +
-	"\bsnapshot\x18\a \x01(\v2\x13.yasaku.v1.SnapshotR\bsnapshot\"\x90\x02\n" +
+	"\bsnapshot\x18\a \x01(\v2\x13.yasaku.v1.SnapshotR\bsnapshot\"\xc4\x02\n" +
 	"\bSnapshot\x12(\n" +
 	"\x06income\x18\x01 \x01(\v2\x10.yasaku.v1.MoneyR\x06income\x12*\n" +
 	"\aexpense\x18\x02 \x01(\v2\x10.yasaku.v1.MoneyR\aexpense\x12\"\n" +
@@ -956,7 +965,8 @@ const file_yasaku_v1_period_proto_rawDesc = "" +
 	"\btx_count\x18\x04 \x01(\x05R\atxCount\x122\n" +
 	"\awallets\x18\x05 \x03(\v2\x18.yasaku.v1.WalletClosingR\awallets\x12;\n" +
 	"\vcomputed_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
-	"computedAt\"i\n" +
+	"computedAt\x122\n" +
+	"\vadjustments\x18\a \x01(\v2\x10.yasaku.v1.MoneyR\vadjustments\"i\n" +
 	"\rWalletClosing\x12,\n" +
 	"\x06wallet\x18\x01 \x01(\v2\x14.yasaku.v1.WalletRefR\x06wallet\x12*\n" +
 	"\aclosing\x18\x02 \x01(\v2\x10.yasaku.v1.MoneyR\aclosing\"D\n" +
@@ -1060,43 +1070,44 @@ var file_yasaku_v1_period_proto_depIdxs = []int32{
 	16, // 4: yasaku.v1.Snapshot.net:type_name -> yasaku.v1.Money
 	2,  // 5: yasaku.v1.Snapshot.wallets:type_name -> yasaku.v1.WalletClosing
 	15, // 6: yasaku.v1.Snapshot.computed_at:type_name -> google.protobuf.Timestamp
-	17, // 7: yasaku.v1.WalletClosing.wallet:type_name -> yasaku.v1.WalletRef
-	16, // 8: yasaku.v1.WalletClosing.closing:type_name -> yasaku.v1.Money
-	18, // 9: yasaku.v1.GetCurrentPeriodRequest.target:type_name -> yasaku.v1.Target
-	0,  // 10: yasaku.v1.GetCurrentPeriodResponse.period:type_name -> yasaku.v1.Period
-	1,  // 11: yasaku.v1.GetCurrentPeriodResponse.running:type_name -> yasaku.v1.Snapshot
-	18, // 12: yasaku.v1.ListPeriodsRequest.target:type_name -> yasaku.v1.Target
-	0,  // 13: yasaku.v1.ListPeriodsResponse.periods:type_name -> yasaku.v1.Period
-	18, // 14: yasaku.v1.PreviewCloseRequest.target:type_name -> yasaku.v1.Target
-	1,  // 15: yasaku.v1.PreviewCloseResponse.snapshot:type_name -> yasaku.v1.Snapshot
-	0,  // 16: yasaku.v1.PreviewCloseResponse.period:type_name -> yasaku.v1.Period
-	18, // 17: yasaku.v1.ClosePeriodRequest.target:type_name -> yasaku.v1.Target
-	19, // 18: yasaku.v1.ClosePeriodResponse.needs:type_name -> yasaku.v1.Needs
-	1,  // 19: yasaku.v1.ClosePeriodResponse.preview:type_name -> yasaku.v1.Snapshot
-	0,  // 20: yasaku.v1.ClosePeriodResponse.result:type_name -> yasaku.v1.Period
-	18, // 21: yasaku.v1.ReopenPeriodRequest.target:type_name -> yasaku.v1.Target
-	19, // 22: yasaku.v1.ReopenPeriodResponse.needs:type_name -> yasaku.v1.Needs
-	0,  // 23: yasaku.v1.ReopenPeriodResponse.preview:type_name -> yasaku.v1.Period
-	0,  // 24: yasaku.v1.ReopenPeriodResponse.result:type_name -> yasaku.v1.Period
-	18, // 25: yasaku.v1.RenamePeriodRequest.target:type_name -> yasaku.v1.Target
-	0,  // 26: yasaku.v1.RenamePeriodResponse.period:type_name -> yasaku.v1.Period
-	3,  // 27: yasaku.v1.PeriodService.GetCurrentPeriod:input_type -> yasaku.v1.GetCurrentPeriodRequest
-	5,  // 28: yasaku.v1.PeriodService.ListPeriods:input_type -> yasaku.v1.ListPeriodsRequest
-	7,  // 29: yasaku.v1.PeriodService.PreviewClose:input_type -> yasaku.v1.PreviewCloseRequest
-	9,  // 30: yasaku.v1.PeriodService.ClosePeriod:input_type -> yasaku.v1.ClosePeriodRequest
-	11, // 31: yasaku.v1.PeriodService.ReopenPeriod:input_type -> yasaku.v1.ReopenPeriodRequest
-	13, // 32: yasaku.v1.PeriodService.RenamePeriod:input_type -> yasaku.v1.RenamePeriodRequest
-	4,  // 33: yasaku.v1.PeriodService.GetCurrentPeriod:output_type -> yasaku.v1.GetCurrentPeriodResponse
-	6,  // 34: yasaku.v1.PeriodService.ListPeriods:output_type -> yasaku.v1.ListPeriodsResponse
-	8,  // 35: yasaku.v1.PeriodService.PreviewClose:output_type -> yasaku.v1.PreviewCloseResponse
-	10, // 36: yasaku.v1.PeriodService.ClosePeriod:output_type -> yasaku.v1.ClosePeriodResponse
-	12, // 37: yasaku.v1.PeriodService.ReopenPeriod:output_type -> yasaku.v1.ReopenPeriodResponse
-	14, // 38: yasaku.v1.PeriodService.RenamePeriod:output_type -> yasaku.v1.RenamePeriodResponse
-	33, // [33:39] is the sub-list for method output_type
-	27, // [27:33] is the sub-list for method input_type
-	27, // [27:27] is the sub-list for extension type_name
-	27, // [27:27] is the sub-list for extension extendee
-	0,  // [0:27] is the sub-list for field type_name
+	16, // 7: yasaku.v1.Snapshot.adjustments:type_name -> yasaku.v1.Money
+	17, // 8: yasaku.v1.WalletClosing.wallet:type_name -> yasaku.v1.WalletRef
+	16, // 9: yasaku.v1.WalletClosing.closing:type_name -> yasaku.v1.Money
+	18, // 10: yasaku.v1.GetCurrentPeriodRequest.target:type_name -> yasaku.v1.Target
+	0,  // 11: yasaku.v1.GetCurrentPeriodResponse.period:type_name -> yasaku.v1.Period
+	1,  // 12: yasaku.v1.GetCurrentPeriodResponse.running:type_name -> yasaku.v1.Snapshot
+	18, // 13: yasaku.v1.ListPeriodsRequest.target:type_name -> yasaku.v1.Target
+	0,  // 14: yasaku.v1.ListPeriodsResponse.periods:type_name -> yasaku.v1.Period
+	18, // 15: yasaku.v1.PreviewCloseRequest.target:type_name -> yasaku.v1.Target
+	1,  // 16: yasaku.v1.PreviewCloseResponse.snapshot:type_name -> yasaku.v1.Snapshot
+	0,  // 17: yasaku.v1.PreviewCloseResponse.period:type_name -> yasaku.v1.Period
+	18, // 18: yasaku.v1.ClosePeriodRequest.target:type_name -> yasaku.v1.Target
+	19, // 19: yasaku.v1.ClosePeriodResponse.needs:type_name -> yasaku.v1.Needs
+	1,  // 20: yasaku.v1.ClosePeriodResponse.preview:type_name -> yasaku.v1.Snapshot
+	0,  // 21: yasaku.v1.ClosePeriodResponse.result:type_name -> yasaku.v1.Period
+	18, // 22: yasaku.v1.ReopenPeriodRequest.target:type_name -> yasaku.v1.Target
+	19, // 23: yasaku.v1.ReopenPeriodResponse.needs:type_name -> yasaku.v1.Needs
+	0,  // 24: yasaku.v1.ReopenPeriodResponse.preview:type_name -> yasaku.v1.Period
+	0,  // 25: yasaku.v1.ReopenPeriodResponse.result:type_name -> yasaku.v1.Period
+	18, // 26: yasaku.v1.RenamePeriodRequest.target:type_name -> yasaku.v1.Target
+	0,  // 27: yasaku.v1.RenamePeriodResponse.period:type_name -> yasaku.v1.Period
+	3,  // 28: yasaku.v1.PeriodService.GetCurrentPeriod:input_type -> yasaku.v1.GetCurrentPeriodRequest
+	5,  // 29: yasaku.v1.PeriodService.ListPeriods:input_type -> yasaku.v1.ListPeriodsRequest
+	7,  // 30: yasaku.v1.PeriodService.PreviewClose:input_type -> yasaku.v1.PreviewCloseRequest
+	9,  // 31: yasaku.v1.PeriodService.ClosePeriod:input_type -> yasaku.v1.ClosePeriodRequest
+	11, // 32: yasaku.v1.PeriodService.ReopenPeriod:input_type -> yasaku.v1.ReopenPeriodRequest
+	13, // 33: yasaku.v1.PeriodService.RenamePeriod:input_type -> yasaku.v1.RenamePeriodRequest
+	4,  // 34: yasaku.v1.PeriodService.GetCurrentPeriod:output_type -> yasaku.v1.GetCurrentPeriodResponse
+	6,  // 35: yasaku.v1.PeriodService.ListPeriods:output_type -> yasaku.v1.ListPeriodsResponse
+	8,  // 36: yasaku.v1.PeriodService.PreviewClose:output_type -> yasaku.v1.PreviewCloseResponse
+	10, // 37: yasaku.v1.PeriodService.ClosePeriod:output_type -> yasaku.v1.ClosePeriodResponse
+	12, // 38: yasaku.v1.PeriodService.ReopenPeriod:output_type -> yasaku.v1.ReopenPeriodResponse
+	14, // 39: yasaku.v1.PeriodService.RenamePeriod:output_type -> yasaku.v1.RenamePeriodResponse
+	34, // [34:40] is the sub-list for method output_type
+	28, // [28:34] is the sub-list for method input_type
+	28, // [28:28] is the sub-list for extension type_name
+	28, // [28:28] is the sub-list for extension extendee
+	0,  // [0:28] is the sub-list for field type_name
 }
 
 func init() { file_yasaku_v1_period_proto_init() }

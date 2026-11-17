@@ -21,9 +21,10 @@ func NewTipsHandler(d Deps, users *user.Service) *TipsHandler {
 	return &TipsHandler{Deps: d, Users: users}
 }
 
-// Register mounts POST /tips/{id}/seen on mux.
+// Register mounts POST /tips/{id}/seen and POST /tips/reset on mux.
 func (h *TipsHandler) Register(mux web.Mux) {
 	mux.HandleFunc("POST /tips/{id}/seen", h.postSeen)
+	mux.HandleFunc("POST /tips/reset", h.postReset)
 }
 
 // SECURITY: writes only the session principal's own row, and only registered tip ids.
@@ -64,6 +65,42 @@ func (h *TipsHandler) postSeen(w http.ResponseWriter, r *http.Request) {
 	if err := h.UpdateSession(r, sid, p); err != nil {
 		h.LogErr("tips: update session", err)
 	}
+	h.done(w, r)
+}
+
+// SECURITY: clears only the session principal's own row.
+func (h *TipsHandler) postReset(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	if h.Users == nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	p, sid, ok := h.LoadSession(r)
+	if !ok || p.UserID == uuid.Nil {
+		h.toSignIn(w, r)
+		return
+	}
+	err := h.Users.ResetTipsSeen(r.Context(), p.UserID)
+	if user.IsNotFoundError(err) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if err != nil {
+		h.LogErr("tips: reset", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	p.TipsSeen = nil
+	if err := h.UpdateSession(r, sid, p); err != nil {
+		h.LogErr("tips: update session", err)
+	}
+	h.done(w, r)
+}
+
+func (h *TipsHandler) done(w http.ResponseWriter, r *http.Request) {
 	if web.IsHTMXRequest(r) {
 		w.WriteHeader(http.StatusNoContent)
 		return

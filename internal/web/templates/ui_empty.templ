@@ -1,0 +1,34 @@
+package templates
+
+import "altalune.id/yasaku/internal/web/icons"
+
+// EmptyStateProps configures EmptyState; HeadingLevel is 1, 2 or 3 and defaults to 2.
+type EmptyStateProps struct {
+	Title        string
+	Body         string
+	Icon         string
+	HeadingLevel int
+}
+
+// EmptyState renders a title, an optional icon and body, and its children as the actions.
+templ EmptyState(p EmptyStateProps) {
+	<div class="flex max-w-md flex-col items-start gap-3 py-16">
+		if p.Icon != "" {
+			@icons.Icon(p.Icon, "size-6 shrink-0")
+		}
+		switch p.HeadingLevel {
+			case 1:
+				<h1 class="text-xl font-semibold">{ p.Title }</h1>
+			case 3:
+				<h3 class="text-xl font-semibold">{ p.Title }</h3>
+			default:
+				<h2 class="text-xl font-semibold">{ p.Title }</h2>
+		}
+		if p.Body != "" {
+			<p class="text-base-content/70">{ p.Body }</p>
+		}
+		<div class="flex flex-wrap gap-2 empty:hidden">
+			{ children... }
+		</div>
+	</div>
+}

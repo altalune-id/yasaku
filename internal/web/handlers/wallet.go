@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"errors"
 	"net/http"
 	"net/url"
 	"strings"
@@ -11,6 +10,7 @@ import (
 
 	"altalune.id/yasaku/civil"
 	"altalune.id/yasaku/internal/apperror"
+	"altalune.id/yasaku/internal/i18n"
 	"altalune.id/yasaku/internal/ledger"
 	"altalune.id/yasaku/internal/project"
 	"altalune.id/yasaku/internal/report"
@@ -121,7 +121,7 @@ func (h *WalletHandler) PostCreate(w http.ResponseWriter, r *http.Request) {
 
 	var opening *money.Amount
 	if v.Opening != "" {
-		amount, pErr := parseAmount(v.Opening, currency)
+		amount, pErr := parseAmount(v.Opening, currency, i18n.From(sc.req.Context()).Tag())
 		if pErr != nil {
 			h.writeWalletForm(w, sc, v, bannerFrom(pErr), "title.wallet_new")
 			return
@@ -237,7 +237,7 @@ func (h *WalletHandler) PostArchive(w http.ResponseWriter, r *http.Request) {
 		h.writeWalletList(w, sc, bannerFrom(err))
 		return
 	}
-	h.writeWalletList(w, sc, banner{})
+	h.listWritten(w, sc)
 }
 
 // PostUnarchive returns a wallet to active use and returns the refreshed list fragment.
@@ -251,7 +251,7 @@ func (h *WalletHandler) PostUnarchive(w http.ResponseWriter, r *http.Request) {
 		h.writeWalletList(w, sc, bannerFrom(err))
 		return
 	}
-	h.writeWalletList(w, sc, banner{})
+	h.listWritten(w, sc)
 }
 
 // PostDelete removes a wallet; one that still holds transactions comes back as a banner offering Archive.
@@ -265,7 +265,7 @@ func (h *WalletHandler) PostDelete(w http.ResponseWriter, r *http.Request) {
 		h.writeWalletList(w, sc, bannerFrom(err))
 		return
 	}
-	h.writeWalletList(w, sc, banner{})
+	h.listWritten(w, sc)
 }
 
 // GetAdjust renders the balance-adjustment form for one wallet.
@@ -292,7 +292,7 @@ func (h *WalletHandler) PostAdjust(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	raw := strings.TrimSpace(sc.req.PostForm.Get("target"))
-	target, err := parseAmount(raw, wl.Currency)
+	target, err := parseAmount(raw, wl.Currency, i18n.From(sc.req.Context()).Tag())
 	if err != nil {
 		h.writeAdjustForm(w, sc, wl, raw, bannerFrom(err))
 		return
@@ -308,6 +308,33 @@ func (h *WalletHandler) PostAdjust(w http.ResponseWriter, r *http.Request) {
 		state = templates.AdjustChanged
 	}
 	h.redirectToWallet(w, sc, wl.ID, state)
+}
+
+// GetAdjustPreview renders the difference a typed target would record, without writing anything.
+func (h *WalletHandler) GetAdjustPreview(w http.ResponseWriter, r *http.Request) {
+	sc, wl, ok := h.requireWallet(w, r)
+	if !ok {
+		return
+	}
+	raw := strings.TrimSpace(sc.req.URL.Query().Get("target"))
+	var v templates.AdjustPreviewView
+	if raw != "" {
+		target, err := parseAmount(raw, wl.Currency, i18n.From(sc.req.Context()).Tag())
+		if err != nil {
+			b := bannerFrom(err)
+			v.ErrorKey, v.ErrorMsg = b.Key, b.Msg
+			Render(w, sc.req, templates.AdjustPreview(h.walletLayout(sc, "title.wallet_adjust"), v))
+			return
+		}
+		balance, err := h.Transactions.Balance(sc.req.Context(), wl.ID)
+		if err != nil {
+			h.LogErr("web wallet: balance", err)
+			h.ErrorPage(w, sc.req, http.StatusInternalServerError, pageTitle(sc.req, "error_title.load_failed"), "Could not load that wallet.", err)
+			return
+		}
+		v.HasDiff, v.Diff = true, target.Sub(balance)
+	}
+	Render(w, sc.req, templates.AdjustPreview(h.walletLayout(sc, "title.wallet_adjust"), v))
 }
 
 func adjustState(q string) string {
@@ -329,6 +356,7 @@ func (h *WalletHandler) Register(mux web.Mux) {
 	mux.HandleFunc("POST /orgs/{org}/projects/{project}/wallets/{id}/unarchive", h.PostUnarchive)
 	mux.HandleFunc("POST /orgs/{org}/projects/{project}/wallets/{id}/delete", h.PostDelete)
 	mux.HandleFunc("GET /orgs/{org}/projects/{project}/wallets/{id}/adjust", h.GetAdjust)
+	mux.HandleFunc("GET /orgs/{org}/projects/{project}/wallets/{id}/adjust/preview", h.GetAdjustPreview)
 	mux.HandleFunc("POST /orgs/{org}/projects/{project}/wallets/{id}/adjust", h.PostAdjust)
 }
 
@@ -348,23 +376,16 @@ func bannerFrom(err error) banner {
 		out.Key = "wallet.in_use"
 		return out
 	}
+	if key := amountErrorKey(err); key != "" {
+		out.Key = key
+		return out
+	}
 	if ae, ok := apperror.AsAppError(err); ok {
 		out.Msg = ae.Message()
 		return out
 	}
 	out.Msg = err.Error()
 	return out
-}
-
-func parseAmount(raw string, cur money.Currency) (money.Amount, error) {
-	a, err := money.ParseMajor(raw, cur)
-	if err == nil {
-		return a, nil
-	}
-	if pe, ok := errors.AsType[*money.ParseError](err); ok {
-		return money.Amount{}, &transaction.InvalidAmountError{Reason: pe.Reason}
-	}
-	return money.Amount{}, err
 }
 
 func (h *WalletHandler) requireWallet(w http.ResponseWriter, r *http.Request) (ProjectScope, *wallet.Wallet, bool) {
@@ -458,6 +479,7 @@ func walletRow(w *wallet.Wallet, balance money.Amount) templates.WalletRow {
 		ID:       w.ID.String(),
 		Name:     w.Name,
 		KindKey:  walletKindKey(w.Kind),
+		Kind:     string(w.Kind),
 		Provider: w.Provider,
 		Balance:  balance,
 		Excluded: w.ExcludeFromTotal,
@@ -484,7 +506,22 @@ func (h *WalletHandler) writeWalletList(w http.ResponseWriter, sc ProjectScope, 
 		h.ErrorPage(w, sc.req, http.StatusInternalServerError, pageTitle(sc.req, "error_title.list_failed"), "Could not load wallets.", err)
 		return
 	}
-	Render(w, sc.req, templates.WalletList(h.walletLayout(sc, "nav.wallets"), v))
+	d := h.walletLayout(sc, "nav.wallets")
+	if !web.IsHTMXRequest(sc.req) {
+		Render(w, sc.req, templates.WalletsLayout(d, v))
+		return
+	}
+	v.Fragment = true
+	Render(w, sc.req, templates.WalletList(d, v))
+}
+
+// NOTE: a plain form post gets a 303 so a refresh cannot repeat the write; htmx swaps the fresh list in place.
+func (h *WalletHandler) listWritten(w http.ResponseWriter, sc ProjectScope) {
+	if !web.IsHTMXRequest(sc.req) {
+		h.redirectToWallets(w, sc)
+		return
+	}
+	h.writeWalletList(w, sc, banner{})
 }
 
 func (h *WalletHandler) writeWalletForm(w http.ResponseWriter, sc ProjectScope, v templates.WalletFormView, b banner, titleKey string) {
@@ -536,7 +573,12 @@ func (h *WalletHandler) writeAdjustForm(w http.ResponseWriter, sc ProjectScope, 
 		ErrorMsg:    b.Msg,
 		ErrorCode:   b.Code,
 	}
-	Render(w, sc.req, templates.WalletAdjustLayout(h.walletLayout(sc, "title.wallet_adjust"), v))
+	d := h.walletLayout(sc, "title.wallet_adjust")
+	if web.IsHTMXRequest(sc.req) {
+		Render(w, sc.req, templates.WalletAdjustDialog(d, v))
+		return
+	}
+	Render(w, sc.req, templates.WalletAdjustLayout(d, v))
 }
 
 func (h *WalletHandler) redirectToWallet(w http.ResponseWriter, sc ProjectScope, id uuid.UUID, state string) {

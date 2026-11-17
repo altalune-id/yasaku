@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/go-jet/jet/v2/postgres"
 	"github.com/go-jet/jet/v2/qrm"
@@ -234,6 +235,94 @@ func (s *postgresStore) LastCategoryForNote(ctx context.Context, orgID, projectI
 		return uuid.Nil, false, fmt.Errorf("transaction.postgres.LastCategoryForNote: %w", qErr)
 	}
 	return row.CategoryID, true, nil
+}
+
+type pgTopRow struct {
+	CategoryID uuid.UUID `alias:"top.category_id"`
+	Count      int64     `alias:"top.count"`
+}
+
+func (s *postgresStore) TopCategories(ctx context.Context, orgID, projectID uuid.UUID, since time.Time, limit int) ([]CategoryCount, error) {
+	tx, owned, tc, err := s.txAcquire(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if owned {
+		defer func() { _ = tx.Rollback() }()
+	}
+	query := fmt.Sprintf(`
+SELECT category_id AS "top.category_id",
+       COUNT(*)::bigint AS "top.count"
+  FROM %s
+ WHERE org_id = #orgID AND org_id = #scopeOrg AND project_id = #projectID
+   AND category_id IS NOT NULL
+   AND occurred_at >= #since
+ GROUP BY category_id
+ ORDER BY COUNT(*) DESC, category_id
+ LIMIT #limit`, s.qualified)
+	var rows []pgTopRow
+	qErr := postgres.RawStatement(query, postgres.RawArgs{
+		"#orgID":     orgID,
+		"#scopeOrg":  tc.OrgID,
+		"#projectID": projectID,
+		"#since":     since.UTC(),
+		"#limit":     int64(limit),
+	}).QueryContext(ctx, tx, &rows)
+	if qErr != nil {
+		return nil, fmt.Errorf("transaction.postgres.TopCategories: %w", qErr)
+	}
+	out := make([]CategoryCount, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, CategoryCount{CategoryID: r.CategoryID, Count: int(r.Count)})
+	}
+	return out, nil
+}
+
+type pgRecentRow struct {
+	Note        string    `alias:"recent.note"`
+	AmountMinor int64     `alias:"recent.amount_minor"`
+	Currency    string    `alias:"recent.currency"`
+	WalletID    uuid.UUID `alias:"recent.wallet_id"`
+}
+
+func (s *postgresStore) RecentByCategory(ctx context.Context, orgID, projectID, categoryID uuid.UUID, limit int) ([]RecentEntry, error) {
+	tx, owned, tc, err := s.txAcquire(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if owned {
+		defer func() { _ = tx.Rollback() }()
+	}
+	query := fmt.Sprintf(`
+SELECT note AS "recent.note", amount_minor AS "recent.amount_minor",
+       currency AS "recent.currency", wallet_id AS "recent.wallet_id"
+  FROM (
+    SELECT note, amount_minor, currency, wallet_id, occurred_at, created_at, id,
+           ROW_NUMBER() OVER (PARTITION BY note_norm, amount_minor
+                              ORDER BY occurred_at DESC, created_at DESC, id DESC) AS rn
+      FROM %s
+     WHERE org_id = #orgID AND org_id = #scopeOrg AND project_id = #projectID
+       AND category_id = #categoryID
+  ) ranked
+ WHERE rn = 1
+ ORDER BY occurred_at DESC, created_at DESC, id DESC
+ LIMIT #limit`, s.qualified)
+	var rows []pgRecentRow
+	qErr := postgres.RawStatement(query, postgres.RawArgs{
+		"#orgID":      orgID,
+		"#scopeOrg":   tc.OrgID,
+		"#projectID":  projectID,
+		"#categoryID": categoryID,
+		"#limit":      int64(limit),
+	}).QueryContext(ctx, tx, &rows)
+	if qErr != nil {
+		return nil, fmt.Errorf("transaction.postgres.RecentByCategory: %w", qErr)
+	}
+	out := make([]RecentEntry, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, RecentEntry{Note: r.Note, Amount: money.New(r.AmountMinor, money.Currency(r.Currency)), WalletID: r.WalletID})
+	}
+	return out, nil
 }
 
 func accumulate(out map[uuid.UUID]money.Amount, id uuid.UUID, delta money.Amount) {

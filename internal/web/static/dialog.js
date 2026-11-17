@@ -20,12 +20,13 @@
 		var opener = closest(e.target, '[data-dialog-open]');
 		if (opener) {
 			var target = document.getElementById(opener.getAttribute('data-dialog-open'));
-			if (!target || typeof target.showModal !== 'function') return;
+			if (!target) {
+				load(opener, e);
+				return;
+			}
+			if (typeof target.showModal !== 'function') return;
 			e.preventDefault();
-			openers.set(target, opener);
-			shown = target;
-			if (!target.open) target.showModal();
-			focusInside(target);
+			open(target, opener);
 			return;
 		}
 		var closer = closest(e.target, '[data-dialog-close]');
@@ -46,6 +47,46 @@
 		}
 		var self = e.target;
 		if (self instanceof HTMLDialogElement && self.open && pressedOn === self) self.close();
+	});
+
+	function open(target, opener) {
+		openers.set(target, opener);
+		shown = target;
+		if (!target.open) target.showModal();
+		focusInside(target);
+	}
+
+	function load(opener, e) {
+		var src = opener.getAttribute('data-dialog-src');
+		var host = document.getElementById('dialog-host');
+		if (!src || !host || !window.htmx) return;
+		e.preventDefault();
+		if (opener.hasAttribute('aria-busy')) return;
+		opener.setAttribute('aria-busy', 'true');
+		var id = opener.getAttribute('data-dialog-open');
+		var fallback = function () {
+			window.location.assign(opener.getAttribute('href') || src);
+		};
+		window.htmx.ajax('GET', src, { target: host, swap: 'beforeend' }).then(function () {
+			opener.removeAttribute('aria-busy');
+			var target = document.getElementById(id);
+			if (!target || typeof target.showModal !== 'function') return fallback();
+			open(target, opener);
+		}, function () {
+			opener.removeAttribute('aria-busy');
+			fallback();
+		});
+	}
+
+	document.addEventListener('keydown', function (e) {
+		if (e.defaultPrevented || e.repeat || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey || e.isComposing) return;
+		var t = e.target;
+		if (!/^[a-z]$/.test(e.key) || document.querySelector('dialog[open]')) return;
+		if (t && (t.isContentEditable || closest(t, 'input, textarea, select'))) return;
+		var el = document.querySelector('[data-shortcut="' + e.key.toLowerCase() + '"]');
+		if (!el) return;
+		e.preventDefault();
+		el.click();
 	});
 
 	var focusable =

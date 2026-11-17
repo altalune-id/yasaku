@@ -509,6 +509,102 @@ func (s *sqliteStore) LastCategoryForNote(ctx context.Context, orgID, projectID 
 	return id, true, nil
 }
 
+type sqliteTopRow struct {
+	CategoryID string `alias:"top.category_id"`
+	Count      int64  `alias:"top.count"`
+}
+
+func (s *sqliteStore) TopCategories(ctx context.Context, orgID, projectID uuid.UUID, since time.Time, limit int) ([]CategoryCount, error) {
+	tx, owned, tc, err := s.txAcquire(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if owned {
+		defer func() { _ = tx.Rollback() }()
+	}
+	query := fmt.Sprintf(`
+SELECT category_id AS "top.category_id",
+       COUNT(*)    AS "top.count"
+  FROM %s
+ WHERE org_id = #orgID AND org_id = #scopeOrg AND project_id = #projectID
+   AND category_id IS NOT NULL
+   AND occurred_at >= #since
+ GROUP BY category_id
+ ORDER BY COUNT(*) DESC, category_id
+ LIMIT #limit`, s.qualified)
+	var rows []sqliteTopRow
+	qErr := sqlite.RawStatement(query, sqlite.RawArgs{
+		"#orgID":     orgID.String(),
+		"#scopeOrg":  tc.OrgID.String(),
+		"#projectID": projectID.String(),
+		"#since":     sqliteent.SQLiteTime(since),
+		"#limit":     int64(limit),
+	}).QueryContext(ctx, tx, &rows)
+	if qErr != nil {
+		return nil, fmt.Errorf("transaction.sqlite.TopCategories: %w", qErr)
+	}
+	out := make([]CategoryCount, 0, len(rows))
+	for _, r := range rows {
+		id, pErr := parseUUID(r.CategoryID, "category_id")
+		if pErr != nil {
+			return nil, pErr
+		}
+		out = append(out, CategoryCount{CategoryID: id, Count: int(r.Count)})
+	}
+	return out, nil
+}
+
+type sqliteRecentRow struct {
+	Note        string `alias:"recent.note"`
+	AmountMinor int64  `alias:"recent.amount_minor"`
+	Currency    string `alias:"recent.currency"`
+	WalletID    string `alias:"recent.wallet_id"`
+}
+
+func (s *sqliteStore) RecentByCategory(ctx context.Context, orgID, projectID, categoryID uuid.UUID, limit int) ([]RecentEntry, error) {
+	tx, owned, tc, err := s.txAcquire(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if owned {
+		defer func() { _ = tx.Rollback() }()
+	}
+	query := fmt.Sprintf(`
+SELECT note AS "recent.note", amount_minor AS "recent.amount_minor",
+       currency AS "recent.currency", wallet_id AS "recent.wallet_id"
+  FROM (
+    SELECT note, amount_minor, currency, wallet_id, occurred_at, created_at, id,
+           ROW_NUMBER() OVER (PARTITION BY note_norm, amount_minor
+                              ORDER BY occurred_at DESC, created_at DESC, id DESC) AS rn
+      FROM %s
+     WHERE org_id = #orgID AND org_id = #scopeOrg AND project_id = #projectID
+       AND category_id = #categoryID
+  ) ranked
+ WHERE rn = 1
+ ORDER BY occurred_at DESC, created_at DESC, id DESC
+ LIMIT #limit`, s.qualified)
+	var rows []sqliteRecentRow
+	qErr := sqlite.RawStatement(query, sqlite.RawArgs{
+		"#orgID":      orgID.String(),
+		"#scopeOrg":   tc.OrgID.String(),
+		"#projectID":  projectID.String(),
+		"#categoryID": categoryID.String(),
+		"#limit":      int64(limit),
+	}).QueryContext(ctx, tx, &rows)
+	if qErr != nil {
+		return nil, fmt.Errorf("transaction.sqlite.RecentByCategory: %w", qErr)
+	}
+	out := make([]RecentEntry, 0, len(rows))
+	for _, r := range rows {
+		wid, pErr := parseUUID(r.WalletID, "wallet_id")
+		if pErr != nil {
+			return nil, pErr
+		}
+		out = append(out, RecentEntry{Note: r.Note, Amount: money.New(r.AmountMinor, money.Currency(r.Currency)), WalletID: wid})
+	}
+	return out, nil
+}
+
 func (s *sqliteStore) Delete(ctx context.Context, id uuid.UUID) error {
 	tx, owned, tc, err := s.txAcquire(ctx)
 	if err != nil {

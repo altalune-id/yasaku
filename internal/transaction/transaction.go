@@ -161,7 +161,7 @@ func validAmount(a money.Amount) error {
 		return &InvalidAmountError{Reason: "unknown currency " + string(a.Currency)}
 	}
 	if !a.IsPositive() {
-		return &InvalidAmountError{Reason: "must be greater than zero"}
+		return &InvalidAmountError{Reason: ReasonNotPositive}
 	}
 	return nil
 }
@@ -277,4 +277,17 @@ func (o ListOpts) NormalizedLimit() int {
 		return MaxListLimit
 	}
 	return o.Limit
+}
+
+// CategoryCount is how many income or expense entries used a category.
+type CategoryCount struct {
+	CategoryID uuid.UUID
+	Count      int
+}
+
+// RecentEntry is a past entry offered to prefill a new one.
+type RecentEntry struct {
+	Note     string
+	Amount   money.Amount
+	WalletID uuid.UUID
 }

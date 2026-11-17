@@ -25,10 +25,7 @@ func SignedMoney(d web.LayoutData, a money.Amount) string {
 	}
 }
 
-func localeTag(d web.LayoutData) language.Tag {
-	tag, err := language.Parse(string(d.Locale))
-	if err != nil {
-		return language.AmericanEnglish
-	}
-	return tag
-}
+// CurrencySymbol is c's symbol in the page locale, e.g. "Rp" in Indonesian and "IDR" in English.
+func CurrencySymbol(d web.LayoutData, c money.Currency) string { return c.SymbolFor(localeTag(d)) }
+
+func localeTag(d web.LayoutData) language.Tag { return d.Locale.Tag() }

@@ -111,7 +111,18 @@ func (s *Service) SuggestedEnd(ctx context.Context, id uuid.UUID) (civil.Date, e
 	ctx, span := tracer.Start(ctx, "period.SuggestedEnd",
 		trace.WithAttributes(attribute.String("period.id", id.String())))
 	defer span.End()
+	return s.endOf(ctx, id, SuggestedEnd)
+}
 
+// CycleEnd returns the last day of the identified period's cycle under the project's cycle settings, or its stored end once set.
+func (s *Service) CycleEnd(ctx context.Context, id uuid.UUID) (civil.Date, error) {
+	ctx, span := tracer.Start(ctx, "period.CycleEnd",
+		trace.WithAttributes(attribute.String("period.id", id.String())))
+	defer span.End()
+	return s.endOf(ctx, id, func(start, _ civil.Date, startDay int) civil.Date { return CycleEnd(start, startDay) })
+}
+
+func (s *Service) endOf(ctx context.Context, id uuid.UUID, pick func(start, today civil.Date, startDay int) civil.Date) (civil.Date, error) {
 	tc, err := tenant.From(ctx)
 	if err != nil {
 		return civil.Date{}, err
@@ -127,7 +138,7 @@ func (s *Service) SuggestedEnd(ctx context.Context, id uuid.UUID) (civil.Date, e
 	if err != nil {
 		return civil.Date{}, err
 	}
-	return SuggestedEnd(p.StartDate, civil.DateOf(s.now(), loc), startDay), nil
+	return pick(p.StartDate, civil.DateOf(s.now(), loc), startDay), nil
 }
 
 // Reopenable returns the one period Reopen would accept in the caller's scope, or nil when none would.

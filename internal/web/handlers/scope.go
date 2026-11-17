@@ -85,3 +85,18 @@ func (d Deps) RequireProject(w http.ResponseWriter, r *http.Request) (ProjectSco
 	}
 	return ProjectScope{principal: sc.principal, sid: sc.sid, org: sc.org, project: proj, req: req}, true
 }
+
+// CanManage reports whether the principal may manage sc's org, through CanManageOrg.
+func (d Deps) CanManage(sc ProjectScope) bool {
+	return d.CanManageOrg(OrgScope{principal: sc.principal, sid: sc.sid, org: sc.org, req: sc.req})
+}
+
+// CanManageOrg reports whether the principal may manage sc's org. SECURITY: the one role seam; a failed lookup refuses.
+func (d Deps) CanManageOrg(sc OrgScope) bool {
+	ok, err := d.Orgs.IsManager(sc.req.Context(), sc.org.ID, sc.principal.UserID)
+	if err != nil {
+		d.LogErr("web: role lookup", err)
+		return false
+	}
+	return ok
+}

@@ -229,12 +229,13 @@ func (s *PeriodService) endDate(ctx context.Context, raw string) (civil.Date, er
 
 func summarySnapshot(sum report.PeriodSummary, computedAt time.Time) *yasakuv1.Snapshot {
 	out := &yasakuv1.Snapshot{
-		Income:     toMoney(sum.Income),
-		Expense:    toMoney(sum.Expense),
-		Net:        toMoney(sum.Net),
-		TxCount:    int32(sum.TxCount), //nolint:gosec // a row count, far below int32.
-		ComputedAt: toTimestamp(computedAt),
-		Wallets:    make([]*yasakuv1.WalletClosing, 0, len(sum.Wallets)),
+		Income:      toMoney(sum.Income),
+		Expense:     toMoney(sum.Expense),
+		Net:         toMoney(sum.Net),
+		Adjustments: toMoney(sum.Adjustments),
+		TxCount:     int32(sum.TxCount), //nolint:gosec // a row count, far below int32.
+		ComputedAt:  toTimestamp(computedAt),
+		Wallets:     make([]*yasakuv1.WalletClosing, 0, len(sum.Wallets)),
 	}
 	for _, w := range sum.Wallets {
 		out.Wallets = append(out.Wallets, &yasakuv1.WalletClosing{

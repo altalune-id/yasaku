@@ -1,24 +1,31 @@
 package templates
 
 import (
+	"cmp"
+	"slices"
+	"strconv"
+	"strings"
 	"time"
+
+	"github.com/google/uuid"
 
 	"altalune.id/yasaku/internal/web"
 	"altalune.id/yasaku/internal/web/icons"
 	"altalune.id/yasaku/money"
 )
 
-// TxWalletOption is one wallet in the quick-add wallet picker, carrying how its own currency is typed.
+// TxWalletOption is one wallet in the add-sheet wallet picker, carrying how its own currency is typed.
 type TxWalletOption struct {
 	ID       string
 	Name     string
 	Balance  money.Amount
 	Selected bool
 	Symbol   string
-	Group    bool
+	Currency string
+	Exponent int
 }
 
-// TxCategoryOption is one category chip in the quick-add form.
+// TxCategoryOption is one category in the add-sheet grid.
 type TxCategoryOption struct {
 	ID        string
 	Name      string
@@ -28,322 +35,415 @@ type TxCategoryOption struct {
 	Suggested bool
 }
 
-// TxPeriodOption is one selectable budget period on the quick-add form.
+// TxPeriodOption is one selectable budget period on the add sheet.
 type TxPeriodOption struct {
 	ID       string
 	Label    string
 	Selected bool
 }
 
-// TxFormView is the quick-add and edit form: one amount, one kind, one wallet, one date, one note.
-type TxFormView struct {
-	ProjectSlug string
-	ID          string
-	Kind        string
-	Amount      string
-	WalletID    string
-	ToWalletID  string
-	CategoryID  string
-	PeriodID    string
-	Date        string
-	Yesterday   string
-	Note        string
-	Wallets     []TxWalletOption
-	Categories  []TxCategoryOption
-	Periods     []TxPeriodOption
-	Symbol      string
-	Group       bool
-	Recent      bool
-	FullPage    bool
-	InDialog    bool
-	Error       string
-	ErrorCode   string
-	RecordedAt  time.Time
-	UpdatedAt   time.Time
+// TxRecentOption is one past entry the add sheet offers to refill the form, filtered by its category.
+type TxRecentOption struct {
+	CategoryID string
+	Kind       string
+	Icon       string
+	Note       string
+	Label      string
+	Amount     money.Amount
+	Input      string
+	WalletID   string
 }
 
-// TransactionForm is the single-submit quick-add card, shared by the overview and the transactions pages.
+// TxFormView is the add sheet and edit form: one amount, one kind, one wallet, one date, one note.
+type TxFormView struct {
+	ProjectSlug   string
+	ID            string
+	Kind          string
+	Amount        string
+	WalletID      string
+	ToWalletID    string
+	CategoryID    string
+	PeriodID      string
+	Date          string
+	Today         string
+	Yesterday     string
+	Note          string
+	Wallets       []TxWalletOption
+	Categories    []TxCategoryOption
+	Periods       []TxPeriodOption
+	RecentEntries []TxRecentOption
+	Symbol        string
+	Currency      string
+	Exponent      int
+	Decimal       string
+	NoWallet      bool
+	Recent        bool
+	Return        string
+	FullPage      bool
+	InDialog      bool
+	Error         string
+	ErrorCode     string
+	AmountError   string
+	WalletError   string
+	RecordedAt    time.Time
+	UpdatedAt     time.Time
+}
+
+// TransactionForm is the add sheet, or the "Create a wallet" call to action when the project has no active wallet.
 templ TransactionForm(d web.LayoutData, v TxFormView) {
-	<form
-		id="tx-quick-add"
-		method="post"
-		action={ templ.SafeURL(txFormAction(d, v)) }
-		{ txFormSwap(d, v)... }
-		data-category-picked?={ v.ID != "" && v.CategoryID != "" }
-		class={ templ.KV("rounded-xl border border-border bg-card p-4 shadow-sm", !v.InDialog) }
-	>
-		<div id="tx-form-errors">
-			if v.Error != "" {
-				<div data-tx-error="1">
-					@ErrorBanner(d, v.Error, v.ErrorCode)
-				</div>
+	if v.NoWallet {
+		@txNoWallet(d, v)
+	} else {
+		<form
+			id="tx-quick-add"
+			method="post"
+			action={ templ.SafeURL(txFormAction(d, v)) }
+			{ txFormSwap(d, v)... }
+			data-tx-sheet
+			data-category-picked?={ v.ID != "" && v.CategoryID != "" }
+			class="group flex min-h-0 min-w-0 flex-1 flex-col lg:grid lg:grid-cols-5 lg:grid-rows-[auto_minmax(0,1fr)]"
+		>
+			if v.InDialog {
+				<input type="hidden" name="surface" value="dialog"/>
 			}
-		</div>
-		if v.Recent {
-			<input type="hidden" name="list" value="recent"/>
-		}
-		<label for="tx-amount" class="block text-xs font-medium text-muted-foreground">{ d.Tr("tx.amount") }</label>
-		<div class="mt-1 flex items-baseline gap-2">
-			<span data-tx-symbol-slot class="text-xl font-medium text-muted-foreground">{ v.Symbol }</span>
-			<input
-				id="tx-amount"
-				name="amount"
-				type="text"
-				inputmode="numeric"
-				autocomplete="off"
-				autofocus
-				required
-				pattern="[0-9.,]*"
-				value={ v.Amount }
-				placeholder="0"
-				data-tx-group={ txBoolAttr(v.Group) }
-				class="input input-ghost h-auto w-full min-w-0 px-2 py-1 text-3xl font-semibold tabular-nums tracking-tight"
-			/>
-		</div>
-		<fieldset class="mt-4">
-			<legend class="sr-only">{ d.Tr("tx.kind") }</legend>
-			<div class="grid grid-cols-3 gap-1 rounded-lg bg-muted p-1" role="group">
-				@txKindPill(d, v, "expense", "tx.kind_expense")
-				@txKindPill(d, v, "income", "tx.kind_income")
-				@txKindPill(d, v, "transfer", "tx.kind_transfer")
+			if v.Recent {
+				<input type="hidden" name="list" value="recent"/>
+			}
+			<input type="hidden" name="return" value={ cmp.Or(v.Return, TxReturnFor(d.CurrentPath)) }/>
+			<div class="flex items-center gap-2 border-b border-base-300 px-4 pt-3 pb-2 lg:col-span-5">
+				@txKindTabs(d, v)
+				if v.InDialog {
+					<button type="button" data-dialog-close aria-label={ d.Tr("dialog.close") } class="btn btn-ghost btn-square">
+						@icons.Icon("x", "size-5")
+					</button>
+				}
 			</div>
-			if v.ID != "" {
-				<input type="hidden" name="kind" value={ v.Kind } data-tx-kind-locked="1"/>
-				<p class="mt-1.5 text-xs text-muted-foreground">{ d.Tr("tx.kind_locked") }</p>
-			}
-		</fieldset>
-		<div class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-			<div>
-				<label for="tx-wallet" class="block text-xs font-medium text-muted-foreground">{ txWalletLabel(d, v) }</label>
-				<select id="tx-wallet" name="wallet_id" required class={ txSelectClass, "mt-1" }>
-					for _, w := range v.Wallets {
-						<option
-							value={ w.ID }
-							selected?={ w.Selected }
-							data-tx-symbol={ w.Symbol }
-							data-tx-group={ txBoolAttr(w.Group) }
-						>
-							{ txWalletLabelFor(d, w) }
-						</option>
+			<div data-tx-fields class="min-h-0 min-w-0 flex-1 overflow-y-auto px-4 pt-3 pb-4 lg:col-span-3">
+				<div id="tx-form-errors" class="empty:hidden">
+					if v.Error != "" {
+						<div data-tx-error="1" class="mb-3">
+							@ErrorBanner(d, v.Error, v.ErrorCode)
+						</div>
 					}
-				</select>
+				</div>
+				if v.ID != "" {
+					<input type="hidden" name="kind" value={ v.Kind } data-tx-kind-locked="1"/>
+					<p class="mb-2 text-xs text-base-content/70">{ d.Tr("tx.kind_locked") }</p>
+				}
+				@txAmountField(d, v)
+				@txRecent(d, v)
+				@TxCategoryChips(d, v)
+				@txChips(d, v)
+				<div class="mt-2 hidden group-has-[[data-note-toggle]:checked]:grid">
+					{{ noteField := FieldProps{ID: "tx-note", Label: d.Tr("tx.note")} }}
+					@FormField(noteField) {
+						<input
+							{ noteField.Attrs()... }
+							name="note"
+							type="text"
+							autocomplete="off"
+							value={ v.Note }
+							maxlength="500"
+							hx-post={ d.ProjectPath(v.ProjectSlug, "/transactions/suggest") }
+							hx-nonce={ d.Nonce }
+							hx-trigger="input changed delay:400ms"
+							hx-target="#tx-category"
+							hx-swap="outerHTML"
+							hx-status:4xx="target:#hx-error swap:innerHTML"
+							hx-status:5xx="target:#hx-error swap:innerHTML"
+							hx-include="[name='kind'],[name='category_id']"
+							class="input w-full text-base"
+						/>
+					}
+				</div>
+				@DateInputHint(d)
+				if len(v.Periods) > 1 {
+					<div class="mt-3">
+						{{ periodField := FieldProps{ID: "tx-period", Label: d.Tr("tx.period")} }}
+						@FormField(periodField) {
+							<select { periodField.Attrs()... } name="period_id" class="select w-full">
+								<option value="">{ d.Tr("tx.period_auto") }</option>
+								for _, p := range v.Periods {
+									<option value={ p.ID } selected?={ p.Selected }>{ p.Label }</option>
+								}
+							</select>
+						}
+					</div>
+				}
 			</div>
-			<div data-tx-to-wallet class={ "transition", templ.KV("hidden", v.Kind != "transfer") }>
-				<label for="tx-to-wallet" class="block text-xs font-medium text-muted-foreground">{ d.Tr("tx.to_wallet") }</label>
-				<select id="tx-to-wallet" name="to_wallet_id" class={ txSelectClass, "mt-1" }>
-					<option value="">—</option>
+			<div
+				class={ "border-t border-base-300 bg-base-100 px-4 pt-3 pb-[max(1rem,env(safe-area-inset-bottom,0px))] lg:col-span-2 lg:flex lg:flex-col lg:justify-end lg:border-s lg:border-t-0",
+					templ.KV("max-lg:sticky max-lg:bottom-16 max-lg:z-10", !v.InDialog) }
+			>
+				@txKeypad(d, v)
+				<button type="submit" data-tx-save class="btn btn-primary btn-block mt-3 h-12 text-base">{ d.Tr("tx.sheet.save") }</button>
+				if v.InDialog {
+					<p class="mt-2 hidden justify-center gap-3 text-xs text-base-content/70 sm:flex">
+						<span>{ d.Tr("tx.sheet.hint_type") }</span>
+						<span><kbd class="kbd kbd-xs">Enter</kbd> { d.Tr("tx.sheet.save") }</span>
+						<span><kbd class="kbd kbd-xs">Esc</kbd> { d.Tr("dialog.close") }</span>
+					</p>
+				}
+			</div>
+			@txSheetAssets(d)
+		</form>
+	}
+}
+
+templ txNoWallet(d web.LayoutData, v TxFormView) {
+	@EmptyState(EmptyStateProps{
+		Title:        d.Tr("tx.no_wallet.title"),
+		Body:         cmp.Or(v.WalletError, d.Tr("tx.no_wallet.body")),
+		Icon:         "wallet",
+		HeadingLevel: txNoWalletHeading(v),
+	}) {
+		@AppButton(d.ProjectPath(v.ProjectSlug, "/wallets/new"), "btn-primary", nil) {
+			@icons.Icon("plus", "size-4")
+			{ d.Tr("tx.no_wallet.cta") }
+		}
+	}
+}
+
+templ txKindTabs(d web.LayoutData, v TxFormView) {
+	<div role="radiogroup" aria-label={ d.Tr("tx.kind") } class="tabs tabs-box min-w-0 flex-1">
+		@txKindTab(d, v, "expense", "tx.kind_expense")
+		@txKindTab(d, v, "income", "tx.kind_income")
+		@txKindTab(d, v, "transfer", "tx.kind_transfer")
+	</div>
+}
+
+templ txKindTab(d web.LayoutData, v TxFormView, kind, key string) {
+	<input
+		type="radio"
+		name="kind"
+		class={ "tab flex-1 checked:font-semibold", templ.KV("tab-active font-semibold", v.ID != "" && v.Kind == kind) }
+		value={ kind }
+		aria-label={ d.Tr(key) }
+		checked?={ v.Kind == kind }
+		disabled?={ v.ID != "" }
+		data-tx-kind={ kind }
+	/>
+}
+
+// NOTE: the mirror repeats the value invisibly so the underline spans only the digits; the native caret stays hidden.
+templ txAmountField(d web.LayoutData, v TxFormView) {
+	{{ amountField := FieldProps{ID: "tx-amount", Label: d.Tr("tx.amount"), Error: v.AmountError} }}
+	@FormField(amountField) {
+		<div class="-mt-1.5 min-w-0">
+			<div class="flex min-w-0 items-baseline gap-2">
+				<span data-tx-symbol-slot class="text-2xl font-bold text-base-content/70">{ v.Symbol }</span>
+				<div class="relative min-w-0 flex-1">
+					<input
+						{ amountField.Attrs()... }
+						name="amount"
+						type="text"
+						inputmode="decimal"
+						enterkeyhint="done"
+						autocomplete="off"
+						autofocus
+						required
+						value={ v.Amount }
+						placeholder="0"
+						data-keypad-input
+						data-decimal={ v.Decimal }
+						data-exponent={ strconv.Itoa(v.Exponent) }
+						data-currency={ v.Currency }
+						class="input input-ghost peer block h-11 w-full min-w-0 border-0 bg-transparent p-0 text-4xl font-extrabold tracking-tight tabular-nums shadow-none outline-none placeholder:text-base-content/40 focus:bg-transparent focus:shadow-none focus:outline-none caret-transparent"
+					/>
+					<div
+						aria-hidden="true"
+						data-amount-mirror
+						class="pointer-events-none absolute inset-0 flex items-center overflow-hidden text-4xl font-extrabold tracking-tight whitespace-pre text-transparent tabular-nums peer-focus:[&>[data-amount-text]]:border-base-content/50 peer-aria-invalid:[&>[data-amount-text]]:border-error"
+					>
+						<span data-amount-text class="border-b-2 border-base-content/20">{ cmp.Or(v.Amount, "0") }</span>
+					</div>
+				</div>
+				<button type="button" data-key="clear" hidden class="btn btn-ghost btn-circle shrink-0" aria-label={ d.Tr("tx.keypad.clear") }>
+					@icons.Icon("x", "size-5")
+				</button>
+			</div>
+			<p id="tx-amount-preview" data-keypad-preview aria-live="polite" class="h-5 text-sm text-base-content/70 tabular-nums"></p>
+		</div>
+	}
+}
+
+templ txRecent(d web.LayoutData, v TxFormView) {
+	if len(v.RecentEntries) > 0 {
+		<div data-recent-box hidden class="group/recent mt-2 grid min-w-0 gap-1">
+			<template data-recent-tip>
+				@TipInline(d, "recent-fill")
+			</template>
+			<p class="text-xs font-semibold text-base-content/70 group-has-[[data-tip]]/recent:hidden">{ d.Tr("tx.recent") }</p>
+			<div class="flex min-w-0 gap-2 overflow-x-auto pb-1">
+				for _, r := range v.RecentEntries {
+					<button
+						type="button"
+						data-recent
+						data-category={ r.CategoryID }
+						data-kind={ r.Kind }
+						data-amount={ r.Input }
+						data-note={ r.Note }
+						data-wallet={ r.WalletID }
+						hidden
+						class="btn h-11 shrink-0 font-medium"
+					>
+						if r.Icon != "" {
+							@icons.Icon(r.Icon, "size-4")
+						}
+						{ r.Label }
+						<span data-compact={ r.Amount.Major() } data-symbol={ CurrencySymbol(d, r.Amount.Currency) } class="text-base-content/70 tabular-nums">{ Money(d, r.Amount) }</span>
+					</button>
+				}
+			</div>
+		</div>
+	}
+}
+
+// TxCategoryChips is the category grid, ordered by use; the note field's suggestion request swaps it.
+templ TxCategoryChips(d web.LayoutData, v TxFormView) {
+	<div id="tx-category" role="radiogroup" aria-labelledby="tx-category-label" class="mt-2 min-w-0 group-has-[[name=kind][value=transfer]:checked]:hidden">
+		<p id="tx-category-label" class="mb-1 text-xs font-semibold text-base-content/70">{ d.Tr("tx.category") }</p>
+		@txCategoryGrid(d, v, "expense", "grid group-has-[[name=kind][value=income]:checked]:hidden")
+		@txCategoryGrid(d, v, "income", "hidden group-has-[[name=kind][value=income]:checked]:grid")
+	</div>
+}
+
+templ txCategoryGrid(d web.LayoutData, v TxFormView, kind, class string) {
+	{{ cats := txCategoriesOf(v, kind) }}
+	<div data-cat-kind={ kind } class={ "group/cats grid-cols-4 gap-2", class }>
+		for i, c := range cats {
+			<label
+				title={ c.Name }
+				class={ "btn h-auto min-h-16 min-w-0 flex-col gap-1 px-1 py-2 text-xs font-medium has-checked:btn-primary has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline-primary",
+					templ.KV("hidden group-has-[[data-cat-more]:checked]/cats:flex", txCategoryFolded(cats, i)) }
+			>
+				<input type="radio" name="category_id" value={ c.ID } checked?={ c.Selected } class="sr-only"/>
+				if c.Icon != "" {
+					@icons.Icon(c.Icon, "size-5")
+				}
+				<span data-label-fit data-scan-wrap="tile labels take two lines by design" class="line-clamp-2 max-w-full text-center leading-tight text-ellipsis">{ c.Name }</span>
+				if c.Suggested {
+					<span class="badge badge-xs">{ d.Tr("tx.category_suggested") }</span>
+				}
+			</label>
+			if i == txCategoryFold-1 && len(cats) > txCategoryFold+1 {
+				<label class="btn btn-ghost h-auto min-h-16 min-w-0 flex-col gap-1 px-1 py-2 text-xs font-medium has-checked:order-last has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline-primary">
+					<input type="checkbox" data-cat-more class="sr-only"/>
+					<span class="contents group-has-[[data-cat-more]:checked]/cats:hidden">
+						@icons.Icon("ellipsis", "size-5")
+						{ d.Tr("tx.sheet.more") }
+					</span>
+					<span class="hidden group-has-[[data-cat-more]:checked]/cats:contents">
+						@icons.Icon("chevron-up", "size-5")
+						{ d.Tr("tx.sheet.less") }
+					</span>
+				</label>
+			}
+		}
+	</div>
+}
+
+templ txChips(d web.LayoutData, v TxFormView) {
+	<div class="mt-2 flex min-w-0 flex-wrap items-center gap-2">
+		<span class="relative">
+			@icons.Icon("wallet", "pointer-events-none absolute start-3 top-1/2 z-10 size-4 -translate-y-1/2")
+			<select
+				id="tx-wallet"
+				name="wallet_id"
+				required
+				aria-label={ d.Tr("tx.wallet") }
+				if v.WalletError != "" {
+					aria-invalid="true"
+					aria-describedby="tx-wallet-hint"
+				}
+				class="select h-11 w-auto max-w-48 border-base-200 bg-base-200 bg-none ps-9 pe-8 font-medium"
+			>
+				for _, w := range v.Wallets {
+					<option
+						value={ w.ID }
+						selected?={ w.Selected }
+						data-tx-symbol={ w.Symbol }
+						data-currency={ w.Currency }
+						data-exponent={ strconv.Itoa(w.Exponent) }
+					>
+						{ w.Name }
+					</option>
+				}
+			</select>
+			@icons.Icon("chevron-down", "pointer-events-none absolute end-3 top-1/2 size-3.5 -translate-y-1/2 opacity-60")
+		</span>
+		<span class="hidden items-center gap-2 group-has-[[name=kind][value=transfer]:checked]:flex">
+			@icons.Icon("chevron-right", "size-4 shrink-0 text-base-content/70 rtl:-scale-x-100")
+			<span class="relative">
+				@icons.Icon("wallet", "pointer-events-none absolute start-3 top-1/2 z-10 size-4 -translate-y-1/2")
+				<select id="tx-to-wallet" name="to_wallet_id" aria-label={ d.Tr("tx.to_wallet") } class="select h-11 w-auto max-w-48 border-base-200 bg-base-200 bg-none ps-9 pe-8 font-medium">
+					<option value="">{ d.Tr("tx.to_wallet") }</option>
 					for _, w := range v.Wallets {
 						<option value={ w.ID } selected?={ w.ID == v.ToWalletID }>{ w.Name }</option>
 					}
 				</select>
-			</div>
-		</div>
-		<div class="mt-3">
-			<label for="tx-date" class="block text-xs font-medium text-muted-foreground">{ d.Tr("tx.date") }</label>
-			<div class="mt-1 flex items-center gap-2">
-				<input id="tx-date" name="date" type="date" value={ v.Date } required class={ txInputClass, "flex-1" }/>
-				<button
-					type="button"
-					data-tx-yesterday={ v.Yesterday }
-					aria-pressed={ txAriaBool(v.Date == v.Yesterday) }
-					class="btn shrink-0 aria-pressed:btn-primary"
-				>
-					{ d.Tr("tx.yesterday") }
-				</button>
-			</div>
-			@DateInputHint(d)
-		</div>
-		<div class="mt-3">
-			<label for="tx-note" class="block text-xs font-medium text-muted-foreground">{ d.Tr("tx.note") }</label>
-			<input
-				id="tx-note"
-				name="note"
-				type="text"
-				autocomplete="off"
-				value={ v.Note }
-				maxlength="500"
-				hx-post={ d.ProjectPath(v.ProjectSlug, "/transactions/suggest") }
-				hx-nonce={ d.Nonce }
-				hx-trigger="input changed delay:400ms"
-				hx-target="#tx-category"
-				hx-swap="outerHTML"
-				hx-status:4xx="target:#hx-error swap:innerHTML"
-				hx-status:5xx="target:#hx-error swap:innerHTML"
-				hx-include="[name='kind'],[name='category_id']"
-				class={ txInputClass, "mt-1" }
-			/>
-		</div>
-		@TxCategoryChips(d, v)
-		if len(v.Periods) > 1 {
-			<div class="mt-3">
-				<label for="tx-period" class="block text-xs font-medium text-muted-foreground">{ d.Tr("tx.period") }</label>
-				<select id="tx-period" name="period_id" class={ txSelectClass, "mt-1" }>
-					<option value="">{ d.Tr("tx.period_auto") }</option>
-					for _, p := range v.Periods {
-						<option value={ p.ID } selected?={ p.Selected }>{ p.Label }</option>
-					}
-				</select>
-			</div>
-		}
-		<div class={ templ.KV("sticky bottom-0 -mx-1 bg-card px-1 pb-1", v.InDialog) }>
-			<button
-				type="submit"
-				class="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-			>
-				@icons.Icon("circle-plus", "h-4 w-4")
-				{ d.Tr("tx.save") }
-			</button>
-			if v.InDialog {
-				<button
-					type="submit"
-					data-keep-open
-					class="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-border px-4 py-2.5 text-sm font-medium text-foreground hover:bg-muted focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-				>
-					{ d.Tr("tx.save_add_another") }
-				</button>
-			}
-		</div>
-		@txFormAssets(d.Nonce)
-	</form>
+				@icons.Icon("chevron-down", "pointer-events-none absolute end-3 top-1/2 size-3.5 -translate-y-1/2 opacity-60")
+			</span>
+		</span>
+		@DateField(d, DateFieldProps{
+			ID:        "tx-date",
+			Name:      "date",
+			Label:     d.Tr("tx.date"),
+			Value:     v.Date,
+			Today:     v.Today,
+			Yesterday: v.Yesterday,
+			Max:       max(v.Today, v.Date),
+			Chip:      true,
+		})
+		<label class="btn btn-ghost h-11 gap-1.5 font-medium has-checked:btn-active has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline-primary">
+			<input type="checkbox" data-note-toggle checked?={ v.Note != "" } class="sr-only"/>
+			@icons.Icon("sticky-note", "size-4")
+			{ d.Tr("tx.note") }
+		</label>
+	</div>
+	if v.WalletError != "" {
+		<p id="tx-wallet-hint" class="mt-1 text-xs text-error">{ v.WalletError }</p>
+	}
 }
 
-// TxCategoryChips is the swap target the note field's suggestion request replaces.
-templ TxCategoryChips(d web.LayoutData, v TxFormView) {
-	<div id="tx-category" class={ "mt-3", templ.KV("hidden", v.Kind == "transfer") }>
-		<span class="block text-xs font-medium text-muted-foreground">{ d.Tr("tx.category") }</span>
-		<div class="mt-1.5 flex flex-wrap gap-1.5">
-			<label class="cursor-pointer">
-				<input type="radio" name="category_id" value="" checked?={ v.CategoryID == "" } class="peer sr-only"/>
-				<span class={ txChipClass }>{ d.Tr("tx.category_none") }</span>
-			</label>
-			for _, c := range v.Categories {
-				if c.Kind == v.Kind {
-					<label class="cursor-pointer">
-						<input type="radio" name="category_id" value={ c.ID } checked?={ c.Selected } class="peer sr-only"/>
-						<span class={ txChipClass }>
-							if c.Icon != "" {
-								@icons.Icon(c.Icon, "h-3.5 w-3.5")
-							}
-							{ c.Name }
-							if c.Suggested {
-								<span class="ms-1 text-[10px] uppercase tracking-wide opacity-70">{ d.Tr("tx.category_suggested") }</span>
-							}
-						</span>
-					</label>
-				}
-			}
-		</div>
+templ txKeypad(d web.LayoutData, v TxFormView) {
+	<div data-keypad hidden dir="ltr" role="group" aria-label={ d.Tr("tx.keypad.label") } class="grid grid-cols-4 gap-1.5">
+		for _, k := range []string{"7", "8", "9"} {
+			@txDigitKey(k)
+		}
+		@txOpKey("÷", d.Tr("tx.keypad.divide"))
+		for _, k := range []string{"4", "5", "6"} {
+			@txDigitKey(k)
+		}
+		@txOpKey("×", d.Tr("tx.keypad.multiply"))
+		for _, k := range []string{"1", "2", "3"} {
+			@txDigitKey(k)
+		}
+		@txOpKey("−", d.Tr("tx.keypad.minus"))
+		<button type="button" data-key="000" hidden?={ v.Exponent > 0 } class="btn h-12 text-xl font-semibold">000</button>
+		<button type="button" data-key="dec" hidden?={ v.Exponent == 0 } class="btn h-12 text-xl font-semibold" aria-label={ d.Tr("tx.keypad.decimal") }>{ v.Decimal }</button>
+		@txDigitKey("0")
+		<button type="button" data-key="back" class="btn h-12 text-lg" aria-label={ d.Tr("tx.keypad.back") }>
+			@icons.Icon("delete", "size-5")
+		</button>
+		@txOpKey("+", d.Tr("tx.keypad.plus"))
 	</div>
 }
 
-templ txKindPill(d web.LayoutData, v TxFormView, kind, key string) {
-	<label class={ templ.KV("cursor-pointer", v.ID == ""), templ.KV("cursor-default", v.ID != "") }>
-		<input
-			type="radio"
-			name="kind"
-			value={ kind }
-			checked?={ v.Kind == kind }
-			disabled?={ v.ID != "" }
-			class="peer sr-only"
-			data-tx-kind={ kind }
-		/>
-		<span class="flex items-center justify-center rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground peer-checked:bg-primary peer-checked:font-semibold peer-checked:text-primary-foreground peer-checked:shadow-sm peer-focus-visible:ring-2 peer-focus-visible:ring-ring peer-focus-visible:ring-offset-1 peer-disabled:opacity-60">
-			{ d.Tr(key) }
-		</span>
-	</label>
+templ txDigitKey(k string) {
+	<button type="button" data-key={ k } class="btn h-12 text-xl font-semibold">{ k }</button>
 }
 
-templ txFormAssets(nonce string) {
-	<script nonce={ nonce }>
-	(function () {
-		const form = document.currentScript && document.currentScript.closest("form");
-		if (!form || form.dataset.txWired === "1") return;
-		form.dataset.txWired = "1";
-
-		const amount = form.querySelector("[name=amount]");
-		const group = () => {
-			if (!amount || amount.dataset.txGroup !== "1") return;
-			const digits = amount.value.replace(/\D/g, "");
-			amount.value = digits === "" ? "" : digits.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
-		};
-		if (amount) {
-			amount.addEventListener("input", group);
-			group();
-		}
-
-		form.addEventListener("htmx:after:request", (e) => {
-			const ctx = e.detail && e.detail.ctx;
-			const status = ctx && ctx.response && ctx.response.status;
-			if (e.target !== form || typeof status !== "number" || status >= 400) return;
-			const errors = form.querySelector("#tx-form-errors");
-			if (errors) errors.innerHTML = "";
-			form.removeAttribute("data-category-picked");
-			const dlg = form.closest("dialog");
-			if (amount) setTimeout(() => { if (!dlg || dlg.open) amount.focus(); }, 0);
-		});
-
-		form.addEventListener("change", (e) => {
-			if (e.target && e.target.name === "category_id") form.setAttribute("data-category-picked", "1");
-		});
-		const keepPick = (e) => {
-			const ctx = e.detail && e.detail.ctx;
-			const target = ctx && ctx.target;
-			if (target && target.id === "tx-category" && form.hasAttribute("data-category-picked")) e.preventDefault();
-		};
-		form.addEventListener("htmx:before:request", keepPick);
-		form.addEventListener("htmx:before:swap", keepPick);
-
-		const walletSelect = form.querySelector("[name=wallet_id]");
-		const symbolSlot = form.querySelector("[data-tx-symbol-slot]");
-		const syncCurrency = () => {
-			const opt = walletSelect && walletSelect.selectedOptions[0];
-			if (!opt || opt.dataset.txGroup === undefined) return;
-			if (symbolSlot) symbolSlot.textContent = opt.dataset.txSymbol || "";
-			if (!amount) return;
-			if (amount.dataset.txGroup !== opt.dataset.txGroup) amount.value = "";
-			amount.dataset.txGroup = opt.dataset.txGroup;
-			group();
-		};
-		if (walletSelect) walletSelect.addEventListener("change", syncCurrency);
-		syncCurrency();
-
-		const to = form.querySelector("[data-tx-to-wallet]");
-		const chips = form.querySelector("#tx-category");
-		const sync = () => {
-			const kind = form.querySelector("[name=kind]:checked");
-			const transfer = kind && kind.value === "transfer";
-			if (to) to.classList.toggle("hidden", !transfer);
-			if (chips) chips.classList.toggle("hidden", transfer);
-		};
-		form.querySelectorAll("[data-tx-kind]").forEach((el) => el.addEventListener("change", sync));
-		sync();
-
-		const yesterday = form.querySelector("[data-tx-yesterday]");
-		const date = form.querySelector("[name=date]");
-		if (yesterday && date) {
-			const syncYesterday = () => {
-				yesterday.setAttribute("aria-pressed", date.value === yesterday.dataset.txYesterday ? "true" : "false");
-			};
-			yesterday.addEventListener("click", () => {
-				date.value = yesterday.dataset.txYesterday;
-				date.dispatchEvent(new Event("change", { bubbles: true }));
-			});
-			date.addEventListener("input", syncYesterday);
-			date.addEventListener("change", syncYesterday);
-			syncYesterday();
-		}
-	})();
-	</script>
+templ txOpKey(op, label string) {
+	<button type="button" data-key={ op } class="btn h-12 text-xl font-semibold text-primary" aria-label={ label }>{ op }</button>
 }
 
-const (
-	txSelectClass = "select w-full"
-	txInputClass  = "input w-full"
-)
+templ txSheetAssets(d web.LayoutData) {
+	<script src={ d.Static("keypad.js") } nonce={ d.Nonce } defer></script>
+	<script src={ d.Static("recent.js") } nonce={ d.Nonce } defer></script>
+}
 
-const txChipClass = "inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-xs text-muted-foreground peer-checked:border-primary peer-checked:bg-primary/10 peer-checked:text-foreground peer-focus-visible:ring-2 peer-focus-visible:ring-ring"
-
-// NOTE: the standalone page renders no #tx-list, so it keeps its native submit instead of an htmx swap that could never resolve.
+// NOTE: the standalone page keeps its native submit; in the dialog a save answers with HX-Redirect to the allowlisted return page.
 func txFormSwap(d web.LayoutData, v TxFormView) templ.Attributes {
 	if v.FullPage {
 		return templ.Attributes{}
@@ -351,14 +451,40 @@ func txFormSwap(d web.LayoutData, v TxFormView) templ.Attributes {
 	return templ.Attributes{
 		"hx-post":               txFormAction(d, v),
 		"hx-nonce":              d.Nonce,
-		"hx-target":             "#tx-list",
-		"hx-swap":               "outerHTML",
+		"hx-swap":               "none",
 		"hx-disable":            "find button, find input",
-		"hx-status:422":         "target:#tx-form-errors swap:innerHTML select:[data-tx-error]",
+		"hx-status:422":         "target:#tx-quick-add swap:outerHTML",
 		"hx-status:4xx":         "target:#hx-error swap:innerHTML",
 		"hx-status:5xx":         "target:#hx-error swap:innerHTML",
 		"data-clear-on-success": "#tx-amount, #tx-note",
 	}
+}
+
+var txReturnPages = []string{"overview", "transactions"}
+
+// TxReturnFor maps a page path to the return value TxReturnPage accepts; empty for any other page.
+func TxReturnFor(path string) string {
+	path, _, _ = strings.Cut(path, "?")
+	if _, id, ok := strings.Cut(path, "/wallets/"); ok {
+		return TxReturnPage("wallets/" + id)
+	}
+	return TxReturnPage(path[strings.LastIndex(path, "/")+1:])
+}
+
+// TxReturnPage returns raw when it names a page a sheet may return to (overview, transactions or wallets/{uuid}), else empty. SECURITY: the one allowlist for a posted return.
+func TxReturnPage(raw string) string {
+	if slices.Contains(txReturnPages, raw) {
+		return raw
+	}
+	id, ok := strings.CutPrefix(raw, "wallets/")
+	if !ok {
+		return ""
+	}
+	u, err := uuid.Parse(id)
+	if err != nil {
+		return ""
+	}
+	return "wallets/" + u.String()
 }
 
 func txFormAction(d web.LayoutData, v TxFormView) string {
@@ -368,31 +494,26 @@ func txFormAction(d web.LayoutData, v TxFormView) string {
 	return d.ProjectPath(v.ProjectSlug, "/transactions/"+v.ID)
 }
 
-func txWalletLabel(d web.LayoutData, v TxFormView) string {
-	if v.Kind == "transfer" {
-		return d.Tr("tx.from_wallet")
+func txNoWalletHeading(v TxFormView) int {
+	if v.InDialog {
+		return 3
 	}
-	return d.Tr("tx.wallet")
+	return 2
 }
 
-func txWalletLabelFor(d web.LayoutData, w TxWalletOption) string {
-	if w.Balance.Currency == "" {
-		return w.Name
+const txCategoryFold = 7
+
+func txCategoriesOf(v TxFormView, kind string) []TxCategoryOption {
+	var out []TxCategoryOption
+	for _, c := range v.Categories {
+		if c.Kind == kind {
+			out = append(out, c)
+		}
 	}
-	return w.Name + " · " + Money(d, w.Balance)
+	return out
 }
 
-// txAriaBool renders the literal aria-pressed values the CSS selector matches on.
-func txAriaBool(b bool) string {
-	if b {
-		return "true"
-	}
-	return "false"
-}
-
-func txBoolAttr(b bool) string {
-	if b {
-		return "1"
-	}
-	return "0"
+// NOTE: a picked or suggested category stays visible behind the More tile, so the choice never hides.
+func txCategoryFolded(cats []TxCategoryOption, i int) bool {
+	return i >= txCategoryFold && len(cats) > txCategoryFold+1 && !cats[i].Selected && !cats[i].Suggested
 }

@@ -1,0 +1,199 @@
+package templates
+
+import (
+	"time"
+
+	"altalune.id/yasaku/civil"
+	"altalune.id/yasaku/internal/web"
+	"altalune.id/yasaku/internal/web/icons"
+	"altalune.id/yasaku/money"
+)
+
+// TxRow is one transaction line in the list; Grouped rows sit under a day heading, so they leave the date out.
+type TxRow struct {
+	ID           string
+	Kind         string
+	KindLabel    string
+	Amount       money.Amount
+	Inflow       bool
+	Note         string
+	CategoryName string
+	CategoryIcon string
+	WalletName   string
+	ToWalletName string
+	Day          civil.Date
+	OccurredAt   time.Time
+	Editable     bool
+	Grouped      bool
+}
+
+// TxRowItem renders one transaction line; an editable row opens its detail, swipes to Edit and Delete, and repeats both in its actions dialog.
+templ TxRowItem(d web.LayoutData, projectSlug string, row TxRow) {
+	if row.Editable {
+		<div data-swipe class="relative overflow-x-clip border-t border-base-300 first:border-t-0">
+			<form id={ "tx-delete-" + row.ID } method="post" action={ templ.SafeURL(d.ProjectPath(projectSlug, "/transactions/"+row.ID+"/delete")) } hidden>
+				<input type="hidden" name="return" value={ TxReturnFor(d.CurrentPath) }/>
+			</form>
+			<div data-swipe-actions inert class="absolute inset-y-0 end-0 flex w-54 inert:opacity-0">
+				@AppButton(d.ProjectPath(projectSlug, "/transactions/"+row.ID+"/edit"), "btn-ghost h-full flex-1 flex-col gap-0.5 rounded-none bg-base-200 text-xs", nil) {
+					@icons.Icon("pencil", "size-4")
+					{ d.Tr("tx.edit_action") }
+				}
+				@AppButton(d.ProjectPath(projectSlug, "/transactions/new?from="+row.ID), "btn-ghost h-full flex-1 flex-col gap-0.5 rounded-none bg-base-300 text-xs", nil) {
+					@icons.Icon("copy", "size-4")
+					{ d.Tr("tx.duplicate") }
+				}
+				<button type="submit" form={ "tx-delete-" + row.ID } class="btn btn-error h-full flex-1 flex-col gap-0.5 rounded-none text-xs">
+					@icons.Icon("trash-2", "size-4")
+					{ d.Tr("tx.delete") }
+				</button>
+			</div>
+			<div data-swipe-front class="relative flex touch-pan-y items-center gap-3 bg-base-100 px-4 py-3 transition-transform hover:bg-base-200 has-[a:focus-visible]:bg-base-200 data-swiped:-translate-x-54 rtl:data-swiped:translate-x-54">
+				@txRowBody(d, row, d.ProjectPath(projectSlug, "/transactions/"+row.ID), TxDetailDialogID(row.ID))
+				@txRowMenu(d, projectSlug, row)
+			</div>
+		</div>
+	} else {
+		<div class="flex items-center gap-3 border-t border-base-300 px-4 py-3 first:border-t-0">
+			@txRowBody(d, row, "", "")
+		</div>
+	}
+}
+
+templ txRowMenu(d web.LayoutData, projectSlug string, row TxRow) {
+	@AppButton(d.ProjectPath(projectSlug, "/transactions/"+row.ID), "btn-ghost btn-square btn-sm max-lg:btn-md relative z-10", templ.Attributes{
+		"data-dialog-open":   TxRowActionsID,
+		"data-row-edit":      d.ProjectPath(projectSlug, "/transactions/"+row.ID+"/edit"),
+		"data-row-duplicate": d.ProjectPath(projectSlug, "/transactions/new?from="+row.ID),
+		"data-row-delete":    d.ProjectPath(projectSlug, "/transactions/"+row.ID+"/delete"),
+		"data-row-title":     txRowTitle(d, row),
+		"aria-haspopup":      "dialog",
+		"aria-label":         d.Tr("tx.row_actions", "Title", txRowTitle(d, row)),
+	}) {
+		@icons.Icon("circle-ellipsis", "size-4")
+	}
+}
+
+// TxRowActionsID is the shared row actions dialog; swipe.js points its links and delete form at the row whose opener was pressed.
+const TxRowActionsID = "tx-row-actions"
+
+// TxRowActions is the one row actions dialog for a page of TxRowItem rows; render it through LayoutData.Dialogs.
+templ TxRowActions(d web.LayoutData) {
+	@AppModal(d, TxRowActionsID, d.Tr("tx.actions")) {
+		<form id={ TxRowActionsID + "-delete" } method="post" data-row-target="delete" hidden>
+			<input type="hidden" name="return" value={ TxReturnFor(d.CurrentPath) }/>
+		</form>
+		<ul class="menu w-full p-0 max-lg:[&_a]:min-h-11 max-lg:[&_a]:content-center max-lg:[&_button]:min-h-11 max-lg:[&_button]:content-center">
+			<li>
+				<a href="#" data-row-target="edit">
+					@icons.Icon("pencil", "size-4")
+					{ d.Tr("tx.edit_action") }
+				</a>
+			</li>
+			<li>
+				<a href="#" data-row-target="duplicate">
+					@icons.Icon("copy", "size-4")
+					{ d.Tr("tx.duplicate") }
+				</a>
+			</li>
+			<li>
+				<button type="submit" class="text-error" form={ TxRowActionsID + "-delete" }>
+					@icons.Icon("trash-2", "size-4")
+					{ d.Tr("tx.delete") }
+				</button>
+			</li>
+		</ul>
+	}
+}
+
+// TxRowAssets loads swipe.js; render it once on any page that lists TxRowItem rows.
+templ TxRowAssets(d web.LayoutData) {
+	<script src={ d.Static("swipe.js") } nonce={ d.Nonce } defer></script>
+}
+
+// TxDetailDialogID is one entry's detail drawer id; each entry gets its own so dialog.js loads it once per row.
+func TxDetailDialogID(id string) string { return "tx-detail-" + id }
+
+templ txRowBody(d web.LayoutData, row TxRow, href, dialogID string) {
+	<span class="grid size-10 shrink-0 place-items-center rounded-full bg-base-200 text-primary">
+		@icons.Icon(txRowIcon(row), "size-5")
+	</span>
+	<span class="min-w-0 flex-1">
+		if href != "" {
+			<a
+				href={ templ.SafeURL(href) }
+				data-dialog-open={ dialogID }
+				data-dialog-src={ href }
+				class="block truncate font-medium after:absolute after:inset-0 focus-visible:outline-2 focus-visible:outline-primary"
+			>{ txRowTitle(d, row) }</a>
+		} else {
+			<span class="block truncate font-medium">{ txRowTitle(d, row) }</span>
+		}
+		<span class="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-sm text-base-content/70">
+			<span class="min-w-0 break-words">
+				if !row.Grouped {
+					@LedgerDate(d, row.Day, &row.OccurredAt, Compact())
+					{ " · " }
+				}
+				{ txRowSub(row) }
+			</span>
+			if row.ToWalletName == "" && row.WalletName != "" {
+				<span class="badge badge-xs badge-ghost max-w-full">
+					<span class="truncate">{ row.WalletName }</span>
+				</span>
+			}
+		</span>
+	</span>
+	<span class={ "shrink-0 font-semibold tabular-nums", txAmountClass(row) }>
+		{ SignedMoney(d, txSignedAmount(row)) }
+	</span>
+}
+
+func txSignedAmount(row TxRow) money.Amount {
+	if row.Inflow {
+		return row.Amount
+	}
+	return row.Amount.Neg()
+}
+
+func txAmountClass(row TxRow) string {
+	if row.Inflow {
+		return "text-success"
+	}
+	return "text-base-content"
+}
+
+func txRowIcon(row TxRow) string {
+	switch row.Kind {
+	case "transfer":
+		return "arrow-left-right"
+	case "income":
+		return "banknote"
+	case "opening", "adjustment_in", "adjustment_out":
+		return "wallet"
+	}
+	if row.CategoryIcon != "" {
+		return row.CategoryIcon
+	}
+	return "receipt"
+}
+
+func txRowTitle(d web.LayoutData, row TxRow) string {
+	if row.Note != "" {
+		return row.Note
+	}
+	if row.CategoryName != "" {
+		return row.CategoryName
+	}
+	return row.KindLabel
+}
+
+func txRowSub(row TxRow) string {
+	switch {
+	case row.ToWalletName != "":
+		return row.WalletName + " → " + row.ToWalletName
+	case row.CategoryName != "":
+		return row.CategoryName
+	}
+	return row.KindLabel
+}

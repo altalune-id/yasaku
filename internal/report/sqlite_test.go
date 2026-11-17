@@ -26,6 +26,9 @@ type seed struct {
 	tc      tenant.Context
 	archive func(t *testing.T, walletID uuid.UUID, at time.Time)
 	closeAs func(t *testing.T, periodID uuid.UUID, status string, at time.Time)
+	addTxn  func(t *testing.T, r txnRow)
+	// siblingTxn records r in a sibling project of the same org on that project's own wallet.
+	siblingTxn func(t *testing.T, r txnRow)
 
 	walletCash uuid.UUID
 	walletBank uuid.UUID
@@ -89,6 +92,15 @@ func newSQLiteSeed(t *testing.T) seed {
 		t.Helper()
 		mustExec(t, sqlDB, "UPDATE "+prefix+"periods SET status = ?, closed_at = ? WHERE id = ?", status, sqliteent.SQLiteTime(at), periodID.String())
 	}
+	s.addTxn = func(t *testing.T, r txnRow) {
+		t.Helper()
+		seedTxn(t, sqlDB, prefix, s.tc.OrgID, s.tc.ProjectID, s.tc.UserID, r)
+	}
+	s.siblingTxn = func(t *testing.T, r txnRow) {
+		t.Helper()
+		r.wallet = s.sibling.walletID
+		seedTxn(t, sqlDB, prefix, s.sibling.orgID, s.sibling.projectID, s.tc.UserID, r)
+	}
 	s.reader = report.NewReader(
 		db.DBConfig{Driver: db.DriverSQLite, TablePrefix: prefix},
 		db.Pool{W: sqlDB, R: sqlDB},
@@ -127,8 +139,8 @@ func TestSQLiteReader_Summary_FirstPeriod(t *testing.T) {
 	assert.Equal(t, money.IDR, got.Currency)
 	assert.Equal(t, s.periodAug, got.Period.ID)
 	assert.Equal(t, idr(500_000), got.Income)
-	assert.Equal(t, idr(260_000), got.Expense, "expense + adjustment_out, transfers excluded")
-	assert.Equal(t, idr(240_000), got.Net)
+	assert.Equal(t, idr(250_000), got.Expense, "expense rows only: transfers and adjustments excluded")
+	assert.Equal(t, idr(250_000), got.Net)
 	assert.Equal(t, 3, got.TxCount, "income and expense rows only")
 
 	require.Len(t, got.Wallets, 2, "only this project's IDR wallets")
@@ -156,9 +168,9 @@ func TestSQLiteReader_Summary_SecondPeriodCarriesOpening(t *testing.T) {
 	got, err := s.reader.Summary(s.ctx(), s.tc.OrgID, s.tc.ProjectID, s.periodSep, money.IDR, s.sepStartUTC(t), nil)
 	require.NoError(t, err)
 
-	assert.Equal(t, idr(5_000), got.Income, "the adjustment in")
+	assert.Equal(t, idr(0), got.Income, "the adjustment in is not income")
 	assert.Equal(t, idr(25_000), got.Expense)
-	assert.Equal(t, idr(-20_000), got.Net)
+	assert.Equal(t, idr(-25_000), got.Net)
 	assert.Equal(t, 1, got.TxCount)
 
 	lines := byWallet(t, got.Wallets)
@@ -176,6 +188,31 @@ func TestSQLiteReader_Summary_SecondPeriodCarriesOpening(t *testing.T) {
 
 	assert.Equal(t, idr(1_055_000), got.SpendableTotal)
 	assert.Equal(t, idr(1_320_000), got.Total)
+}
+
+func TestSQLiteReader_Summary_Adjustments(t *testing.T) {
+	assertAdjustmentsNet(t, newSQLiteSeed(t))
+}
+
+func assertAdjustmentsNet(t *testing.T, s seed) {
+	t.Helper()
+	aug := &s.periodAug
+	s.addTxn(t, txnRow{wallet: s.walletCash, kind: "adjustment_in", minor: 30_000, period: aug, at: "2026-08-21T03:00:00Z"})
+	s.siblingTxn(t, txnRow{kind: "adjustment_in", minor: 999_000, period: aug, at: "2026-08-22T03:00:00Z"})
+
+	got, err := s.reader.Summary(s.ctx(), s.tc.OrgID, s.tc.ProjectID, s.periodAug, money.IDR, s.augStartUTC(t), nil)
+	require.NoError(t, err)
+	assert.Equal(t, idr(20_000), got.Adjustments, "adjustments in minus out; the opening, the transfer and the sibling project are left out")
+	assert.Equal(t, idr(500_000), got.Income, "an adjustment is never income")
+	assert.Equal(t, idr(250_000), got.Expense, "an adjustment is never expense")
+
+	sep, err := s.reader.Summary(s.ctx(), s.tc.OrgID, s.tc.ProjectID, s.periodSep, money.IDR, s.sepStartUTC(t), nil)
+	require.NoError(t, err)
+	assert.Equal(t, idr(5_000), sep.Adjustments)
+
+	usd, err := s.reader.Summary(s.ctx(), s.tc.OrgID, s.tc.ProjectID, s.periodAug, "USD", s.augStartUTC(t), nil)
+	require.NoError(t, err)
+	assert.Equal(t, money.New(0, "USD"), usd.Adjustments)
 }
 
 func TestSQLiteReader_Summary_OpeningOfTheNextPeriodEqualsTheClosingOfThePrevious(t *testing.T) {
@@ -246,7 +283,7 @@ func TestSQLiteReader_Cashflow_DropsPeriodsOutsideTheProject(t *testing.T) {
 	require.Len(t, got, 1, "only the caller's own period resolves")
 	assert.Equal(t, s.periodAug, got[0].Period.ID)
 	assert.Equal(t, idr(500_000), got[0].Income)
-	assert.Equal(t, idr(260_000), got[0].Expense)
+	assert.Equal(t, idr(250_000), got[0].Expense)
 }
 
 func TestSQLiteReader_WalletBalances_ExcludeNeighbours(t *testing.T) {
@@ -348,14 +385,14 @@ func TestSQLiteReader_Cashflow_KeepsTheRequestedOrder(t *testing.T) {
 
 	assert.Equal(t, s.periodSep, got[0].Period.ID)
 	assert.Equal(t, "Sep 2026", got[0].Period.Name)
-	assert.Equal(t, idr(5_000), got[0].Income)
+	assert.Equal(t, idr(0), got[0].Income)
 	assert.Equal(t, idr(25_000), got[0].Expense)
-	assert.Equal(t, idr(-20_000), got[0].Net)
+	assert.Equal(t, idr(-25_000), got[0].Net)
 
 	assert.Equal(t, s.periodAug, got[1].Period.ID)
 	assert.Equal(t, idr(500_000), got[1].Income)
-	assert.Equal(t, idr(260_000), got[1].Expense)
-	assert.Equal(t, idr(240_000), got[1].Net)
+	assert.Equal(t, idr(250_000), got[1].Expense)
+	assert.Equal(t, idr(250_000), got[1].Net)
 }
 
 func TestSQLiteReader_Cashflow_EmptyRequest(t *testing.T) {

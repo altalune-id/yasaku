@@ -434,6 +434,48 @@ func (s *Service) SuggestCategory(ctx context.Context, note string) (uuid.UUID, 
 	return id, ok, nil
 }
 
+// TopCategories counts the caller's project's entries per category since since, most used first.
+func (s *Service) TopCategories(ctx context.Context, since time.Time, limit int) ([]CategoryCount, error) {
+	ctx, span := tracer.Start(ctx, "transaction.TopCategories")
+	defer span.End()
+
+	tc, err := tenant.From(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out, err := s.store.TopCategories(ctx, tc.OrgID, tc.ProjectID, since, recentLimit(limit))
+	if err != nil {
+		return nil, s.unexpected(ctx, "transaction.TopCategories: top categories", err,
+			"org_id", tc.OrgID, "project_id", tc.ProjectID)
+	}
+	return out, nil
+}
+
+// RecentByCategory returns the newest distinct (note, amount) entries of a category in the caller's project.
+func (s *Service) RecentByCategory(ctx context.Context, categoryID uuid.UUID, limit int) ([]RecentEntry, error) {
+	ctx, span := tracer.Start(ctx, "transaction.RecentByCategory",
+		trace.WithAttributes(attribute.String("category.id", categoryID.String())))
+	defer span.End()
+
+	tc, err := tenant.From(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out, err := s.store.RecentByCategory(ctx, tc.OrgID, tc.ProjectID, categoryID, recentLimit(limit))
+	if err != nil {
+		return nil, s.unexpected(ctx, "transaction.RecentByCategory: recent", err,
+			"org_id", tc.OrgID, "project_id", tc.ProjectID, "category_id", categoryID)
+	}
+	return out, nil
+}
+
+func recentLimit(limit int) int {
+	if limit < 1 {
+		return DefaultListLimit
+	}
+	return limit
+}
+
 // RecordOpening writes a wallet's starting balance on behalf of by, which need not be the ctx user, and returns its id. NOTE: it runs inside the caller's unit of work (wallet.OpenWorkflow) and marks without kicking; the caller kicks after its commit.
 func (s *Service) RecordOpening(ctx context.Context, walletID uuid.UUID, amount money.Amount, at time.Time, by uuid.UUID) (uuid.UUID, error) {
 	ctx, span := tracer.Start(ctx, "transaction.RecordOpening",

@@ -72,6 +72,8 @@ message Snapshot {
   int32 tx_count = 4;
   repeated WalletClosing wallets = 5;
   google.protobuf.Timestamp computed_at = 6;
+  // Signed net of balance adjustments in the period: adjustments in minus adjustments out. Never part of income, expense or net; opening balances are excluded.
+  Money adjustments = 7;
 }
 
 // WalletClosing is one wallet's balance at the moment the snapshot was taken.

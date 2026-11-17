@@ -20,7 +20,7 @@ import (
 
 func (f *walletFixture) txCategoryMux(t *testing.T) *http.ServeMux {
 	t.Helper()
-	h := handlers.NewTxCategoryHandler(f.Deps, f.Projects, f.TxCategories)
+	h := handlers.NewTxCategoryHandler(f.Deps, f.Projects, f.TxCategories, f.Periods, f.Reports)
 	mux := http.NewServeMux()
 	h.Register(mux)
 	return mux
@@ -47,7 +47,7 @@ func TestTxCategory_Seed_InsertsTwentyThenNone(t *testing.T) {
 	assert.Len(t, rows, 20)
 }
 
-func TestTxCategory_Page_ShowsBothColumnsAndEmptyStateSeedAction(t *testing.T) {
+func TestTxCategory_Page_ShowsTheExpenseTabAndEmptyStateSeedAction(t *testing.T) {
 	t.Parallel()
 	f := newWalletFixture(t)
 	mux := f.txCategoryMux(t)
@@ -62,9 +62,8 @@ func TestTxCategory_Page_ShowsBothColumnsAndEmptyStateSeedAction(t *testing.T) {
 	require.Equal(t, http.StatusOK, page.Code)
 	body := page.Body.String()
 	assert.Contains(t, body, `id="tx-category-expense"`)
-	assert.Contains(t, body, `id="tx-category-income"`)
+	assert.Contains(t, body, f.path("/categories?kind=income"))
 	assert.Contains(t, body, "Makan &amp; Minum")
-	assert.Contains(t, body, "Gaji")
 	assert.NotContains(t, body, f.path("/categories/seed"))
 }
 
@@ -113,7 +112,7 @@ func TestTxCategory_ArchiveCollapsesTheRowAndUnarchiveRestoresIt(t *testing.T) {
 	}).Code)
 	c := f.onlyCategory(t)
 
-	rec := f.do(t, mux, http.MethodPost, "/categories/"+c.ID.String()+"/archive", url.Values{})
+	rec := f.doHTMX(t, mux, http.MethodPost, "/categories/"+c.ID.String()+"/archive", url.Values{})
 	require.Equal(t, http.StatusOK, rec.Code)
 	body := rec.Body.String()
 	require.Contains(t, body, `id="tx-category-archived"`)
@@ -123,7 +122,7 @@ func TestTxCategory_ArchiveCollapsesTheRowAndUnarchiveRestoresIt(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, active)
 
-	back := f.do(t, mux, http.MethodPost, "/categories/"+c.ID.String()+"/unarchive", url.Values{})
+	back := f.doHTMX(t, mux, http.MethodPost, "/categories/"+c.ID.String()+"/unarchive", url.Values{})
 	require.Equal(t, http.StatusOK, back.Code)
 	assert.True(t, containsBefore(back.Body.String(), "Kopi", `id="tx-category-archived"`))
 }
@@ -170,7 +169,7 @@ func TestTxCategory_DeleteUnused_RemovesIt(t *testing.T) {
 	}).Code)
 	c := f.onlyCategory(t)
 
-	rec := f.do(t, mux, http.MethodPost, "/categories/"+c.ID.String()+"/delete", url.Values{})
+	rec := f.doHTMX(t, mux, http.MethodPost, "/categories/"+c.ID.String()+"/delete", url.Values{})
 	require.Equal(t, http.StatusOK, rec.Code)
 
 	rows, err := f.TxCategories.List(f.scoped(t), category.ListOpts{IncludeArchived: true})
@@ -263,4 +262,20 @@ func TestTxCategoryCreateRefusalWithoutHTMXStaysAFragment(t *testing.T) {
 	rec := f.do(t, mux, http.MethodPost, "/categories", url.Values{"name": {"  "}, "kind": {"expense"}})
 	require.Equal(t, http.StatusOK, rec.Code)
 	assert.Contains(t, rec.Body.String(), `id="tx-category-list"`)
+}
+
+func TestTxCategory_ListActionsWithoutHTMXRedirectSoARefreshDoesNotRepost(t *testing.T) {
+	t.Parallel()
+	f := newWalletFixture(t)
+	mux := f.txCategoryMux(t)
+	require.Equal(t, http.StatusOK, f.do(t, mux, http.MethodPost, "/categories", url.Values{
+		"name": {"Gaji"}, "kind": {"income"},
+	}).Code)
+	c := f.onlyCategory(t)
+
+	for _, action := range []string{"archive", "unarchive", "delete"} {
+		rec := f.do(t, mux, http.MethodPost, "/categories/"+c.ID.String()+"/"+action, url.Values{})
+		require.Equal(t, http.StatusSeeOther, rec.Code, action)
+		assert.Equal(t, f.path("/categories?kind=income"), rec.Header().Get("Location"), action, "the redirect keeps the kind tab")
+	}
 }

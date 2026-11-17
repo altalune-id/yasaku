@@ -125,11 +125,13 @@ func buildWebHandler(d webHandlerDeps) (handler http.Handler, routes []string) {
 
 	overviewHandler := webhandlers.NewOverviewHandler(deps, svcs.Projects, svcs.Wallets, svcs.Transactions, svcs.Periods, svcs.Reports, svcs.TxCategories, svcs.Ledgers)
 	walletHandler := webhandlers.NewWalletHandler(deps, svcs.Projects, svcs.Wallets, svcs.WalletOpen, svcs.Transactions, svcs.Ledgers)
-	txCategoryHandler := webhandlers.NewTxCategoryHandler(deps, svcs.Projects, svcs.TxCategories)
+	txCategoryHandler := webhandlers.NewTxCategoryHandler(deps, svcs.Projects, svcs.TxCategories, svcs.Periods, svcs.Reports)
 	transactionHandler := webhandlers.NewTransactionHandler(deps, svcs.Projects, svcs.Wallets, svcs.Transactions, svcs.Periods, svcs.TxCategories, svcs.Ledgers)
 	periodHandler := webhandlers.NewPeriodHandler(deps, svcs.Projects, svcs.Periods, svcs.Reports, svcs.Ledgers)
 	reportHandler := webhandlers.NewReportHandler(deps, svcs.Projects, svcs.Reports, svcs.Periods)
 	settingsHandler := webhandlers.NewSettingsHandler(deps, svcs.Projects, svcs.Ledgers, d.MCP.Scopes)
+	firstRunHandler := webhandlers.NewFirstRunHandler(deps, svcs.Projects, svcs.Wallets, svcs.WalletOpen, svcs.TxCategories, svcs.Ledgers)
+	moreHandler := webhandlers.NewMoreHandler(deps, svcs.Projects)
 
 	errTmpl := webmw.LogError{Log: slogger}
 
@@ -138,7 +140,7 @@ func buildWebHandler(d webHandlerDeps) (handler http.Handler, routes []string) {
 		HealthOK: d.HealthOK,
 		AppHandlers: publishedConsoleHandlers(append([]web.Register{
 			authHandler, onboardingHandler, onboardHandler, homeHandler, orgHandler, projectHandler, todoHandler, blogHandler, apiKeyHandler, webhookHandler, inviteHandler, localeHandler, themeHandler, tipsHandler, welcomeHandler, signupHandler, legalHandler,
-			overviewHandler, walletHandler, txCategoryHandler, transactionHandler, periodHandler, reportHandler, settingsHandler,
+			overviewHandler, walletHandler, txCategoryHandler, transactionHandler, periodHandler, reportHandler, settingsHandler, firstRunHandler, moreHandler,
 		}, yasakuConsoleHandlers(deps, svcs)...)),
 		APIHandler:       d.APIHandler,
 		DataHandler:      d.DataHandler,

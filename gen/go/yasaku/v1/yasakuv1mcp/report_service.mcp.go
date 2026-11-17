@@ -31,7 +31,7 @@ func ReportServiceToolNames() []string {
 func RegisterReportServiceTools(reg *mcp.Registry, h yasakuv1connect.ReportServiceHandler, scopeFor func(string) string) {
 	reg.Register(mcp.ToolSpec{
 		Name:        PeriodReportToolName,
-		Description: "Report one period's totals: income, expense, net, and the breakdown per category and per wallet. Period must be a period ID from list_periods or current_period, never a period name; leave it empty for the current period. Category slices are largest first and share is a fraction of that direction's total.",
+		Description: "Report one period's totals: income, expense, net, adjustments (the signed net of balance fixes, never counted as income or expense), and the breakdown per category and per wallet. Period must be a period ID from list_periods or current_period, never a period name; leave it empty for the current period. Category slices are largest first and share is a fraction of that direction's total.",
 		Scope:       scopeFor(PeriodReportToolName),
 		Mutation:    false,
 		Destructive: false,

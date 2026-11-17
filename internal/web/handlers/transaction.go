@@ -1,18 +1,23 @@
 package handlers
 
 import (
+	"cmp"
+	"encoding/base64"
 	"errors"
 	"net/http"
 	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"golang.org/x/text/language"
 
 	"altalune.id/yasaku/civil"
 	"altalune.id/yasaku/internal/apperror"
 	"altalune.id/yasaku/internal/category"
+	"altalune.id/yasaku/internal/i18n"
 	"altalune.id/yasaku/internal/ledger"
 	"altalune.id/yasaku/internal/period"
 	"altalune.id/yasaku/internal/project"
@@ -26,11 +31,22 @@ import (
 // LastWalletCookie remembers the wallet a quick-add last used, so the next one opens on it.
 const LastWalletCookie = "yasaku_last_wallet"
 
+// ToastCookie carries the toast for the page a sheet save or a delete returns to: the saved entry, or the deleted one with its Undo.
+const ToastCookie = "yasaku_toast"
+
 const (
 	lastWalletMaxAge = 365 * 24 * 60 * 60
+	toastMaxAge      = 60
+	toastCookieMax   = 3500
 	txPageSize       = 50
 	txRecentLimit    = 10
 	txPeriodFilters  = 12
+	txTopWindow      = 90 * 24 * time.Hour
+	txTopLimit       = 50
+	txRecentCats     = 8
+	txRecentPerCat   = 3
+	toastSaved       = "saved"
+	toastDeleted     = "deleted"
 )
 
 var errBadForm = errors.New("web transaction: malformed form field")
@@ -80,6 +96,7 @@ func (h *TransactionHandler) Register(mux web.Mux) {
 	mux.HandleFunc("GET /orgs/{org}/projects/{project}/transactions/new", h.GetNew)
 	mux.HandleFunc("POST /orgs/{org}/projects/{project}/transactions", h.PostCreate)
 	mux.HandleFunc("POST /orgs/{org}/projects/{project}/transactions/suggest", h.PostSuggest)
+	mux.HandleFunc("GET /orgs/{org}/projects/{project}/transactions/{id}", h.GetDetail)
 	mux.HandleFunc("GET /orgs/{org}/projects/{project}/transactions/{id}/edit", h.GetEdit)
 	mux.HandleFunc("POST /orgs/{org}/projects/{project}/transactions/{id}", h.PostUpdate)
 	mux.HandleFunc("POST /orgs/{org}/projects/{project}/transactions/{id}/delete", h.PostDelete)
@@ -121,6 +138,7 @@ func (h *TransactionHandler) GetList(w http.ResponseWriter, r *http.Request) {
 		Form:        form,
 		List:        list,
 		Search:      q.Get("q"),
+		Toast:       h.takeTxToast(w, sc, d),
 	}
 	if err := h.fillFilters(sc, d, &v, q); err != nil {
 		h.LogErr("web transaction: filters", err)
@@ -137,13 +155,87 @@ func (h *TransactionHandler) GetNew(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	d := h.LayoutForProject(sc.req, pageTitle(sc.req, "title.tx_new", sc.project.Name), sc.org.Slug, sc.project, "transactions")
-	form, err := h.formView(sc, d, txInput{Kind: transaction.KindExpense}, "")
+	form, err := h.formView(sc, d, h.newInput(sc), "")
 	if err != nil {
 		h.LogErr("web transaction: form", err)
 		h.ErrorPage(w, sc.req, http.StatusInternalServerError, pageTitle(sc.req, "error_title.load_failed"), "Could not load the form.", err)
 		return
 	}
+	if web.IsHTMXRequest(sc.req) {
+		Render(w, sc.req, templates.TxSheet(d, form))
+		return
+	}
 	Render(w, sc.req, templates.TransactionFormLayout(d, form, d.Tr("tx.new")))
+}
+
+// GetDetail renders one entry with its Edit, Duplicate and Delete actions.
+func (h *TransactionHandler) GetDetail(w http.ResponseWriter, r *http.Request) {
+	sc, t, ok := h.requireTransaction(w, r)
+	if !ok {
+		return
+	}
+	d := h.LayoutForProject(sc.req, pageTitle(sc.req, "title.tx_detail", sc.project.Name), sc.org.Slug, sc.project, "transactions")
+	rows, err := h.rows(sc, d, []*transaction.Transaction{t})
+	if err != nil {
+		h.LogErr("web transaction: detail", err)
+		h.ErrorPage(w, sc.req, http.StatusInternalServerError, pageTitle(sc.req, "error_title.load_failed"), "Could not load that transaction.", err)
+		return
+	}
+	v := templates.TxDetailView{
+		ProjectSlug: sc.project.Slug,
+		Row:         rows[0],
+		RecordedAt:  t.CreatedAt,
+		UpdatedAt:   t.UpdatedAt,
+		Locked:      h.periodLocked(sc, t.PeriodID),
+		PastDay:     rows[0].Day != civil.DateOf(time.Now(), h.location(sc)),
+	}
+	if web.IsHTMXRequest(sc.req) {
+		if u, err := url.Parse(sc.req.Header.Get("HX-Current-URL")); err == nil {
+			v.Return = templates.TxReturnFor(u.Path)
+		}
+		Render(w, sc.req, templates.TxDetailDrawer(d, v))
+		return
+	}
+	Render(w, sc.req, templates.TransactionDetailLayout(d, v))
+}
+
+// NOTE: the add-sheet URL contract: kind, category and wallet preselect; from duplicates an entry to today.
+func (h *TransactionHandler) newInput(sc ProjectScope) txInput {
+	q := sc.req.URL.Query()
+	in := txInput{Kind: transaction.KindExpense}
+	if id, err := uuid.Parse(q.Get("from")); err == nil {
+		if t, tErr := h.Transactions.ByID(sc.req.Context(), id); tErr == nil && t.Kind.IsUserRecorded() {
+			return txInput{
+				Kind:       t.Kind,
+				Amount:     amountInput(t.Amount, i18n.From(sc.req.Context()).Tag()),
+				WalletID:   t.WalletID,
+				ToWalletID: t.ToWalletID,
+				CategoryID: t.CategoryID,
+				Note:       t.Note,
+			}
+		}
+	}
+	if k, err := parseUserKind(q.Get("kind")); err == nil {
+		in.Kind = k
+	}
+	if id, err := uuid.Parse(q.Get("category")); err == nil {
+		in.CategoryID = &id
+	}
+	if id, err := uuid.Parse(q.Get("wallet")); err == nil {
+		in.WalletID = id
+	}
+	return in
+}
+
+func (h *TransactionHandler) periodLocked(sc ProjectScope, id *uuid.UUID) bool {
+	if id == nil {
+		return false
+	}
+	p, err := h.Periods.ByID(sc.req.Context(), *id)
+	if err != nil {
+		return false
+	}
+	return p.IsLocked()
 }
 
 // GetEdit renders the edit form for one transaction.
@@ -155,7 +247,7 @@ func (h *TransactionHandler) GetEdit(w http.ResponseWriter, r *http.Request) {
 	d := h.LayoutForProject(sc.req, pageTitle(sc.req, "title.tx_edit", sc.project.Name), sc.org.Slug, sc.project, "transactions")
 	in := txInput{
 		Kind:       t.Kind,
-		Amount:     t.Amount.Major(),
+		Amount:     amountInput(t.Amount, i18n.From(sc.req.Context()).Tag()),
 		WalletID:   t.WalletID,
 		ToWalletID: t.ToWalletID,
 		CategoryID: t.CategoryID,
@@ -242,7 +334,8 @@ func (h *TransactionHandler) PostDelete(w http.ResponseWriter, r *http.Request) 
 		h.refuse(w, sc, err, txDraft{})
 		return
 	}
-	h.succeed(w, sc, nil)
+	h.setTxToast(w, sc, toastDeleted, t)
+	h.redirect(w, sc, h.returnPath(sc, sc.req.PostFormValue("return"), "transactions"))
 }
 
 // PostSuggest returns the category chips with the category last used for this note preselected.
@@ -314,7 +407,7 @@ func (h *TransactionHandler) readForm(w http.ResponseWriter, sc ProjectScope, wa
 			h.ErrorPage(w, sc.req, http.StatusBadRequest, pageTitle(sc.req, "error_title.bad_request"), "Could not read that form.")
 			return txInput{}, money.Amount{}, false
 		}
-		h.refuse(w, sc, err, txDraft{id: id})
+		h.refuse(w, sc, err, txDraft{in: in, id: id, filled: in.Kind != ""})
 		return txInput{}, money.Amount{}, false
 	}
 	amount, err := h.amountFor(sc, in)
@@ -341,8 +434,12 @@ func (h *TransactionHandler) parseForm(sc ProjectScope, want transaction.Kind) (
 	}
 	in := txInput{Kind: kind, Amount: strings.TrimSpace(f.Get("amount")), Note: strings.TrimSpace(f.Get("note"))}
 
+	rawWallet := strings.TrimSpace(f.Get("wallet_id"))
+	if rawWallet == "" {
+		return in, &wallet.NotFoundError{}
+	}
 	var err error
-	in.WalletID, err = uuid.Parse(strings.TrimSpace(f.Get("wallet_id")))
+	in.WalletID, err = uuid.Parse(rawWallet)
 	if err != nil {
 		return txInput{}, errBadForm
 	}
@@ -383,7 +480,7 @@ func (h *TransactionHandler) amountFor(sc ProjectScope, in txInput) (money.Amoun
 	if err != nil {
 		return money.Amount{}, err
 	}
-	return parseAmount(in.Amount, w.Currency)
+	return parseAmount(in.Amount, w.Currency, i18n.From(sc.req.Context()).Tag())
 }
 
 // NOTE: local noon keeps a timezone shift from moving the date across a day boundary.
@@ -402,24 +499,29 @@ func (h *TransactionHandler) rememberWallet(w http.ResponseWriter, r *http.Reque
 }
 
 func (h *TransactionHandler) succeed(w http.ResponseWriter, sc ProjectScope, t *transaction.Transaction) {
-	if !web.IsHTMXRequest(sc.req) {
-		http.Redirect(w, sc.req, web.Path(h.Cfg.HTTP.BasePath,
-			"/orgs/"+sc.org.Slug+"/projects/"+sc.project.Slug+"/overview"), http.StatusSeeOther)
+	if web.IsHTMXRequest(sc.req) && sc.req.PostForm.Get("again") == "1" {
+		d := h.LayoutForProject(sc.req, "", sc.org.Slug, sc.project, "transactions")
+		Render(w, sc.req, templates.Toast(d, d.Tr("tx.saved", "Amount", templates.Money(d, t.Amount))))
 		return
 	}
-	d := h.LayoutForProject(sc.req, "", sc.org.Slug, sc.project, "transactions")
-	list, err := h.listAfterWrite(sc, d)
-	if err != nil {
-		h.LogErr("web transaction: list", err)
-		h.ErrorPage(w, sc.req, http.StatusInternalServerError, pageTitle(sc.req, "error_title.list_failed"), "Could not load transactions.", err)
+	h.setTxToast(w, sc, toastSaved, t)
+	h.redirect(w, sc, h.returnPath(sc, sc.req.PostForm.Get("return"), "overview"))
+}
+
+// NOTE: an htmx request gets HX-Redirect, so the sheet never swaps a region the opener page may not have.
+func (h *TransactionHandler) redirect(w http.ResponseWriter, sc ProjectScope, to string) {
+	if web.IsHTMXRequest(sc.req) {
+		w.Header().Set("HX-Redirect", to)
+		w.WriteHeader(http.StatusOK)
 		return
 	}
-	msg := ""
-	if t != nil {
-		msg = d.Tr("tx.saved", "Amount", templates.Money(d, t.Amount))
-	}
-	Render(w, sc.req, templates.TransactionList(d, list))
-	Render(w, sc.req, templates.Toast(d, msg))
+	http.Redirect(w, sc.req, to, http.StatusSeeOther) //nolint:gosec // G710: to comes from returnPath, built from stored slugs and an allowlisted page
+}
+
+// SECURITY: templates.TxReturnPage is the allowlist, so a posted return can never leave the project.
+func (h *TransactionHandler) returnPath(sc ProjectScope, raw, fallback string) string {
+	page := cmp.Or(templates.TxReturnPage(raw), fallback)
+	return web.Path(h.Cfg.HTTP.BasePath, projectPath(sc.org.Slug, sc.project.Slug, "/"+page))
 }
 
 func (h *TransactionHandler) refuse(w http.ResponseWriter, sc ProjectScope, cause error, draft txDraft) {
@@ -438,15 +540,47 @@ func (h *TransactionHandler) refuse(w http.ResponseWriter, sc ProjectScope, caus
 	if transaction.IsPeriodLockedError(cause) {
 		list.Error = d.Tr("tx.locked")
 	}
+	amountErr, walletErr := fieldErrors(d, cause)
+	if amountErr != "" || walletErr != "" {
+		draft.filled = true
+	}
 	list.ErrorCode = ae.Code()
+	if web.IsHTMXRequest(sc.req) && draft.filled {
+		form, err := h.formView(sc, d, draft.in, draft.id)
+		if err != nil {
+			h.LogErr("web transaction: form", err)
+			h.ErrorPage(w, sc.req, http.StatusInternalServerError, pageTitle(sc.req, "error_title.save_failed"), "Could not record that transaction.", err)
+			return
+		}
+		form.InDialog = sc.req.PostForm.Get("surface") == "dialog"
+		form.Return = sc.req.PostForm.Get("return")
+		form.Recent = sc.req.PostForm.Get("list") == "recent"
+		form.AmountError, form.WalletError = amountErr, walletErr
+		if amountErr == "" && walletErr == "" {
+			form.Error, form.ErrorCode = list.Error, list.ErrorCode
+		}
+		RenderStatus(w, sc.req, http.StatusUnprocessableEntity, templates.TransactionForm(d, form))
+		return
+	}
 	if web.IsHTMXRequest(sc.req) {
 		RenderStatus(w, sc.req, http.StatusUnprocessableEntity, templates.TransactionList(d, list))
 		return
 	}
-	h.refusePage(w, sc, d, list, draft)
+	h.refusePage(w, sc, d, list, draft, amountErr, walletErr)
 }
 
-func (h *TransactionHandler) refusePage(w http.ResponseWriter, sc ProjectScope, d web.LayoutData, list templates.TxListView, draft txDraft) {
+//i18n:use tx.wallet_error.required
+func fieldErrors(d web.LayoutData, cause error) (amount, walletErr string) {
+	if key := amountErrorKey(cause); key != "" {
+		return d.Tr(key), ""
+	}
+	if wallet.IsNotFoundError(cause) {
+		return "", d.Tr("tx.wallet_error.required")
+	}
+	return "", ""
+}
+
+func (h *TransactionHandler) refusePage(w http.ResponseWriter, sc ProjectScope, d web.LayoutData, list templates.TxListView, draft txDraft, amountErr, walletErr string) {
 	in := draft.in
 	if !draft.filled {
 		in = txInput{Kind: transaction.KindExpense}
@@ -458,7 +592,10 @@ func (h *TransactionHandler) refusePage(w http.ResponseWriter, sc ProjectScope, 
 		return
 	}
 	if draft.filled || draft.id != "" {
-		form.Error, form.ErrorCode = list.Error, list.ErrorCode
+		form.AmountError, form.WalletError = amountErr, walletErr
+		if amountErr == "" && walletErr == "" {
+			form.Error, form.ErrorCode = list.Error, list.ErrorCode
+		}
 		Render(w, sc.req, templates.TransactionFormLayout(d, form, d.Tr(txFormTitleKey(draft.id))))
 		return
 	}
@@ -626,14 +763,17 @@ func (h *TransactionHandler) formView(sc ProjectScope, d web.LayoutData, in txIn
 	if in.Date.IsZero() {
 		in.Date = today
 	}
+	tag := i18n.From(sc.req.Context()).Tag()
 	v := templates.TxFormView{
 		ProjectSlug: sc.project.Slug,
 		ID:          id,
 		Kind:        string(in.Kind),
 		Amount:      in.Amount,
 		Date:        in.Date.String(),
+		Today:       today.String(),
 		Yesterday:   today.AddDays(-1).String(),
 		Note:        in.Note,
+		Decimal:     string(money.DecimalMark(tag)),
 	}
 	if in.ToWalletID != nil {
 		v.ToWalletID = in.ToWalletID.String()
@@ -669,20 +809,24 @@ func (h *TransactionHandler) formView(sc ProjectScope, d web.LayoutData, in txIn
 			Name:     wl.Name,
 			Balance:  balance,
 			Selected: selected,
-			Symbol:   txCurrencySymbol(d, wl.Currency),
-			Group:    wl.Currency.DisplayExponent() == 0,
+			Symbol:   templates.CurrencySymbol(d, wl.Currency),
+			Currency: string(wl.Currency),
+			Exponent: wl.Currency.DisplayExponent(),
 		})
 	}
 	if want != uuid.Nil {
 		v.WalletID = want.String()
 	}
-	v.Symbol = txCurrencySymbol(d, cur)
-	v.Group = cur.DisplayExponent() == 0
+	v.NoWallet = len(wallets) == 0
+	v.Symbol = templates.CurrencySymbol(d, cur)
+	v.Currency = string(cur)
+	v.Exponent = cur.DisplayExponent()
 
 	cats, err := h.TxCategories.List(sc.req.Context(), category.ListOpts{})
 	if err != nil {
 		return templates.TxFormView{}, err
 	}
+	cats = h.byFrequency(sc, cats)
 	for _, c := range cats {
 		v.Categories = append(v.Categories, templates.TxCategoryOption{
 			ID:        c.ID.String(),
@@ -694,7 +838,52 @@ func (h *TransactionHandler) formView(sc ProjectScope, d web.LayoutData, in txIn
 		})
 	}
 	v.Periods = h.periodOptions(sc, in)
+	if id == "" {
+		v.RecentEntries = h.recentOptions(sc, cats, tag)
+	}
 	return v, nil
+}
+
+func (h *TransactionHandler) byFrequency(sc ProjectScope, cats []*category.Category) []*category.Category {
+	top, err := h.Transactions.TopCategories(sc.req.Context(), time.Now().Add(-txTopWindow), txTopLimit)
+	if err != nil {
+		h.LogErr("web transaction: top categories", err)
+		return cats
+	}
+	rank := make(map[uuid.UUID]int, len(top))
+	for i, c := range top {
+		rank[c.CategoryID] = len(top) - i
+	}
+	out := slices.Clone(cats)
+	slices.SortStableFunc(out, func(a, b *category.Category) int { return rank[b.ID] - rank[a.ID] })
+	return out
+}
+
+func (h *TransactionHandler) recentOptions(sc ProjectScope, cats []*category.Category, tag language.Tag) []templates.TxRecentOption {
+	var out []templates.TxRecentOption
+	for i, c := range cats {
+		if i == txRecentCats {
+			break
+		}
+		items, err := h.Transactions.RecentByCategory(sc.req.Context(), c.ID, txRecentPerCat)
+		if err != nil {
+			h.LogErr("web transaction: recent", err)
+			return out
+		}
+		for _, e := range items {
+			out = append(out, templates.TxRecentOption{
+				CategoryID: c.ID.String(),
+				Kind:       string(c.Kind),
+				Icon:       c.Icon,
+				Note:       e.Note,
+				Label:      cmp.Or(e.Note, c.Name),
+				Amount:     e.Amount,
+				Input:      amountInput(e.Amount, tag),
+				WalletID:   e.WalletID.String(),
+			})
+		}
+	}
+	return out
 }
 
 func (h *TransactionHandler) preferredWallet(sc ProjectScope, in txInput, wallets []*wallet.Wallet) uuid.UUID {
@@ -710,10 +899,12 @@ func (h *TransactionHandler) preferredWallet(sc ProjectScope, in txInput, wallet
 			}
 		}
 	}
-	if len(wallets) > 0 {
-		return wallets[0].ID
+	if len(wallets) == 0 {
+		return uuid.Nil
 	}
-	return uuid.Nil
+	return slices.MinFunc(wallets, func(a, b *wallet.Wallet) int {
+		return cmp.Or(a.CreatedAt.Compare(b.CreatedAt), strings.Compare(a.ID.String(), b.ID.String()))
+	}).ID
 }
 
 func (h *TransactionHandler) periodOptions(sc ProjectScope, in txInput) []templates.TxPeriodOption {
@@ -825,8 +1016,96 @@ func (h *TransactionHandler) currency(sc ProjectScope) money.Currency {
 	return s.Currency
 }
 
-func txCurrencySymbol(d web.LayoutData, c money.Currency) string {
-	return strings.TrimRight(templates.Money(d, money.Zero(c)), "0123456789.,\u00a0\u202f ")
+// NOTE: the amount field's value in the locale's decimal mark, ungrouped, so ParseLocale reads it back unchanged.
+func amountInput(a money.Amount, tag language.Tag) string {
+	return strings.Replace(a.Major(), ".", string(money.DecimalMark(tag)), 1)
+}
+
+func toastValues(kind string, t *transaction.Transaction, loc *time.Location) url.Values {
+	v := url.Values{
+		"toast":     {kind},
+		"kind":      {string(t.Kind)},
+		"minor":     {strconv.FormatInt(t.Amount.Minor, 10)},
+		"currency":  {string(t.Amount.Currency)},
+		"wallet_id": {t.WalletID.String()},
+		"date":      {civil.DateOf(t.OccurredAt, loc).String()},
+	}
+	if kind == toastDeleted {
+		v.Set("note", t.Note)
+	}
+	if t.ToWalletID != nil {
+		v.Set("to_wallet_id", t.ToWalletID.String())
+	}
+	if t.CategoryID != nil {
+		v.Set("category_id", t.CategoryID.String())
+	}
+	return v
+}
+
+// NOTE: browsers drop a cookie over 4KB, so a note that would push it past toastCookieMax is left out.
+func encodeToast(v url.Values) string {
+	out := base64.RawURLEncoding.EncodeToString([]byte(v.Encode()))
+	if len(out) <= toastCookieMax {
+		return out
+	}
+	v.Del("note")
+	return base64.RawURLEncoding.EncodeToString([]byte(v.Encode()))
+}
+
+func (h *TransactionHandler) setTxToast(w http.ResponseWriter, sc ProjectScope, kind string, t *transaction.Transaction) {
+	web.SetCookie(w, web.CookieOpts{
+		Name:         ToastCookie,
+		Value:        encodeToast(toastValues(kind, t, h.location(sc))),
+		BasePath:     projectCookiePath(h.Cfg.HTTP.BasePath, sc),
+		CookieSecure: h.SecureCookie(sc.req),
+		MaxAge:       toastMaxAge,
+	})
+}
+
+func projectCookiePath(base string, sc ProjectScope) string {
+	return web.Path(base, projectPath(sc.org.Slug, sc.project.Slug, ""))
+}
+
+// NOTE: any project page renders the toast a sheet save or delete left; an Undo only refills the normal create form, which validates every field again.
+func (dp Deps) takeTxToast(w http.ResponseWriter, sc ProjectScope, d web.LayoutData) *templates.TxToastView {
+	c, err := sc.req.Cookie(ToastCookie)
+	if err != nil {
+		return nil
+	}
+	web.ClearCookie(w, ToastCookie, projectCookiePath(dp.Cfg.HTTP.BasePath, sc), dp.SecureCookie(sc.req))
+	raw, err := base64.RawURLEncoding.DecodeString(c.Value)
+	if err != nil {
+		return nil
+	}
+	v, err := url.ParseQuery(string(raw))
+	if err != nil {
+		return nil
+	}
+	cur, err := money.ParseCurrency(v.Get("currency"))
+	if err != nil {
+		return nil
+	}
+	minor, err := strconv.ParseInt(v.Get("minor"), 10, 64)
+	if err != nil {
+		return nil
+	}
+	a := money.New(minor, cur)
+	if v.Get("toast") == toastSaved {
+		return &templates.TxToastView{Message: d.Tr("tx.saved", "Amount", templates.Money(d, a))}
+	}
+	return &templates.TxToastView{
+		ProjectSlug: sc.project.Slug,
+		Message:     d.Tr("tx.deleted", "Amount", templates.Money(d, a)),
+		Undo:        true,
+		Return:      templates.TxReturnFor(sc.req.URL.Path),
+		Kind:        v.Get("kind"),
+		Amount:      amountInput(a, i18n.From(sc.req.Context()).Tag()),
+		WalletID:    v.Get("wallet_id"),
+		ToWalletID:  v.Get("to_wallet_id"),
+		CategoryID:  v.Get("category_id"),
+		Date:        v.Get("date"),
+		Note:        v.Get("note"),
+	}
 }
 
 func parseUserKind(s string) (transaction.Kind, error) {
@@ -837,6 +1116,7 @@ func parseUserKind(s string) (transaction.Kind, error) {
 	return k, nil
 }
 
+//i18n:use nav.transactions
 //i18n:use tx.kind_expense
 //i18n:use tx.kind_income
 //i18n:use tx.kind_transfer

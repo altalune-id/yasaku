@@ -19,4 +19,6 @@ type Store interface {
 	UpdateThemePrefs(ctx context.Context, id uuid.UUID, theme, colorMode string) error
 	// MarkTipsSeen adds ids to the user's seen tips, once each, and returns the stored list.
 	MarkTipsSeen(ctx context.Context, id uuid.UUID, ids []string) ([]string, error)
+	// ResetTipsSeen forgets every seen tip so the tips show again.
+	ResetTipsSeen(ctx context.Context, id uuid.UUID) error
 }

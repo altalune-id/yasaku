@@ -69,11 +69,12 @@ func newSQLiteStoreForTest(t *testing.T) (period.Store, tenant.Context) {
 
 func sampleSnapshot() period.Snapshot {
 	return period.Snapshot{
-		Currency: money.IDR,
-		Income:   9_000_000,
-		Expense:  2_500_000,
-		Net:      6_500_000,
-		TxCount:  12,
+		Currency:    money.IDR,
+		Income:      9_000_000,
+		Expense:     2_500_000,
+		Net:         6_500_000,
+		Adjustments: -15_000,
+		TxCount:     12,
 		Wallets: []period.WalletClosing{
 			{WalletID: uuid.MustParse("6b3f2f2a-1f4f-4d8e-9a2b-0b1c2d3e4f50"), Name: "BCA", Closing: 6_500_000},
 		},
@@ -128,10 +129,30 @@ func TestSQLiteStore_RoundTripsOpenAndClosedPeriods(t *testing.T) {
 	assert.True(t, closedAt.Equal(*got.ClosedAt))
 	require.NotNil(t, got.Snapshot)
 	assert.Equal(t, snap.Net, got.Snapshot.Net)
+	assert.Equal(t, int64(-15_000), got.Snapshot.Adjustments, "a signed adjustments net survives the round trip")
 	assert.Equal(t, money.IDR, got.Snapshot.Currency)
 	require.Len(t, got.Snapshot.Wallets, 1)
 	assert.Equal(t, "BCA", got.Snapshot.Wallets[0].Name)
 	assert.True(t, snap.ComputedAt.Equal(got.Snapshot.ComputedAt))
+}
+
+func TestSQLiteStore_SnapshotStoredBeforeAdjustmentsReadsZero(t *testing.T) {
+	sqlDB, cfg := newSQLiteDB(t)
+	prefix := cfg.DB.TablePrefix
+	tc := seedTenant(t, sqlDB, prefix)
+	store := period.NewStore(db.DBConfig{Driver: db.DriverSQLite, TablePrefix: prefix}, db.Pool{W: sqlDB, R: sqlDB}, nil)
+	ctx := tenant.Into(t.Context(), tc)
+	p := seedPeriod(ctx, t, store, tc, civil.Date{Year: 2026, Month: 8, Day: 25}, &civil.Date{Year: 2026, Month: 9, Day: 24})
+
+	legacy := `{"currency":"IDR","income":9000000,"expense":2500000,"net":6500000,"tx_count":12,"wallets":null,"computed_at":"2026-09-24T17:00:00Z"}`
+	_, err := sqlDB.Exec("UPDATE "+prefix+"periods SET snapshot = ? WHERE id = ?", legacy, p.ID.String())
+	require.NoError(t, err)
+
+	got, err := store.ByID(ctx, p.ID)
+	require.NoError(t, err)
+	require.NotNil(t, got.Snapshot)
+	assert.Equal(t, int64(6_500_000), got.Snapshot.Net)
+	assert.Zero(t, got.Snapshot.Adjustments)
 }
 
 func TestSQLiteStore_Current(t *testing.T) {

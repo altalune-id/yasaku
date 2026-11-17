@@ -1,11 +1,14 @@
 package templates
 
 import (
+	"fmt"
 	"slices"
 	"strconv"
+	"time"
 
 	"altalune.id/yasaku/internal/web"
 	"altalune.id/yasaku/internal/web/icons"
+	"altalune.id/yasaku/money"
 )
 
 // SettingsView is the project settings page model.
@@ -19,12 +22,14 @@ type SettingsView struct {
 	NameError      string
 	NameSaved      bool
 	CanRename      bool
+	CanManage      bool
 	System         bool
 	Timezone       string
 	Timezones      []string
 	Currency       string
 	Currencies     []string
 	PeriodStartDay int
+	StartDays      []int
 	Saved          bool
 	Error          string
 	ErrorCode      string
@@ -34,12 +39,10 @@ type SettingsView struct {
 
 templ settingsGeneral(d web.LayoutData, v SettingsView) {
 	if v.CanRename {
-		<form method="post" action={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/rename")) } novalidate>
+		<form method="post" action={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/rename")) } novalidate data-dirty-form data-dirty-start?={ v.NameError != "" }>
 			@FormSection(d.Tr("settings.general")) {
 				@settingsGeneralFields(d, v)
-				<div class="flex justify-end">
-					<button type="submit" class="btn btn-primary">{ d.Tr("settings.save_name") }</button>
-				</div>
+				@settingsActions(d, d.Tr("settings.save_name"))
 			}
 		</form>
 	} else {
@@ -119,6 +122,44 @@ templ settingsCopyField(d web.LayoutData, p FieldProps, value string) {
 	}
 }
 
+templ settingsActions(d web.LayoutData, saveLabel string) {
+	<div class="flex flex-wrap items-center justify-end gap-2">
+		<span data-dirty-only hidden class="me-auto text-sm text-base-content/70">{ d.Tr("settings.unsaved") }</span>
+		<button type="button" data-dirty-cancel hidden class="btn btn-ghost">{ d.Tr("common.cancel") }</button>
+		<button type="submit" data-dirty-submit class="btn btn-primary">
+			<span data-dirty-saving hidden class="loading loading-spinner loading-sm" aria-hidden="true"></span>
+			<span data-dirty-label>{ saveLabel }</span>
+			<span data-dirty-saving hidden>{ d.Tr("settings.saving") }</span>
+		</button>
+	</div>
+}
+
+func settingsTimezoneLabel(tz string) string {
+	loc, err := time.LoadLocation(tz)
+	if err != nil {
+		return tz
+	}
+	abbr, offset := time.Now().In(loc).Zone()
+	if abbr == tz {
+		return tz
+	}
+	utc := "UTC"
+	if offset != 0 {
+		sign := "+"
+		if offset < 0 {
+			sign, offset = "-", -offset
+		}
+		utc += sign + strconv.Itoa(offset/3600)
+		if m := offset % 3600 / 60; m != 0 {
+			utc += fmt.Sprintf(":%02d", m)
+		}
+	}
+	if abbr == "" || abbr[0] == '+' || abbr[0] == '-' {
+		return tz + " (" + utc + ")"
+	}
+	return tz + " (" + abbr + ", " + utc + ")"
+}
+
 func settingsTimezoneOptions(v SettingsView) []string {
 	if v.Timezone == "" || slices.Contains(v.Timezones, v.Timezone) {
 		return v.Timezones
@@ -128,40 +169,39 @@ func settingsTimezoneOptions(v SettingsView) []string {
 
 templ settingsLedger(d web.LayoutData, v SettingsView) {
 	{{ startDay := FieldProps{ID: "settings-start-day", Label: d.Tr("settings.period_start_day"), Hint: d.Tr("settings.period_start_day_hint")} }}
-	<form method="post" action={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/settings")) }>
+	<form method="post" action={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/settings")) } data-dirty-form data-dirty-start?={ v.Error != "" }>
 		@FormSection(d.Tr("settings.money")) {
 			{{ settingsCurrencyField := FieldProps{ID: "settings-currency", Label: d.Tr("settings.currency")} }}
 			@FormField(settingsCurrencyField) {
-				<select { settingsCurrencyField.Attrs()... } name="currency" class="select w-full text-base">
+				<select { settingsCurrencyField.Attrs()... } name="currency" disabled?={ !v.CanManage } class="select w-full text-base">
 					for _, c := range v.Currencies {
-						<option value={ c } selected?={ c == v.Currency }>{ c }</option>
+						<option value={ c } selected?={ c == v.Currency }>{ CurrencyLabel(d.Tr, money.Currency(c)) }</option>
 					}
 				</select>
 			}
 			{{ settingsTimezoneField := FieldProps{ID: "settings-timezone", Label: d.Tr("settings.timezone")} }}
 			@FormField(settingsTimezoneField) {
-				<select { settingsTimezoneField.Attrs()... } name="timezone" required class="select w-full text-base">
+				<select { settingsTimezoneField.Attrs()... } name="timezone" required disabled?={ !v.CanManage } class="select w-full text-base">
 					for _, tz := range settingsTimezoneOptions(v) {
-						<option value={ tz } selected?={ tz == v.Timezone }>{ tz }</option>
+						<option value={ tz } selected?={ tz == v.Timezone }>{ settingsTimezoneLabel(tz) }</option>
 					}
 				</select>
 			}
 			@FormField(startDay) {
-				<input
-					name="period_start_day"
-					type="number"
-					inputmode="numeric"
-					min="1"
-					max="28"
-					required
-					value={ strconv.Itoa(v.PeriodStartDay) }
-					class="input w-full text-base tabular-nums"
-					{ startDay.Attrs()... }
-				/>
+				<select { startDay.Attrs()... } name="period_start_day" required disabled?={ !v.CanManage } class="select w-full text-base">
+					for _, day := range v.StartDays {
+						<option value={ strconv.Itoa(day) } selected?={ day == v.PeriodStartDay }>{ d.Tr("settings.day_n", "Day", day) }</option>
+					}
+				</select>
 			}
-			<div class="flex justify-end">
-				<button type="submit" class="btn btn-primary">{ d.Tr("settings.save") }</button>
-			</div>
+			if v.CanManage {
+				@settingsActions(d, d.Tr("settings.save"))
+			} else {
+				<p class="flex items-center gap-2 text-sm text-base-content/70">
+					@icons.Icon("lock", "size-4 shrink-0")
+					<span>{ d.Tr("settings.ledger_member") }</span>
+				</p>
+			}
 		}
 	</form>
 }

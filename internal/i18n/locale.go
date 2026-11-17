@@ -25,6 +25,15 @@ const (
 // String returns the BCP-47 tag.
 func (l Locale) String() string { return string(l) }
 
+// Tag parses l, falling back to American English.
+func (l Locale) Tag() language.Tag {
+	tag, err := language.Parse(string(l))
+	if err != nil {
+		return language.AmericanEnglish
+	}
+	return tag
+}
+
 // NativeName returns the language's endonym for a language picker.
 func (l Locale) NativeName() string {
 	if n, ok := nativeNames[l]; ok {

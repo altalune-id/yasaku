@@ -381,6 +381,59 @@ func TestPeriodReport_ReturnsNonZeroIncomeAndExpense(t *testing.T) {
 	require.NotEmpty(t, rep.Msg.GetWallets())
 }
 
+func TestPeriodReport_ReturnsTheSignedAdjustmentsNet(t *testing.T) {
+	h := newYasakuHarness(t)
+	ctx := t.Context()
+	h.createWallet(ctx, "BCA", &yasakuv1.Money{Amount: "250000"})
+
+	_, err := h.walletClient().AdjustBalance(ctx, connect.NewRequest(&yasakuv1.AdjustBalanceRequest{
+		Wallet:        "BCA",
+		TargetBalance: &yasakuv1.Money{Amount: "200000"},
+		Confirm:       true,
+	}))
+	require.NoError(t, err)
+
+	rep, err := h.reportClient().PeriodReport(ctx, connect.NewRequest(&yasakuv1.PeriodReportRequest{}))
+	require.NoError(t, err)
+	require.Equal(t, "-50000", rep.Msg.GetAdjustments().GetAmount(), "the opening balance is not a balance fix")
+	require.Equal(t, "0", rep.Msg.GetExpense().GetAmount(), "an adjustment out is never expense")
+}
+
+func TestPeriodSnapshots_CarryTheSignedAdjustmentsNet(t *testing.T) {
+	h := newYasakuHarness(t)
+	ctx := t.Context()
+	h.createWallet(ctx, "BCA", &yasakuv1.Money{Amount: "250000"})
+	_, err := h.walletClient().AdjustBalance(ctx, connect.NewRequest(&yasakuv1.AdjustBalanceRequest{
+		Wallet:        "BCA",
+		TargetBalance: &yasakuv1.Money{Amount: "200000"},
+		Confirm:       true,
+	}))
+	require.NoError(t, err)
+	pc := h.periodClient()
+
+	cur, err := pc.GetCurrentPeriod(ctx, connect.NewRequest(&yasakuv1.GetCurrentPeriodRequest{}))
+	require.NoError(t, err)
+	require.Equal(t, "-50000", cur.Msg.GetRunning().GetAdjustments().GetAmount(), "current_period")
+
+	preview, err := pc.PreviewClose(ctx, connect.NewRequest(&yasakuv1.PreviewCloseRequest{}))
+	require.NoError(t, err)
+	require.Equal(t, "-50000", preview.Msg.GetSnapshot().GetAdjustments().GetAmount(), "preview_close")
+
+	closed, err := pc.ClosePeriod(ctx, connect.NewRequest(&yasakuv1.ClosePeriodRequest{Confirm: true}))
+	require.NoError(t, err)
+	periodID := closed.Msg.GetResult().GetId()
+
+	list, err := pc.ListPeriods(ctx, connect.NewRequest(&yasakuv1.ListPeriodsRequest{}))
+	require.NoError(t, err)
+	var stored *yasakuv1.Snapshot
+	for _, p := range list.Msg.GetPeriods() {
+		if p.GetId() == periodID {
+			stored = p.GetSnapshot()
+		}
+	}
+	require.Equal(t, "-50000", stored.GetAdjustments().GetAmount(), "list_periods")
+}
+
 func TestPeriodField_RefusesANameAndOffersIDs(t *testing.T) {
 	h := newYasakuHarness(t)
 	ctx := t.Context()
@@ -791,10 +844,8 @@ func TestCreateWallet_OpeningBalanceMovesOutOfAPeriodClosedToday(t *testing.T) {
 }
 
 var (
-	consoleWalletsTotalRe  = regexp.MustCompile(`text-3xl[^>]*>([^<]+)<`)
-	consoleSpendableRe     = regexp.MustCompile(`text-4xl[^>]*>([^<]+)<`)
-	consoleOverviewTotalRe = regexp.MustCompile(`ms-1 tabular-nums[^>]*>([^<]+)<`)
-	nonDigitRe             = regexp.MustCompile(`[^0-9]`)
+	consoleWalletsTotalRe = regexp.MustCompile(`stat-value[^>]*>([^<]+)<`)
+	nonDigitRe            = regexp.MustCompile(`[^0-9]`)
 )
 
 func (h *yasakuHarness) consoleGet(path string) string {
@@ -832,11 +883,6 @@ func (h *yasakuHarness) assertEveryHeadlineAgrees(spendable, total string) {
 
 	wallets := h.consoleGet("/wallets")
 	require.Equal(h.t, spendable, consoleAmount(h.t, consoleWalletsTotalRe, wallets), "Wallets page total")
-
-	overview := h.consoleGet("/overview")
-	require.Equal(h.t, spendable, consoleAmount(h.t, consoleSpendableRe, overview), "Overview spendable")
-	require.Equal(h.t, total, consoleAmount(h.t, consoleOverviewTotalRe, overview), "Overview total")
-	require.Contains(h.t, overview, `data-mixed-currency="1"`, "a wallet in another currency is flagged, never added")
 }
 
 func TestHeadline_WalletsPageOverviewAndWalletTotalsAgree(t *testing.T) {

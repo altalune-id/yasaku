@@ -7,8 +7,10 @@ type navItem struct {
 	Path     string
 	Icon     string
 	LabelKey string
+	DescKey  string
 	InDock   bool
 	More     bool
+	MoreOnly bool
 	Show     func(web.LayoutData) bool
 }
 
@@ -26,6 +28,16 @@ func dockItems() []navItem {
 	var out []navItem
 	for _, it := range projectNav() {
 		if it.InDock {
+			out = append(out, it)
+		}
+	}
+	return out
+}
+
+func railMoreItems(d web.LayoutData) []navItem {
+	var out []navItem
+	for _, it := range navVisible(d, true) {
+		if !it.MoreOnly {
 			out = append(out, it)
 		}
 	}

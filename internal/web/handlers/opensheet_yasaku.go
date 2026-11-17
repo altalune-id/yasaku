@@ -221,7 +221,7 @@ func (h *OpensheetHandler) opensheetLayout(sc ProjectScope) web.LayoutData {
 //i18n:use opensheet.tab.*
 //i18n:use opensheet.check.*
 func (h *OpensheetHandler) view(sc ProjectScope, form *templates.OpensheetForm) (templates.OpensheetView, error) {
-	v := templates.OpensheetView{ProjectSlug: sc.project.Slug, CanManage: h.canManage(sc)}
+	v := templates.OpensheetView{ProjectSlug: sc.project.Slug, CanManage: h.CanManage(sc)}
 	for _, tab := range opensheetsync.Contract() {
 		v.Tabs = append(v.Tabs, templates.OpensheetTab{
 			LabelKey: "opensheet.tab." + string(tab.Entity), Slug: tab.DefaultSlug, Columns: tab.Columns, HeaderTSV: tab.HeaderTSV(),
@@ -247,14 +247,6 @@ func (h *OpensheetHandler) view(sc ProjectScope, form *templates.OpensheetForm) 
 		v.Form = *form
 	}
 	return v, nil
-}
-
-func (h *OpensheetHandler) canManage(sc ProjectScope) bool {
-	ok, err := h.Orgs.IsManager(sc.req.Context(), sc.org.ID, sc.principal.UserID)
-	if err != nil {
-		h.LogErr("web opensheet: role", err)
-	}
-	return ok
 }
 
 func formOf(s opensheetsync.Settings) templates.OpensheetForm {

@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -204,6 +205,61 @@ func (f *Transaction) LastCategoryForNote(_ context.Context, orgID, projectID uu
 		return uuid.Nil, false, nil
 	}
 	return *best.CategoryID, true, nil
+}
+
+// TopCategories counts every stored row. NOTE: it deliberately does not filter by org or project, so a service scope test cannot pass vacuously.
+func (f *Transaction) TopCategories(_ context.Context, _, _ uuid.UUID, since time.Time, limit int) ([]transaction.CategoryCount, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	counts := map[uuid.UUID]int{}
+	for _, t := range f.data {
+		if t.CategoryID == nil || t.OccurredAt.Before(since) {
+			continue
+		}
+		counts[*t.CategoryID]++
+	}
+	out := make([]transaction.CategoryCount, 0, len(counts))
+	for id, n := range counts {
+		out = append(out, transaction.CategoryCount{CategoryID: id, Count: n})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Count != out[j].Count {
+			return out[i].Count > out[j].Count
+		}
+		return out[i].CategoryID.String() < out[j].CategoryID.String()
+	})
+	if len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
+}
+
+// RecentByCategory reads every stored row of the category. NOTE: it deliberately does not filter by org or project, so a service scope test cannot pass vacuously.
+func (f *Transaction) RecentByCategory(_ context.Context, _, _, categoryID uuid.UUID, limit int) ([]transaction.RecentEntry, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	rows := make([]*transaction.Transaction, 0, len(f.data))
+	for _, t := range f.data {
+		if t.CategoryID != nil && *t.CategoryID == categoryID {
+			rows = append(rows, t)
+		}
+	}
+	sort.Slice(rows, func(i, j int) bool { return keysetAfter(rows[i], rows[j]) })
+	type key struct {
+		note  string
+		minor int64
+	}
+	seen := map[key]bool{}
+	out := []transaction.RecentEntry{}
+	for _, t := range rows {
+		k := key{transaction.NormalizeNote(t.Note), t.Amount.Minor}
+		if seen[k] || len(out) == limit {
+			continue
+		}
+		seen[k] = true
+		out = append(out, transaction.RecentEntry{Note: t.Note, Amount: t.Amount, WalletID: t.WalletID})
+	}
+	return out, nil
 }
 
 // LockWallet records the lock request. NOTE: it enforces nothing, so a test asserting serialization must assert on Locks rather than on observed behaviour.

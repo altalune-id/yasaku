@@ -3,28 +3,9 @@ package templates
 import (
 	"time"
 
-	"altalune.id/yasaku/civil"
 	"altalune.id/yasaku/internal/web"
 	"altalune.id/yasaku/internal/web/icons"
-	"altalune.id/yasaku/money"
 )
-
-// TxRow is one transaction line in the list.
-type TxRow struct {
-	ID           string
-	Kind         string
-	KindLabel    string
-	Amount       money.Amount
-	Inflow       bool
-	Note         string
-	CategoryName string
-	CategoryIcon string
-	WalletName   string
-	ToWalletName string
-	Day          civil.Date
-	OccurredAt   time.Time
-	Editable     bool
-}
 
 // TxFilter is one option in a filter select on the transactions page.
 type TxFilter struct {
@@ -54,18 +35,48 @@ type TransactionsView struct {
 	Kinds       []TxFilter
 	Categories  []TxFilter
 	Periods     []TxFilter
+	Toast       *TxToastView
 }
+
+// TxToastView is the toast a sheet save or a delete leaves for the next page; with Undo it carries the deleted entry's fields to record it again.
+type TxToastView struct {
+	ProjectSlug string
+	Message     string
+	Undo        bool
+	Return      string
+	Kind        string
+	Amount      string
+	WalletID    string
+	ToWalletID  string
+	CategoryID  string
+	Date        string
+	Note        string
+}
+
+// TxDetailView is one entry's detail; Return is the allowlisted page a delete goes back to, and PastDay labels Duplicate as "to today".
+type TxDetailView struct {
+	ProjectSlug string
+	Row         TxRow
+	RecordedAt  time.Time
+	UpdatedAt   time.Time
+	Locked      bool
+	PastDay     bool
+	Return      string
+}
+
+// TxAddDialogID is the add sheet's dialog id; any [data-dialog-open] opener with this id opens the sheet, and its href is the no-JS page.
+const TxAddDialogID = "tx-add-dialog"
 
 // TransactionList is the HTMX swap target every quick-add and filter request replaces.
 templ TransactionList(d web.LayoutData, v TxListView) {
-	<div id="tx-list" class="mt-4 overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+	<div id="tx-list" class="overflow-x-clip rounded-box border border-base-300 bg-base-100">
 		if v.Error != "" {
 			<div data-tx-error="1" class="px-4 pb-1 pt-3">
 				@ErrorBanner(d, v.Error, v.ErrorCode)
 			</div>
 		}
 		if len(v.Rows) == 0 {
-			<p class="px-4 py-10 text-center text-sm text-muted-foreground">{ d.Tr("tx.empty") }</p>
+			<p class="px-4 py-10 text-center text-sm text-base-content/70">{ d.Tr("tx.empty") }</p>
 		}
 		@TxRowsPage(d, v)
 	</div>
@@ -74,7 +85,7 @@ templ TransactionList(d web.LayoutData, v TxListView) {
 // TxRowsPage is one page of rows plus its load-more button; the button swaps itself for the next page.
 templ TxRowsPage(d web.LayoutData, v TxListView) {
 	for _, row := range v.Rows {
-		@txRow(d, v.ProjectSlug, row)
+		@TxRowItem(d, v.ProjectSlug, row)
 	}
 	if v.NextQuery != "" {
 		<button
@@ -85,54 +96,17 @@ templ TxRowsPage(d web.LayoutData, v TxListView) {
 			hx-swap="outerHTML"
 			hx-status:4xx="target:#hx-error swap:innerHTML"
 			hx-status:5xx="target:#hx-error swap:innerHTML"
-			class="w-full border-t border-border/60 px-4 py-3 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+			class="btn btn-ghost btn-block rounded-none border-t border-base-300"
 		>
 			{ d.Tr("tx.load_more") }
 		</button>
 	}
 }
 
-templ txRow(d web.LayoutData, projectSlug string, row TxRow) {
-	if row.Editable {
-		<div class="relative flex items-center gap-3 border-t border-border/60 px-4 py-3 first:border-t-0 hover:bg-muted/50 has-[a:focus-visible]:bg-muted/50">
-			@txRowBody(d, row, d.ProjectPath(projectSlug, "/transactions/"+row.ID+"/edit"))
-		</div>
-	} else {
-		<div class="flex items-center gap-3 border-t border-border/60 px-4 py-3 first:border-t-0">
-			@txRowBody(d, row, "")
-		</div>
-	}
-}
-
-templ txRowBody(d web.LayoutData, row TxRow, href string) {
-	<span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
-		@icons.Icon(txRowIcon(row), "h-4 w-4")
-	</span>
-	<span class="min-w-0 flex-1">
-		if href != "" {
-			<a
-				href={ templ.SafeURL(href) }
-				class="block truncate text-sm font-medium text-foreground after:absolute after:inset-0 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-			>{ txRowTitle(d, row) }</a>
-		} else {
-			<span class="block truncate text-sm font-medium text-foreground">{ txRowTitle(d, row) }</span>
-		}
-		<span class="block truncate text-xs text-muted-foreground">
-			@LedgerDate(d, row.Day, &row.OccurredAt, Compact())
-			if meta := txRowMeta(row); meta != "" {
-				{ " · " + meta }
-			}
-		</span>
-	</span>
-	<span class={ "shrink-0 text-sm font-semibold tabular-nums", txAmountClass(row) }>
-		{ SignedMoney(d, txSignedAmount(row)) }
-	</span>
-}
-
 templ TransactionsPage(d web.LayoutData, v TransactionsView) {
 	<section class="flex flex-col gap-4">
 		@PageHeader(d.Tr("tx.title"), v.ProjectName) {
-			@AppButton(d.ProjectPath(v.ProjectSlug, "/transactions/new"), "btn-primary", templ.Attributes{"data-dialog-open": "tx-add-dialog"}) {
+			@AppButton(d.ProjectPath(v.ProjectSlug, "/transactions/new"), "btn-primary", templ.Attributes{"data-dialog-open": TxAddDialogID, "data-dialog-src": d.ProjectPath(v.ProjectSlug, "/transactions/new")}) {
 				@icons.Icon("plus", "size-4")
 				{ d.Tr("tx.add") }
 			}
@@ -156,7 +130,7 @@ templ TransactionsPage(d web.LayoutData, v TransactionsView) {
 				value={ v.Search }
 				placeholder={ d.Tr("tx.search") }
 				aria-label={ d.Tr("tx.search") }
-				class={ txInputClass, "col-span-2 sm:col-span-1" }
+				class="input w-full col-span-2 sm:col-span-1"
 			/>
 			@txFilterSelect(d, "period", d.Tr("tx.period"), v.Periods)
 			@txFilterSelect(d, "wallet", d.Tr("tx.wallet"), v.Wallets)
@@ -164,12 +138,55 @@ templ TransactionsPage(d web.LayoutData, v TransactionsView) {
 			@txFilterSelect(d, "category", d.Tr("tx.category"), v.Categories)
 		</form>
 		@TransactionList(d, v.List)
-		@ToastHost()
+		@TxRowAssets(d)
+		@TxToastHost(d, v.Toast)
 	</section>
 }
 
+// TxToastHost is the ToastHost with the toast a sheet save or delete left, if any; render it in place of ToastHost on any page a sheet or delete returns to.
+templ TxToastHost(d web.LayoutData, u *TxToastView) {
+	if u == nil {
+		@ToastHost()
+	} else {
+		<div id="toast" class="toast toast-center toast-bottom z-50 max-lg:mb-20">
+			@txToastAlert(d, *u)
+		</div>
+	}
+	<script src={ d.Static("undo.js") } nonce={ d.Nonce } defer></script>
+}
+
+templ txToastAlert(d web.LayoutData, u TxToastView) {
+	if !u.Undo {
+		<p role="status" class="alert alert-info" data-undo-toast data-undo-ms="5000">{ u.Message }</p>
+	} else {
+		@txUndoAlert(d, u)
+	}
+}
+
+templ txUndoAlert(d web.LayoutData, u TxToastView) {
+	<div role="status" class="alert" data-undo-toast data-undo-ms="8000">
+		@icons.Icon("trash-2", "size-5 shrink-0")
+		<span class="min-w-0">{ u.Message }</span>
+		<form method="post" action={ templ.SafeURL(d.ProjectPath(u.ProjectSlug, "/transactions")) }>
+			<input type="hidden" name="kind" value={ u.Kind }/>
+			<input type="hidden" name="amount" value={ u.Amount }/>
+			<input type="hidden" name="wallet_id" value={ u.WalletID }/>
+			if u.ToWalletID != "" {
+				<input type="hidden" name="to_wallet_id" value={ u.ToWalletID }/>
+			}
+			if u.CategoryID != "" {
+				<input type="hidden" name="category_id" value={ u.CategoryID }/>
+			}
+			<input type="hidden" name="date" value={ u.Date }/>
+			<input type="hidden" name="note" value={ u.Note }/>
+			<input type="hidden" name="return" value={ u.Return }/>
+			<button type="submit" class="btn btn-sm max-lg:btn-md">{ d.Tr("tx.undo") }</button>
+		</form>
+	</div>
+}
+
 templ txFilterSelect(d web.LayoutData, name, label string, opts []TxFilter) {
-	<select name={ name } aria-label={ label } class={ txSelectClass }>
+	<select name={ name } aria-label={ label } class="select w-full">
 		<option value="">{ label + " · " + d.Tr("tx.filter_all") }</option>
 		for _, o := range opts {
 			<option value={ o.Value } selected?={ o.Selected }>{ o.Label }</option>
@@ -178,21 +195,29 @@ templ txFilterSelect(d web.LayoutData, name, label string, opts []TxFilter) {
 }
 
 templ TransactionsLayout(d web.LayoutData, v TransactionsView) {
-	@Layout(web.WithDialogs(web.WithContent(d, TransactionsPage(d, v)), txAddDialog(d, v)))
+	@Layout(web.WithDialogs(web.WithContent(d, TransactionsPage(d, v)), txPageDialogs(d, v)))
 }
 
-templ txAddDialog(d web.LayoutData, v TransactionsView) {
-	@AppModal(d, "tx-add-dialog", d.Tr("tx.add")) {
-		@TransactionForm(d, txInDialog(v.Form))
+templ txPageDialogs(d web.LayoutData, v TransactionsView) {
+	@TxSheet(d, v.Form)
+	@TxRowActions(d)
+}
+
+// TxSheet is the add sheet in the dialog host; render it through LayoutData.Dialogs on any page whose openers target TxAddDialogID.
+templ TxSheet(d web.LayoutData, v TxFormView) {
+	@AppSheet(TxAddDialogID, d.Tr("tx.add"), "sm:max-w-md lg:max-w-3xl") {
+		@TransactionForm(d, txInDialog(v))
 	}
 }
 
 templ TransactionFormPage(d web.LayoutData, v TxFormView, title string) {
-	<section class="flex flex-col gap-4">
-		<h1 class="text-2xl font-semibold tracking-tight text-foreground">{ title }</h1>
-		@TransactionForm(d, txStandalone(v))
+	<section class="mx-auto flex w-full max-w-4xl flex-col gap-4">
+		@PageHeader(title, "")
+		<div class="rounded-box border border-base-300 bg-base-100">
+			@TransactionForm(d, txStandalone(v))
+		</div>
 		if !v.RecordedAt.IsZero() {
-			<p class="text-center text-xs text-muted-foreground">
+			<p class="text-center text-xs text-base-content/70">
 				{ d.Tr("tx.recorded_label") }
 				@DateTime(d, v.RecordedAt)
 				if v.UpdatedAt.After(v.RecordedAt) {
@@ -202,37 +227,122 @@ templ TransactionFormPage(d web.LayoutData, v TxFormView, title string) {
 			</p>
 		}
 		if v.ID != "" {
-			<form
-				method="post"
-				action={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/transactions/"+v.ID+"/delete")) }
-				data-tx-confirm={ d.Tr("tx.confirm_delete") }
-			>
-				<button type="submit" class="w-full rounded-lg border border-border px-4 py-2.5 text-sm font-medium text-destructive hover:bg-destructive/10">
+			<form method="post" action={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/transactions/"+v.ID+"/delete")) }>
+				<button type="submit" class="btn btn-ghost btn-block text-error">
+					@icons.Icon("trash-2", "size-4")
 					{ d.Tr("tx.delete") }
 				</button>
 			</form>
-			@txConfirmAssets(d.Nonce)
 		}
-		<a
-			href={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/transactions")) }
-			class="text-center text-sm text-muted-foreground hover:text-foreground"
-		>
+		@AppButton(d.ProjectPath(v.ProjectSlug, "/transactions"), "btn-ghost self-center", nil) {
 			{ d.Tr("tx.title") }
-		</a>
+		}
 		@ToastHost()
 	</section>
 }
 
-templ txConfirmAssets(nonce string) {
-	<script nonce={ nonce }>
-	document.querySelectorAll("form[data-tx-confirm]").forEach(function (f) {
-		if (f.dataset.txConfirmWired === "1") return;
-		f.dataset.txConfirmWired = "1";
-		f.addEventListener("submit", function (e) {
-			if (!window.confirm(f.dataset.txConfirm)) e.preventDefault();
-		});
-	});
-	</script>
+templ TransactionDetailPage(d web.LayoutData, v TxDetailView) {
+	<section class="mx-auto flex w-full max-w-md flex-col gap-4">
+		@PageHeader(d.Tr("tx.detail"), "")
+		<div class="rounded-box border border-base-300 bg-base-100 p-4 sm:p-6">
+			@txDetailBody(d, v)
+			<p class="mt-4 text-center text-xs text-base-content/70">
+				{ d.Tr("tx.recorded_label") }
+				@DateTime(d, v.RecordedAt)
+				if v.UpdatedAt.After(v.RecordedAt) {
+					{ " · " + d.Tr("tx.updated_label") }
+					@DateTime(d, v.UpdatedAt)
+				}
+			</p>
+		</div>
+		@AppButton(d.ProjectPath(v.ProjectSlug, "/transactions"), "btn-ghost self-center", nil) {
+			{ d.Tr("tx.title") }
+		}
+	</section>
+}
+
+// TxDetailDrawer is one entry's detail as the end-side drawer the list rows load into the dialog host.
+templ TxDetailDrawer(d web.LayoutData, v TxDetailView) {
+	@AppDrawer(d, TxDetailDialogID(v.Row.ID), d.Tr("tx.detail")) {
+		@txDetailBody(d, v)
+	}
+}
+
+templ txDetailBody(d web.LayoutData, v TxDetailView) {
+	<div class="flex min-w-0 items-center gap-3">
+		<span class="grid size-12 shrink-0 place-items-center rounded-full bg-base-200 text-primary">
+			@icons.Icon(txRowIcon(v.Row), "size-6")
+		</span>
+		<div class="min-w-0">
+			<p class="truncate text-lg font-semibold">{ txRowTitle(d, v.Row) }</p>
+			<p class="text-sm text-base-content/70">{ v.Row.KindLabel }</p>
+		</div>
+	</div>
+	<p class={ "my-4 min-w-0 text-3xl font-extrabold tabular-nums break-words", txAmountClass(v.Row) }>{ SignedMoney(d, txSignedAmount(v.Row)) }</p>
+	@KeyValue(d, KeyValueProps{Dense: true, Items: txDetailItems(d, v.Row)})
+	if v.Locked {
+		<div role="status" class="alert alert-soft alert-info mt-4 text-sm">
+			@icons.Icon("lock", "size-5 shrink-0")
+			<span>{ d.Tr("tx.locked") }</span>
+		</div>
+	}
+	<div class="mt-6 grid grid-cols-1 gap-2">
+		if v.Locked {
+			<button type="button" class="btn btn-primary" disabled>
+				@icons.Icon("pencil", "size-4")
+				{ d.Tr("tx.edit_action") }
+			</button>
+		} else {
+			@AppButton(d.ProjectPath(v.ProjectSlug, "/transactions/"+v.Row.ID+"/edit"), "btn-primary", nil) {
+				@icons.Icon("pencil", "size-4")
+				{ d.Tr("tx.edit_action") }
+			}
+		}
+		<div class="grid grid-cols-2 gap-2">
+			@AppButton(d.ProjectPath(v.ProjectSlug, "/transactions/new?from="+v.Row.ID), "", nil) {
+				@icons.Icon("copy", "size-4")
+				if v.PastDay {
+					{ d.Tr("tx.duplicate_today") }
+				} else {
+					{ d.Tr("tx.duplicate") }
+				}
+			}
+			<form method="post" action={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/transactions/"+v.Row.ID+"/delete")) } class="grid">
+				if v.Return != "" {
+					<input type="hidden" name="return" value={ v.Return }/>
+				}
+				<button type="submit" class="btn btn-ghost text-error" disabled?={ v.Locked }>
+					@icons.Icon("trash-2", "size-4")
+					{ d.Tr("tx.delete") }
+				</button>
+			</form>
+		</div>
+	</div>
+}
+
+templ TransactionDetailLayout(d web.LayoutData, v TxDetailView) {
+	@Layout(web.WithContent(d, TransactionDetailPage(d, v)))
+}
+
+func txDetailItems(d web.LayoutData, row TxRow) []KeyValueItem {
+	items := []KeyValueItem{
+		{Label: d.Tr("tx.category"), Value: row.CategoryName},
+		{Label: d.Tr("tx.wallet"), Value: row.WalletName},
+	}
+	if row.Kind == "transfer" {
+		items = []KeyValueItem{
+			{Label: d.Tr("tx.from_wallet"), Value: row.WalletName},
+			{Label: d.Tr("tx.to_wallet"), Value: row.ToWalletName},
+		}
+	}
+	note := row.Note
+	if note == "" {
+		note = d.Tr("tx.note_none")
+	}
+	return append(items,
+		KeyValueItem{Label: d.Tr("tx.date"), Node: LedgerDate(d, row.Day, &row.OccurredAt, Long())},
+		KeyValueItem{Label: d.Tr("tx.note"), Value: note},
+	)
 }
 
 templ TransactionFormLayout(d web.LayoutData, v TxFormView, title string) {
@@ -247,72 +357,4 @@ func txStandalone(v TxFormView) TxFormView {
 func txInDialog(v TxFormView) TxFormView {
 	v.InDialog = true
 	return v
-}
-
-func txSignedAmount(row TxRow) money.Amount {
-	if row.Inflow {
-		return row.Amount
-	}
-	return row.Amount.Neg()
-}
-
-func txAmountClass(row TxRow) string {
-	if row.Inflow {
-		return "text-success"
-	}
-	return "text-foreground"
-}
-
-func txRowIcon(row TxRow) string {
-	switch row.Kind {
-	case "transfer":
-		return "arrow-left-right"
-	case "income":
-		return "banknote"
-	case "opening", "adjustment_in", "adjustment_out":
-		return "wallet"
-	}
-	if row.CategoryIcon != "" {
-		return row.CategoryIcon
-	}
-	return "receipt"
-}
-
-func txRowTitle(d web.LayoutData, row TxRow) string {
-	if row.Note != "" {
-		return row.Note
-	}
-	if row.CategoryName != "" {
-		return row.CategoryName
-	}
-	return row.KindLabel
-}
-
-func txRowMeta(row TxRow) string {
-	parts := make([]string, 0, 3)
-	if row.WalletName != "" {
-		if row.ToWalletName != "" {
-			parts = append(parts, row.WalletName+" → "+row.ToWalletName)
-		} else {
-			parts = append(parts, row.WalletName)
-		}
-	}
-	if row.CategoryName != "" && row.CategoryName != row.Note {
-		parts = append(parts, row.CategoryName)
-	}
-	return txJoinMeta(parts)
-}
-
-func txJoinMeta(parts []string) string {
-	out := ""
-	for _, p := range parts {
-		if p == "" {
-			continue
-		}
-		if out != "" {
-			out += " · "
-		}
-		out += p
-	}
-	return out
 }

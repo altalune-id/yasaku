@@ -47,6 +47,7 @@ type periodFixture struct {
 	Projects  *project.Service
 	Ledgers   *ledger.Service
 	Wallets   *wallet.Service
+	Cats      *category.Service
 	Periods   *period.Service
 	Reports   *report.Service
 	Txs       *transaction.Service
@@ -66,12 +67,13 @@ func (a periodSnapshotter) Snapshot(ctx context.Context, orgID, projectID, perio
 		return period.Snapshot{}, err
 	}
 	snap := period.Snapshot{
-		Currency:   sum.Currency,
-		Income:     sum.Income.Minor,
-		Expense:    sum.Expense.Minor,
-		Net:        sum.Net.Minor,
-		TxCount:    sum.TxCount,
-		ComputedAt: time.Now().UTC(),
+		Currency:    sum.Currency,
+		Income:      sum.Income.Minor,
+		Expense:     sum.Expense.Minor,
+		Net:         sum.Net.Minor,
+		Adjustments: sum.Adjustments.Minor,
+		TxCount:     sum.TxCount,
+		ComputedAt:  time.Now().UTC(),
 	}
 	for _, w := range sum.Wallets {
 		snap.Wallets = append(snap.Wallets, period.WalletClosing{WalletID: w.WalletID, Name: w.Name, Closing: w.Closing.Minor})
@@ -188,6 +190,7 @@ func newPeriodFixture(t *testing.T, caps capabilities.Capabilities) *periodFixtu
 		Projects: projects,
 		Ledgers:  ledgers,
 		Wallets:  wallets,
+		Cats:     cats,
 		Periods:  periods,
 		Reports:  reports,
 		Txs:      txs,
@@ -223,6 +226,7 @@ func (f *periodFixture) mux(t *testing.T) *http.ServeMux {
 	t.Helper()
 	mux := http.NewServeMux()
 	handlers.NewPeriodHandler(f.Deps, f.Projects, f.Periods, f.Reports, f.Ledgers).Register(mux)
+	handlers.NewTxCategoryHandler(f.Deps, f.Projects, f.Cats, f.Periods, f.Reports).Register(mux)
 	handlers.NewSettingsHandler(f.Deps, f.Projects, f.Ledgers, []string{"yasaku:read", "wallets:read"}).Register(mux)
 	return mux
 }
@@ -300,12 +304,41 @@ func TestPeriods_GetClose_PreviewShowsSeededIncomeAndExpense(t *testing.T) {
 	rec := f.do(t, http.MethodGet, f.path("/periods/"+cur.ID.String()+"/close"), nil)
 	require.Equal(t, http.StatusOK, rec.Code)
 	body := rec.Body.String()
-	assert.Contains(t, body, "Rp5,000", "income of 500000 minor IDR")
-	assert.Contains(t, body, "Rp2,000", "expense of 200000 minor IDR")
-	assert.Contains(t, body, "+Rp3,000", "net")
+	assert.Contains(t, body, "IDR\u00a05,000", "income of 500000 minor IDR")
+	assert.Contains(t, body, "IDR\u00a02,000", "expense of 200000 minor IDR")
+	assert.Contains(t, body, "+IDR\u00a03,000", "net")
 	assert.Contains(t, body, `id="close-preview"`)
 	assert.Contains(t, body, `name="end_date"`)
 	assert.Contains(t, body, f.today(t).String())
+}
+
+func TestPeriods_BalanceFixesShowBesideMoneyInAndOut(t *testing.T) {
+	f := newPeriodFixture(t, defaultCaps())
+	cur := f.seedBooks(t)
+	ctx := f.scoped(t)
+	ws, err := f.Wallets.List(ctx, wallet.ListOpts{})
+	require.NoError(t, err)
+	_, err = f.Txs.Adjust(ctx, ws[0].ID, money.New(250_000, money.IDR), time.Now(), f.Principal.UserID)
+	require.NoError(t, err)
+
+	for _, path := range []string{"/periods", "/periods/" + cur.ID.String() + "/close"} {
+		rec := f.do(t, http.MethodGet, f.path(path), nil)
+		require.Equal(t, http.StatusOK, rec.Code, path)
+		body := rec.Body.String()
+		assert.Contains(t, body, "data-balance-fixes", path)
+		if path == "/periods" {
+			assert.GreaterOrEqual(t, strings.Count(body, "data-balance-fixes"), 2, "both the period card and the close dialog show the line")
+		}
+		assert.Contains(t, body, "−IDR\u00a0500", "%s: the -500 correction shows as its own line", path)
+		assert.Contains(t, body, "IDR\u00a02,000", "%s: money out stays the real expense only", path)
+	}
+}
+
+func TestPeriods_NoBalanceFixesLineWithoutCorrections(t *testing.T) {
+	f := newPeriodFixture(t, defaultCaps())
+	f.seedBooks(t)
+	rec := f.do(t, http.MethodGet, f.path("/periods"), nil)
+	assert.NotContains(t, rec.Body.String(), "data-balance-fixes")
 }
 
 func TestPeriods_GetClose_HTMXReturnsOnlyThePreviewFragment(t *testing.T) {
@@ -326,7 +359,7 @@ func TestPeriods_GetClose_HTMXReturnsOnlyThePreviewFragment(t *testing.T) {
 	body := rec.Body.String()
 	assert.Contains(t, body, `id="close-preview"`)
 	assert.NotContains(t, body, "<html", "the fragment must not carry the page chrome")
-	assert.Contains(t, body, "Rp5,000")
+	assert.Contains(t, body, "IDR\u00a05,000")
 }
 
 func TestPeriods_PostClose_ClosesWritesClosingAndOpensTheNextPeriod(t *testing.T) {
@@ -573,9 +606,9 @@ func TestPeriods_GetPeriods_UnreadableTotalsAreNotRenderedAsZero(t *testing.T) {
 
 	rec := f.do(t, http.MethodGet, f.path("/periods"), nil)
 	require.Equal(t, http.StatusOK, rec.Code)
-	body := rec.Body.String()
+	body := closeDialogRe.ReplaceAllString(rec.Body.String(), "")
 	assert.Contains(t, body, "period.totals_unavailable")
-	assert.NotContains(t, body, "period.snapshot_income",
+	assert.NotContains(t, body, "overview.money_in",
 		"an unreadable summary must not render the current period as zero money")
 }
 
@@ -655,4 +688,21 @@ func (f *periodFixture) siblingPeriod(t *testing.T) *period.Period {
 	require.NoError(t, err)
 	require.NoError(t, f.PerStore.Save(f.siblingScope(t), p))
 	return p
+}
+
+func TestPeriods_GetPeriods_DatesRenderAsLedgerDates(t *testing.T) {
+	f := newPeriodFixture(t, defaultCaps())
+	ctx := f.scoped(t)
+	f.seedClosed(ctx, t, civil.Date{Year: 2026, Month: 8, Day: 1}, civil.Date{Year: 2026, Month: 8, Day: 31})
+	current, err := period.New(f.Org.ID, f.Project.ID, civil.Date{Year: 2026, Month: 9, Day: 1}, "Sep 2026")
+	require.NoError(t, err)
+	require.NoError(t, f.PerStore.Save(ctx, current))
+
+	rec := f.do(t, http.MethodGet, f.path("/periods"), nil)
+	require.Equal(t, http.StatusOK, rec.Code)
+	body := closeDialogRe.ReplaceAllString(rec.Body.String(), "")
+	for _, day := range []string{"2026-09-01", "2026-08-01", "2026-08-31"} {
+		assert.Contains(t, body, `<time datetime="`+day+`" data-ledger-date`)
+		assert.NotContains(t, body, ">"+day+"<", "an ISO date is shown as text")
+	}
 }

@@ -97,6 +97,13 @@ func TestLedgerDate_CompactDropsTheYear(t *testing.T) {
 	requireContains(t, got, `data-date-style="compact"`, `>1 Oct</time>`)
 }
 
+func TestLedgerDate_WeekdayLeadsAndDropsTheYear(t *testing.T) {
+	day := civil.Date{Year: 2026, Month: time.November, Day: 15}
+	got := render(t, LedgerDate(web.LayoutData{}, day, nil, Weekday()))
+
+	requireContains(t, got, `data-date-style="weekday"`, `>Sun, 15 Nov</time>`)
+}
+
 func TestTimeZoneHints_RenderHiddenWithTheLedgerZone(t *testing.T) {
 	d := web.LayoutData{TimeZone: jakarta(t), Nonce: "n0nce"}
 

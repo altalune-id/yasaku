@@ -17,11 +17,11 @@ func TestMoney(t *testing.T) {
 		amount money.Amount
 		want   string
 	}{
-		{"idr en-US", "en-US", money.New(4000000, money.IDR), "Rp40,000"},
-		{"idr id-ID", "id-ID", money.New(4000000, money.IDR), "Rp40.000"},
-		{"usd id-ID", "id-ID", money.New(123456, "USD"), "$1.234,56"},
-		{"empty locale falls back", "", money.New(4000000, money.IDR), "Rp40,000"},
-		{"unknown but well-formed locale", "not-a-locale", money.New(4000000, money.IDR), "Rp40,000"},
+		{"idr en-US", "en-US", money.New(4000000, money.IDR), "IDR\u00a040,000"},
+		{"idr id-ID", "id-ID", money.New(4000000, money.IDR), "Rp\u00a040.000"},
+		{"usd id-ID", "id-ID", money.New(123456, "USD"), "US$1.234,56"},
+		{"empty locale falls back", "", money.New(4000000, money.IDR), "IDR\u00a040,000"},
+		{"unknown but well-formed locale", "not-a-locale", money.New(4000000, money.IDR), "IDR\u00a040,000"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -61,9 +61,9 @@ func TestSignedMoney(t *testing.T) {
 		amount money.Amount
 		want   string
 	}{
-		{"inflow gets a plus", money.New(4000000, money.IDR), "+Rp40.000"},
-		{"outflow gets U+2212", money.New(-4000000, money.IDR), "−Rp40.000"},
-		{"zero stays bare", money.Zero(money.IDR), "Rp0"},
+		{"inflow gets a plus", money.New(4000000, money.IDR), "+Rp\u00a040.000"},
+		{"outflow gets U+2212", money.New(-4000000, money.IDR), "\u2212Rp\u00a040.000"},
+		{"zero stays bare", money.Zero(money.IDR), "Rp\u00a00"},
 	}
 	d := web.LayoutData{Locale: i18n.IdID}
 	for _, tt := range tests {

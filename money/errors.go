@@ -28,3 +28,15 @@ func IsParseError(err error) bool {
 	_, ok := errors.AsType[*ParseError](err)
 	return ok
 }
+
+// ParseError reasons.
+const (
+	ReasonEmpty           = "empty"
+	ReasonNegative        = "negative"
+	ReasonAmbiguous       = "ambiguous decimal separator"
+	ReasonNotNumber       = "not a number"
+	ReasonTooManyDecimals = "too many decimals"
+	ReasonNoDecimals      = "currency has no decimals"
+	ReasonExpression      = "expressions are not supported"
+	ReasonOverflow        = "overflow"
+)

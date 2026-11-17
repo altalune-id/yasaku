@@ -27,8 +27,12 @@ func TestNav_RailAndDockLoopOneTable(t *testing.T) {
 	inDock := 0
 	for _, it := range projectNav() {
 		href := `href="/orgs/acme/projects/home` + it.Path + `"`
-		if !strings.Contains(rail, href) && it.Show == nil {
+		inRail := strings.Contains(rail, href)
+		if !inRail && it.Show == nil && !it.MoreOnly {
 			t.Errorf("rail lacks %s", href)
+		}
+		if inRail && it.MoreOnly {
+			t.Errorf("rail has %s but it lives only on More", href)
 		}
 		if it.InDock {
 			inDock++
@@ -85,6 +89,24 @@ func TestShell_MechanismFilesAreAppNeutral(t *testing.T) {
 		src := strings.ToLower(strings.ReplaceAll(readSource(t, root, f), "altalune.id/"+app+"/", ""))
 		if strings.Contains(src, app) {
 			t.Errorf("%s names the app; move app data into a *_%s file", f, app)
+		}
+	}
+}
+
+func TestRail_FollowsThePrototypeOrder(t *testing.T) {
+	out := renderShell(t, &web.ActiveProject{Slug: "home", Name: "Home"}, web.NavScopeProject)
+	rail := out[strings.Index(out, "<aside"):strings.Index(out, "</aside>")]
+	at := -1
+	for _, want := range []string{`data-shortcut="n"`, `>N</kbd>`, "/overview", "/reports", "/wallets", `menu-title`, "/categories", "/periods", "/settings", `form="rail-tips-reset"`} {
+		i := strings.Index(rail, want)
+		if i <= at {
+			t.Fatalf("rail: %q missing or out of order", want)
+		}
+		at = i
+	}
+	for _, gone := range []string{"/projects/home/transactions\"", "/orgs/acme/members", "/projects/home/apikeys"} {
+		if strings.Contains(rail, gone) {
+			t.Errorf("rail still links %s; the prototype keeps it on Home, More or the switcher", gone)
 		}
 	}
 }

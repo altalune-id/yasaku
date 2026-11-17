@@ -9,6 +9,7 @@
 #   htmx        v4.0.0  (Sep 2026)
 #   easymde     v2.21.0 (MIT; CodeMirror bundled)
 #   echarts     v6.1.0  (yasaku charts)
+#   cally       v0.9.2  (MIT; date picker web component, daisyUI calendar)
 #   daisyui     v5.8.0  (daisyui.mjs + daisyui-theme.mjs, build-only, not embedded)
 #   tailwind    v4 CLI standalone binary (build tool, not embedded, not committed)
 set -euo pipefail
@@ -33,6 +34,7 @@ mkdir -p "$STATIC" "$UI"
 HTMX_VERSION="${HTMX_VERSION:-4.0.0}"
 EASYMDE_VERSION="${EASYMDE_VERSION:-2.21.0}"
 ECHARTS_VERSION="${ECHARTS_VERSION:-6.1.0}"
+CALLY_VERSION="${CALLY_VERSION:-0.9.2}"
 DAISYUI_VERSION="${DAISYUI_VERSION:-5.8.0}"
 TAILWIND_VERSION="${TAILWIND_VERSION:-v4.3.5}"
 FIGTREE_VERSION="${FIGTREE_VERSION:-5.3.0}"
@@ -44,6 +46,7 @@ VENDORED=(
 	"easymde.min.js	2c06bddfd0c89176db08ccf9d42e2beaa9b4f1a4ff8fb2ec0bf1bed25ce08e05	https://cdn.jsdelivr.net/npm/easymde@${EASYMDE_VERSION}/dist/easymde.min.js"
 	"easymde.min.css	6eee36340432776d682e7372ec4a7eb29be4fdb3ffada32c0bfa5e31a5ef34a2	https://cdn.jsdelivr.net/npm/easymde@${EASYMDE_VERSION}/dist/easymde.min.css"
 	"echarts.min.js	b66b25aeb4df84e33199dc21694014d336d222cbd9deb0e5a7c14bd6aa0d0fd0	https://cdn.jsdelivr.net/npm/echarts@${ECHARTS_VERSION}/dist/echarts.min.js"
+	"cally.js	4dcba6a3b8ec63b66ff2fbfc6cf47b7dee1eb4896eac89fe7487d82e28e15870	https://cdn.jsdelivr.net/npm/cally@${CALLY_VERSION}/dist/cally.js"
 	"figtree-latin-wght-normal.woff2	4ba7d3d096695818fe0686be4f1e82c6b05134e18a22260336130335027462dd	https://cdn.jsdelivr.net/npm/@fontsource-variable/figtree@${FIGTREE_VERSION}/files/figtree-latin-wght-normal.woff2"
 	"figtree-latin-ext-wght-normal.woff2	bf7828e2c258cffcfa50a048ee388a36b95bc16b452e8d36fa797635dbe15965	https://cdn.jsdelivr.net/npm/@fontsource-variable/figtree@${FIGTREE_VERSION}/files/figtree-latin-ext-wght-normal.woff2"
 	"ibm-plex-mono-latin-400-normal.woff2	08949f728dc52d528e69b1667d15c89a5686a4ee9a296ff90983985f99c380f7	https://cdn.jsdelivr.net/npm/@fontsource/ibm-plex-mono@${PLEX_MONO_VERSION}/files/ibm-plex-mono-latin-400-normal.woff2"

@@ -187,14 +187,6 @@ func (h *APIKeyHandler) changeInto(w http.ResponseWriter, r *http.Request, write
 	write(nil, "", "")
 }
 
-func (h *APIKeyHandler) canManage(r *http.Request, orgID, userID uuid.UUID) bool {
-	ok, err := h.Orgs.IsManager(r.Context(), orgID, userID)
-	if err != nil {
-		h.LogErr("web apikey: role", err)
-	}
-	return ok
-}
-
 func baseView(base string, minted *templates.APIKeyMinted, errKind, code string) templates.APIKeysView {
 	return templates.APIKeysView{
 		Base:      base,
@@ -213,7 +205,7 @@ func (h *APIKeyHandler) projectView(sc ProjectScope, minted *templates.APIKeyMin
 	}
 	v := baseView(h.ProjectURL(sc, "/apikeys"), minted, errKind, code)
 	v.Scopes = projectScopes(v.Scopes)
-	v.CanManage = h.canManage(sc.req, sc.org.ID, sc.principal.UserID)
+	v.CanManage = h.CanManage(sc)
 	for _, k := range items {
 		v.Items = append(v.Items, apiKeyRow(k, v.Base, nil))
 	}
@@ -231,7 +223,7 @@ func (h *APIKeyHandler) orgView(sc OrgScope, minted *templates.APIKeyMinted, err
 	}
 	v := baseView(web.Path(h.Cfg.HTTP.BasePath, "/orgs/"+sc.org.Slug+"/apikeys"), minted, errKind, code)
 	v.OrgLevel, v.HasGrant, v.Projects = true, true, options
-	v.CanManage = h.canManage(sc.req, sc.org.ID, sc.principal.UserID)
+	v.CanManage = h.CanManageOrg(sc)
 	for _, k := range items {
 		v.Items = append(v.Items, apiKeyRow(k, v.Base, options))
 	}

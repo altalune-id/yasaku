@@ -48,3 +48,24 @@ func TestAppModalRendersANativeDialogWithLabel(t *testing.T) {
 		t.Fatalf("AppModal() must carry no inline handler: %q", got)
 	}
 }
+
+func TestAppModalSizedSetsTheBoxWidthAndAppModalKeepsItsDefault(t *testing.T) {
+	sized := renderKit(t, AppModalSized(web.LayoutData{}, "wide", "Wide", "sm:max-w-xl lg:max-w-3xl"), "<p>x</p>")
+	requireContainsAll(t, sized, `<dialog id="wide" class="modal modal-bottom sm:modal-middle"`, `sm:max-w-xl lg:max-w-3xl`, `data-dialog-close`, "<p>x</p>")
+	plain := renderKit(t, AppModal(web.LayoutData{}, "plain", "Plain"), "")
+	requireContainsAll(t, plain, `sm:p-6 sm:max-w-xl"`)
+	if strings.Contains(plain, "lg:max-w-3xl") {
+		t.Fatalf("AppModal must keep its default width: %q", plain)
+	}
+}
+
+func TestAppDrawerIsABottomSheetOnPhonesAndAnEndSidePanelOnDesktop(t *testing.T) {
+	got := renderKit(t, AppDrawer(web.LayoutData{}, "side", "Side"), "<p>x</p>")
+	requireContainsAll(t, got,
+		`<dialog id="side" class="modal modal-bottom lg:modal-end"`,
+		`aria-labelledby="side-title"`, `id="side-title"`, "Side", "<p>x</p>", `lg:w-104`)
+	btn := dialogCloseButton.FindString(got)
+	if btn == "" || !strings.Contains(btn, `aria-label="`) {
+		t.Fatalf("AppDrawer() = %q, want a named [data-dialog-close] button", got)
+	}
+}

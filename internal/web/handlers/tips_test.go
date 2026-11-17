@@ -154,3 +154,49 @@ func TestTips_RouteIsPostOnly(t *testing.T) {
 	rec := postTip(t, f, httptest.NewRequest(http.MethodGet, "/tips/"+flowTip(t).ID+"/seen", nil))
 	assert.Equal(t, http.StatusMethodNotAllowed, rec.Code)
 }
+
+func TestTips_ResetClearsThePrincipalsTipsOnly(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	me := seedUser(t, f, "me@example.com")
+	other := seedUser(t, f, "other@example.com")
+	ids := flowTip(t).FlowIDs()
+	_, err := f.UserStore.MarkTipsSeen(context.Background(), me.ID, ids)
+	require.NoError(t, err)
+	_, err = f.UserStore.MarkTipsSeen(context.Background(), other.ID, ids)
+	require.NoError(t, err)
+	r := f.authedRequest(t, http.MethodPost, "/tips/reset", "redirect=/orgs/x/projects/y/more", session.Principal{UserID: me.ID, Email: me.Email, TipsSeen: ids})
+
+	rec := postTip(t, f, r)
+	require.Equal(t, http.StatusSeeOther, rec.Code, rec.Body.String())
+	assert.Equal(t, "/orgs/x/projects/y/more", rec.Header().Get("Location"))
+
+	got, err := f.UserStore.ByID(context.Background(), me.ID)
+	require.NoError(t, err)
+	assert.Empty(t, got.TipsSeen)
+	kept, err := f.UserStore.ByID(context.Background(), other.ID)
+	require.NoError(t, err)
+	assert.ElementsMatch(t, ids, kept.TipsSeen)
+	sp, _, ok := f.Deps.LoadSession(r)
+	require.True(t, ok)
+	assert.Empty(t, sp.TipsSeen, "the session shows the tips at once")
+}
+
+func TestTips_ResetExpiredSessionGoesToSignIn(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	r := httptest.NewRequest(http.MethodPost, "/tips/reset", strings.NewReader("redirect=/"))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := postTip(t, f, r)
+	assert.Equal(t, http.StatusSeeOther, rec.Code)
+	assert.Equal(t, "/login", rec.Header().Get("Location"))
+}
+
+func TestTips_ResetRejectsOffsiteRedirectAndGet(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	me := seedUser(t, f, "me@example.com")
+	r := f.authedRequest(t, http.MethodPost, "/tips/reset", "redirect=//evil.example", session.Principal{UserID: me.ID, Email: me.Email})
+	assert.Equal(t, "/", postTip(t, f, r).Header().Get("Location"))
+	assert.Equal(t, http.StatusMethodNotAllowed, postTip(t, f, httptest.NewRequest(http.MethodGet, "/tips/reset", nil)).Code)
+}

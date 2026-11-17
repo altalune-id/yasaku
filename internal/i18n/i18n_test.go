@@ -2,6 +2,7 @@ package i18n_test
 
 import (
 	"io/fs"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -307,6 +308,20 @@ func TestLocales_ArabicUsesOneWordForOrganization(t *testing.T) {
 	for i, line := range strings.Split(string(buf), "\n") {
 		if strings.Contains(line, "منظم") {
 			t.Errorf("line %d uses منظمة; ar-SA says مؤسسة for organization: %s", i+1, line)
+		}
+	}
+}
+
+func TestIdID_UsesTheFormalRegisterAndTheCloseMonthTerm(t *testing.T) {
+	t.Parallel()
+	raw, err := fs.ReadFile(i18n.EmbeddedLocalesFS(), "locales/active.id-ID.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	informal := regexp.MustCompile(`(?i)\bkamu\b|tutup buku|menutup buku`)
+	for line := range strings.Lines(string(raw)) {
+		if informal.MatchString(line) {
+			t.Errorf("uses kamu or tutup buku; write Anda and tutup bulan: %s", strings.TrimSpace(line))
 		}
 	}
 }

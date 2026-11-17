@@ -632,6 +632,10 @@ components:
         computedAt:
           title: computed_at
           $ref: '#/components/schemas/google.protobuf.Timestamp'
+        adjustments:
+          title: adjustments
+          description: 'Signed net of balance adjustments in the period: adjustments in minus adjustments out. Never part of income, expense or net; opening balances are excluded.'
+          $ref: '#/components/schemas/yasaku.v1.Money'
       title: Snapshot
       additionalProperties: false
       description: Snapshot is a period's totals, frozen on close or computed live for the current period.

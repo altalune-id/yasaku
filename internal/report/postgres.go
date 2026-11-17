@@ -91,12 +91,6 @@ SELECT id         AS "period.id",
 	return ref, nil
 }
 
-type pgTotalsRow struct {
-	Income  int64 `alias:"totals.income"`
-	Expense int64 `alias:"totals.expense"`
-	TxCount int   `alias:"totals.tx_count"`
-}
-
 type pgWalletRow struct {
 	WalletID uuid.UUID `alias:"line.wallet_id"`
 	Name     string    `alias:"line.name"`
@@ -127,7 +121,7 @@ func (r *postgresReader) Summary(ctx context.Context, orgID, projectID, periodID
 		"#currency":  string(currency),
 	}
 
-	var totals pgTotalsRow
+	var totals summaryTotals
 	if qErr := postgres.RawStatement(summaryTotalsSQL(r.tables, true), args).QueryContext(ctx, tx, &totals); qErr != nil {
 		if !errors.Is(qErr, qrm.ErrNoRows) && !errors.Is(qErr, sql.ErrNoRows) {
 			return PeriodSummary{}, fmt.Errorf("report.postgres.Summary: totals: %w", qErr)
@@ -157,7 +151,7 @@ func (r *postgresReader) Summary(ctx context.Context, orgID, projectID, periodID
 			Out:              row.Out,
 		})
 	}
-	return assembleSummary(ref, currency, totals.Income, totals.Expense, totals.TxCount, moves), nil
+	return assembleSummary(ref, currency, totals, moves), nil
 }
 
 type pgSliceRow struct {

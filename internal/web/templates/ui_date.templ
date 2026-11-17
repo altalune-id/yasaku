@@ -1,0 +1,153 @@
+package templates
+
+import (
+	"slices"
+	"strconv"
+	"strings"
+
+	"altalune.id/yasaku/civil"
+	"altalune.id/yasaku/internal/web"
+	"altalune.id/yasaku/internal/web/icons"
+)
+
+// DateFieldProps configures DateField; Value, Today and Yesterday are ISO dates (YYYY-MM-DD).
+type DateFieldProps struct {
+	ID        string
+	Name      string
+	Label     string
+	Value     string
+	Today     string
+	Yesterday string
+	Error     string
+	Chip      bool
+	// Max is the latest pickable ISO date; datepicker.js raises it to the browser's today when that is later.
+	Max string
+}
+
+// DateField renders a native date input that datepicker.js swaps for a chip opening the Cally calendar; the input stays the value posted.
+templ DateField(d web.LayoutData, p DateFieldProps) {
+	<div
+		data-date-field
+		data-locale={ calendarLocale(d) }
+		data-today={ p.Today }
+		data-today-label={ d.Tr("date.today") }
+		data-yesterday={ p.Yesterday }
+		data-yesterday-label={ d.Tr("date.yesterday") }
+		if p.Max != "" {
+			data-max={ p.Max }
+		}
+		class="min-w-0"
+	>
+		<div data-date-native>
+			{{ field := FieldProps{ID: p.ID, Label: p.Label, Error: p.Error} }}
+			@FormField(field) {
+				<input
+					{ field.Attrs()... }
+					name={ p.Name }
+					type="date"
+					value={ p.Value }
+					if p.Max != "" {
+						max={ p.Max }
+					}
+					required
+					data-date-input
+					class="input w-full"
+				/>
+			}
+		</div>
+		<div data-date-picker hidden class="grid min-w-0 gap-1.5">
+			<span id={ p.ID + "-chip-label" } class={ "label text-sm text-base-content", templ.KV("sr-only", p.Chip) }>{ p.Label }</span>
+			<button
+				type="button"
+				data-dialog-open={ p.ID + "-dialog" }
+				aria-haspopup="dialog"
+				aria-labelledby={ p.ID + "-chip-label " + p.ID + "-chip-value" }
+				class="btn h-11 justify-start gap-2 font-medium"
+			>
+				@icons.Icon("calendar-range", "size-4")
+				<span id={ p.ID + "-chip-value" } data-date-label>
+					@dateChipText(d, p)
+				</span>
+				if p.Chip {
+					@icons.Icon("chevron-down", "size-3.5 opacity-60")
+				}
+			</button>
+		</div>
+		<dialog id={ p.ID + "-dialog" } class="modal modal-bottom sm:modal-middle" aria-labelledby={ p.ID + "-dialog-title" }>
+			<div class="modal-box p-4 pb-[max(1rem,env(safe-area-inset-bottom,0px))] sm:max-w-sm sm:p-6">
+				<header class="mb-3 flex h-11 items-center justify-between gap-2">
+					<h3 id={ p.ID + "-dialog-title" } class="text-lg font-bold">{ d.Tr("date.pick") }</h3>
+					<button type="button" data-dialog-close aria-label={ d.Tr("dialog.close") } class="btn btn-ghost btn-square">
+						@icons.Icon("x", "size-5")
+					</button>
+				</header>
+				<div class="mb-3 grid grid-cols-2 gap-2">
+					<button type="button" data-date-set={ p.Today } class="btn">{ d.Tr("date.today") }</button>
+					<button type="button" data-date-set={ p.Yesterday } class="btn">{ d.Tr("date.yesterday") }</button>
+				</div>
+				<calendar-date
+					class="cally w-full [&::part(button)]:min-h-11 [&::part(button)]:min-w-11 [&::part(day)]:size-11 [&::part(day)]:text-sm"
+					value={ p.Value }
+					if p.Max != "" {
+						max={ p.Max }
+					}
+					locale={ calendarLocale(d) }
+					first-day-of-week={ strconv.Itoa(weekStart(string(d.Locale))) }
+				>
+					<span slot="previous" aria-label={ d.Tr("date.previous_month") }>
+						@icons.Icon("chevron-right", "size-4 rotate-180")
+					</span>
+					<span slot="next" aria-label={ d.Tr("date.next_month") }>
+						@icons.Icon("chevron-right", "size-4")
+					</span>
+					<calendar-month></calendar-month>
+				</calendar-date>
+			</div>
+		</dialog>
+		<script src={ d.Static("cally.js") } nonce={ d.Nonce } type="module"></script>
+		<script src={ d.Static("datepicker.js") } nonce={ d.Nonce } defer></script>
+	</div>
+}
+
+templ dateChipText(d web.LayoutData, p DateFieldProps) {
+	switch p.Value {
+		case p.Today:
+			{ d.Tr("date.today") }
+		case p.Yesterday:
+			{ d.Tr("date.yesterday") }
+		default:
+			if day, err := civil.ParseDate(p.Value); err == nil {
+				@LedgerDate(d, day, nil)
+			} else {
+				{ p.Value }
+			}
+	}
+}
+
+// NOTE: pins the Gregorian calendar, so ar-SA month names match the Gregorian grid the server stores.
+func calendarLocale(d web.LayoutData) string {
+	if d.Locale == "" {
+		return "en-US-u-ca-gregory"
+	}
+	return string(d.Locale) + "-u-ca-gregory"
+}
+
+// https://github.com/unicode-org/cldr/blob/main/common/supplemental/supplementalData.xml
+var sundayFirst = []string{ //nolint:gochecknoglobals // immutable CLDR table
+	"AG", "AS", "BD", "BR", "BS", "BT", "BW", "BZ", "CA", "CN", "CO", "DM", "DO", "ET", "GT", "GU", "HK", "HN",
+	"ID", "IL", "IN", "JM", "JP", "KE", "KH", "KR", "LA", "MH", "MM", "MO", "MT", "MX", "MZ", "NI", "NP", "PA",
+	"PE", "PH", "PK", "PR", "PT", "PY", "SA", "SG", "SV", "TH", "TT", "TW", "UM", "US", "VE", "VI", "WS", "YE", "ZA", "ZW",
+}
+
+var saturdayFirst = []string{"AE", "AF", "BH", "DJ", "DZ", "EG", "IQ", "IR", "JO", "KW", "LY", "OM", "QA", "SD", "SY"} //nolint:gochecknoglobals // immutable CLDR table
+
+func weekStart(locale string) int {
+	_, region, _ := strings.Cut(locale, "-")
+	switch {
+	case slices.Contains(sundayFirst, region):
+		return 0
+	case slices.Contains(saturdayFirst, region):
+		return 6
+	}
+	return 1
+}

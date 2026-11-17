@@ -5,7 +5,10 @@ import (
 	"slices"
 )
 
-const tipsSeenAttempts = 3
+const (
+	tipsSeenAttempts = 3
+	emptyTipsSeen    = "[]"
+)
 
 func parseTipsSeen(raw string) []string {
 	var ids []string

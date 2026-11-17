@@ -120,6 +120,9 @@ func TestSuggestedEnd_FollowsTheConfiguredStartDay(t *testing.T) {
 		{"december rolls into january", civil.Date{Year: 2026, Month: 12, Day: 25}, civil.Date{Year: 2027, Month: 3, Day: 1}, 25, civil.Date{Year: 2027, Month: 1, Day: 24}},
 		{"start day clamped to 28", civil.Date{Year: 2026, Month: 3, Day: 1}, civil.Date{Year: 2026, Month: 9, Day: 16}, 31, civil.Date{Year: 2026, Month: 3, Day: 27}},
 		{"never later than today", civil.Date{Year: 2026, Month: 9, Day: 1}, civil.Date{Year: 2026, Month: 9, Day: 16}, 25, civil.Date{Year: 2026, Month: 9, Day: 16}},
+		{"closing on the cycle's last day keeps that day in the month", civil.Date{Year: 2026, Month: 9, Day: 1}, civil.Date{Year: 2026, Month: 9, Day: 30}, 1, civil.Date{Year: 2026, Month: 9, Day: 30}},
+		{"the day after the cycle ends closes the whole cycle", civil.Date{Year: 2026, Month: 9, Day: 1}, civil.Date{Year: 2026, Month: 10, Day: 1}, 1, civil.Date{Year: 2026, Month: 9, Day: 30}},
+		{"a period that started today", civil.Date{Year: 2026, Month: 9, Day: 16}, civil.Date{Year: 2026, Month: 9, Day: 16}, 1, civil.Date{Year: 2026, Month: 9, Day: 16}},
 		{"never before the start", civil.Date{Year: 2026, Month: 9, Day: 1}, civil.Date{Year: 2026, Month: 8, Day: 20}, 25, civil.Date{Year: 2026, Month: 9, Day: 1}},
 	}
 	for _, tt := range tests {
@@ -127,6 +130,11 @@ func TestSuggestedEnd_FollowsTheConfiguredStartDay(t *testing.T) {
 			assert.Equal(t, tt.want, period.SuggestedEnd(tt.start, tt.today, tt.startDay))
 		})
 	}
+}
+
+func TestCycleEnd(t *testing.T) {
+	assert.Equal(t, civil.Date{Year: 2026, Month: 9, Day: 30}, period.CycleEnd(civil.Date{Year: 2026, Month: 9, Day: 1}, 1))
+	assert.Equal(t, civil.Date{Year: 2026, Month: 10, Day: 24}, period.CycleEnd(civil.Date{Year: 2026, Month: 9, Day: 25}, 25))
 }
 
 func TestLatestClosed(t *testing.T) {

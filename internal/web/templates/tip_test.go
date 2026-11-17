@@ -78,9 +78,25 @@ func TestTip_AnchoredTipWaitsForItsTarget(t *testing.T) {
 	tip := tipFixture(t, true)
 	out := render(t, Tip(tipData(), tip.ID))
 	open := out[:strings.Index(out, ">")]
-	for _, want := range []string{`data-tip-for="` + tip.Target + `"`, ` hidden`, `class="card `, ` z-20 `, ` outline-none `} {
+	for _, want := range []string{`data-tip-for="` + tip.Target + `"`, ` hidden`, `class="card `, ` z-50 `, ` outline-none `} {
 		if !strings.Contains(open, want) {
 			t.Errorf("anchored tip lacks %s\n%s", want, out)
 		}
+	}
+}
+
+func TestTipInline_IsOneDismissibleBarAndHidesWhenSeen(t *testing.T) {
+	tip := tipFixture(t, false)
+	out := render(t, TipInline(tipData(), tip.ID))
+	for _, want := range []string{`data-tip="` + tip.ID + `"`, ">" + tip.TextKey + "<", `hx-nonce="n0nce"`, `name="all" value="1"`, `aria-label="tips.got_it"`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("TipInline lacks %q: %s", want, out)
+		}
+	}
+	if strings.Contains(out, "alert") || strings.Contains(out, "card") {
+		t.Errorf("TipInline renders a block alert or card: %s", out)
+	}
+	if out := render(t, TipInline(tipData(tip.ID), tip.ID)); strings.TrimSpace(out) != "" {
+		t.Errorf("a seen tip still renders: %s", out)
 	}
 }

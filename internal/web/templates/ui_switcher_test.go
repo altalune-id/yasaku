@@ -78,7 +78,6 @@ func TestSwitcher_PhoneTriggerOpensTheSheet(t *testing.T) {
 func TestSwitcher_TriggerNamesTheCheckedProject(t *testing.T) {
 	d := web.LayoutData{
 		ActiveOrg:     &web.ActiveOrg{Slug: "home", Name: "Household"},
-		OtherOrgs:     []web.ActiveOrg{{Slug: "side", Name: "Side"}},
 		ActiveProject: &web.ActiveProject{Slug: "family", Name: "Family budget"},
 		OtherProjects: []web.ActiveProject{{Slug: "holiday", Name: "Holiday fund"}},
 	}
@@ -95,8 +94,8 @@ func TestSwitcher_TriggerNamesTheCheckedProject(t *testing.T) {
 	if !strings.Contains(summary, ">"+checked[1]+"<") {
 		t.Errorf("trigger %q must name the checked project %q", summary, checked[1])
 	}
-	if !strings.Contains(summary, ">Household<") || !strings.Contains(summary, "h-14") {
-		t.Errorf("with several orgs the trigger shows the org on its own line: %s", summary)
+	if !strings.Contains(summary, `text-xs font-normal text-base-content/70">Household<`) || !strings.Contains(summary, "h-auto min-h-11") {
+		t.Errorf("the trigger shows the org small above the project, even with one org: %s", summary)
 	}
 }
 
