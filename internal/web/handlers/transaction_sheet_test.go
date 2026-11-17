@@ -64,7 +64,15 @@ func (f *txFixture) archiveAllWallets(t *testing.T) {
 	}
 }
 
-func (f *txFixture) today() string { return civil.DateOf(time.Now(), time.UTC).String() }
+func (f *txFixture) today() string {
+	loc := time.UTC
+	if st, err := f.Ledgers.Get(f.scoped(f.OrgID, f.ProjID, f.Principal.UserID)); err == nil {
+		if l, lerr := time.LoadLocation(st.Timezone); lerr == nil {
+			loc = l
+		}
+	}
+	return civil.DateOf(time.Now(), loc).String()
+}
 
 func (f *txFixture) savedMinor(t *testing.T) []int64 {
 	t.Helper()
