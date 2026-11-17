@@ -2,6 +2,7 @@ package controlplane
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"time"
 
@@ -66,6 +67,9 @@ func parseMoney(m *yasakuv1.Money, fallback money.Currency) (money.Amount, error
 		cur = money.IDR
 	}
 	a, err := money.ParseMajor(raw, cur)
+	if pe, ok := errors.AsType[*money.ParseError](err); ok {
+		return money.Amount{}, invalidArgCause("amount", "amount is not a valid number: "+pe.Reason, err)
+	}
 	if err != nil {
 		return money.Amount{}, invalidArgCause("amount", "amount is not a valid number", err)
 	}

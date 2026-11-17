@@ -383,11 +383,7 @@ func (h *TransactionHandler) amountFor(sc ProjectScope, in txInput) (money.Amoun
 	if err != nil {
 		return money.Amount{}, err
 	}
-	a, err := money.ParseMajor(in.Amount, w.Currency)
-	if err != nil {
-		return money.Amount{}, &transaction.InvalidAmountError{Reason: "not a number"}
-	}
-	return a, nil
+	return parseAmount(in.Amount, w.Currency)
 }
 
 // NOTE: local noon keeps a timezone shift from moving the date across a day boundary.

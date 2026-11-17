@@ -997,6 +997,29 @@ func TestTransactionQuickAddRefusalIs422(t *testing.T) {
 	assert.Empty(t, items)
 }
 
+func TestTransactionIDRDecimalIsAFieldError(t *testing.T) {
+	t.Parallel()
+	f := newTxFixture(t)
+	mux := http.NewServeMux()
+	f.txHandler().Register(mux)
+
+	form := url.Values{
+		"kind":      {"expense"},
+		"amount":    {"12.500,50"},
+		"wallet_id": {f.Cash.String()},
+		"date":      {civil.DateOf(time.Now(), time.UTC).String()},
+	}
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, f.request(t, http.MethodPost, f.path("/transactions"), form, false))
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	assert.Contains(t, rec.Body.String(), "currency has no decimals")
+
+	items, _, err := f.Transactions.List(f.projectCtx(t), transaction.ListOpts{})
+	require.NoError(t, err)
+	assert.Empty(t, items, "12.500,50 must never be saved as 1.250.050")
+}
+
 var (
 	cspNonceRe  = regexp.MustCompile(`'nonce-([^']+)'`)
 	quickAddTag = regexp.MustCompile(`<form[^>]*id="tx-quick-add"[^>]*>`)

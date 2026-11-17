@@ -35,6 +35,22 @@ func TestParseMajor(t *testing.T) {
 		{"1.234,56", "USD", 123456},
 		{"12,345", "USD", 1234500},
 		{"500", "JPY", 500},
+		{"12.500,00", money.IDR, 1250000},
+		{"12,500.00", money.IDR, 1250000},
+		{"12500,0", money.IDR, 1250000},
+		{"12.500", money.IDR, 1250000},
+		{"12,500", money.IDR, 1250000},
+		{"12500", money.IDR, 1250000},
+		{"1.250.000", money.IDR, 125000000},
+		{"12.500,50", "USD", 1250050},
+		{"12,500.50", "USD", 1250050},
+		{"12500.5", "USD", 1250050},
+		{"500,00", "JPY", 500},
+		{"1,250.000", money.IDR, 125000},
+		{"12.500,000", money.IDR, 1250000},
+		{"12500.", money.IDR, 1250000},
+		{"1,000", "JPY", 1000},
+		{"100.00", "JPY", 100},
 	}
 	for _, tc := range cases {
 		got, err := money.ParseMajor(tc.in, tc.cur)
@@ -44,6 +60,21 @@ func TestParseMajor(t *testing.T) {
 	}
 	for _, bad := range []string{"", "abc", "12.345", "-5"} {
 		_, err := money.ParseMajor(bad, "USD")
+		require.True(t, money.IsParseError(err), bad)
+	}
+	for _, bad := range []string{"12.500,50", "12,500.50", "12500,5", "1.5", "12.500,05", "Rp 12.500,50"} {
+		got, err := money.ParseMajor(bad, money.IDR)
+		require.True(t, money.IsParseError(err), "%s parsed as %d", bad, got.Minor)
+		require.Contains(t, err.Error(), "currency has no decimals", bad)
+	}
+	for _, bad := range []string{"1.2.345", "12.50.000", "1,25,000", ",000", "1.000.0", "12.500.", "1.000,000.0", "0.500", "00.500", "0,500"} {
+		got, err := money.ParseMajor(bad, money.IDR)
+		require.True(t, money.IsParseError(err), "%s parsed as %d", bad, got.Minor)
+	}
+	_, err := money.ParseMajor("12.5a", money.IDR)
+	require.ErrorContains(t, err, "not a number")
+	for _, bad := range []string{"500,50", "1.5"} {
+		_, err := money.ParseMajor(bad, "JPY")
 		require.True(t, money.IsParseError(err), bad)
 	}
 }
