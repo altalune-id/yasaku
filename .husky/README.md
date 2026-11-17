@@ -5,17 +5,30 @@ automatically on `pnpm install` (via the `prepare` script in `package.json`).
 
 ## What runs when
 
-| Hook         | Command                                           | Purpose                                                                     |
-| ------------ | ------------------------------------------------- | --------------------------------------------------------------------------- |
-| `pre-commit` | `go tool i18n-lint --check`                       | fail if a `d.Tr` key has no translation                                     |
-| `pre-commit` | `pnpm exec lint-staged`                           | gofmt + go vet, hadolint, yamllint, buf lint, prettier on staged files only |
-| `pre-push`   | `git verify-commit` over outgoing range           | fail fast if any outgoing commit is not GPG/SSH-signed                      |
-| `pre-push`   | `go tool gen-config-example --check` (env + yaml) | fail if `.env.example` / `config.example.yaml` drifted from struct tags     |
-| `pre-push`   | `go tool i18n-lint --check`                       | i18n coverage across locales                                                |
-| `pre-push`   | `go test -race -shuffle=on ./...`                 | full unit test suite                                                        |
-| `pre-push`   | `golangci-lint run --timeout=3m ./...`            | static analysis                                                             |
-| `pre-push`   | `pnpm exec buf breaking --against origin/main`    | protobuf breaking-change guard                                              |
-| `pre-push`   | `goreleaser check`                                | release config sanity                                                       |
+| Hook         | Command                                           | Purpose                                                                                    |
+| ------------ | ------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `pre-commit` | `go tool i18n-lint --check`                       | fail if a `d.Tr` key has no translation                                                    |
+| `pre-commit` | `pnpm exec lint-staged`                           | gofmt + go vet, hadolint, yamllint, buf lint, prettier on staged files only                |
+| `pre-push`   | `git verify-commit` over outgoing range           | fail fast if any outgoing commit is not GPG/SSH-signed                                     |
+| `pre-push`   | `gofmt -l`, `go vet ./...`, `buf lint`            | formatting, vet and proto lint                                                             |
+| `pre-push`   | `go tool gen-config-example --check` (env + yaml) | fail if `.env.example` / `config.example.yaml` drifted from struct tags                    |
+| `pre-push`   | `go tool i18n-lint --check`                       | i18n coverage across locales                                                               |
+| `pre-push`   | `go tool comment-lint .`                          | comment discipline                                                                         |
+| `pre-push`   | `golangci-lint run --timeout=3m ./...`            | static analysis                                                                            |
+| `pre-push`   | `pnpm exec buf breaking --against origin/main`    | protobuf breaking-change guard                                                             |
+| `pre-push`   | `goreleaser check`                                | release config sanity                                                                      |
+| `pre-push`   | `go test -race -shuffle=on <changed packages>`    | tests of the packages changed against `origin/main`, with `-p 1` when `TEST_PG_DSN` is set |
+
+The pre-push hook does not run the full suite: CI is the gate for it. A package
+maps to the nearest directory holding a `.go` file, so a migration change tests
+`schema` and a static asset change tests its embedding package. Importers of a
+changed package are not tested. Run every test before pushing with:
+
+```bash
+PREPUSH_FULL=1 git push
+```
+
+With no `origin/main` ref the hook runs every test.
 
 ## Before you commit — the short list
 
