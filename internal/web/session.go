@@ -86,7 +86,7 @@ type CookieOpts struct {
 	MaxAge       int
 }
 
-// SetCookie writes a signed cookie with the project's defaults (HttpOnly, SameSite=Lax).
+// SetCookie writes the value as given, unsigned, with the project's defaults (HttpOnly, SameSite=Lax).
 func SetCookie(w http.ResponseWriter, o CookieOpts) {
 	path := o.BasePath
 	if path == "" {

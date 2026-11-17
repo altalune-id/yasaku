@@ -3,25 +3,31 @@ package templates
 import (
 	"strconv"
 
+	"altalune.id/yasaku/internal/category"
 	"altalune.id/yasaku/internal/web"
 	"altalune.id/yasaku/internal/web/icons"
 )
 
-// TxCategoryRow is one transaction category as the categories page renders it.
+// TxCategoryRow is one transaction category as the categories page renders it; Entries counts only when HasEntries.
 type TxCategoryRow struct {
-	ID       string
-	Name     string
-	KindKey  string
-	Archived bool
+	ID         string
+	Name       string
+	KindKey    string
+	Icon       string
+	Entries    int
+	HasEntries bool
+	Archived   bool
 }
 
-// TxCategoriesView is the transaction-categories page: one column per kind, archived rows collapsed.
+// TxCategoriesView is the transaction-categories page: the active tab's categories and archived rows.
 type TxCategoriesView struct {
 	ProjectSlug string
 	ProjectName string
-	Expense     []TxCategoryRow
-	Income      []TxCategoryRow
+	Tab         string
+	Fragment    bool
+	Rows        []TxCategoryRow
 	Archived    []TxCategoryRow
+	AnyCategory bool
 	Seeded      int
 	ShowSeeded  bool
 	ErrorKey    string
@@ -31,7 +37,7 @@ type TxCategoriesView struct {
 
 // IsEmpty reports whether the project has no categories at all, archived ones included.
 func (v TxCategoriesView) IsEmpty() bool {
-	return len(v.Expense) == 0 && len(v.Income) == 0 && len(v.Archived) == 0
+	return !v.AnyCategory
 }
 
 // SeededState reports whether the last seed added categories, for the page's status line.
@@ -42,134 +48,176 @@ func (v TxCategoriesView) SeededState() string {
 	return "added"
 }
 
+func txCategoryIconKey(name string) string { return "category.icon." + name }
+
+func txCategoryActionKey(action string) string { return "category." + action }
+
+func txKindKey(kind string) string { return "tx.kind_" + kind }
+
+func txCategoryFragmentAttrs(d web.LayoutData) templ.Attributes {
+	return templ.Attributes{
+		"hx-target":       "#tx-category-list",
+		"hx-swap":         "outerHTML",
+		"hx-disable":      "find button, find input",
+		"hx-status:4xx": "target:#hx-error swap:innerHTML",
+		"hx-status:5xx": "target:#hx-error swap:innerHTML",
+	}
+}
+
+templ txCategoryIcon(name string) {
+	@icons.Icon(name, "size-5")
+}
+
+templ txCategoryIconPicker(d web.LayoutData, v TxCategoriesView, c TxCategoryRow) {
+	@AppDropdown(txCategoryIcon(c.Icon), d.Tr("category.icon_change")+": "+c.Name, "", "btn-square bg-base-200 text-primary max-lg:btn-md", "start-0 top-full mt-1 w-60") {
+		<form
+			method="post"
+			action={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/categories/"+c.ID+"/icon")) }
+			hx-post={ d.ProjectPath(v.ProjectSlug, "/categories/"+c.ID+"/icon") }
+			hx-nonce={ d.Nonce }
+			{ txCategoryFragmentAttrs(d)... }
+		>
+			<div class="grid grid-cols-4 gap-1" role="group" aria-label={ d.Tr("category.icon") }>
+				for _, name := range category.AllowedIcons {
+					<button
+						type="submit"
+						name="icon"
+						value={ name }
+						aria-label={ d.Tr(txCategoryIconKey(name)) }
+						aria-pressed={ strconv.FormatBool(name == c.Icon) }
+						class={ "btn btn-square btn-ghost max-lg:btn-md", templ.KV("btn-active text-primary", name == c.Icon) }
+					>
+						@icons.Icon(name, "size-5")
+					</button>
+				}
+			</div>
+		</form>
+	}
+}
+
+templ txCategoryArchiveForm(d web.LayoutData, v TxCategoriesView, c TxCategoryRow, action string) {
+	<form
+		method="post"
+		action={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/categories/"+c.ID+"/"+action)) }
+		hx-post={ d.ProjectPath(v.ProjectSlug, "/categories/"+c.ID+"/"+action) }
+		hx-nonce={ d.Nonce }
+		{ txCategoryFragmentAttrs(d)... }
+	>
+		<button type="submit" aria-label={ d.Tr(txCategoryActionKey(action)) + ": " + c.Name } class="btn btn-ghost">
+			{ d.Tr(txCategoryActionKey(action)) }
+		</button>
+	</form>
+}
+
 templ txCategoryRowItem(d web.LayoutData, v TxCategoriesView, c TxCategoryRow) {
-	<li class="flex flex-wrap items-center gap-2 px-3 py-2">
+	<li class="flex items-center gap-4 p-4">
+		if c.Archived {
+			<span class="grid size-10 shrink-0 place-items-center rounded-field bg-base-200 text-base-content/70">
+				@txCategoryIcon(c.Icon)
+			</span>
+		} else {
+			@txCategoryIconPicker(d, v, c)
+		}
 		<form
 			method="post"
 			action={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/categories/"+c.ID+"/rename")) }
 			hx-post={ d.ProjectPath(v.ProjectSlug, "/categories/"+c.ID+"/rename") }
 			hx-nonce={ d.Nonce }
-			hx-target="#tx-category-list"
-			hx-swap="outerHTML"
-			hx-disable="find button, find input"
-			hx-status:4xx="target:#hx-error swap:innerHTML"
-			hx-status:5xx="target:#hx-error swap:innerHTML"
-			class="flex min-w-0 flex-1 items-center gap-2"
+			{ txCategoryFragmentAttrs(d)... }
+			class="group/rn flex min-w-0 flex-1 items-center gap-2"
 		>
-			<input
-				name="name"
-				type="text"
-				required
-				value={ c.Name }
-				aria-label={ d.Tr("category.name") }
-				class="input input-ghost min-w-0 flex-1"
-			/>
-			<button type="submit" class="shrink-0 rounded-md border border-border px-2.5 py-1.5 text-xs font-medium text-foreground/90 hover:bg-muted">
-				{ d.Tr("category.rename") }
-			</button>
+			<span class="min-w-0 flex-1">
+				<input
+					name="name"
+					type="text"
+					dir="auto"
+					required
+					value={ c.Name }
+					aria-label={ d.Tr("category.name") }
+					class="input input-ghost h-auto min-h-0 w-full min-w-0 rounded-field px-0 py-0 font-medium focus:px-2"
+				/>
+				if c.HasEntries {
+					<span data-entries={ strconv.Itoa(c.Entries) } class="block text-sm text-base-content/70">{ d.TrN("category.entries_period", c.Entries) }</span>
+				}
+			</span>
+			<button type="submit" class="btn btn-ghost hidden group-focus-within/rn:inline-flex">{ d.Tr("category.rename") }</button>
 		</form>
 		if c.Archived {
-			<span class="shrink-0 text-xs text-muted-foreground">{ d.Tr(c.KindKey) }</span>
-			<form
-				method="post"
-				action={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/categories/"+c.ID+"/unarchive")) }
-				hx-post={ d.ProjectPath(v.ProjectSlug, "/categories/"+c.ID+"/unarchive") }
-				hx-nonce={ d.Nonce }
-				hx-target="#tx-category-list"
-				hx-swap="outerHTML"
-				hx-disable="find button, find input"
-				hx-status:4xx="target:#hx-error swap:innerHTML"
-				hx-status:5xx="target:#hx-error swap:innerHTML"
-				class="inline"
-			>
-				<button type="submit" aria-label={ d.Tr("category.unarchive") + ": " + c.Name } class="rounded p-1.5 text-muted-foreground/80 hover:bg-muted hover:text-foreground">
-					@icons.Icon("rotate-ccw", "h-4 w-4")
-				</button>
-			</form>
+			@txCategoryArchiveForm(d, v, c, "unarchive")
 		} else {
-			<form
-				method="post"
-				action={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/categories/"+c.ID+"/archive")) }
-				hx-post={ d.ProjectPath(v.ProjectSlug, "/categories/"+c.ID+"/archive") }
-				hx-nonce={ d.Nonce }
-				hx-target="#tx-category-list"
-				hx-swap="outerHTML"
-				hx-disable="find button, find input"
-				hx-status:4xx="target:#hx-error swap:innerHTML"
-				hx-status:5xx="target:#hx-error swap:innerHTML"
-				class="inline"
-			>
-				<button type="submit" aria-label={ d.Tr("category.archive") + ": " + c.Name } class="rounded p-1.5 text-muted-foreground/80 hover:bg-muted hover:text-foreground">
-					@icons.Icon("lock", "h-4 w-4")
-				</button>
-			</form>
+			@txCategoryArchiveForm(d, v, c, "archive")
 		}
-		<form
-			method="post"
-			action={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/categories/"+c.ID+"/delete")) }
-			hx-post={ d.ProjectPath(v.ProjectSlug, "/categories/"+c.ID+"/delete") }
-			hx-nonce={ d.Nonce }
-			hx-target="#tx-category-list"
-			hx-swap="outerHTML"
-			hx-disable="find button, find input"
-			hx-status:4xx="target:#hx-error swap:innerHTML"
-			hx-status:5xx="target:#hx-error swap:innerHTML"
-			class="inline"
-		>
-			<button type="submit" aria-label={ d.Tr("category.delete") + ": " + c.Name } class="rounded p-1.5 text-muted-foreground/70 hover:bg-error/10 hover:text-error">
-				@icons.Icon("trash-2", "h-4 w-4")
-			</button>
-		</form>
 	</li>
 }
 
-templ txCategoryColumn(d web.LayoutData, v TxCategoriesView, id, titleKey string, rows []TxCategoryRow) {
-	<section id={ id } class="overflow-hidden rounded-lg border border-border bg-card shadow-sm">
-		<h2 class="border-b border-border px-4 py-3 text-sm font-medium text-foreground">{ d.Tr(titleKey) }</h2>
-		<ul class="divide-y divide-border/50">
-			if len(rows) == 0 {
-				<li class="px-4 py-6 text-center text-sm text-muted-foreground">{ d.Tr("category.empty") }</li>
-			}
-			for _, c := range rows {
-				@txCategoryRowItem(d, v, c)
-			}
-		</ul>
-	</section>
+templ txCategoryTabs(d web.LayoutData, v TxCategoriesView) {
+	<div role="tablist" class="tabs tabs-box w-full max-w-xs" aria-label={ d.Tr("category.title") }>
+		for _, k := range []string{"expense", "income"} {
+			<a
+				role="tab"
+				href={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/categories?kind="+k)) }
+				hx-get={ d.ProjectPath(v.ProjectSlug, "/categories?kind="+k) }
+				hx-nonce={ d.Nonce }
+				hx-target="#tx-category-list"
+				hx-swap="outerHTML"
+				hx-push-url="true"
+				aria-selected={ strconv.FormatBool(k == v.Tab) }
+				class={ "tab flex-1", templ.KV("tab-active font-semibold", k == v.Tab) }
+			>
+				{ d.Tr(txKindKey(k)) }
+			</a>
+		}
+	</div>
 }
 
 templ txCategorySeedCard(d web.LayoutData, v TxCategoriesView) {
-	<div class="rounded-lg border border-dashed border-border bg-card px-4 py-10 text-center">
-		<p class="text-sm text-muted-foreground">{ d.Tr("category.seed_hint") }</p>
+	@EmptyState(EmptyStateProps{Title: d.Tr("category.empty_title"), Body: d.Tr("category.seed_hint"), Icon: "tags"}) {
 		<form
 			method="post"
 			action={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/categories/seed")) }
 			hx-post={ d.ProjectPath(v.ProjectSlug, "/categories/seed") }
 			hx-nonce={ d.Nonce }
-			hx-target="#tx-category-list"
-			hx-swap="outerHTML"
-			hx-disable="find button, find input"
-			hx-status:4xx="target:#hx-error swap:innerHTML"
-			hx-status:5xx="target:#hx-error swap:innerHTML"
-			class="mt-4"
+			{ txCategoryFragmentAttrs(d)... }
 		>
 			<button type="submit" class="btn btn-primary shrink-0 whitespace-nowrap">
-				@icons.Icon("circle-plus", "h-4 w-4")
+				@icons.Icon("circle-plus", "size-4")
 				<span>{ d.Tr("category.seed") }</span>
 			</button>
 		</form>
-	</div>
+	}
+}
+
+templ txCategoryArchivedTitle(d web.LayoutData, n int) {
+	<span class="font-semibold">{ d.Tr("category.archived") + " (" + strconv.Itoa(n) + ")" }</span>
+}
+
+templ txCategoryKindSelect(d web.LayoutData, tab string, oob bool) {
+	<input
+		id="tx-category-kind"
+		type="hidden"
+		name="kind"
+		form="tx-category-create"
+		value={ tab }
+		if oob {
+			hx-swap-oob="true"
+			hx-nonce={ d.Nonce }
+		}
+	/>
 }
 
 // TxCategoryList is the HTMX-swappable section: every category action targets #tx-category-list.
 templ TxCategoryList(d web.LayoutData, v TxCategoriesView) {
-	<div id="tx-category-list" class="mt-6 space-y-4">
+	<div id="tx-category-list" class="contents">
+		if v.Fragment {
+			@txCategoryKindSelect(d, v.Tab, true)
+		}
 		@pageBanner(d, v.ErrorKey, v.ErrorMsg, v.ErrorCode)
 		if v.ShowSeeded {
 			<p
 				data-seeded={ strconv.Itoa(v.Seeded) }
 				data-seeded-state={ v.SeededState() }
 				role="status"
-				class="rounded-md border border-border bg-muted px-3 py-2 text-sm text-foreground"
+				class="alert alert-soft alert-info"
 			>
 				if v.Seeded == 0 {
 					{ d.Tr("category.seeded_none") }
@@ -179,29 +227,42 @@ templ TxCategoryList(d web.LayoutData, v TxCategoriesView) {
 			</p>
 		}
 		if v.IsEmpty() {
-			@txCategorySeedCard(d, v)
-		} else {
-			<div class="grid gap-4 md:grid-cols-2">
-				@txCategoryColumn(d, v, "tx-category-expense", "category.expense", v.Expense)
-				@txCategoryColumn(d, v, "tx-category-income", "category.income", v.Income)
+			<div class="order-3">
+				@txCategorySeedCard(d, v)
 			</div>
+		} else {
+			<div class="order-1">
+				@txCategoryTabs(d, v)
+			</div>
+			<section id={ "tx-category-" + v.Tab } class="order-3 max-w-2xl">
+				if len(v.Rows) == 0 {
+					<p class="rounded-box border border-base-300 px-4 py-6 text-center text-sm text-base-content/70">{ d.Tr("category.empty") }</p>
+				} else {
+					<ul class="divide-y divide-base-300 rounded-box border border-base-300 bg-base-100">
+						for _, c := range v.Rows {
+							@txCategoryRowItem(d, v, c)
+						}
+					</ul>
+				}
+				<p class="mt-2 text-sm text-base-content/70">{ d.Tr("category.archive_hint") }</p>
+			</section>
 		}
 		if len(v.Archived) > 0 {
-			<details id="tx-category-archived" class="overflow-hidden rounded-lg border border-border bg-card shadow-sm">
-				<summary class="cursor-pointer px-4 py-3 text-sm text-muted-foreground">{ d.Tr("category.archived") }</summary>
-				<ul class="divide-y divide-border/50 border-t border-border opacity-75">
+			@AppCollapse("tx-category-archived", "order-4 max-w-2xl border border-base-300 bg-base-100", txCategoryArchivedTitle(d, len(v.Archived))) {
+				<ul class="divide-y divide-base-300">
 					for _, c := range v.Archived {
 						@txCategoryRowItem(d, v, c)
 					}
 				</ul>
-			</details>
+			}
 		}
 	</div>
 }
 
+// NOTE: the list is display:contents so the create form, outside the swapped list, can sit between the tabs and the rows.
 templ TxCategoriesPage(d web.LayoutData, v TxCategoriesView) {
-	<section>
-		@PageHeader(d.Tr("category.title"), v.ProjectName)
+	<section class="flex flex-col gap-4">
+		@PageHeader(d.Tr("category.title"), "")
 		<form
 			id="tx-category-create"
 			method="post"
@@ -215,29 +276,27 @@ templ TxCategoriesPage(d web.LayoutData, v TxCategoriesView) {
 			hx-status:4xx="target:#hx-error swap:innerHTML"
 			hx-status:5xx="target:#hx-error swap:innerHTML"
 			data-reset-on-success
-			class="mt-6 flex flex-wrap gap-2"
+			class="order-2 flex max-w-2xl flex-wrap gap-2"
 		>
 			@TxCategoryFormErrors(d, TxCategoriesView{}, false)
-			<input
-				name="name"
-				type="text"
-				required
-				placeholder={ d.Tr("category.name") }
-				aria-label={ d.Tr("category.name") }
-				class="input min-w-48 flex-1 text-base"
-			/>
-			<select
-				name="kind"
-				aria-label={ d.Tr("tx.kind") }
-				class="select text-base"
-			>
-				<option value="expense">{ d.Tr("tx.kind_expense") }</option>
-				<option value="income">{ d.Tr("tx.kind_income") }</option>
-			</select>
-			<button type="submit" class="btn btn-primary shrink-0 whitespace-nowrap">
-				{ d.Tr("category.new") }
-			</button>
+			<div class="join w-full">
+				<input
+					name="name"
+					type="text"
+					dir="auto"
+					required
+					maxlength="100"
+					placeholder={ d.Tr("category.new_placeholder") }
+					aria-label={ d.Tr("category.name") }
+					class="input join-item min-w-0 flex-1 text-base"
+				/>
+				<button type="submit" class="btn btn-primary join-item shrink-0 whitespace-nowrap">
+					@icons.Icon("plus", "size-4")
+					{ d.Tr("category.add") }
+				</button>
+			</div>
 		</form>
+		@txCategoryKindSelect(d, v.Tab, false)
 		@TxCategoryList(d, v)
 	</section>
 }

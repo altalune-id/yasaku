@@ -10,14 +10,21 @@ import (
 
 func pagesAwaitingRedesign() []string {
 	return []string{
-		"onboarding.templ", "transaction_form.templ", "transactions.templ",
-		"wallets.templ", "wallet_form.templ", "periods.templ",
-		"reports.templ", "opensheet_yasaku.templ",
+		"onboarding.templ",
+		"reports.templ",
+		"opensheet_yasaku.templ",
 	}
 }
 
 func pagesUnmounted() []string {
-	return []string{"categories.templ", "post_form.templ", "posts.templ", "tags.templ", "todos.templ", "todo_row.templ"}
+	return []string{
+		"categories.templ",
+		"post_form.templ",
+		"posts.templ",
+		"tags.templ",
+		"todos.templ",
+		"todo_row.templ",
+	}
 }
 
 var (

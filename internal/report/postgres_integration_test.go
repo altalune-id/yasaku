@@ -44,6 +44,19 @@ func newPgSeed(t *testing.T) seed {
 		t.Helper()
 		mustExecPg(t, sqlDB, "UPDATE "+prefix+"periods SET status = $1, closed_at = $2 WHERE id = $3", status, at.UTC(), periodID)
 	}
+	s.addTxn = func(t *testing.T, r txnRow) {
+		t.Helper()
+		seedPgTxn(t, sqlDB, prefix, s.tc.OrgID, s.tc.ProjectID, s.tc.UserID, r)
+	}
+	s.siblingTxn = func(t *testing.T, r txnRow) {
+		t.Helper()
+		projID := uuid.New()
+		mustExecPg(t, sqlDB,
+			"INSERT INTO "+prefix+"projects (id, org_id, slug, name, created_by, created_at, updated_at) VALUES ($1, $2, $3, 'Other', $4, $5, $5)",
+			projID, s.tc.OrgID, projID.String()[:8], s.tc.UserID, time.Now().UTC())
+		r.wallet = seedPgWalletRow(t, sqlDB, prefix, s.tc.OrgID, projID, "Cash", "cash", false)
+		seedPgTxn(t, sqlDB, prefix, s.tc.OrgID, projID, s.tc.UserID, r)
+	}
 	s.reader = report.NewReader(
 		db.DBConfig{Driver: db.DriverPostgres, Schema: h.Schema, TablePrefix: prefix},
 		db.Pool{W: sqlDB, R: sqlDB},
@@ -68,8 +81,8 @@ func TestPgReader_Summary_FirstPeriod(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, idr(500_000), got.Income)
-	assert.Equal(t, idr(260_000), got.Expense)
-	assert.Equal(t, idr(240_000), got.Net)
+	assert.Equal(t, idr(250_000), got.Expense)
+	assert.Equal(t, idr(250_000), got.Net)
 	assert.Equal(t, 3, got.TxCount)
 
 	lines := byWallet(t, got.Wallets)
@@ -90,7 +103,7 @@ func TestPgReader_Summary_SecondPeriodCarriesOpening(t *testing.T) {
 	got, err := s.reader.Summary(s.ctx(), s.tc.OrgID, s.tc.ProjectID, s.periodSep, money.IDR, s.sepStartUTC(t), nil)
 	require.NoError(t, err)
 
-	assert.Equal(t, idr(5_000), got.Income)
+	assert.Equal(t, idr(0), got.Income)
 	assert.Equal(t, idr(25_000), got.Expense)
 	assert.Equal(t, 1, got.TxCount)
 
@@ -100,6 +113,10 @@ func TestPgReader_Summary_SecondPeriodCarriesOpening(t *testing.T) {
 	assert.Equal(t, idr(290_000), lines[s.walletBank].Opening)
 	assert.Equal(t, idr(265_000), lines[s.walletBank].Closing)
 	assert.Equal(t, idr(1_320_000), got.Total)
+}
+
+func TestPgReader_Summary_Adjustments(t *testing.T) {
+	assertAdjustmentsNet(t, newPgSeed(t))
 }
 
 func TestPgReader_SpendByCategory(t *testing.T) {
@@ -144,9 +161,9 @@ func TestPgReader_Cashflow_KeepsTheRequestedOrder(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, got, 2)
 	assert.Equal(t, s.periodSep, got[0].Period.ID)
-	assert.Equal(t, idr(-20_000), got[0].Net)
+	assert.Equal(t, idr(-25_000), got[0].Net)
 	assert.Equal(t, s.periodAug, got[1].Period.ID)
-	assert.Equal(t, idr(240_000), got[1].Net)
+	assert.Equal(t, idr(250_000), got[1].Net)
 }
 
 func TestPgReader_ArchivedWallets(t *testing.T) {

@@ -95,7 +95,7 @@ func switcherRailTrigger(d web.LayoutData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		if len(d.OtherOrgs) > 0 && d.ActiveOrg != nil {
+		if switcherShowsOrg(d) {
 			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "<span class=\"block truncate text-xs font-normal text-base-content/70\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
@@ -702,11 +702,13 @@ func switcherProject(href, icon, name string, active bool) templ.Component {
 }
 
 func switcherTriggerClass(d web.LayoutData) string {
-	if len(d.OtherOrgs) > 0 && d.ActiveOrg != nil {
-		return "h-14 w-full justify-between gap-2 px-3 text-start"
+	if switcherShowsOrg(d) {
+		return "h-auto min-h-11 w-full justify-between gap-2 px-3 py-1.5 text-start"
 	}
 	return "h-11 w-full justify-between gap-2 px-3 text-start"
 }
+
+func switcherShowsOrg(d web.LayoutData) bool { return d.ActiveOrg != nil && d.ActiveProject != nil }
 
 func switcherTitle(d web.LayoutData) string {
 	if d.ActiveProject != nil {

@@ -30,7 +30,7 @@ templ Tip(d web.LayoutData, id string) {
 				tabindex="-1"
 				aria-label={ d.Tr("tips.label") }
 				hidden
-				class="card fixed z-20 w-72 outline-none max-w-[calc(100vw-2rem)] bg-neutral text-neutral-content shadow-xl"
+				class="card fixed z-50 w-72 outline-none max-w-[calc(100vw-2rem)] bg-neutral text-neutral-content shadow-xl data-tip-inline:static data-tip-inline:w-full data-tip-inline:max-w-full data-tip-inline:shadow-none"
 			>
 				<div class="card-body gap-3 p-4">
 					<p class="flex items-start gap-3 text-sm">
@@ -58,4 +58,36 @@ templ tipActions(d web.LayoutData, t web.Tip, class string) {
 		<button type="submit" name="all" value="1" class="btn btn-ghost text-neutral-content lg:btn-sm">{ d.Tr("tips.skip_all") }</button>
 		<button type="submit" class="btn lg:btn-sm">{ d.Tr("tips.got_it") }</button>
 	</form>
+}
+
+// TipInline renders an untargeted tip as one compact bar, for tight spots such as the add sheet.
+templ TipInline(d web.LayoutData, id string) {
+	if t, ok := web.LookupTip(id); ok && d.Principal != nil && !d.TipSeen(id) {
+		<div
+			data-tip={ t.ID }
+			data-tip-flow={ t.Flow }
+			role="note"
+			tabindex="-1"
+			aria-label={ d.Tr("tips.label") }
+			class="flex items-center gap-1 rounded-field bg-neutral ps-3 text-sm text-neutral-content outline-none"
+		>
+			@icons.Icon("lightbulb", "size-4 shrink-0")
+			<span class="min-w-0 flex-1">{ d.Tr(t.TextKey) }</span>
+			<form
+				method="post"
+				action={ templ.SafeURL(d.Href("/tips/" + t.ID + "/seen")) }
+				hx-post={ d.Href("/tips/" + t.ID + "/seen") }
+				hx-nonce={ d.Nonce }
+				hx-swap="none"
+				data-tip-form
+				class="flex shrink-0 items-center"
+			>
+				<input type="hidden" name="redirect" value={ d.CurrentPath }/>
+				<button type="submit" name="all" value="1" class="btn btn-ghost text-neutral-content">{ d.Tr("tips.skip_all") }</button>
+				<button type="submit" aria-label={ d.Tr("tips.got_it") } class="btn btn-ghost btn-square text-neutral-content">
+					@icons.Icon("x", "size-5")
+				</button>
+			</form>
+		</div>
+	}
 }

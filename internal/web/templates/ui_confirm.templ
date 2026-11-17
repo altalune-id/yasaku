@@ -1,0 +1,38 @@
+package templates
+
+import "altalune.id/yasaku/internal/web"
+
+// ConfirmModalProps configures ConfirmModal; CancelLabel defaults to the translated "Cancel".
+type ConfirmModalProps struct {
+	ID              string
+	Title           string
+	Body            string
+	Action          string
+	ConfirmLabel    string
+	CancelLabel     string
+	ConfirmDisabled bool
+	Attrs           templ.Attributes
+}
+
+// ConfirmModal renders an AppModal whose confirm button posts Action and whose cancel closes the dialog; children go inside the form.
+templ ConfirmModal(d web.LayoutData, p ConfirmModalProps) {
+	@AppModal(d, p.ID, p.Title) {
+		<form method="post" action={ templ.SafeURL(p.Action) } class="flex flex-col gap-4" { p.Attrs... }>
+			if p.Body != "" {
+				<p class="text-sm text-pretty">{ p.Body }</p>
+			}
+			{ children... }
+			<div class="modal-action mt-0">
+				<button type="button" data-dialog-close class="btn btn-ghost">{ confirmCancelLabel(d, p) }</button>
+				<button type="submit" class="btn btn-error" disabled?={ p.ConfirmDisabled }>{ p.ConfirmLabel }</button>
+			</div>
+		</form>
+	}
+}
+
+func confirmCancelLabel(d web.LayoutData, p ConfirmModalProps) string {
+	if p.CancelLabel != "" {
+		return p.CancelLabel
+	}
+	return d.Tr("common.cancel")
+}

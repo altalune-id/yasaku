@@ -184,6 +184,18 @@ func (f *User) MarkTipsSeen(_ context.Context, id uuid.UUID, ids []string) ([]st
 	return slices.Clone(u.TipsSeen), nil
 }
 
+// ResetTipsSeen clears the stored user's seen tips.
+func (f *User) ResetTipsSeen(_ context.Context, id uuid.UUID) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	u, ok := f.byID[id]
+	if !ok {
+		return &user.NotFoundError{ID: id.String()}
+	}
+	u.TipsSeen = nil
+	return nil
+}
+
 // UpdateLocale sets the stored user's locale.
 func (f *User) UpdateLocale(_ context.Context, id uuid.UUID, locale string) error {
 	f.mu.Lock()

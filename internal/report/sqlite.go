@@ -95,12 +95,6 @@ SELECT id         AS "period.id",
 	return ref, nil
 }
 
-type sqliteTotalsRow struct {
-	Income  int64 `alias:"totals.income"`
-	Expense int64 `alias:"totals.expense"`
-	TxCount int   `alias:"totals.tx_count"`
-}
-
 type sqliteWalletRow struct {
 	WalletID string `alias:"line.wallet_id"`
 	Name     string `alias:"line.name"`
@@ -131,7 +125,7 @@ func (r *sqliteReader) Summary(ctx context.Context, orgID, projectID, periodID u
 		"#currency":  string(currency),
 	}
 
-	var totals sqliteTotalsRow
+	var totals summaryTotals
 	if qErr := sqlite.RawStatement(summaryTotalsSQL(r.tables, false), args).QueryContext(ctx, tx, &totals); qErr != nil {
 		if !errors.Is(qErr, qrm.ErrNoRows) && !errors.Is(qErr, sql.ErrNoRows) {
 			return PeriodSummary{}, fmt.Errorf("report.sqlite.Summary: totals: %w", qErr)
@@ -165,7 +159,7 @@ func (r *sqliteReader) Summary(ctx context.Context, orgID, projectID, periodID u
 			Out:              row.Out,
 		})
 	}
-	return assembleSummary(ref, currency, totals.Income, totals.Expense, totals.TxCount, moves), nil
+	return assembleSummary(ref, currency, totals, moves), nil
 }
 
 type sqliteSliceRow struct {

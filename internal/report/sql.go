@@ -10,9 +10,27 @@ import (
 )
 
 const (
-	kindExpense = "expense"
-	kindIncome  = "income"
+	kindExpense       = "expense"
+	kindIncome        = "income"
+	kindAdjustmentIn  = "adjustment_in"
+	kindAdjustmentOut = "adjustment_out"
 )
+
+// NOTE: the one income and expense rule for every total: transfers, openings and adjustments move balances but are neither; adjustments net into their own signed total.
+const (
+	sumIncome      = `SUM(CASE WHEN %[1]skind = '` + kindIncome + `' THEN %[1]samount_minor ELSE 0 END)`
+	sumExpense     = `SUM(CASE WHEN %[1]skind = '` + kindExpense + `' THEN %[1]samount_minor ELSE 0 END)`
+	sumAdjustments = `SUM(CASE WHEN %[1]skind = '` + kindAdjustmentIn + `' THEN %[1]samount_minor` +
+		` WHEN %[1]skind = '` + kindAdjustmentOut + `' THEN -%[1]samount_minor ELSE 0 END)`
+)
+
+func incomeExpenseSums(alias string) (income, expense string) {
+	return fmt.Sprintf(sumIncome, alias), fmt.Sprintf(sumExpense, alias)
+}
+
+func adjustmentsSum(alias string) string {
+	return fmt.Sprintf(sumAdjustments, alias)
+}
 
 // NOTE: bounds the IN list so every bind token has the same width and none prefixes another.
 const maxCashflowPeriods = 9999
@@ -45,13 +63,15 @@ const scopePredicate = `org_id = #orgID AND org_id = #scopeOrg AND project_id = 
 const scopePredicateT = `t.org_id = #orgID AND t.org_id = #scopeOrg AND t.project_id = #projectID`
 
 func summaryTotalsSQL(t tableNames, pg bool) string {
+	income, expense := incomeExpenseSums("")
 	return fmt.Sprintf(`
-SELECT COALESCE(SUM(CASE WHEN kind IN ('income','adjustment_in')   THEN amount_minor ELSE 0 END), 0)%[2]s AS "totals.income",
-       COALESCE(SUM(CASE WHEN kind IN ('expense','adjustment_out') THEN amount_minor ELSE 0 END), 0)%[2]s AS "totals.expense",
-       COALESCE(SUM(CASE WHEN kind IN ('income','expense')         THEN 1 ELSE 0 END), 0)%[3]s AS "totals.tx_count"
+SELECT COALESCE(%[4]s, 0)%[2]s AS "totals.income",
+       COALESCE(%[5]s, 0)%[2]s AS "totals.expense",
+       COALESCE(%[6]s, 0)%[2]s AS "totals.adjustments",
+       COALESCE(SUM(CASE WHEN kind IN ('income','expense') THEN 1 ELSE 0 END), 0)%[3]s AS "totals.tx_count"
   FROM %[1]s
  WHERE `+scopePredicate+` AND period_id = #periodID AND currency = #currency`,
-		t.txn, bigintCast(pg), intCast(pg))
+		t.txn, bigintCast(pg), intCast(pg), income, expense, adjustmentsSum(""))
 }
 
 const priorPredicate = `(
@@ -140,19 +160,20 @@ SELECT t.wallet_id            AS "flow.wallet_id",
 }
 
 func cashflowSQL(t tableNames, pg bool, inList string) string {
+	income, expense := incomeExpenseSums("t.")
 	return fmt.Sprintf(`
 SELECT p.id         AS "point.period_id",
        p.name       AS "point.name",
        p.start_date AS "point.start",
        p.end_date   AS "point.end",
-       COALESCE(SUM(CASE WHEN t.kind IN ('income','adjustment_in')   THEN t.amount_minor ELSE 0 END), 0)%[3]s AS "point.income",
-       COALESCE(SUM(CASE WHEN t.kind IN ('expense','adjustment_out') THEN t.amount_minor ELSE 0 END), 0)%[3]s AS "point.expense"
+       COALESCE(%[5]s, 0)%[3]s AS "point.income",
+       COALESCE(%[6]s, 0)%[3]s AS "point.expense"
   FROM %[2]s p
   LEFT JOIN %[1]s t
     ON t.period_id = p.id AND t.org_id = p.org_id AND t.project_id = p.project_id AND t.currency = #currency
  WHERE p.org_id = #orgID AND p.org_id = #scopeOrg AND p.project_id = #projectID AND p.id IN (%[4]s)
  GROUP BY p.id, p.name, p.start_date, p.end_date`,
-		t.txn, t.periods, bigintCast(pg), inList)
+		t.txn, t.periods, bigintCast(pg), inList, income, expense)
 }
 
 func walletBalancesSQL(t tableNames, pg bool) string {

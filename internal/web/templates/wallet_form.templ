@@ -1,6 +1,7 @@
 package templates
 
 import (
+	"strconv"
 	"time"
 
 	"altalune.id/yasaku/civil"
@@ -41,8 +42,8 @@ func (v WalletFormView) Action() string {
 
 // WalletTxRow is one movement on the wallet detail page; Signed carries the direction.
 type WalletTxRow struct {
-	KindKey string
-	Signed  money.Amount
+	KindKey    string
+	Signed     money.Amount
 	Note       string
 	Day        civil.Date
 	OccurredAt time.Time
@@ -78,90 +79,69 @@ type WalletAdjustView struct {
 	ErrorCode   string
 }
 
-templ walletFormField(label string) {
-	<span class="mb-1.5 block text-sm font-medium text-foreground">{ label }</span>
+// AdjustPreviewView is the live line under the adjust field; Diff counts only when HasDiff, and an empty view renders nothing.
+type AdjustPreviewView struct {
+	HasDiff  bool
+	Diff     money.Amount
+	ErrorKey string
+	ErrorMsg string
+}
+
+func (v AdjustPreviewView) diffAttr() string {
+	return strconv.FormatInt(v.Diff.Minor, 10)
+}
+
+templ walletKindSelect(d web.LayoutData, v WalletFormView) {
+	{{ p := FieldProps{ID: "wallet-kind", Label: d.Tr("wallet.kind")} }}
+	@FormField(p) {
+		<select name="kind" class="select w-full text-base" { p.Attrs()... }>
+			for _, k := range v.Kinds {
+				<option value={ k.Value } selected?={ k.Selected }>{ d.Tr(k.LabelKey) }</option>
+			}
+		</select>
+	}
 }
 
 templ WalletFormPage(d web.LayoutData, v WalletFormView) {
 	<section class="mx-auto max-w-lg">
-		<header class="border-b border-border pb-4">
-			<h1 class="text-2xl font-semibold text-foreground">
-				if v.ID == "" {
-					{ d.Tr("wallet.new") }
-				} else {
-					{ d.Tr("wallet.edit") }
-				}
-			</h1>
-		</header>
+		if v.ID == "" {
+			@PageHeader(d.Tr("wallet.new"), "")
+		} else {
+			@PageHeader(d.Tr("wallet.edit"), "")
+		}
 		@pageBanner(d, v.ErrorKey, v.ErrorMsg, v.ErrorCode)
 		<form
 			method="post"
 			action={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, v.Action())) }
-			class="mt-6 space-y-5"
+			class="mt-6 flex flex-col gap-5"
 		>
-			<label class="block">
-				@walletFormField(d.Tr("wallet.name"))
-				<input
-					name="name"
-					type="text"
-					required
-					autofocus
-					value={ v.Name }
-					class="input w-full text-base"
-				/>
-			</label>
-			<label class="block">
-				@walletFormField(d.Tr("wallet.kind"))
-				<select
-					name="kind"
-					class="select w-full text-base"
-				>
-					for _, k := range v.Kinds {
-						if k.Selected {
-							<option value={ k.Value } selected>{ d.Tr(k.LabelKey) }</option>
-						} else {
-							<option value={ k.Value }>{ d.Tr(k.LabelKey) }</option>
-						}
-					}
-				</select>
-			</label>
-			<label class="block">
-				@walletFormField(d.Tr("wallet.provider"))
-				<input
-					name="provider"
-					type="text"
-					value={ v.Provider }
-					class="input w-full text-base"
-				/>
-			</label>
+			{{ name := FieldProps{ID: "wallet-name", Label: d.Tr("wallet.name")} }}
+			@FormField(name) {
+				<input name="name" type="text" dir="auto" required autofocus value={ v.Name } class="input w-full text-base" { name.Attrs()... }/>
+			}
+			@walletKindSelect(d, v)
+			{{ provider := FieldProps{ID: "wallet-provider", Label: d.Tr("wallet.provider")} }}
+			@FormField(provider) {
+				<input name="provider" type="text" dir="auto" value={ v.Provider } class="input w-full text-base" { provider.Attrs()... }/>
+			}
 			if v.ID == "" {
-				<label class="block">
-					@walletFormField(d.Tr("wallet.opening_balance"))
-					<div class="flex items-center gap-2">
-						<span class="shrink-0 text-sm text-muted-foreground">{ v.Currency }</span>
-						<input
-							name="opening_balance"
-							type="text"
-							inputmode="numeric"
-							value={ v.Opening }
-							class="input w-full text-base tabular-nums"
-						/>
+				{{ opening := FieldProps{ID: "wallet-opening", Label: d.Tr("wallet.opening_balance"), Hint: d.Tr("wallet.opening_hint")} }}
+				@FormField(opening) {
+					<div class="join w-full">
+						<span class="join-item flex items-center border border-base-300 bg-base-200 px-3 text-sm">{ CurrencySymbol(d, money.Currency(v.Currency)) }</span>
+						<input name="opening_balance" type="text" inputmode="decimal" autocomplete="off" value={ v.Opening } class="input join-item min-w-0 flex-1 text-base tabular-nums" { opening.Attrs()... }/>
 					</div>
-				</label>
+				}
 				<input type="hidden" name="currency" value={ v.Currency }/>
 			}
-			<label class="flex items-start gap-3">
-				if v.Exclude {
-					<input name="exclude_from_total" type="checkbox" checked class="mt-0.5 h-4 w-4 shrink-0 rounded border-border text-primary focus:ring-2 focus:ring-ring"/>
-				} else {
-					<input name="exclude_from_total" type="checkbox" class="mt-0.5 h-4 w-4 shrink-0 rounded border-border text-primary focus:ring-2 focus:ring-ring"/>
-				}
+			<label class="flex min-h-11 items-start gap-3">
+				<input name="exclude_from_total" type="checkbox" checked?={ v.Exclude } class="checkbox mt-0.5"/>
 				<span class="min-w-0">
-					<span class="block text-sm font-medium text-foreground">{ d.Tr("wallet.exclude_from_total") }</span>
-					<span class="mt-0.5 block text-xs text-muted-foreground">{ d.Tr("wallet.exclude_hint") }</span>
+					<span class="block text-sm font-medium">{ d.Tr("wallet.exclude_from_total") }</span>
+					<span class="block text-xs text-base-content/70">{ d.Tr("wallet.exclude_hint") }</span>
 				</span>
 			</label>
-			<div class="flex flex-wrap items-center gap-3 pt-2">
+			<div class="flex flex-wrap items-center gap-2">
 				<button type="submit" class="btn btn-primary">
 					if v.ID == "" {
 						{ d.Tr("wallet.new") }
@@ -169,9 +149,9 @@ templ WalletFormPage(d web.LayoutData, v WalletFormView) {
 						{ d.Tr("wallet.edit") }
 					}
 				</button>
-				<a href={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/wallets")) } class="text-sm text-muted-foreground hover:text-foreground">
+				@AppButton(d.ProjectPath(v.ProjectSlug, "/wallets"), "btn-ghost", nil) {
 					{ d.Tr("common.cancel") }
-				</a>
+				}
 			</div>
 		</form>
 	</section>
@@ -181,45 +161,90 @@ templ WalletFormLayout(d web.LayoutData, v WalletFormView) {
 	@Layout(web.WithContent(d, WalletFormPage(d, v)))
 }
 
+// AdjustPreview is the hx-get target under the adjust field; it names the difference the save would record.
+templ AdjustPreview(d web.LayoutData, v AdjustPreviewView) {
+	switch {
+		case v.ErrorKey != "":
+			<span data-adjust-error="1" class="text-error">{ d.Tr(v.ErrorKey) }</span>
+		case v.ErrorMsg != "":
+			<span data-adjust-error="1" class="text-error">{ v.ErrorMsg }</span>
+		case v.HasDiff && v.Diff.IsZero():
+			<span data-adjust-diff="0">{ d.Tr("wallet.adjust_none") }</span>
+		case v.HasDiff:
+			<span data-adjust-diff={ v.diffAttr() }>
+				{ d.Tr("wallet.adjust_preview", "Amount", SignedMoney(d, v.Diff)) }
+			</span>
+	}
+}
+
 templ WalletAdjustPage(d web.LayoutData, v WalletAdjustView) {
 	<section class="mx-auto max-w-lg">
-		<header class="border-b border-border pb-4">
-			<h1 class="text-2xl font-semibold text-foreground">{ d.Tr("wallet.adjust") }</h1>
-			<p class="mt-1 truncate text-sm text-muted-foreground">{ v.WalletName }</p>
-		</header>
-		@pageBanner(d, v.ErrorKey, v.ErrorMsg, v.ErrorCode)
-		<div class="mt-6 rounded-lg border border-border bg-card px-4 py-4 shadow-sm">
-			<p class="text-sm text-muted-foreground">{ d.Tr("wallet.balance") }</p>
-			<p class="mt-1 text-2xl font-semibold tabular-nums tracking-tight text-foreground">{ Money(d, v.Current) }</p>
-		</div>
-		<form
-			method="post"
-			action={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/wallets/"+v.WalletID+"/adjust")) }
-			class="mt-6 space-y-5"
-		>
-			<label class="block">
-				@walletFormField(d.Tr("wallet.adjust_target"))
+		@PageHeader(d.Tr("wallet.adjust"), v.WalletName)
+		@walletAdjustBody(d, v, false)
+	</section>
+}
+
+// WalletAdjustDialog is the adjust form in a dialog; the wallets list lazy-loads it, and its no-JS page is WalletAdjustPage.
+templ WalletAdjustDialog(d web.LayoutData, v WalletAdjustView) {
+	@AppModal(d, WalletAdjustDialogID(v.WalletID), d.Tr("wallet.adjust_named", "Name", v.WalletName)) {
+		@walletAdjustBody(d, v, true)
+	}
+}
+
+// WalletAdjustDialogID is one wallet's adjust dialog id, so a second wallet never reopens the first one's dialog.
+func WalletAdjustDialogID(walletID string) string { return "wallet-adjust-" + walletID }
+
+templ walletAdjustBody(d web.LayoutData, v WalletAdjustView, inDialog bool) {
+	@pageBanner(d, v.ErrorKey, v.ErrorMsg, v.ErrorCode)
+	<p class={ "text-sm text-base-content/70", templ.KV("mt-4", !inDialog) }>{ d.Tr("wallet.adjust_hint") }</p>
+	<p class="mt-4 min-w-0 text-sm break-words">
+		{ d.Tr("wallet.adjust_current") }
+		<span class="font-semibold tabular-nums">{ Money(d, v.Current) }</span>
+	</p>
+	<form
+		method="post"
+		action={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/wallets/"+v.WalletID+"/adjust")) }
+		class="mt-3 flex flex-col gap-2"
+	>
+		{{ target := FieldProps{ID: "wallet-adjust-target-" + v.WalletID, Label: d.Tr("wallet.adjust_target")} }}
+		@FormField(target) {
+			<div class="join w-full">
+				<span class="join-item flex items-center border border-base-300 bg-base-200 px-3 text-sm">{ CurrencySymbol(d, v.Current.Currency) }</span>
 				<input
 					name="target"
 					type="text"
-					inputmode="numeric"
+					inputmode="decimal"
+					autocomplete="off"
 					required
 					autofocus
 					value={ v.Target }
-					class="input w-full text-base tabular-nums"
+					class="input join-item min-w-0 flex-1 text-lg tabular-nums"
+					hx-get={ d.ProjectPath(v.ProjectSlug, "/wallets/"+v.WalletID+"/adjust/preview") }
+					hx-nonce={ d.Nonce }
+					hx-trigger="input changed delay:300ms"
+					hx-target={ "#adjust-preview-" + v.WalletID }
+					hx-swap="innerHTML"
+					hx-sync="this:replace"
+					hx-status:5xx="target:#hx-error swap:innerHTML"
+					{ target.Attrs()... }
 				/>
-				<span class="mt-1.5 block text-xs text-muted-foreground">{ d.Tr("wallet.adjust_hint") }</span>
-			</label>
-			<div class="flex flex-wrap items-center gap-3">
-				<button type="submit" class="btn btn-primary">
-					{ d.Tr("wallet.adjust") }
-				</button>
-				<a href={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/wallets/"+v.WalletID)) } class="text-sm text-muted-foreground hover:text-foreground">
-					{ d.Tr("common.cancel") }
-				</a>
 			</div>
-		</form>
-	</section>
+		}
+		<p id={ "adjust-preview-" + v.WalletID } aria-live="polite" class="min-h-5 text-sm tabular-nums"></p>
+		if inDialog {
+			<div class="modal-action mt-2">
+				<button type="button" data-dialog-close class="btn btn-ghost">{ d.Tr("common.cancel") }</button>
+				<button type="submit" class="btn btn-primary">{ d.Tr("wallet.adjust_save") }</button>
+			</div>
+		} else {
+			<div class="mt-2 flex flex-wrap items-center gap-2">
+				<button type="submit" class="btn btn-primary">{ d.Tr("wallet.adjust_save") }</button>
+				@AppButton(d.ProjectPath(v.ProjectSlug, "/wallets/"+v.WalletID), "btn-ghost", nil) {
+					{ d.Tr("common.cancel") }
+				}
+			</div>
+		}
+	</form>
 }
 
 templ WalletAdjustLayout(d web.LayoutData, v WalletAdjustView) {
@@ -227,79 +252,82 @@ templ WalletAdjustLayout(d web.LayoutData, v WalletAdjustView) {
 }
 
 templ walletDetailTxRow(d web.LayoutData, r WalletTxRow) {
-	<li class="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3">
+	<li class="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3">
 		<span class="min-w-0 flex-1 basis-40">
-			<span class="block truncate text-sm text-foreground">
+			<span class="block text-sm break-words">
 				if r.Note != "" {
 					{ r.Note }
 				} else {
 					{ d.Tr(r.KindKey) }
 				}
 			</span>
-			<span class="mt-0.5 block text-xs text-muted-foreground">
+			<span class="block text-xs text-base-content/70">
 				@LedgerDate(d, r.Day, &r.OccurredAt)
 				{ " · " + d.Tr(r.KindKey) }
 			</span>
 		</span>
-		<span class="shrink-0 text-sm font-medium tabular-nums text-foreground">{ SignedMoney(d, r.Signed) }</span>
+		<span class="min-w-0 max-w-full text-sm font-medium tabular-nums break-words">{ SignedMoney(d, r.Signed) }</span>
 	</li>
 }
 
 templ WalletDetailPage(d web.LayoutData, v WalletDetailView) {
 	<section data-adjust-state={ v.AdjustState }>
-		<header class="flex flex-wrap items-baseline justify-between gap-3 border-b border-border pb-4">
-			<div class="min-w-0">
-				<h1 class="truncate text-2xl font-semibold text-foreground">{ v.Wallet.Name }</h1>
-				<p class="mt-1 truncate text-sm text-muted-foreground">
-					{ d.Tr(v.Wallet.KindKey) }
-					if v.Wallet.Provider != "" {
-						{ " — " + v.Wallet.Provider }
-					}
-					if v.Wallet.Archived {
-						{ " — " + d.Tr("wallet.archived") }
-					}
-				</p>
-			</div>
-			<a href={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/wallets")) } class="shrink-0 text-sm text-muted-foreground hover:text-foreground">
+		@PageHeader(v.Wallet.Name, walletDetailSubtitle(d, v.Wallet)) {
+			@AppButton(d.ProjectPath(v.ProjectSlug, "/wallets"), "btn-ghost", nil) {
 				{ d.Tr("wallet.title") }
-			</a>
-		</header>
+			}
+		}
 		@pageBanner(d, v.ErrorKey, v.ErrorMsg, v.ErrorCode)
-		<div class="mt-6 rounded-lg border border-border bg-card px-4 py-4 shadow-sm">
-			<p class="text-sm text-muted-foreground">{ d.Tr("wallet.balance") }</p>
-			<p class="mt-1 text-3xl font-semibold tabular-nums tracking-tight text-foreground">{ Money(d, v.Balance) }</p>
+		<div class="mt-6 min-w-0 rounded-box bg-base-200 p-4">
+			<p class="text-sm text-base-content/70">{ d.Tr("wallet.balance") }</p>
+			<p class="mt-1 text-3xl font-bold tabular-nums break-words">{ Money(d, v.Balance) }</p>
 			if v.AdjustState == AdjustUnchanged {
-				<p class="mt-2 text-sm text-muted-foreground">{ d.Tr("wallet.adjust_unchanged") }</p>
+				<p class="mt-2 text-sm text-base-content/70">{ d.Tr("wallet.adjust_unchanged") }</p>
 			}
 		</div>
 		if !v.Wallet.Archived {
 			<div class="mt-4 flex flex-wrap gap-2">
-				<a
-					href={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/wallets/"+v.Wallet.ID+"/adjust")) }
-					class="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-2 text-sm font-medium text-foreground shadow-sm hover:bg-muted"
-				>
-					@icons.Icon("banknote", "h-4 w-4")
-					<span>{ d.Tr("wallet.adjust") }</span>
-				</a>
-				<a
-					href={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/wallets/"+v.Wallet.ID+"/edit")) }
-					class="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-2 text-sm font-medium text-foreground shadow-sm hover:bg-muted"
-				>
-					@icons.Icon("pencil", "h-4 w-4")
-					<span>{ d.Tr("wallet.edit") }</span>
-				</a>
+				@AppButton(d.ProjectPath(v.ProjectSlug, "/wallets/"+v.Wallet.ID+"/adjust"), "", nil) {
+					@icons.Icon("scale", "size-4")
+					{ d.Tr("wallet.adjust") }
+				}
+				@AppButton(d.ProjectPath(v.ProjectSlug, "/transactions/new?kind=transfer&wallet="+v.Wallet.ID), "", templ.Attributes{"data-dialog-open": TxAddDialogID, "data-dialog-src": d.ProjectPath(v.ProjectSlug, "/transactions/new?kind=transfer&wallet="+v.Wallet.ID)}) {
+					@icons.Icon("arrow-left-right", "size-4")
+					{ d.Tr("wallet.transfer") }
+				}
+				@AppButton(d.ProjectPath(v.ProjectSlug, "/wallets/"+v.Wallet.ID+"/edit"), "", nil) {
+					@icons.Icon("pencil", "size-4")
+					{ d.Tr("wallet.edit") }
+				}
+				<form method="post" action={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/wallets/"+v.Wallet.ID+"/archive")) }>
+					<button type="submit" class="btn btn-ghost">
+						@icons.Icon("lock", "size-4")
+						{ d.Tr("wallet.archive") }
+					</button>
+				</form>
 			</div>
 		}
-		<h2 class="mt-8 text-sm font-medium text-muted-foreground">{ d.Tr("wallet.recent") }</h2>
-		<ul class="mt-2 divide-y divide-border/50 overflow-hidden rounded-lg border border-border bg-card shadow-sm">
+		<h2 class="mt-8 text-sm font-semibold text-base-content/70">{ d.Tr("wallet.recent") }</h2>
+		<ul class="mt-2 divide-y divide-base-300 rounded-box border border-base-300 bg-base-100">
 			if len(v.Recent) == 0 {
-				<li class="px-4 py-8 text-center text-sm text-muted-foreground">{ d.Tr("tx.empty") }</li>
+				<li class="px-4 py-8 text-center text-sm text-base-content/70">{ d.Tr("tx.empty") }</li>
 			}
 			for _, r := range v.Recent {
 				@walletDetailTxRow(d, r)
 			}
 		</ul>
 	</section>
+}
+
+func walletDetailSubtitle(d web.LayoutData, r WalletRow) string {
+	out := d.Tr(r.KindKey)
+	if r.Provider != "" {
+		out += " — " + r.Provider
+	}
+	if r.Archived {
+		out += " — " + d.Tr("wallet.archived")
+	}
+	return out
 }
 
 templ WalletDetailLayout(d web.LayoutData, v WalletDetailView) {

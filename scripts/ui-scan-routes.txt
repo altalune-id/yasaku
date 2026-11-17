@@ -66,6 +66,35 @@
 /orgs/{o}/projects/{p}/apikeys	empty	create a project
 /orgs/{o}/projects/{p}/apikeys	data	create 2 project API keys
 /orgs/{o}/projects/{p}/apikeys	dialog open	open the create-key dialog
+/orgs/{o}/projects/{p}/first-run	default	create a project
+/orgs/{o}/projects/{p}/more	default	create a project
 /orgs/{o}/projects/{p}/settings	default	create a project
 /orgs/{o}/projects/{p}/settings	error	submit an invalid value
 /orgs/{o}/projects/{p}/overview	dropdown open	open the user menu and the language menu in the shell
+/orgs/{o}/projects/{p}/categories	dropdown open	open the icon picker on the first category
+/orgs/{o}/projects/{p}/categories?kind=income	data	add the starter categories
+/orgs/{o}/projects/{p}/first-run	error	continue with a blank wallet name
+/orgs/{o}/projects/{p}/first-run	wallets step	create a project, save its currency, then add the Cash, Bank and E-wallet chips
+/orgs/{o}/projects/{p}/more	tips reset	dismiss a tip, press Show tips again
+/orgs/{o}/projects/{p}/overview	add pulse tip	new project with no entries, add tip anchored to the dock +
+/orgs/{o}/projects/{p}/overview	no wallet	finish first run, then archive every wallet
+/orgs/{o}/projects/{p}/overview	period ended	leave the current period open past its cycle end
+/orgs/{o}/projects/{p}/overview	quick add	record expenses in 4 categories in the last 90 days
+/orgs/{o}/projects/{p}/overview	swipe tip	record 3 transactions with tips not dismissed
+/orgs/{o}/projects/{p}/overview?period={id}	closed period	close the current period, then open the closed one from the period switcher
+/orgs/{o}/projects/{p}/periods	dialog open	record 3 transactions, open the close month dialog
+/orgs/{o}/projects/{p}/settings	dirty	change the time zone and the month start
+/orgs/{o}/projects/{p}/settings	saved	save the settings
+/orgs/{o}/projects/{p}/transactions	no wallet	archive every wallet, open the add sheet
+/orgs/{o}/projects/{p}/transactions	row menu open	record a transaction, open its row overflow menu
+/orgs/{o}/projects/{p}/transactions	row swiped	record a transaction, swipe its row to the start at 390
+/orgs/{o}/projects/{p}/transactions	sheet date picker open	open the add sheet, tap the date chip
+/orgs/{o}/projects/{p}/transactions	sheet open	create a wallet and a category, tap Add transaction
+/orgs/{o}/projects/{p}/transactions	sheet recent	record 2 entries in one category, open the add sheet twice, pick that category
+/orgs/{o}/projects/{p}/transactions	undo toast	record a transaction, delete it from its detail page
+/orgs/{o}/projects/{p}/transactions/new	duplicate	record a transaction, open transactions/new?from={id}
+/orgs/{o}/projects/{p}/transactions/new	no wallet	archive every wallet
+/orgs/{o}/projects/{p}/transactions/{id}	default	record a transaction
+/orgs/{o}/projects/{p}/transactions/{id}	locked	record a transaction, close its period
+/orgs/{o}/projects/{p}/wallets	dialog open	archive a wallet, open its delete confirmation
+/orgs/{o}/projects/{p}/wallets/{id}	default	create a wallet with an opening balance

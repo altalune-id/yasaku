@@ -243,6 +243,20 @@ func isSQLiteUnique(err error) bool {
 	return strings.Contains(msg, "UNIQUE constraint failed") || strings.Contains(msg, "constraint failed: UNIQUE")
 }
 
+func (s *sqliteStore) ResetTipsSeen(ctx context.Context, id uuid.UUID) error {
+	res, err := s.table.UPDATE(s.table.TipsSeen, s.table.UpdatedAt).
+		SET(sqlite.String(emptyTipsSeen), sqlite.String(sqliteent.SQLiteTime(time.Now()))).
+		WHERE(s.table.ID.EQ(sqlite.String(id.String()))).
+		ExecContext(ctx, s.db)
+	if err != nil {
+		return fmt.Errorf("user.sqlite.ResetTipsSeen: %w", err)
+	}
+	if n, err := res.RowsAffected(); err == nil && n == 0 {
+		return &NotFoundError{ID: id.String()}
+	}
+	return nil
+}
+
 func (s *sqliteStore) MarkTipsSeen(ctx context.Context, id uuid.UUID, ids []string) ([]string, error) {
 	where := s.table.ID.EQ(sqlite.String(id.String()))
 	for range tipsSeenAttempts {

@@ -68,9 +68,12 @@
 		document.querySelectorAll('time[data-ledger-date]').forEach(function (el) {
 			var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(el.getAttribute('datetime') || '');
 			if (!m) return;
-			var compact = el.getAttribute('data-date-style') === 'compact';
+			var style = el.getAttribute('data-date-style');
 			var day = new Date(Date.UTC(+m[1], m[2] - 1, +m[3]));
-			el.textContent = fmt({ timeZone: 'UTC', day: 'numeric', month: 'short', year: compact ? undefined : 'numeric' }, day) || el.textContent;
+			el.textContent = fmt({
+				timeZone: 'UTC', weekday: style === 'long' ? 'long' : style === 'weekday' ? 'short' : undefined, day: style === 'month' ? undefined : 'numeric',
+				month: style === 'long' || style === 'month' ? 'long' : 'short', year: style === 'weekday' || style === 'compact' ? undefined : 'numeric'
+			}, day) || el.textContent;
 			var at = new Date(el.getAttribute('data-datetime-alt'));
 			arm(el, at, function () {
 				return fmt(stamp, at);

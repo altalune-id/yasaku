@@ -51,9 +51,9 @@ func TestYasakuSurfaces(t *testing.T) {
 			})
 		}
 
-		overview := get(t, pbase+"/overview")
-		require.Equal(t, http.StatusOK, overview.Code, "the overview must render, or the nav check below proves nothing")
-		body := overview.Body.String()
+		page := get(t, pbase+"/transactions")
+		require.Equal(t, http.StatusOK, page.Code, "a project page must render, or the nav check below proves nothing")
+		body := page.Body.String()
 		require.Contains(t, body, pbase+"/wallets", "the project nav did not render")
 		for _, page := range []string{"/posts", "/tags", "/todos", "/webhooks"} {
 			require.NotContains(t, body, `href="`+pbase+page+`"`, "the project nav links the unmounted %s page", page)

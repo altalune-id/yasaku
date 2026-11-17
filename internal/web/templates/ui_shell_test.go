@@ -150,10 +150,14 @@ func TestPageHeader_StacksOnPhonesAndKeepsActionsWhole(t *testing.T) {
 }
 
 func TestLayout_DrawerOpenersAreKeyboardOperable(t *testing.T) {
-	for name, out := range map[string]string{
-		"dock More":       renderShell(t, &web.ActiveProject{Slug: "home", Name: "Home"}, web.NavScopeProject),
-		"phone hamburger": renderShell(t, nil, web.NavScopeOrg),
+	for name, c := range map[string]struct {
+		out  string
+		want int
+	}{
+		"dock More is a page link": {renderShell(t, &web.ActiveProject{Slug: "home", Name: "Home"}, web.NavScopeProject), 0},
+		"phone hamburger":          {renderShell(t, nil, web.NavScopeOrg), 1},
 	} {
+		out := c.out
 		openers := 0
 		for _, tag := range strings.Split(out, "<label")[1:] {
 			tag = tag[:strings.Index(tag, ">")]
@@ -167,8 +171,8 @@ func TestLayout_DrawerOpenersAreKeyboardOperable(t *testing.T) {
 				}
 			}
 		}
-		if openers != 1 {
-			t.Errorf("%s: %d drawer openers, want 1", name, openers)
+		if openers != c.want {
+			t.Errorf("%s: %d drawer openers, want %d", name, openers, c.want)
 		}
 		if !strings.Contains(out, `<input id="alt-drawer" type="checkbox" class="drawer-toggle" tabindex="-1"`) {
 			t.Errorf("%s: the drawer checkbox must leave the tab order; its openers are the tab stops", name)

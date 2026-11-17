@@ -4,6 +4,7 @@ import (
 	"strconv"
 	"time"
 
+	"altalune.id/yasaku/civil"
 	"altalune.id/yasaku/internal/web"
 	"altalune.id/yasaku/internal/web/icons"
 	"altalune.id/yasaku/money"
@@ -13,14 +14,15 @@ import (
 type PeriodRow struct {
 	ID        string
 	Name      string
-	Start     string
-	End       string
+	Start     civil.Date
+	End       *civil.Date
 	Closed    bool
 	ClosedAt  *time.Time
 	HasTotals bool
 	Income    money.Amount
 	Expense   money.Amount
 	Net       money.Amount
+	Adjust    money.Amount
 	TxCount   int
 	CanReopen bool
 	CanClose  bool
@@ -33,6 +35,11 @@ type PeriodsView struct {
 	ProjectName string
 	HasCurrent  bool
 	Current     PeriodRow
+	// CloseEnd is the suggested end date the close dialog posts; HasClose is false when the preview could not be computed.
+	CloseEnd    string
+	CloseEndDay civil.Date
+	HasClose bool
+	Close    ClosePreview
 	History     []PeriodRow
 	Error       string
 	ErrorCode   string
@@ -49,6 +56,7 @@ type ClosePreview struct {
 	Income  money.Amount
 	Expense money.Amount
 	Net     money.Amount
+	Adjust  money.Amount
 	TxCount int
 	Wallets []CloseWalletRow
 }
@@ -73,252 +81,273 @@ type ClosePeriodView struct {
 
 templ periodStatusBadge(d web.LayoutData, closed bool) {
 	if closed {
-		<span class="inline-flex shrink-0 items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
-			@icons.Icon("lock", "h-3 w-3")
+		<span class="badge badge-ghost shrink-0 gap-1">
+			@icons.Icon("lock", "size-3")
 			{ d.Tr("period.status_closed") }
 		</span>
 	} else {
-		<span class="inline-flex shrink-0 items-center gap-1 rounded-full bg-success/10 px-2 py-0.5 text-xs font-medium text-success">
-			@icons.Icon("lock-open", "h-3 w-3")
+		<span class="badge badge-success badge-soft shrink-0 gap-1">
+			@icons.Icon("lock-open", "size-3")
 			{ d.Tr("period.status_open") }
 		</span>
 	}
 }
 
 templ periodTotals(d web.LayoutData, r PeriodRow) {
-	<dl class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
-		<div class="rounded-md border border-border/70 bg-background/60 px-3 py-2">
-			<dt class="text-xs text-muted-foreground">{ d.Tr("period.snapshot_income") }</dt>
-			<dd class="mt-0.5 text-base font-semibold tabular-nums text-foreground">{ Money(d, r.Income) }</dd>
+	<div class="stats stats-vertical w-full bg-base-200 sm:stats-horizontal">
+		<div class="stat min-w-0 px-4">
+			<div class="stat-title text-base-content/80">{ d.Tr("overview.money_in") }</div>
+			<div class="stat-value text-xl tabular-nums break-words text-success">{ SignedMoney(d, r.Income) }</div>
 		</div>
-		<div class="rounded-md border border-border/70 bg-background/60 px-3 py-2">
-			<dt class="text-xs text-muted-foreground">{ d.Tr("period.snapshot_expense") }</dt>
-			<dd class="mt-0.5 text-base font-semibold tabular-nums text-foreground">{ Money(d, r.Expense) }</dd>
+		<div class="stat min-w-0 px-4">
+			<div class="stat-title text-base-content/80">{ d.Tr("overview.money_out") }</div>
+			<div class="stat-value text-xl tabular-nums break-words">{ SignedMoney(d, r.Expense.Neg()) }</div>
 		</div>
-		<div class="rounded-md border border-border/70 bg-background/60 px-3 py-2">
-			<dt class="text-xs text-muted-foreground">{ d.Tr("period.snapshot_net") }</dt>
-			<dd class="mt-0.5 text-base font-semibold tabular-nums text-foreground">{ SignedMoney(d, r.Net) }</dd>
+		<div class="stat min-w-0 px-4">
+			<div class="stat-title text-base-content/80">{ d.Tr("period.snapshot_net") }</div>
+			<div class="stat-value text-xl tabular-nums break-words">{ SignedMoney(d, r.Net) }</div>
+			<div class="stat-desc text-base-content/80">{ d.TrN("category.entries_period", r.TxCount) }</div>
 		</div>
-	</dl>
+	</div>
+	if !r.Adjust.IsZero() {
+		<p data-balance-fixes class="flex min-w-0 items-baseline justify-between gap-2 px-1 text-sm text-base-content/80">
+			<span>{ d.Tr("overview.balance_fixes") }</span>
+			<span class="break-all tabular-nums">{ SignedMoney(d, r.Adjust) }</span>
+		</p>
+	}
 }
 
 templ periodRenameForm(d web.LayoutData, projectSlug string, r PeriodRow) {
 	<form
 		method="post"
 		action={ templ.SafeURL(d.ProjectPath(projectSlug, "/periods/"+r.ID+"/rename")) }
-		class="mt-3 flex flex-wrap items-center gap-2"
+		class="flex flex-wrap items-center gap-2"
 	>
 		<input
 			name="name"
 			type="text"
+			dir="auto"
 			required
 			value={ r.Name }
 			aria-label={ d.Tr("period.rename") + ": " + r.Name }
-			class="input min-w-0 flex-1"
+			class="input min-w-0 flex-1 text-base"
 		/>
-		<button type="submit" class="shrink-0 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-foreground/90 hover:bg-muted">
-			{ d.Tr("period.rename") }
-		</button>
+		<button type="submit" class="btn">{ d.Tr("period.rename") }</button>
 	</form>
 }
 
+templ periodRenameCollapse(d web.LayoutData, projectSlug string, r PeriodRow) {
+	@AppCollapse("", "border border-base-300", textTitle(d.Tr("period.rename"))) {
+		@periodRenameForm(d, projectSlug, r)
+	}
+}
+
 templ periodCurrentCard(d web.LayoutData, v PeriodsView) {
-	<article class="mt-6 rounded-lg border border-border bg-card p-4 shadow-sm sm:p-6">
-		<div class="flex flex-wrap items-center justify-between gap-2">
-			<div class="min-w-0">
-				<p class="text-xs uppercase tracking-wide text-muted-foreground">{ d.Tr("period.current") }</p>
-				<h2 class="mt-0.5 truncate text-xl font-semibold text-foreground">{ v.Current.Name }</h2>
-			</div>
-			@periodStatusBadge(d, false)
-		</div>
-		<p class="mt-1 text-sm text-muted-foreground">
-			{ d.Tr("period.start") }
-			<span class="tabular-nums">{ v.Current.Start }</span>
-		</p>
+	<section class="flex min-w-0 flex-col gap-3 rounded-box border border-base-300 bg-base-100 p-4" aria-labelledby="period-current-title">
+		<h2 id="period-current-title" class="text-lg font-semibold break-words">{ v.Current.Name }</h2>
 		if v.Current.HasTotals {
 			@periodTotals(d, v.Current)
 		} else {
-			<p class="mt-4 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-warning">
-				{ d.Tr("period.totals_unavailable") }
-			</p>
+			<p role="alert" class="alert alert-soft alert-error text-sm">{ d.Tr("period.totals_unavailable") }</p>
 		}
-		<div class="mt-5 flex flex-wrap items-center gap-3">
-			<a
-				href={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/periods/"+v.Current.ID+"/close")) }
-				class="btn btn-primary w-full sm:w-auto"
-			>
-				@icons.Icon("lock", "h-4 w-4")
-				{ d.Tr("period.close") }
-			</a>
-			if v.Current.HasTotals {
-				<p class="text-xs text-muted-foreground">
-					{ d.Tr("period.tx_count") }
-					<span class="tabular-nums">{ strconv.Itoa(v.Current.TxCount) }</span>
-				</p>
+		<p class="text-sm text-base-content/70">{ d.Tr("period.close_hint", "Name", v.Current.Name) }</p>
+		<div class="flex flex-wrap items-center gap-2">
+			if v.HasClose {
+				<button type="button" data-dialog-open="close-month-dialog" class="btn btn-primary">
+					@icons.Icon("lock", "size-4")
+					{ d.Tr("overview.close_named", "Period", v.Current.Name) }
+				</button>
+			} else {
+				@AppButton(d.ProjectPath(v.ProjectSlug, "/periods/"+v.Current.ID+"/close"), "btn-primary", nil) {
+					@icons.Icon("lock", "size-4")
+					{ d.Tr("overview.close_named", "Period", v.Current.Name) }
+				}
+			}
+			@AppButton(d.ProjectPath(v.ProjectSlug, "/reports?period="+v.Current.ID), "btn-ghost", nil) {
+				{ d.Tr("period.see_report_first") }
 			}
 		</div>
-		@periodRenameForm(d, v.ProjectSlug, v.Current)
-	</article>
+		@periodRenameCollapse(d, v.ProjectSlug, v.Current)
+	</section>
 }
 
-templ periodHistoryRow(d web.LayoutData, projectSlug string, r PeriodRow) {
-	<li class="px-4 py-4">
-		<div class="flex flex-wrap items-center justify-between gap-2">
-			<div class="min-w-0">
-				<p class="truncate text-sm font-medium text-foreground">{ r.Name }</p>
-				<p class="mt-0.5 text-xs tabular-nums text-muted-foreground">
-					{ r.Start }
-					if r.End != "" {
-						{ " – " + r.End }
-					}
-				</p>
-			</div>
-			@periodStatusBadge(d, r.Closed)
+templ closePreviewList(d web.LayoutData, p ClosePreview) {
+	<dl class="flex flex-col gap-2 text-sm">
+		<div class="flex items-baseline justify-between gap-4">
+			<dt>{ d.Tr("overview.money_in") }</dt>
+			<dd class="min-w-0 font-semibold tabular-nums break-words text-success">{ SignedMoney(d, p.Income) }</dd>
 		</div>
-		if r.HasTotals {
-			@periodTotals(d, r)
-		}
-		if r.ClosedAt != nil {
-			<p class="mt-2 text-xs text-muted-foreground">
-				{ d.Tr("period.closed_at") }
-				<span class="tabular-nums">
-					@DateTime(d, *r.ClosedAt)
-				</span>
-			</p>
-		}
-		if r.CanReopen || r.CanClose {
-			<div class="mt-3 flex flex-wrap gap-2">
-				if r.CanReopen {
-					<form method="post" action={ templ.SafeURL(d.ProjectPath(projectSlug, "/periods/"+r.ID+"/reopen")) }>
-						<button type="submit" class="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-foreground/90 hover:bg-muted">
-							@icons.Icon("rotate-ccw", "h-3.5 w-3.5")
-							{ d.Tr("period.reopen") }
-						</button>
-					</form>
-				}
-				if r.CanClose {
-					<a
-						href={ templ.SafeURL(d.ProjectPath(projectSlug, "/periods/"+r.ID+"/close")) }
-						class="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-foreground/90 hover:bg-muted"
-					>
-						@icons.Icon("lock", "h-3.5 w-3.5")
-						{ d.Tr("period.close") }
-					</a>
-				}
+		<div class="flex items-baseline justify-between gap-4">
+			<dt>{ d.Tr("overview.money_out") }</dt>
+			<dd class="min-w-0 font-semibold tabular-nums break-words">{ SignedMoney(d, p.Expense.Neg()) }</dd>
+		</div>
+		if !p.Adjust.IsZero() {
+			<div data-balance-fixes class="flex items-baseline justify-between gap-4">
+				<dt>{ d.Tr("overview.balance_fixes") }</dt>
+				<dd class="min-w-0 font-semibold tabular-nums break-words">{ SignedMoney(d, p.Adjust) }</dd>
 			</div>
 		}
-		@periodRenameForm(d, projectSlug, r)
+		<div class="flex items-baseline justify-between gap-4 border-t border-base-300 pt-2">
+			<dt>{ d.Tr("period.snapshot_net") }</dt>
+			<dd class="min-w-0 font-bold tabular-nums break-words">{ SignedMoney(d, p.Net) }</dd>
+		</div>
+		<div class="flex items-baseline justify-between gap-4">
+			<dt class="text-base-content/70">{ d.Tr("period.tx_count") }</dt>
+			<dd class="tabular-nums text-base-content/70">{ strconv.Itoa(p.TxCount) }</dd>
+		</div>
+	</dl>
+}
+
+templ periodCloseDialog(d web.LayoutData, v PeriodsView) {
+	@AppModal(d, "close-month-dialog", d.Tr("period.close_title", "Name", v.Current.Name)) {
+		<form
+			method="post"
+			action={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/periods/"+v.Current.ID+"/close")) }
+			class="flex flex-col gap-4"
+		>
+			@closePreviewList(d, v.Close)
+			<p class="text-sm text-base-content/70">{ d.Tr("period.close_confirm") }</p>
+			<p class="text-sm">
+				{ d.Tr("period.ends_on") }
+				<span class="font-semibold tabular-nums">
+					@LedgerDate(d, v.CloseEndDay, nil)
+				</span>
+				<a class="link ms-1" href={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/periods/"+v.Current.ID+"/close")) }>{ d.Tr("period.change_end") }</a>
+			</p>
+			<input type="hidden" name="end_date" value={ v.CloseEnd }/>
+			<div class="modal-action mt-0">
+				<button type="button" data-dialog-close class="btn btn-ghost">{ d.Tr("common.cancel") }</button>
+				<button type="submit" class="btn btn-primary">
+					@icons.Icon("lock", "size-4")
+					{ d.Tr("overview.close_named", "Period", v.Current.Name) }
+				</button>
+			</div>
+		</form>
+	}
+}
+
+templ periodListRow(d web.LayoutData, projectSlug string, r PeriodRow, current bool) {
+	<li class="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2 p-4">
+		<span class="grid size-10 shrink-0 place-items-center rounded-full bg-base-200" aria-hidden="true">
+			if r.Closed {
+				@icons.Icon("lock", "size-4")
+			} else {
+				@icons.Icon("lock-open", "size-4")
+			}
+		</span>
+		<div class="min-w-0 flex-1 basis-32">
+			<p class="font-medium break-words">{ r.Name }</p>
+			<p class="text-sm tabular-nums text-base-content/70">
+				if current {
+					{ d.Tr("period.current") + " · " }
+				}
+				@LedgerDate(d, r.Start, nil)
+				if !current {
+					if r.End != nil {
+						{ " – " }
+						@LedgerDate(d, *r.End, nil)
+					}
+				}
+			</p>
+		</div>
+		if r.CanReopen {
+			<form method="post" action={ templ.SafeURL(d.ProjectPath(projectSlug, "/periods/"+r.ID+"/reopen")) }>
+				<button type="submit" class="btn btn-ghost">{ d.Tr("period.reopen") }</button>
+			</form>
+		}
+		if r.CanClose {
+			@AppButton(d.ProjectPath(projectSlug, "/periods/"+r.ID+"/close"), "btn-ghost", nil) {
+				{ d.Tr("period.close") }
+			}
+		}
+		if r.Closed {
+			<span class="badge badge-sm badge-ghost shrink-0">{ d.Tr("period.status_closed") }</span>
+		} else {
+			<span class="badge badge-sm badge-outline shrink-0">{ d.Tr("period.status_open") }</span>
+		}
 	</li>
 }
 
 templ PeriodsPage(d web.LayoutData, v PeriodsView) {
-	<section>
-		<header class="border-b border-border pb-4">
-			<h1 class="text-2xl font-semibold text-foreground">{ d.Tr("period.title") }</h1>
-			<p class="mt-1 text-sm text-muted-foreground">{ v.ProjectName }</p>
-		</header>
+	<section class="flex max-w-2xl flex-col gap-4 lg:gap-6">
+		@PageHeader(d.Tr("period.title"), "")
 		if v.Error != "" {
 			@ErrorBanner(d, v.Error, v.ErrorCode)
 		}
 		if v.HasCurrent {
 			@periodCurrentCard(d, v)
 		} else {
-			<div class="mt-6 rounded-lg border border-dashed border-border bg-card px-4 py-10 text-center">
-				@icons.Icon("calendar-range", "mx-auto h-6 w-6 text-muted-foreground/70")
-				<p class="mt-3 text-sm text-muted-foreground">{ d.Tr("period.no_period") }</p>
-				<a
-					href={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/transactions")) }
-					class="mt-4 inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
-				>
-					@icons.Icon("circle-plus", "h-4 w-4")
+			@EmptyState(EmptyStateProps{Title: d.Tr("period.no_period"), Icon: "calendar-range"}) {
+				@AppButton(d.ProjectPath(v.ProjectSlug, "/transactions/new"), "btn-primary", nil) {
+					@icons.Icon("circle-plus", "size-4")
 					{ d.Tr("overview.quick_add") }
-				</a>
-			</div>
+				}
+			}
 		}
-		<h2 class="mt-10 text-sm font-semibold uppercase tracking-wide text-muted-foreground">{ d.Tr("period.history") }</h2>
-		<ul class="mt-3 divide-y divide-border/50 overflow-hidden rounded-lg border border-border bg-card shadow-sm">
-			if len(v.History) == 0 {
-				<li class="px-4 py-8 text-center text-sm text-muted-foreground">{ d.Tr("report.no_data") }</li>
-			}
-			for _, r := range v.History {
-				@periodHistoryRow(d, v.ProjectSlug, r)
-			}
-		</ul>
+		if v.HasCurrent || len(v.History) > 0 {
+			<section aria-labelledby="period-list-title">
+				<h2 id="period-list-title" class="mb-2 text-sm font-semibold text-base-content/70">{ d.Tr("period.all") }</h2>
+				<ul class="divide-y divide-base-300 rounded-box border border-base-300 bg-base-100">
+					if v.HasCurrent {
+						@periodListRow(d, v.ProjectSlug, v.Current, true)
+					}
+					for _, r := range v.History {
+						@periodListRow(d, v.ProjectSlug, r, false)
+					}
+				</ul>
+			</section>
+		}
 	</section>
 }
 
 templ PeriodsLayout(d web.LayoutData, v PeriodsView) {
-	@Layout(web.WithContent(d, PeriodsPage(d, v)))
+	if v.HasCurrent && v.HasClose {
+		@Layout(web.WithDialogs(web.WithContent(d, PeriodsPage(d, v)), periodCloseDialog(d, v)))
+	} else {
+		@Layout(web.WithContent(d, PeriodsPage(d, v)))
+	}
 }
 
 // ClosePreviewFragment is the hx-get target the end-date input refreshes on change.
 templ ClosePreviewFragment(d web.LayoutData, v ClosePeriodView) {
-	<div id="close-preview" class="mt-6 rounded-lg border border-border bg-card p-4 shadow-sm sm:p-6">
-		<h2 class="text-sm font-semibold uppercase tracking-wide text-muted-foreground">{ d.Tr("period.preview") }</h2>
+	<div id="close-preview" class="mt-6 flex flex-col gap-3 rounded-box border border-base-300 bg-base-100 p-4">
+		<h2 class="text-sm font-semibold text-base-content/70">{ d.Tr("period.preview") }</h2>
 		if v.Error != "" {
 			@ErrorBanner(d, v.Error, v.ErrorCode)
 		}
 		if v.HasPreview {
-			<dl class="mt-4 space-y-2">
-				<div class="flex items-baseline justify-between gap-4 border-b border-border/50 pb-2">
-					<dt class="text-sm text-muted-foreground">{ d.Tr("period.snapshot_income") }</dt>
-					<dd class="text-sm font-semibold tabular-nums text-foreground">{ Money(d, v.Preview.Income) }</dd>
-				</div>
-				<div class="flex items-baseline justify-between gap-4 border-b border-border/50 pb-2">
-					<dt class="text-sm text-muted-foreground">{ d.Tr("period.snapshot_expense") }</dt>
-					<dd class="text-sm font-semibold tabular-nums text-foreground">{ Money(d, v.Preview.Expense) }</dd>
-				</div>
-				<div class="flex items-baseline justify-between gap-4 border-b border-border/50 pb-2">
-					<dt class="text-sm text-muted-foreground">{ d.Tr("period.snapshot_net") }</dt>
-					<dd class="text-sm font-semibold tabular-nums text-foreground">{ SignedMoney(d, v.Preview.Net) }</dd>
-				</div>
-				<div class="flex items-baseline justify-between gap-4">
-					<dt class="text-sm text-muted-foreground">{ d.Tr("period.tx_count") }</dt>
-					<dd class="text-sm font-semibold tabular-nums text-foreground">{ strconv.Itoa(v.Preview.TxCount) }</dd>
-				</div>
-			</dl>
+			@closePreviewList(d, v.Preview)
 			if len(v.Preview.Wallets) > 0 {
-				<h3 class="mt-5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{ d.Tr("period.snapshot_wallets") }</h3>
-				<ul class="mt-2 divide-y divide-border/50">
+				<h3 class="mt-2 text-xs font-semibold text-base-content/70">{ d.Tr("period.snapshot_wallets") }</h3>
+				<ul class="divide-y divide-base-300">
 					for _, wrow := range v.Preview.Wallets {
-						<li class="flex items-baseline justify-between gap-4 py-2">
-							<span class="min-w-0 truncate text-sm text-foreground">{ wrow.Name }</span>
-							<span class="shrink-0 text-sm tabular-nums text-foreground">{ Money(d, wrow.Closing) }</span>
+						<li class="flex items-baseline justify-between gap-4 py-2 text-sm">
+							<span class="min-w-0 break-words">{ wrow.Name }</span>
+							<span class="min-w-0 tabular-nums break-words">{ Money(d, wrow.Closing) }</span>
 						</li>
 					}
 				</ul>
 			}
 		} else if v.Error == "" {
-			<p class="mt-4 text-sm text-muted-foreground">{ d.Tr("report.no_data") }</p>
+			<p class="text-sm text-base-content/70">{ d.Tr("report.no_data") }</p>
 		}
 	</div>
 }
 
 templ ClosePeriodPage(d web.LayoutData, v ClosePeriodView) {
-	<section>
-		<header class="border-b border-border pb-4">
-			<a href={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/periods")) } class="text-xs text-muted-foreground hover:text-foreground">
+	<section class="max-w-2xl">
+		@PageHeader(d.Tr("period.close"), v.PeriodName+" · "+v.Start) {
+			@AppButton(d.ProjectPath(v.ProjectSlug, "/periods"), "btn-ghost", nil) {
 				{ d.Tr("period.title") }
-			</a>
-			<h1 class="mt-1 text-2xl font-semibold text-foreground">{ d.Tr("period.close") }</h1>
-			<p class="mt-1 text-sm text-muted-foreground">
-				{ v.PeriodName }
-				<span class="tabular-nums">{ " · " + v.Start }</span>
-			</p>
-		</header>
+			}
+		}
 		if v.AlreadyClosed {
-			<div class="mt-6 rounded-lg border border-border bg-card p-4 shadow-sm sm:p-6">
+			<div class="mt-6 flex flex-col gap-3 rounded-box border border-base-300 bg-base-100 p-4">
 				<div class="flex flex-wrap items-center gap-2">
 					@periodStatusBadge(d, true)
-					<span class="text-sm text-foreground">{ v.PeriodName }</span>
+					<span class="text-sm break-words">{ v.PeriodName }</span>
 				</div>
-				<p class="mt-2 text-sm text-muted-foreground">{ d.Tr("period.locked_hint") }</p>
-				<a
-					href={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/periods")) }
-					class="mt-4 inline-flex items-center rounded-md border border-border px-3 py-2 text-sm font-medium text-foreground/90 hover:bg-muted"
-				>
-					{ d.Tr("period.title") }
-				</a>
+				<p class="text-sm text-base-content/70">{ d.Tr("period.locked_hint") }</p>
 			</div>
 			@ClosePreviewFragment(d, v)
 		} else {
@@ -327,44 +356,45 @@ templ ClosePeriodPage(d web.LayoutData, v ClosePeriodView) {
 				action={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/periods/"+v.PeriodID+"/close")) }
 				class="mt-6"
 			>
-				<label for="close-end-date" class="block text-sm font-medium text-foreground">{ d.Tr("period.end_date") }</label>
-				<input
-					id="close-end-date"
-					name="end_date"
-					type="date"
-					required
-					value={ v.EndDate }
-					max={ v.MaxDate }
-					disabled?={ v.DateLocked }
-					hx-get={ d.ProjectPath(v.ProjectSlug, "/periods/"+v.PeriodID+"/close") }
-					hx-nonce={ d.Nonce }
-					hx-trigger="change"
-					hx-target="#close-preview"
-					hx-swap="outerHTML"
-					hx-status:4xx="target:#hx-error swap:innerHTML"
-					hx-status:5xx="target:#hx-error swap:innerHTML"
-					class="input mt-1.5 w-full text-base sm:max-w-xs sm:text-sm"
-				/>
+				{{ end := FieldProps{ID: "close-end-date", Label: d.Tr("period.end_date")} }}
+				{{ end.Hint = d.Tr("period.end_date_hint") }}
+				if v.DateLocked {
+					{{ end.Hint = d.Tr("period.locked_hint") }}
+				}
+				@FormField(end) {
+					<input
+						name="end_date"
+						type="date"
+						required
+						value={ v.EndDate }
+						max={ v.MaxDate }
+						disabled?={ v.DateLocked }
+						hx-get={ d.ProjectPath(v.ProjectSlug, "/periods/"+v.PeriodID+"/close") }
+						hx-nonce={ d.Nonce }
+						hx-trigger="change"
+						hx-target="#close-preview"
+						hx-swap="outerHTML"
+						hx-status:4xx="target:#hx-error swap:innerHTML"
+						hx-status:5xx="target:#hx-error swap:innerHTML"
+						class="input w-full text-base sm:max-w-xs"
+						{ end.Attrs()... }
+					/>
+				}
 				if v.DateLocked {
 					<input type="hidden" name="end_date" value={ v.EndDate }/>
-					<p class="mt-1.5 text-xs text-muted-foreground">{ d.Tr("period.locked_hint") }</p>
 				} else {
-					<p class="mt-1.5 text-xs text-muted-foreground">{ d.Tr("period.end_date_hint") }</p>
 					@DateInputHint(d)
 				}
 				@ClosePreviewFragment(d, v)
-				<p class="mt-6 text-sm text-muted-foreground">{ d.Tr("period.close_confirm") }</p>
-				<div class="mt-3 flex flex-wrap gap-3">
+				<p class="mt-6 text-sm text-base-content/70">{ d.Tr("period.close_confirm") }</p>
+				<div class="mt-3 flex flex-wrap gap-2">
 					<button type="submit" class="btn btn-primary w-full sm:w-auto">
-						@icons.Icon("lock", "h-4 w-4")
+						@icons.Icon("lock", "size-4")
 						{ d.Tr("period.close") }
 					</button>
-					<a
-						href={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/periods")) }
-						class="btn w-full sm:w-auto"
-					>
+					@AppButton(d.ProjectPath(v.ProjectSlug, "/periods"), "w-full sm:w-auto", nil) {
 						{ d.Tr("common.cancel") }
-					</a>
+					}
 				</div>
 			</form>
 		}

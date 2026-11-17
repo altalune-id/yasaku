@@ -226,14 +226,15 @@ func (h *PeriodHandler) periodsView(sc ProjectScope, cause error) (templates.Per
 		row := templates.PeriodRow{
 			ID:    p.ID.String(),
 			Name:  p.Name,
-			Start: p.StartDate.String(),
+			Start: p.StartDate,
 		}
 		if p.IsCurrent() {
 			v.HasCurrent = true
 			v.Current = h.currentRow(ctx, p, row)
+			h.closeDialog(ctx, p, &v)
 			continue
 		}
-		row.End = p.EndDate.String()
+		row.End = p.EndDate
 		row.Closed = p.IsLocked()
 		row.CanReopen = reopenable != nil && reopenable.ID == p.ID
 		row.CanClose = !p.IsLocked()
@@ -246,6 +247,23 @@ func (h *PeriodHandler) periodsView(sc ProjectScope, cause error) (templates.Per
 	return v, nil
 }
 
+func (h *PeriodHandler) closeDialog(ctx context.Context, p *period.Period, v *templates.PeriodsView) {
+	end, err := h.Periods.SuggestedEnd(ctx, p.ID)
+	if err != nil {
+		h.LogErr("web period: suggested end", err)
+		return
+	}
+	snap, err := h.Periods.PreviewClose(ctx, p.ID, end)
+	if err != nil {
+		if !isPeriodDomainError(err) {
+			h.LogErr("web period: preview close", err)
+		}
+		return
+	}
+	v.CloseEnd, v.CloseEndDay = end.String(), end
+	v.Close, v.HasClose = previewFromSnapshot(&snap)
+}
+
 func (h *PeriodHandler) currentRow(ctx context.Context, p *period.Period, row templates.PeriodRow) templates.PeriodRow {
 	sum, err := h.Reports.Summary(ctx, p.ID)
 	if err != nil {
@@ -253,7 +271,7 @@ func (h *PeriodHandler) currentRow(ctx context.Context, p *period.Period, row te
 		return row
 	}
 	row.HasTotals = true
-	row.Income, row.Expense, row.Net, row.TxCount = sum.Income, sum.Expense, sum.Net, sum.TxCount
+	row.Income, row.Expense, row.Net, row.Adjust, row.TxCount = sum.Income, sum.Expense, sum.Net, sum.Adjustments, sum.TxCount
 	return row
 }
 
@@ -325,6 +343,7 @@ func applySnapshot(row *templates.PeriodRow, s *period.Snapshot) {
 	row.Income = money.New(s.Income, s.Currency)
 	row.Expense = money.New(s.Expense, s.Currency)
 	row.Net = money.New(s.Net, s.Currency)
+	row.Adjust = money.New(s.Adjustments, s.Currency)
 	row.TxCount = s.TxCount
 }
 
@@ -336,6 +355,7 @@ func previewFromSnapshot(s *period.Snapshot) (templates.ClosePreview, bool) {
 		Income:  money.New(s.Income, s.Currency),
 		Expense: money.New(s.Expense, s.Currency),
 		Net:     money.New(s.Net, s.Currency),
+		Adjust:  money.New(s.Adjustments, s.Currency),
 		TxCount: s.TxCount,
 		Wallets: make([]templates.CloseWalletRow, 0, len(s.Wallets)),
 	}

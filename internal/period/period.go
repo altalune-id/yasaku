@@ -94,9 +94,14 @@ func FirstStart(today civil.Date, startDay int) civil.Date {
 	return civil.Date{Year: prev.Year, Month: prev.Month, Day: day}
 }
 
-// SuggestedEnd returns the end date a close defaults to: the day before the next cycle start, capped at today and never before start.
+// CycleEnd returns the last day of the cycle that begins on start: the day before the next cycle start.
+func CycleEnd(start civil.Date, startDay int) civil.Date {
+	return nextCycleStart(start, startDay).AddDays(-1)
+}
+
+// SuggestedEnd returns the end date a close defaults to: the cycle end, capped at today and never before start.
 func SuggestedEnd(start, today civil.Date, startDay int) civil.Date {
-	end := nextCycleStart(start, startDay).AddDays(-1)
+	end := CycleEnd(start, startDay)
 	if today.Before(end) {
 		end = today
 	}

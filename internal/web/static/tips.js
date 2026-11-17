@@ -6,12 +6,13 @@
 
 	var GAP = 8;
 	var reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
+	var homes = new WeakMap();
 
 	function targetOf(tip) {
 		var key = tip.getAttribute('data-tip-for');
 		if (!key) return null;
-		var el = document.querySelector('[data-tour="' + CSS.escape(key) + '"]');
-		return el && el.getClientRects().length ? el : null;
+		var els = document.querySelectorAll('[data-tour="' + CSS.escape(key) + '"]');
+		return Array.prototype.find.call(els, function (el) { return el.getClientRects().length; }) || null;
 	}
 
 	function place(tip) {
@@ -19,6 +20,18 @@
 		var target = targetOf(tip);
 		tip.hidden = !target;
 		if (!target) return false;
+		// NOTE: a target in the side rail gets the card in the rail's flow right under it, so it covers neither the rail's links nor the page.
+		if (target.closest('.drawer-side')) {
+			if (!homes.has(tip)) homes.set(tip, tip.parentElement);
+			if (target.nextElementSibling !== tip) target.after(tip);
+			tip.setAttribute('data-tip-inline', '');
+			tip.style.top = tip.style.left = '';
+			return true;
+		}
+		if (tip.hasAttribute('data-tip-inline')) {
+			homes.get(tip).appendChild(tip);
+			tip.removeAttribute('data-tip-inline');
+		}
 		var r = target.getBoundingClientRect();
 		var vw = document.documentElement.clientWidth;
 		var below = r.bottom + GAP + tip.offsetHeight <= window.innerHeight;
@@ -60,7 +73,10 @@
 		var back = targetOf(tip) || document.getElementById('main');
 		var flow = tip.getAttribute('data-tip-flow');
 		var gone = all ? document.querySelectorAll('[data-tip-flow="' + CSS.escape(flow) + '"]') : [tip];
-		gone.forEach(function (t) { t.remove(); });
+		gone.forEach(function (t) {
+			document.querySelectorAll('[data-tip-pulse="' + CSS.escape(t.getAttribute('data-tip')) + '"]').forEach(function (p) { p.remove(); });
+			t.remove();
+		});
 		if (back) back.focus();
 		refresh(false);
 	}

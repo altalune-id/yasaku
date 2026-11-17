@@ -12,10 +12,22 @@ type DateOption func(*dateOpts)
 
 type dateOpts struct {
 	compact bool
+	weekday bool
+	long    bool
+	month   bool
 }
 
 // Compact drops the year from a ledger date.
 func Compact() DateOption { return func(o *dateOpts) { o.compact = true } }
+
+// Weekday drops the year and leads with the short weekday, e.g. "Sun, 15 Nov", for day headings.
+func Weekday() DateOption { return func(o *dateOpts) { o.weekday = true } }
+
+// Long spells the weekday and month in full, e.g. "Sunday, 15 November 2026", for a detail view.
+func Long() DateOption { return func(o *dateOpts) { o.long = true } }
+
+// Month shows only the full month and year, e.g. "November 2026", for a monthly period.
+func Month() DateOption { return func(o *dateOpts) { o.month = true } }
 
 func applyDateOpts(opts []DateOption) dateOpts {
 	var o dateOpts
@@ -43,6 +55,15 @@ func dtFallback(d web.LayoutData, t time.Time) string {
 }
 
 func ledgerDayText(day civil.Date, o dateOpts) string {
+	if o.long {
+		return day.In(time.UTC).Format("Monday, 2 January 2006")
+	}
+	if o.month {
+		return day.In(time.UTC).Format("January 2006")
+	}
+	if o.weekday {
+		return day.In(time.UTC).Format("Mon, 2 Jan")
+	}
 	if o.compact {
 		return day.In(time.UTC).Format("2 Jan")
 	}
@@ -50,6 +71,15 @@ func ledgerDayText(day civil.Date, o dateOpts) string {
 }
 
 func ledgerDayStyle(o dateOpts) string {
+	if o.long {
+		return "long"
+	}
+	if o.month {
+		return "month"
+	}
+	if o.weekday {
+		return "weekday"
+	}
 	if o.compact {
 		return "compact"
 	}

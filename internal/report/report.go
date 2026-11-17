@@ -53,11 +53,13 @@ type WalletTotals struct {
 
 // PeriodSummary is one period's headline totals in a single currency.
 type PeriodSummary struct {
-	Period         PeriodRef
-	Currency       money.Currency
-	Income         money.Amount
-	Expense        money.Amount
-	Net            money.Amount
+	Period   PeriodRef
+	Currency money.Currency
+	Income   money.Amount
+	Expense  money.Amount
+	Net      money.Amount
+	// Adjustments is the signed net of balance corrections: adjustments in minus adjustments out.
+	Adjustments    money.Amount
 	TxCount        int
 	Wallets        []WalletLine
 	SpendableTotal money.Amount

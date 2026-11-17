@@ -40,6 +40,7 @@ templ Layout(d web.LayoutData) {
 			<script src={ d.Static("dropdown.js") } nonce={ d.Nonce } defer></script>
 			<script src={ d.Static("tips.js") } nonce={ d.Nonce } defer></script>
 			<script src={ d.Static("copy.js") } nonce={ d.Nonce } defer></script>
+			<script src={ d.Static("dirtyform.js") } nonce={ d.Nonce } defer></script>
 			<link rel="stylesheet" href={ d.Static("themes.css") }/>
 		</head>
 		<body class="min-h-dvh bg-base-100 text-base-content antialiased">
@@ -55,6 +56,9 @@ templ Layout(d web.LayoutData) {
 						</main>
 						if d.ActiveProject != nil {
 							@mobileDock(d, d.ActiveProject.Slug)
+							if d.AddPulse {
+								@Tip(d, addTipID)
+							}
 						}
 					</div>
 					<div class="drawer-side z-40 lg:overflow-visible">
@@ -159,10 +163,24 @@ templ rail(d web.LayoutData) {
 		</a>
 		@switcherRail(d, projectIcon)
 		if d.ActiveProject != nil {
-			<a href={ templ.SafeURL(d.ProjectPath(d.ActiveProject.Slug, "/transactions/new")) } class="btn btn-primary w-full justify-start px-3">
+			<a
+				href={ templ.SafeURL(d.ProjectPath(d.ActiveProject.Slug, "/transactions/new")) }
+				data-dialog-open={ TxAddDialogID }
+				data-dialog-src={ d.ProjectPath(d.ActiveProject.Slug, "/transactions/new") }
+				data-tour="add"
+				data-shortcut="n"
+				aria-keyshortcuts="N"
+				class="btn btn-primary w-full justify-start px-3"
+			>
 				@icons.Icon("plus", "size-5")
 				{ d.Tr("tx.add") }
+				<kbd class="kbd kbd-sm ms-auto border-0 bg-primary-content/20 text-primary-content" aria-hidden="true">N</kbd>
 			</a>
+		}
+		if d.ActiveProject != nil && d.ActiveNav.Scope == web.NavScopeProject {
+			<form id="rail-tips-reset" method="post" action={ templ.SafeURL(d.Href("/tips/reset")) } class="hidden">
+				<input type="hidden" name="redirect" value={ d.CurrentPath }/>
+			</form>
 		}
 		<ul class="menu min-h-0 w-full grow flex-nowrap gap-1 overflow-y-auto p-0 max-lg:[&_a]:min-h-11 max-lg:[&_a]:content-center max-lg:[&_summary]:min-h-11 max-lg:[&_summary]:content-center">
 			if d.ActiveNav.Scope == web.NavScopeProject {
@@ -195,26 +213,19 @@ templ menuLink(href, icon, label string, active bool) {
 
 templ projectMenu(d web.LayoutData) {
 	if p := d.ActiveProject; p != nil {
-		for _, it := range navVisible(d, false) {
+		for _, it := range dockItems() {
 			@menuLink(d.ProjectPath(p.Slug, it.Path), it.Icon, d.Tr(it.LabelKey), d.ActiveNav.ProjectKey == it.Key)
 		}
-		<li class="menu-title mt-1 flex h-8 justify-center px-3 py-0 text-base-content/80">{ d.Tr("nav.more") }</li>
-		for _, it := range navVisible(d, true) {
+		<li class="menu-title mt-3 mb-1 py-0 text-base-content/70">{ d.Tr("nav.more") }</li>
+		for _, it := range railMoreItems(d) {
 			@menuLink(d.ProjectPath(p.Slug, it.Path), it.Icon, d.Tr(it.LabelKey), d.ActiveNav.ProjectKey == it.Key)
 		}
-		if o := d.ActiveOrg; o != nil {
-			<li>
-				<details>
-					<summary>
-						@icons.Icon("building-2", "size-4 shrink-0")
-						<span class="truncate">{ o.Name }</span>
-					</summary>
-					<ul>
-						@orgLinks(d, o.Slug)
-					</ul>
-				</details>
-			</li>
-		}
+		<li class="mt-3">
+			<button type="submit" form="rail-tips-reset">
+				@icons.Icon("lightbulb", "size-4 shrink-0")
+				<span class="truncate">{ d.Tr("more.tips_again") }</span>
+			</button>
+		</li>
 	} else {
 		<li class="menu-title flex h-8 justify-center px-3 py-0">{ d.Tr("common.project") }</li>
 		@menuLink(d.OrgPath("/projects/new"), "plus", d.Tr("nav.create_project"), false)
@@ -351,18 +362,25 @@ templ mobileDock(d web.LayoutData, slug string) {
 		{{ items := dockItems() }}
 		for i, it := range items {
 			if i == (len(items)+1)/2 {
-				<a href={ templ.SafeURL(d.ProjectPath(slug, "/transactions/new")) } aria-label={ d.Tr("tx.add") } data-scan-asym="raised center action">
-					<span class="grid size-12 -translate-y-2 place-items-center rounded-full bg-primary text-primary-content shadow-lg">
-						@icons.Icon("plus", "size-6")
+				<a
+					href={ templ.SafeURL(d.ProjectPath(slug, "/transactions/new")) }
+					data-dialog-open={ TxAddDialogID }
+					data-dialog-src={ d.ProjectPath(slug, "/transactions/new") }
+					data-tour="add"
+					aria-label={ d.Tr("tx.add") }
+					data-scan-asym="raised center action"
+				>
+					<span class="relative grid size-12 -translate-y-2 place-items-center rounded-full bg-primary text-primary-content shadow-lg">
+						if d.AddPulse && !d.TipSeen(addTipID) {
+							<span aria-hidden="true" data-tip-pulse={ addTipID } class="pointer-events-none absolute inset-0 animate-ping rounded-full bg-primary/50 motion-reduce:animate-none"></span>
+						}
+						@icons.Icon("plus", "relative size-6")
 					</span>
 				</a>
 			}
 			@dockLink(d.ProjectPath(slug, it.Path), it.Icon, d.Tr(it.LabelKey), d.ActiveNav.ProjectKey == it.Key)
 		}
-		<label for="alt-drawer" role="button" tabindex="0" aria-expanded="false" data-drawer-toggle>
-			@icons.Icon("circle-ellipsis", "size-5")
-			<span class="dock-label">{ d.Tr("nav.more") }</span>
-		</label>
+		@dockLink(d.ProjectPath(slug, "/more"), "ellipsis", d.Tr("nav.more"), d.ActiveNav.ProjectKey == moreKey)
 	</nav>
 }
 

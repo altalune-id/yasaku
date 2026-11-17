@@ -29,14 +29,22 @@ func (m walletMovement) line(currency money.Currency) WalletLine {
 	}
 }
 
-func assembleSummary(ref PeriodRef, currency money.Currency, income, expense int64, txCount int, moves []walletMovement) PeriodSummary {
+type summaryTotals struct {
+	Income      int64 `alias:"totals.income"`
+	Expense     int64 `alias:"totals.expense"`
+	Adjustments int64 `alias:"totals.adjustments"`
+	TxCount     int   `alias:"totals.tx_count"`
+}
+
+func assembleSummary(ref PeriodRef, currency money.Currency, totals summaryTotals, moves []walletMovement) PeriodSummary {
 	out := PeriodSummary{
 		Period:         ref,
 		Currency:       currency,
-		Income:         money.New(income, currency),
-		Expense:        money.New(expense, currency),
-		Net:            money.New(income-expense, currency),
-		TxCount:        txCount,
+		Income:         money.New(totals.Income, currency),
+		Expense:        money.New(totals.Expense, currency),
+		Net:            money.New(totals.Income-totals.Expense, currency),
+		Adjustments:    money.New(totals.Adjustments, currency),
+		TxCount:        totals.TxCount,
 		SpendableTotal: money.Zero(currency),
 		Total:          money.Zero(currency),
 	}
@@ -47,8 +55,8 @@ func assembleSummary(ref PeriodRef, currency money.Currency, income, expense int
 	for _, m := range moves {
 		out.Wallets = append(out.Wallets, m.line(currency))
 	}
-	totals := TotalsOf(out.Wallets, currency)
-	out.SpendableTotal, out.Total = totals.Spendable, totals.Total
+	headline := TotalsOf(out.Wallets, currency)
+	out.SpendableTotal, out.Total = headline.Spendable, headline.Total
 	return out
 }
 

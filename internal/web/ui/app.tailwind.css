@@ -4,6 +4,7 @@
 @source not "../**/*_test.go";
 @source "../static/*.js";
 @source not "../static/*.min.js";
+@source not "../static/cally.js";
 @plugin "./daisyui.mjs" {
   themes: false;
 }

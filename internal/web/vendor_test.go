@@ -18,6 +18,7 @@ func TestVendorMatchesPinnedDigest(t *testing.T) {
 		"static/easymde.min.css":                      "6eee36340432776d682e7372ec4a7eb29be4fdb3ffada32c0bfa5e31a5ef34a2",
 		"static/easymde.min.js":                       "2c06bddfd0c89176db08ccf9d42e2beaa9b4f1a4ff8fb2ec0bf1bed25ce08e05",
 		"static/echarts.min.js":                       "b66b25aeb4df84e33199dc21694014d336d222cbd9deb0e5a7c14bd6aa0d0fd0",
+		"static/cally.js":                             "4dcba6a3b8ec63b66ff2fbfc6cf47b7dee1eb4896eac89fe7487d82e28e15870",
 		"static/htmx.min.js":                          "e484d9171a9db30a39c8f16e3d709d4137f3211c659f8e6125816635033d593f",
 		"static/hx-csp.min.js":                        "279f659b9ec8658e3d47230cc545b0bb4e3efa4c2d780454d54db104a5257b7d",
 		"static/figtree-latin-wght-normal.woff2":      "4ba7d3d096695818fe0686be4f1e82c6b05134e18a22260336130335027462dd",

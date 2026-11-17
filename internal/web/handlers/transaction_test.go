@@ -1,6 +1,7 @@
 package handlers_test
 
 import (
+	"cmp"
 	"context"
 	"crypto/tls"
 	"net/http"
@@ -61,6 +62,7 @@ type txFixture struct {
 	Cash      uuid.UUID
 	Bank      uuid.UUID
 	Food      uuid.UUID
+	Loc       i18n.Locale
 }
 
 type txPeriodResolver struct{ periods *period.Service }
@@ -243,31 +245,14 @@ func (f *txFixture) request(t *testing.T, method, target string, form url.Values
 	}
 	r.AddCookie(&http.Cookie{Name: web.SessionCookieName, Value: web.SignCookie(f.Deps.Key(web.PurposeSession), sid)})
 	ctx := session.PrincipalInto(r.Context(), f.Principal)
-	ctx = i18n.LocaleInto(ctx, i18n.IdID)
-	ctx = i18n.TranslatorInto(ctx, f.Bundle.For(i18n.IdID))
+	loc := cmp.Or(f.Loc, i18n.IdID)
+	ctx = i18n.LocaleInto(ctx, loc)
+	ctx = i18n.TranslatorInto(ctx, f.Bundle.For(loc))
 	return r.WithContext(ctx)
 }
 
 func (f *txFixture) path(sub string) string {
 	return "/orgs/" + f.OrgSlug + "/projects/" + f.ProjSlug + sub
-}
-
-func TestOverviewHandler_Get_RendersSeededProject(t *testing.T) {
-	t.Parallel()
-	f := newTxFixture(t)
-	mux := http.NewServeMux()
-	f.overviewHandler().Register(mux)
-
-	rec := httptest.NewRecorder()
-	mux.ServeHTTP(rec, f.request(t, http.MethodGet, f.path("/overview"), nil, false))
-
-	require.Equal(t, http.StatusOK, rec.Code)
-	body := rec.Body.String()
-	assert.Contains(t, body, "Sisa yang bisa dipakai")
-	assert.Contains(t, body, "Rp25.000")
-	assert.Contains(t, body, "Belum ada periode yang berjalan.")
-	assert.Contains(t, body, `id="tx-quick-add"`)
-	assert.Contains(t, body, `name="list" value="recent"`)
 }
 
 func TestOverviewHandler_Get_RemembersTheProject(t *testing.T) {
@@ -309,14 +294,7 @@ func TestTransactionHandler_PostCreate_RecordsExpenseAndReturnsFragment(t *testi
 	mux.ServeHTTP(rec, f.request(t, http.MethodPost, f.path("/transactions"), form, true))
 
 	require.Equal(t, http.StatusOK, rec.Code)
-	body := rec.Body.String()
-	assert.Contains(t, body, `id="tx-list"`)
-	assert.Contains(t, body, "Rp40.000")
-	assert.Contains(t, body, `id="toast"`)
-	assert.Contains(t, body, `hx-swap-oob="true"`)
-	// SECURITY: a fragment rendered with a bare Deps.Base collapses every action URL to /orgs.
-	assert.Contains(t, body, f.path("/transactions/"))
-	assert.NotContains(t, body, `href="/orgs/transactions`)
+	assert.Equal(t, f.path("/overview"), rec.Header().Get("HX-Redirect"))
 
 	items, _, err := f.Transactions.List(f.projectCtx(t), transaction.ListOpts{})
 	require.NoError(t, err)
@@ -359,7 +337,8 @@ func TestTransactionHandler_PostCreate_ClosedPeriodRendersBannerAndWritesNothing
 
 	require.Equal(t, http.StatusUnprocessableEntity, rec.Code)
 	body := rec.Body.String()
-	assert.Contains(t, body, `id="tx-list"`)
+	assert.Contains(t, body, `id="tx-quick-add"`, "a refusal re-renders the sheet with what the user typed")
+	assert.Contains(t, body, `value="Kopi"`)
 	assert.Contains(t, body, "TXN008")
 	assert.Contains(t, body, "Periode ini sudah ditutup")
 
@@ -418,9 +397,7 @@ func TestTransactionHandler_GetNew_NoteSuggestsWhileTypingAndKeepsAManualPick(t 
 	assert.Contains(t, tag, `hx-target="#tx-category"`)
 	assert.Contains(t, tag, `hx-include="[name='kind'],[name='category_id']"`)
 
-	assert.Contains(t, body, `"data-category-picked"`)
-	assert.Contains(t, body, `"htmx:before:request"`)
-	assert.Contains(t, body, `"htmx:before:swap"`)
+	assert.Contains(t, body, `src="/static/recent.js`, "recent.js keeps a manual pick from being replaced by a suggestion")
 }
 
 func TestTransactionHandler_GetList_FiltersByWallet(t *testing.T) {
@@ -463,7 +440,7 @@ func TestTransactionHandler_GetNew_RendersForm(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, rec.Code)
 	body := rec.Body.String()
-	assert.Contains(t, body, `inputmode="numeric"`)
+	assert.Contains(t, body, `inputmode="decimal"`)
 	assert.Contains(t, body, "Kemarin")
 	assert.Contains(t, body, "Tunai")
 }
@@ -488,13 +465,6 @@ func TestTransactionHandler_PostCreate_WithoutHTMXRedirectsToOverview(t *testing
 }
 
 var hxTargetRe = regexp.MustCompile(`hx-target="#([^"]+)"`)
-
-func txHeadline(t *testing.T, body string) string {
-	t.Helper()
-	i := strings.Index(body, "tx-quick-add")
-	require.Positive(t, i)
-	return body[:i]
-}
 
 func assertHXTargetsResolve(t *testing.T, body string) {
 	t.Helper()
@@ -637,7 +607,7 @@ func TestTransactionHandler_GetEdit_LocksTheKind(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code)
 	body := rec.Body.String()
 	assert.Contains(t, body, `data-tx-kind-locked="1"`)
-	assert.Contains(t, body, `value="income" disabled`)
+	assert.Regexp(t, `<input[^>]*value="income"[^>]*disabled`, body)
 }
 
 func TestTransactionHandler_GetEdit_SavedCategoryCountsAsAManualPick(t *testing.T) {
@@ -697,7 +667,7 @@ func TestTransactionHandler_PostUpdate_RevisesAmountAndKeepsTheStoredKind(t *tes
 	mux.ServeHTTP(rec, f.request(t, http.MethodPost, f.path("/transactions/"+tx.ID.String()), form, true))
 
 	require.Equal(t, http.StatusOK, rec.Code)
-	assert.Contains(t, rec.Body.String(), `id="tx-list"`)
+	assert.Equal(t, f.path("/overview"), rec.Header().Get("HX-Redirect"))
 
 	got, err := f.Transactions.ByID(ctx, tx.ID)
 	require.NoError(t, err)
@@ -725,7 +695,7 @@ func TestTransactionHandler_PostDelete_RemovesTheTransaction(t *testing.T) {
 	mux.ServeHTTP(rec, f.request(t, http.MethodPost, f.path("/transactions/"+tx.ID.String()+"/delete"), url.Values{}, false))
 
 	require.Equal(t, http.StatusSeeOther, rec.Code)
-	assert.Equal(t, f.path("/overview"), rec.Header().Get("Location"))
+	assert.Equal(t, f.path("/transactions"), rec.Header().Get("Location"))
 
 	items, _, err := f.Transactions.List(ctx, transaction.ListOpts{})
 	require.NoError(t, err)
@@ -795,80 +765,9 @@ func TestTransactionHandler_GetNew_AmountFollowsTheSelectedWalletCurrency(t *tes
 
 	require.Equal(t, http.StatusOK, rec.Code)
 	body := rec.Body.String()
-	assert.Contains(t, body, `data-tx-group="0"`, "USD must not be grouped like a zero-decimal currency")
-	assert.Contains(t, body, `data-tx-symbol="$"`)
+	assert.Contains(t, body, `data-exponent="2"`, "USD is typed with two decimals")
+	assert.Contains(t, body, `data-tx-symbol="US$"`)
 	assert.Contains(t, body, `data-tx-symbol="Rp"`)
-}
-
-func TestTransactionHandler_PostCreate_KeepsTheActiveFilter(t *testing.T) {
-	t.Parallel()
-	f := newTxFixture(t)
-	ctx := f.projectCtx(t)
-	_, err := f.Transactions.Record(ctx, transaction.RecordInput{
-		WalletID:   f.Cash,
-		Kind:       transaction.KindExpense,
-		Amount:     money.New(2000000, money.IDR),
-		Note:       "Bakso tunai",
-		OccurredAt: time.Now(),
-	})
-	require.NoError(t, err)
-
-	mux := http.NewServeMux()
-	f.txHandler().Register(mux)
-	form := url.Values{
-		"kind":      {"expense"},
-		"amount":    {"30000"},
-		"wallet_id": {f.Bank.String()},
-		"date":      {civil.DateOf(time.Now(), time.UTC).String()},
-		"note":      {"Listrik bank"},
-	}
-	r := f.request(t, http.MethodPost, f.path("/transactions"), form, true)
-	r.Header.Set("HX-Current-URL", "http://localhost"+f.path("/transactions")+"?wallet="+f.Cash.String())
-	rec := httptest.NewRecorder()
-	mux.ServeHTTP(rec, r)
-
-	require.Equal(t, http.StatusOK, rec.Code)
-	body := rec.Body.String()
-	assert.Contains(t, body, "Bakso tunai")
-	assert.NotContains(t, body, "Listrik bank")
-}
-
-func TestOverviewHandler_Get_MixedCurrencyWalletsQualifyTheHeadline(t *testing.T) {
-	t.Parallel()
-	f := newTxFixture(t)
-	f.ReportReader.Balances = []report.WalletLine{
-		{WalletID: f.Cash, Name: "Tunai", Kind: "cash", Closing: money.New(2500000, money.IDR)},
-		{WalletID: f.Bank, Name: "Payoneer", Kind: "bank", Closing: money.New(120000, money.Currency("USD"))},
-	}
-	mux := http.NewServeMux()
-	f.overviewHandler().Register(mux)
-
-	rec := httptest.NewRecorder()
-	mux.ServeHTTP(rec, f.request(t, http.MethodGet, f.path("/overview"), nil, false))
-
-	require.Equal(t, http.StatusOK, rec.Code)
-	head := txHeadline(t, rec.Body.String())
-	assert.Contains(t, head, "Rp25.000")
-	assert.Contains(t, head, `data-mixed-currency="1"`)
-}
-
-func TestOverviewHandler_Get_ForeignCurrencyOnlyHeadlinesTheLedgerCurrency(t *testing.T) {
-	t.Parallel()
-	f := newTxFixture(t)
-	f.ReportReader.Balances = []report.WalletLine{
-		{WalletID: f.Bank, Name: "Payoneer", Kind: "bank", Closing: money.New(120000, money.Currency("USD"))},
-	}
-	mux := http.NewServeMux()
-	f.overviewHandler().Register(mux)
-
-	rec := httptest.NewRecorder()
-	mux.ServeHTTP(rec, f.request(t, http.MethodGet, f.path("/overview"), nil, false))
-
-	require.Equal(t, http.StatusOK, rec.Code)
-	head := txHeadline(t, rec.Body.String())
-	assert.Contains(t, head, "Rp0", "the headline stays in the ledger currency, like the Wallets page and WalletTotals")
-	assert.NotContains(t, head, "$1.200,00")
-	assert.Contains(t, head, `data-mixed-currency="1"`)
 }
 
 func (f *txFixture) seedOpening(t *testing.T) uuid.UUID {
@@ -990,7 +889,8 @@ func TestTransactionQuickAddRefusalIs422(t *testing.T) {
 
 	require.Equal(t, http.StatusUnprocessableEntity, rec.Code,
 		"a refusal under 400 would fire data-clear-on-success and wipe what the user typed")
-	assert.Contains(t, rec.Body.String(), "data-tx-error")
+	assert.Contains(t, rec.Body.String(), `id="tx-amount-hint"`)
+	assert.Contains(t, rec.Body.String(), `id="tx-quick-add"`)
 
 	items, _, err := f.Transactions.List(f.projectCtx(t), transaction.ListOpts{})
 	require.NoError(t, err)
@@ -1013,7 +913,7 @@ func TestTransactionIDRDecimalIsAFieldError(t *testing.T) {
 	mux.ServeHTTP(rec, f.request(t, http.MethodPost, f.path("/transactions"), form, false))
 
 	require.Equal(t, http.StatusOK, rec.Code)
-	assert.Contains(t, rec.Body.String(), "currency has no decimals")
+	assert.Contains(t, rec.Body.String(), f.Bundle.For(i18n.IdID).T("tx.amount_error.no_decimals"))
 
 	items, _, err := f.Transactions.List(f.projectCtx(t), transaction.ListOpts{})
 	require.NoError(t, err)
@@ -1043,12 +943,12 @@ func TestTransactionFormRendersANonce(t *testing.T) {
 	require.NotEmpty(t, tag, "no quick-add <form> rendered")
 	assert.Contains(t, tag, `hx-post=`)
 	assert.Contains(t, tag, `hx-nonce="`+m[1]+`"`)
-	assert.Contains(t, tag, `hx-status:422="target:#tx-form-errors`)
+	assert.Contains(t, tag, `hx-status:422="target:#tx-quick-add swap:outerHTML"`)
 	assert.Contains(t, tag, `data-clear-on-success="#tx-amount, #tx-note"`)
 }
 
 var (
-	txDialogRe = regexp.MustCompile(`(?s)<dialog id="tx-add-dialog"[^>]*>.*?</dialog>`)
+	txDialogRe = regexp.MustCompile(`(?s)<dialog id="tx-add-dialog"[^>]*>.*?</form>`)
 	txOpenerRe = regexp.MustCompile(`<a[^>]*data-dialog-open="tx-add-dialog"[^>]*>`)
 )
 
@@ -1070,7 +970,7 @@ func TestTransactionsPageHasNoInlineForm(t *testing.T) {
 	dialog := txDialogRe.FindString(body)
 	require.NotEmpty(t, dialog, "no tx-add-dialog")
 	assert.Contains(t, dialog, `id="tx-quick-add"`)
-	assert.Contains(t, dialog, "data-keep-open")
+	assert.NotContains(t, dialog, "data-keep-open", "the sheet has one Save, as in the prototype")
 	assert.Contains(t, dialog, "data-dialog-close-on-success")
 	assert.Equal(t, 1, strings.Count(body, `id="tx-quick-add"`))
 	assert.NotContains(t, strings.Replace(body, dialog, "", 1), `id="tx-quick-add"`,
@@ -1095,7 +995,7 @@ func TestTransactionsPageDialogFormKeepsTheNonceAndErrorRouting(t *testing.T) {
 	tag := quickAddTag.FindString(dialog)
 	require.NotEmpty(t, tag, "no quick-add <form> inside the dialog")
 	assert.Contains(t, tag, `hx-nonce="`+m[1]+`"`)
-	assert.Contains(t, tag, `hx-status:422="target:#tx-form-errors`)
+	assert.Contains(t, tag, `hx-status:422="target:#tx-quick-add swap:outerHTML"`)
 	assert.Contains(t, tag, `hx-disable=`)
 	assert.Contains(t, tag, `data-clear-on-success="#tx-amount, #tx-note"`)
 	assert.Contains(t, dialog, `id="tx-form-errors"`)
@@ -1121,7 +1021,7 @@ func TestTransactionCreateRefusalWithoutHTMXRendersTheFormPage(t *testing.T) {
 	body := rec.Body.String()
 	require.Less(t, rec.Code, 500)
 	assert.Contains(t, body, "<html")
-	assert.Contains(t, body, "data-tx-error")
+	assert.Contains(t, body, `id="tx-amount-hint"`)
 	assert.Contains(t, body, "Nasi Padang")
 	assert.Empty(t, txDialogRe.FindString(body),
 		"without JS a dialog never opens, so the typed values must not hide in one")
@@ -1155,4 +1055,45 @@ func TestTransactionHandler_PostCreate_LastWalletCookieIsSecureOverTLS(t *testin
 	}
 	require.NotNil(t, last, "the create must remember the wallet")
 	assert.True(t, last.Secure)
+}
+
+func selectedWalletOption(t *testing.T, body string) string {
+	t.Helper()
+	m := regexp.MustCompile(`<option value="([^"]+)" selected data-tx-symbol`).FindAllStringSubmatch(body, -1)
+	require.Len(t, m, 1, "exactly one wallet is preselected")
+	return m[0][1]
+}
+
+func TestTransactionHandler_GetNew_DefaultWallet(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name   string
+		cookie func(f *txFixture) string
+		want   func(f *txFixture) uuid.UUID
+	}{
+		{"no cookie picks the first wallet created, not the first by name", nil, func(f *txFixture) uuid.UUID { return f.Cash }},
+		{"the last-used wallet wins while active", func(f *txFixture) string { return f.Bank.String() }, func(f *txFixture) uuid.UUID { return f.Bank }},
+		{"an archived last-used wallet falls back to the first created", func(f *txFixture) string {
+			_, err := f.Wallets.Archive(f.projectCtx(t), f.Bank)
+			require.NoError(t, err)
+			return f.Bank.String()
+		}, func(f *txFixture) uuid.UUID { return f.Cash }},
+		{"an unknown cookie falls back to the first created", func(*txFixture) string { return uuid.NewString() }, func(f *txFixture) uuid.UUID { return f.Cash }},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			f := newTxFixture(t)
+			mux := http.NewServeMux()
+			f.txHandler().Register(mux)
+			r := f.request(t, http.MethodGet, f.path("/transactions/new"), nil, false)
+			if tc.cookie != nil {
+				r.AddCookie(&http.Cookie{Name: handlers.LastWalletCookie, Value: tc.cookie(f)})
+			}
+			rec := httptest.NewRecorder()
+			mux.ServeHTTP(rec, r)
+			require.Equal(t, http.StatusOK, rec.Code)
+			assert.Equal(t, tc.want(f).String(), selectedWalletOption(t, rec.Body.String()))
+		})
+	}
 }

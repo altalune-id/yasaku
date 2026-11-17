@@ -33,12 +33,13 @@ func (a snapshotterAdapter) Snapshot(ctx context.Context, orgID, projectID, peri
 		now = time.Now
 	}
 	snap := period.Snapshot{
-		Currency:   sum.Currency,
-		Income:     sum.Income.Minor,
-		Expense:    sum.Expense.Minor,
-		Net:        sum.Net.Minor,
-		TxCount:    sum.TxCount,
-		ComputedAt: now().UTC(),
+		Currency:    sum.Currency,
+		Income:      sum.Income.Minor,
+		Expense:     sum.Expense.Minor,
+		Net:         sum.Net.Minor,
+		Adjustments: sum.Adjustments.Minor,
+		TxCount:     sum.TxCount,
+		ComputedAt:  now().UTC(),
 	}
 	if len(sum.Wallets) > 0 {
 		snap.Wallets = make([]period.WalletClosing, 0, len(sum.Wallets))

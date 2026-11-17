@@ -187,11 +187,12 @@ func toProtoSnapshot(s *period.Snapshot) *yasakuv1.Snapshot {
 		return nil
 	}
 	out := &yasakuv1.Snapshot{
-		Income:     toMoney(money.New(s.Income, s.Currency)),
-		Expense:    toMoney(money.New(s.Expense, s.Currency)),
-		Net:        toMoney(money.New(s.Net, s.Currency)),
-		TxCount:    int32(s.TxCount), //nolint:gosec // a row count, far below int32.
-		ComputedAt: toTimestamp(s.ComputedAt),
+		Income:      toMoney(money.New(s.Income, s.Currency)),
+		Expense:     toMoney(money.New(s.Expense, s.Currency)),
+		Net:         toMoney(money.New(s.Net, s.Currency)),
+		Adjustments: toMoney(money.New(s.Adjustments, s.Currency)),
+		TxCount:     int32(s.TxCount), //nolint:gosec // a row count, far below int32.
+		ComputedAt:  toTimestamp(s.ComputedAt),
 	}
 	if len(s.Wallets) > 0 {
 		out.Wallets = make([]*yasakuv1.WalletClosing, 0, len(s.Wallets))

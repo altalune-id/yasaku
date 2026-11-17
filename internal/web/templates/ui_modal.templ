@@ -7,13 +7,20 @@ import (
 
 // AppModal renders its children in a native modal dialog that dialog.js opens from any [data-dialog-open] control; render it through LayoutData.Dialogs so it sits in the dialog host.
 templ AppModal(d web.LayoutData, id string, title string) {
+	@AppModalSized(d, id, title, "sm:max-w-xl") {
+		{ children... }
+	}
+}
+
+// AppModalSized is AppModal with box setting the modal-box width classes, e.g. "sm:max-w-xl lg:max-w-3xl".
+templ AppModalSized(d web.LayoutData, id string, title string, box string) {
 	<dialog
 		id={ id }
 		class="modal modal-bottom sm:modal-middle"
 		aria-labelledby={ id + "-title" }
 		data-dialog-close-on-success
 	>
-		<div class="modal-box flex max-h-[calc(100dvh-2rem)] flex-col p-4 pb-[max(1rem,env(safe-area-inset-bottom,0px))] sm:max-w-xl sm:p-6">
+		<div class={ "modal-box flex max-h-[calc(100dvh-2rem)] flex-col p-4 pb-[max(1rem,env(safe-area-inset-bottom,0px))] sm:p-6", box }>
 			<header class="mb-3 flex h-11 items-center justify-between gap-2">
 				<h2 id={ id + "-title" } class="text-lg font-bold">{ title }</h2>
 				<button
@@ -25,7 +32,43 @@ templ AppModal(d web.LayoutData, id string, title string) {
 					@icons.Icon("x", "size-5")
 				</button>
 			</header>
-			<section class="-m-1 min-h-0 overflow-y-auto p-1">
+			<section class="-m-1 flex min-h-0 flex-col overflow-y-auto p-1">
+				{ children... }
+			</section>
+		</div>
+	</dialog>
+}
+
+// AppSheet is a modal without the title row: its content draws its own header, and label names the dialog.
+templ AppSheet(id string, label string, box string) {
+	<dialog id={ id } class="modal modal-bottom sm:modal-middle" aria-label={ label } data-dialog-close-on-success>
+		<div class={ "modal-box flex max-h-[94dvh] flex-col p-0", box }>
+			{ children... }
+		</div>
+	</dialog>
+}
+
+// AppDrawer is AppModal as a bottom sheet on phones and a full-height panel on the end side from lg.
+templ AppDrawer(d web.LayoutData, id string, title string) {
+	<dialog
+		id={ id }
+		class="modal modal-bottom lg:modal-end"
+		aria-labelledby={ id + "-title" }
+		data-dialog-close-on-success
+	>
+		<div class="modal-box flex max-h-[calc(100dvh-2rem)] flex-col p-4 pb-[max(1rem,env(safe-area-inset-bottom,0px))] sm:p-6 lg:max-h-none lg:w-104" data-scan-asym="side panel: content starts at the top">
+			<header class="mb-4 flex h-11 items-center justify-between gap-2">
+				<h2 id={ id + "-title" } class="text-lg font-bold">{ title }</h2>
+				<button
+					type="button"
+					data-dialog-close
+					aria-label={ d.Tr("dialog.close") }
+					class="btn btn-ghost btn-square"
+				>
+					@icons.Icon("x", "size-5")
+				</button>
+			</header>
+			<section class="-m-1 flex min-h-0 flex-col overflow-y-auto p-1">
 				{ children... }
 			</section>
 		</div>

@@ -378,6 +378,19 @@ func (s *Service) Rename(ctx context.Context, id uuid.UUID, name string) error {
 	return nil
 }
 
+// ResetTipsSeen forgets the user's seen tips so every tip shows again.
+func (s *Service) ResetTipsSeen(ctx context.Context, id uuid.UUID) error {
+	ctx, span := tracer.Start(ctx, "user.ResetTipsSeen")
+	defer span.End()
+	if err := s.store.ResetTipsSeen(ctx, id); err != nil {
+		if IsNotFoundError(err) {
+			return err
+		}
+		return s.unexpected(ctx, "user.ResetTipsSeen", err, slog.String("user_id", id.String()))
+	}
+	return nil
+}
+
 // MarkTipsSeen records tip ids as seen by the user and returns the full seen list; the caller validates the ids.
 func (s *Service) MarkTipsSeen(ctx context.Context, id uuid.UUID, ids []string) ([]string, error) {
 	ctx, span := tracer.Start(ctx, "user.MarkTipsSeen")

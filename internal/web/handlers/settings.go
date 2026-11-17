@@ -65,13 +65,14 @@ func (h *SettingsHandler) GetSettings(w http.ResponseWriter, r *http.Request) {
 		h.ErrorPage(w, sc.req, http.StatusInternalServerError, pageTitle(sc.req, "error_title.load_failed"), "Could not load project settings.", err)
 		return
 	}
-	v := h.view(sc)
+	v := h.view(sc, h.CanManage(sc))
 	v.Timezone, v.Currency, v.PeriodStartDay = st.Timezone, string(st.Currency), st.PeriodStartDay
 	v.NameSaved = sc.req.URL.Query().Get("saved") == "name"
 	Render(w, sc.req, templates.SettingsLayout(h.layout(sc), v))
 }
 
 //i18n:use settings.name_forbidden_title
+//i18n:use settings.ledger_member
 
 // PostRename renames the project for a manager and returns to settings, re-rendering it with a field error on refusal.
 func (h *SettingsHandler) PostRename(w http.ResponseWriter, r *http.Request) {
@@ -81,7 +82,7 @@ func (h *SettingsHandler) PostRename(w http.ResponseWriter, r *http.Request) {
 	}
 	r = sc.req
 	// SECURITY: membership is org-wide, so a plain member reaches this route; only an owner or admin may rename, and a failed lookup refuses.
-	if !h.canManage(sc) {
+	if !h.CanManage(sc) {
 		h.ErrorPage(w, r, http.StatusForbidden,
 			localizedDefault(r, "settings.name_forbidden_title", "Not allowed"),
 			localizedDefault(r, "settings.name_member", "Only an owner or admin can rename this project."))
@@ -102,7 +103,7 @@ func (h *SettingsHandler) PostRename(w http.ResponseWriter, r *http.Request) {
 			h.ErrorPage(w, r, http.StatusInternalServerError, pageTitle(r, "error_title.rename_failed"), "Could not rename the project.", err)
 			return
 		}
-		v := h.view(sc)
+		v := h.view(sc, true)
 		st, gErr := h.Ledgers.Get(r.Context())
 		if gErr != nil {
 			h.LogErr("web settings: get", gErr)
@@ -117,15 +118,17 @@ func (h *SettingsHandler) PostRename(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, web.Path(h.Cfg.HTTP.BasePath, projectPath(sc.org.Slug, sc.project.Slug, "/settings?saved=name")), http.StatusSeeOther) //nolint:gosec // G710: both slugs come from the store and passed their slug patterns
 }
 
-func (h *SettingsHandler) canManage(sc ProjectScope) bool {
-	ok, err := h.Orgs.IsManager(sc.req.Context(), sc.org.ID, sc.principal.UserID)
-	return err == nil && ok
-}
-
 // PostSettings validates and persists the submitted settings, rendering a typed refusal as a banner.
 func (h *SettingsHandler) PostSettings(w http.ResponseWriter, r *http.Request) {
 	sc, ok := h.RequireProject(w, r)
 	if !ok {
+		return
+	}
+	// SECURITY: membership is org-wide, so a plain member reaches this route; only an owner or admin may change the ledger settings, and a failed lookup refuses.
+	if !h.CanManage(sc) {
+		h.ErrorPage(w, sc.req, http.StatusForbidden,
+			localizedDefault(sc.req, "settings.name_forbidden_title", "Not allowed"),
+			localizedDefault(sc.req, "settings.ledger_member", "Only an owner or admin can change these settings."))
 		return
 	}
 	if err := sc.req.ParseForm(); err != nil {
@@ -136,7 +139,7 @@ func (h *SettingsHandler) PostSettings(w http.ResponseWriter, r *http.Request) {
 	currency := strings.TrimSpace(sc.req.PostForm.Get("currency"))
 	rawDay := strings.TrimSpace(sc.req.PostForm.Get("period_start_day"))
 
-	v := h.view(sc)
+	v := h.view(sc, true)
 	v.Timezone, v.Currency = tz, currency
 	day, dayErr := strconv.Atoi(rawDay)
 	if dayErr != nil {
@@ -181,7 +184,7 @@ func (h *SettingsHandler) layout(sc ProjectScope) web.LayoutData {
 	return d
 }
 
-func (h *SettingsHandler) view(sc ProjectScope) templates.SettingsView {
+func (h *SettingsHandler) view(sc ProjectScope, canManage bool) templates.SettingsView {
 	v := templates.SettingsView{
 		OrgSlug:     sc.org.Slug,
 		OrgID:       sc.org.ID.String(),
@@ -190,15 +193,25 @@ func (h *SettingsHandler) view(sc ProjectScope) templates.SettingsView {
 		ProjectName: sc.project.Name,
 		Name:        sc.project.Name,
 		System:      sc.project.System,
-		CanRename:   !sc.project.System && h.canManage(sc),
+		CanRename:   !sc.project.System && canManage,
+		CanManage:   canManage,
 		Timezones:   settingsTimezones,
 		Currencies:  settingsCurrencies,
+		StartDays:   settingsStartDays(),
 	}
 	if h.Caps.MCPEnabled {
 		v.MCPEndpoint = h.Cfg.MCP.Audience
 		v.MCPScopes = h.MCPScopes
 	}
 	return v
+}
+
+func settingsStartDays() []int {
+	days := make([]int, 0, ledger.MaxPeriodStartDay)
+	for d := ledger.MinPeriodStartDay; d <= ledger.MaxPeriodStartDay; d++ {
+		days = append(days, d)
+	}
+	return days
 }
 
 func isLedgerDomainError(err error) bool {

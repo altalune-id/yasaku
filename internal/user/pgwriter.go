@@ -115,6 +115,20 @@ func nullableTimeExpr(t *time.Time) postgres.TimestampzExpression {
 	return postgres.TimestampzT(t.UTC())
 }
 
+func (s *postgresStore) ResetTipsSeen(ctx context.Context, id uuid.UUID) error {
+	res, err := s.table.UPDATE(s.table.TipsSeen, s.table.UpdatedAt).
+		SET(postgres.String(emptyTipsSeen), postgres.TimestampzT(time.Now().UTC())).
+		WHERE(s.table.ID.EQ(postgres.UUID(id))).
+		ExecContext(ctx, s.writer(ctx))
+	if err != nil {
+		return fmt.Errorf("user.postgres.ResetTipsSeen: %w", err)
+	}
+	if n, err := res.RowsAffected(); err == nil && n == 0 {
+		return &NotFoundError{ID: id.String()}
+	}
+	return nil
+}
+
 func (s *postgresStore) MarkTipsSeen(ctx context.Context, id uuid.UUID, ids []string) ([]string, error) {
 	where := s.table.ID.EQ(postgres.UUID(id))
 	for range tipsSeenAttempts {

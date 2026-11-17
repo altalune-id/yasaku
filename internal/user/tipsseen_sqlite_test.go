@@ -94,4 +94,16 @@ func assertTipsSeen(t *testing.T, store user.Store) {
 
 	_, err = store.MarkTipsSeen(ctx, uuid.New(), []string{"a"})
 	assert.True(t, user.IsNotFoundError(err), "%v", err)
+
+	require.NoError(t, store.ResetTipsSeen(ctx, me.ID))
+	cleared, err := store.ByID(ctx, me.ID)
+	require.NoError(t, err)
+	assert.Empty(t, cleared.TipsSeen, "reset forgets every dismissal")
+	got, err = store.MarkTipsSeen(ctx, me.ID, []string{"c"})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"c"}, got, "a tip can be dismissed again after a reset")
+	untouched, err = store.ByID(ctx, other.ID)
+	require.NoError(t, err)
+	assert.Empty(t, untouched.TipsSeen, "reset touches only the named user")
+	assert.True(t, user.IsNotFoundError(store.ResetTipsSeen(ctx, uuid.New())))
 }

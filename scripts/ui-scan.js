@@ -1,6 +1,6 @@
 // Run with Playwright MCP browser_evaluate: pass this file's text as the function, e.g. (opts) => ...
 // opts.drawer: CSS selector of an off-canvas drawer, skipped while closed. Returns {hits, summary}.
-// Hit kinds: document-scroll, overflow-x, text-overlap (skips content that scrolls clear of a fixed or sticky bar, and raised floating panels over content), occluded-content, wrapped-control, small-target (filled, .btn or menu-row controls under 44px below 1024px), asymmetric-box. Opt out with data-scan-asym="<reason>" or data-scan-small="<reason>".
+// Hit kinds: document-scroll, overflow-x, text-overlap (skips content that scrolls clear of a fixed or sticky bar, and raised floating panels over content), occluded-content, wrapped-control, small-target (filled, .btn or menu-row controls under 44px below 1024px), asymmetric-box. Opt out with data-scan-asym="<reason>", data-scan-small="<reason>" or, on the text that may wrap inside a control, data-scan-wrap="<reason>".
 async (opts = {}) => {
   const { drawer = null, snippet = 60 } = opts;
   const frame = () => new Promise((r) => { requestAnimationFrame(() => requestAnimationFrame(r)); setTimeout(r, 100); });
@@ -116,7 +116,7 @@ async (opts = {}) => {
   for (const el of all.filter((e) => e.matches('button, .btn, [role="button"]'))) {
     const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
     for (let t = walker.nextNode(); t; t = walker.nextNode()) {
-      if (!t.textContent.trim() || hidden(t.parentElement)) continue;
+      if (!t.textContent.trim() || hidden(t.parentElement) || t.parentElement.closest('[data-scan-wrap]')) continue;
       const range = document.createRange();
       range.selectNodeContents(t);
       const tops = new Set([...range.getClientRects()].filter((r) => r.width > 0 && r.height > 0).map((r) => Math.round(r.top)));

@@ -1,0 +1,53 @@
+package templates
+
+import (
+	"altalune.id/yasaku/internal/web"
+	"altalune.id/yasaku/internal/web/icons"
+)
+
+// KeyValueItem is one row of KeyValue; Copy adds a copy button when Value is set, and Node renders in place of Value.
+type KeyValueItem struct {
+	Label string
+	Value string
+	Node  templ.Component
+	Mono  bool
+	Copy  bool
+}
+
+// KeyValueProps configures KeyValue.
+type KeyValueProps struct {
+	Items []KeyValueItem
+	Dense bool
+}
+
+// KeyValue renders labelled values as a description list.
+templ KeyValue(d web.LayoutData, p KeyValueProps) {
+	<dl class={ templ.KV("divide-y divide-base-300", !p.Dense), templ.KV("grid gap-y-2 text-sm", p.Dense) }>
+		for _, item := range p.Items {
+			<div class={ templ.KV("grid grid-cols-1 px-4 py-2 sm:grid-cols-3 sm:gap-3", !p.Dense), templ.KV("grid grid-cols-3 gap-x-3", p.Dense) }>
+				<dt class="text-sm text-base-content/70">{ item.Label }</dt>
+				<dd class={ "flex min-w-0 flex-wrap items-center gap-x-2 text-sm", templ.KV("sm:col-span-2", !p.Dense), templ.KV("col-span-2", p.Dense) }>
+					if item.Node != nil {
+						@item.Node
+					} else {
+						<span class={ templ.KV("font-mono text-xs break-all", item.Mono) }>{ item.Value }</span>
+					}
+					if item.Copy && item.Value != "" {
+						<button
+							type="button"
+							class="btn btn-ghost btn-sm max-lg:btn-md"
+							data-copy={ item.Value }
+							data-copy-text={ d.Tr("common.copy") }
+							data-copy-label={ d.Tr("common.copy") + ": " + item.Label }
+							data-copied-label={ d.Tr("common.copied") }
+							aria-label={ d.Tr("common.copy") + ": " + item.Label }
+						>
+							@icons.Icon("copy", "size-4")
+							<span data-copy-slot>{ d.Tr("common.copy") }</span>
+						</button>
+					}
+				</dd>
+			</div>
+		}
+	</dl>
+}

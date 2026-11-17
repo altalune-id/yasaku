@@ -453,7 +453,7 @@ func TestReportHandler_GetReports_BarsPayloadRunsOldestFirst(t *testing.T) {
 	assert.Len(t, got.Formatted["income"], 2)
 	assert.Equal(t, reportMoney(100000000), got.Formatted["income"][0])
 	assert.Equal(t, int64(100), got.Unit.Divisor)
-	assert.Equal(t, "Rp", got.Unit.Symbol)
+	assert.Equal(t, "IDR", got.Unit.Symbol)
 	assert.NotEmpty(t, got.Labels["income"])
 	assert.NotEmpty(t, got.Labels["expense"])
 	assert.NotEmpty(t, got.Labels["net"])

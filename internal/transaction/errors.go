@@ -37,6 +37,9 @@ func IsNotFoundError(err error) bool {
 	return ok
 }
 
+// ReasonNotPositive is the InvalidAmountError reason for a zero or negative amount.
+const ReasonNotPositive = "must be greater than zero"
+
 // InvalidAmountError reports an amount that is not a positive quantity of a known currency.
 type InvalidAmountError struct{ Reason string }
 

@@ -1,6 +1,7 @@
 package handlers_test
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
 	"net/http"
@@ -28,6 +29,7 @@ import (
 	"altalune.id/yasaku/internal/platform/session"
 	"altalune.id/yasaku/internal/platform/tenant"
 	"altalune.id/yasaku/internal/project"
+	"altalune.id/yasaku/internal/report"
 	"altalune.id/yasaku/internal/transaction"
 	"altalune.id/yasaku/internal/user"
 	"altalune.id/yasaku/internal/wallet"
@@ -53,11 +55,13 @@ type walletFixture struct {
 	Wallets      *wallet.Service
 	WalletOpen   *wallet.OpenWorkflow
 	Periods      *period.Service
+	Reports      *report.Service
 	TxCategories *category.Service
 	Transactions *transaction.Service
 	Principal    session.Principal
 	OrgID        uuid.UUID
 	ProjectID    uuid.UUID
+	Loc          i18n.Locale
 }
 
 type noPeriods struct{}
@@ -115,6 +119,7 @@ func newWalletFixture(t *testing.T) *walletFixture {
 		walletReaderForTest(wallets), categoryReaderForTest(cats),
 		noPeriods{}, transaction.UnitOfWork(uow),
 	)
+	reports := report.NewService(report.NewReader(dbCfg, pool, nil), log, unexpected, ledgers)
 	periods := period.NewService(period.NewStore(dbCfg, pool, nil), log, unexpected,
 		ledgers, reportSnapshotter{}, period.UnitOfWork(uow), time.Now)
 	walletOpen := wallet.NewOpenWorkflow(wallets, txs, openingDater(periods), wallet.UnitOfWork(uow), log, unexpected)
@@ -134,7 +139,7 @@ func newWalletFixture(t *testing.T) *walletFixture {
 	f := &walletFixture{
 		Deps: deps, Cfg: cfg, Sessions: deps.Sessions, DB: sqlDB,
 		Orgs: orgs, Projects: projects, Ledgers: ledgers,
-		Wallets: wallets, WalletOpen: walletOpen, Periods: periods, TxCategories: cats, Transactions: txs,
+		Wallets: wallets, WalletOpen: walletOpen, Periods: periods, Reports: reports, TxCategories: cats, Transactions: txs,
 	}
 
 	ctx := t.Context()
@@ -188,7 +193,7 @@ func (f *walletFixture) scoped(t *testing.T) context.Context {
 }
 
 func (f *walletFixture) withLocale(ctx context.Context) context.Context {
-	loc := i18n.IdID
+	loc := cmp.Or(f.Loc, i18n.IdID)
 	ctx = i18n.LocaleInto(ctx, loc)
 	return i18n.TranslatorInto(ctx, f.Deps.I18n.For(loc))
 }
@@ -259,7 +264,7 @@ func TestWallet_CreateWithOpeningBalance_ListsFormattedBalance(t *testing.T) {
 	require.Equal(t, http.StatusOK, list.Code)
 	body := list.Body.String()
 	assert.Contains(t, body, "BCA")
-	assert.Contains(t, body, "Rp100.000")
+	assert.Contains(t, body, "Rp\u00a0100.000")
 
 	items, err := f.Wallets.List(f.scoped(t), wallet.ListOpts{})
 	require.NoError(t, err)
@@ -290,8 +295,8 @@ func TestWallet_CreateWithoutOpeningBalance_RecordsNoTransaction(t *testing.T) {
 	list := f.do(t, mux, http.MethodGet, "/wallets", nil)
 	require.Equal(t, http.StatusOK, list.Code)
 	body := list.Body.String()
-	require.NotContains(t, body, ">Rp0<", "the Total card must not itself render Rp0, or this proves nothing")
-	assert.Contains(t, body, "Rp0", "a wallet absent from the balances map renders as a zero, not a panic")
+	require.NotContains(t, body, ">Rp\u00a00<", "the Total card must not itself render Rp0, or this proves nothing")
+	assert.Contains(t, body, "Rp\u00a00", "a wallet absent from the balances map renders as a zero, not a panic")
 }
 
 func TestWallet_CreateWithBlankName_ReRendersFormWithBanner(t *testing.T) {
@@ -339,7 +344,7 @@ func TestWallet_DeleteWithoutTransactions_RemovesIt(t *testing.T) {
 	}).Code)
 	w := f.onlyWallet(t)
 
-	rec := f.do(t, mux, http.MethodPost, "/wallets/"+w.ID.String()+"/delete", url.Values{})
+	rec := f.doHTMX(t, mux, http.MethodPost, "/wallets/"+w.ID.String()+"/delete", url.Values{})
 	require.Equal(t, http.StatusOK, rec.Code)
 
 	items, err := f.Wallets.List(f.scoped(t), wallet.ListOpts{IncludeArchived: true})
@@ -357,7 +362,7 @@ func TestWallet_Archive_MovesItUnderArchivedAndUnarchiveRestoresIt(t *testing.T)
 	}).Code)
 	w := f.onlyWallet(t)
 
-	rec := f.do(t, mux, http.MethodPost, "/wallets/"+w.ID.String()+"/archive", url.Values{})
+	rec := f.doHTMX(t, mux, http.MethodPost, "/wallets/"+w.ID.String()+"/archive", url.Values{})
 	require.Equal(t, http.StatusOK, rec.Code)
 	body := rec.Body.String()
 	require.Contains(t, body, `id="wallet-archived"`)
@@ -368,7 +373,7 @@ func TestWallet_Archive_MovesItUnderArchivedAndUnarchiveRestoresIt(t *testing.T)
 	require.NoError(t, err)
 	assert.Empty(t, active)
 
-	back := f.do(t, mux, http.MethodPost, "/wallets/"+w.ID.String()+"/unarchive", url.Values{})
+	back := f.doHTMX(t, mux, http.MethodPost, "/wallets/"+w.ID.String()+"/unarchive", url.Values{})
 	require.Equal(t, http.StatusOK, back.Code)
 	assert.True(t, containsBefore(back.Body.String(), "GoPay", `id="wallet-archived"`))
 }
@@ -387,7 +392,7 @@ func TestWallet_Adjust_WritesAdjustmentAndShowsNewBalance(t *testing.T) {
 	require.Equal(t, http.StatusSeeOther, rec.Code, rec.Body.String())
 	detail := f.follow(t, mux, rec)
 	require.Equal(t, http.StatusOK, detail.Code)
-	assert.Contains(t, detail.Body.String(), "Rp150.000")
+	assert.Contains(t, detail.Body.String(), "Rp\u00a0150.000")
 
 	txs, _, err := f.Transactions.List(f.scoped(t), transaction.ListOpts{WalletID: &w.ID})
 	require.NoError(t, err)
@@ -412,7 +417,7 @@ func TestWallet_AdjustToTheSameBalance_RendersNoChange(t *testing.T) {
 	require.Equal(t, http.StatusOK, detail.Code)
 	body := detail.Body.String()
 	assert.Contains(t, body, `data-adjust-state="unchanged"`)
-	assert.NotContains(t, body, "Rp0", "an unchanged balance must not report a zero adjustment")
+	assert.NotContains(t, body, "Rp\u00a00", "an unchanged balance must not report a zero adjustment")
 
 	txs, _, err := f.Transactions.List(f.scoped(t), transaction.ListOpts{WalletID: &w.ID})
 	require.NoError(t, err)
@@ -471,7 +476,7 @@ func TestWallet_NewAndAdjustForms_Render(t *testing.T) {
 
 	adjust := f.do(t, mux, http.MethodGet, "/wallets/"+w.ID.String()+"/adjust", nil)
 	require.Equal(t, http.StatusOK, adjust.Code)
-	assert.Contains(t, adjust.Body.String(), "Rp100.000")
+	assert.Contains(t, adjust.Body.String(), "Rp\u00a0100.000")
 }
 
 func TestWallet_FragmentsCarryTheOrgScopedActionURLs(t *testing.T) {
@@ -484,7 +489,7 @@ func TestWallet_FragmentsCarryTheOrgScopedActionURLs(t *testing.T) {
 	}).Code)
 	w := f.onlyWallet(t)
 
-	rec := f.do(t, mux, http.MethodPost, "/wallets/"+w.ID.String()+"/archive", url.Values{})
+	rec := f.doHTMX(t, mux, http.MethodPost, "/wallets/"+w.ID.String()+"/archive", url.Values{})
 	require.Equal(t, http.StatusOK, rec.Code)
 	assert.Contains(t, rec.Body.String(), f.path("/wallets/"+w.ID.String()+"/unarchive"))
 }
@@ -515,7 +520,7 @@ func TestWallet_NegativeOpeningBalance_ShowsTypedAmountBanner(t *testing.T) {
 	body := rec.Body.String()
 	assert.NotContains(t, body, "money:", "a parse failure must not leak the Go package name")
 	assert.Contains(t, body, apperror.CodeTransactionInvalidAmount)
-	assert.Contains(t, strings.ToLower(body), "negative", "the parse reason must survive the conversion")
+	assert.Contains(t, body, f.Deps.I18n.For(i18n.IdID).T("tx.amount_error.negative"), "the parse reason shows in the user's language")
 
 	items, err := f.Wallets.List(f.scoped(t), wallet.ListOpts{IncludeArchived: true})
 	require.NoError(t, err)
@@ -552,7 +557,7 @@ func TestWallet_ArchivedWallet_OffersNeitherEditNorAdjust(t *testing.T) {
 		"name": {"GoPay"}, "kind": {"ewallet"},
 	}).Code)
 	w := f.onlyWallet(t)
-	require.Equal(t, http.StatusOK, f.do(t, mux, http.MethodPost, "/wallets/"+w.ID.String()+"/archive", url.Values{}).Code)
+	require.Equal(t, http.StatusSeeOther, f.do(t, mux, http.MethodPost, "/wallets/"+w.ID.String()+"/archive", url.Values{}).Code)
 
 	list := f.do(t, mux, http.MethodGet, "/wallets", nil)
 	require.Equal(t, http.StatusOK, list.Code)
@@ -583,7 +588,7 @@ func TestWallet_UpdateArchived_IsRefusedAndKeepsEveryField(t *testing.T) {
 		"name": {"GoPay"}, "kind": {"ewallet"},
 	}).Code)
 	w := f.onlyWallet(t)
-	require.Equal(t, http.StatusOK, f.do(t, mux, http.MethodPost, "/wallets/"+w.ID.String()+"/archive", url.Values{}).Code)
+	require.Equal(t, http.StatusSeeOther, f.do(t, mux, http.MethodPost, "/wallets/"+w.ID.String()+"/archive", url.Values{}).Code)
 
 	rec := f.do(t, mux, http.MethodPost, "/wallets/"+w.ID.String(), url.Values{
 		"name": {"OVO"}, "kind": {"bank"}, "provider": {"Bank"},
@@ -670,4 +675,39 @@ func TestWallet_List_LedgerCurrencyWalletsShowNoMixedNote(t *testing.T) {
 	rec := f.do(t, mux, http.MethodGet, "/wallets", nil)
 	require.Equal(t, http.StatusOK, rec.Code)
 	assert.NotContains(t, rec.Body.String(), `data-mixed-currency`)
+}
+
+func TestWallet_AmountPrefixesShowTheCurrencySymbol(t *testing.T) {
+	t.Parallel()
+	f := newWalletFixture(t)
+	mux := f.walletMux(t)
+	const prefix = `<span class="join-item flex items-center border border-base-300 bg-base-200 px-3 text-sm">`
+
+	newForm := f.do(t, mux, http.MethodGet, "/wallets/new", nil)
+	require.Equal(t, http.StatusOK, newForm.Code)
+	assert.Contains(t, newForm.Body.String(), prefix+"Rp</span>", "the opening balance prefix")
+
+	require.Equal(t, http.StatusSeeOther, f.do(t, mux, http.MethodPost, "/wallets", url.Values{
+		"name": {"BCA"}, "kind": {"bank"}, "opening_balance": {"100000"},
+	}).Code)
+	adjust := f.do(t, mux, http.MethodGet, "/wallets/"+f.onlyWallet(t).ID.String()+"/adjust", nil)
+	require.Equal(t, http.StatusOK, adjust.Code)
+	assert.Contains(t, adjust.Body.String(), prefix+"Rp</span>", "the adjust target prefix")
+	assert.NotContains(t, adjust.Body.String(), prefix+"IDR</span>")
+}
+
+func TestWallet_ListActionsWithoutHTMXRedirectSoARefreshDoesNotRepost(t *testing.T) {
+	t.Parallel()
+	f := newWalletFixture(t)
+	mux := f.walletMux(t)
+	require.Equal(t, http.StatusSeeOther, f.do(t, mux, http.MethodPost, "/wallets", url.Values{
+		"name": {"GoPay"}, "kind": {"ewallet"},
+	}).Code)
+	w := f.onlyWallet(t)
+
+	for _, action := range []string{"archive", "unarchive", "delete"} {
+		rec := f.do(t, mux, http.MethodPost, "/wallets/"+w.ID.String()+"/"+action, url.Values{})
+		require.Equal(t, http.StatusSeeOther, rec.Code, action)
+		assert.Equal(t, f.path("/wallets"), rec.Header().Get("Location"), action)
+	}
 }

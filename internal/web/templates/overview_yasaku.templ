@@ -1,130 +1,303 @@
 package templates
 
 import (
+	"altalune.id/yasaku/civil"
 	"altalune.id/yasaku/internal/web"
 	"altalune.id/yasaku/internal/web/icons"
 	"altalune.id/yasaku/money"
 )
 
-// YasakuWalletCard is one wallet tile under the overview totals.
-type YasakuWalletCard struct {
-	ID       string
-	Name     string
-	Kind     string
-	Balance  money.Amount
-	Excluded bool
+// YasakuQuickAdd is one Quick add category that opens the add sheet with it set.
+type YasakuQuickAdd struct {
+	ID   string
+	Name string
+	Icon string
 }
 
-// YasakuOverviewView is the project overview: what is left to spend, what moved this period, what just happened.
-type YasakuOverviewView struct {
-	ProjectSlug string
-	ProjectName string
-	Spendable   money.Amount
-	Total       money.Amount
-	HasPeriod   bool
-	PeriodName  string
-	Income      money.Amount
-	Expense     money.Amount
-	Net         money.Amount
-	Mixed       bool
-	Wallets     []YasakuWalletCard
-	Form        TxFormView
-	List        TxListView
+// YasakuDay is one day of entries on Home with its income minus expense.
+type YasakuDay struct {
+	Day       civil.Date
+	Today     bool
+	Yesterday bool
+	Total     money.Amount
+	Rows      []TxRow
 }
+
+// YasakuOverviewView is Home: one period's totals, quick add and entries grouped by day; PeriodMonthly shows a default-named period as its localized month.
+type YasakuOverviewView struct {
+	ProjectSlug  string
+	Failed       bool
+	NoWallet     bool
+	SetupPending bool
+	HasPeriod    bool
+	PeriodID     string
+	PeriodName   string
+	PeriodStart  civil.Date
+	PeriodMonthly bool
+	Closed       bool
+	Ended        bool
+	PrevPeriodID string
+	NextPeriodID string
+	Income       money.Amount
+	Expense      money.Amount
+	Net          money.Amount
+	QuickAdd     []YasakuQuickAdd
+	Days         []YasakuDay
+	Entries      int
+	More         bool
+	Adjustments  money.Amount
+	Toast        *TxToastView
+}
+
+const homeTipEntries = 3
 
 templ YasakuOverviewPage(d web.LayoutData, v YasakuOverviewView) {
 	<section class="flex flex-col gap-4">
-		<header>
-			<p class="text-sm text-muted-foreground">{ v.ProjectName }</p>
-			<h1 class="mt-0.5 text-sm font-medium text-muted-foreground">{ d.Tr("overview.spendable") }</h1>
-			<p class="mt-1 text-4xl font-semibold tabular-nums tracking-tight text-foreground">{ Money(d, v.Spendable) }</p>
-			<p class="mt-1 text-sm text-muted-foreground">
-				{ d.Tr("overview.total") }
-				<span class="ms-1 tabular-nums text-foreground/80">{ Money(d, v.Total) }</span>
-			</p>
-			if v.Mixed {
-				<p data-mixed-currency="1" class="mt-1 text-xs text-muted-foreground">{ d.Tr("overview.mixed_currency") }</p>
-			}
-		</header>
-		<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-			@TransactionForm(d, v.Form)
-			<div class="flex flex-col gap-4">
-				@yasakuPeriodCard(d, v)
-				@yasakuWalletCards(d, v)
+		<h1 class="text-2xl font-bold tracking-tight">{ d.Tr("nav.home") }</h1>
+		if v.Failed {
+			@homeFailed(d, v)
+		} else if v.SetupPending {
+			<div data-home-no-wallet data-home-setup-pending>
+				@EmptyState(EmptyStateProps{Title: d.Tr("overview.setup_pending_title"), Body: d.Tr("overview.setup_pending_body"), Icon: "wallet"})
 			</div>
-		</div>
-		<div>
-			<div class="flex items-baseline justify-between">
-				<h2 class="text-sm font-medium text-muted-foreground">{ d.Tr("overview.recent") }</h2>
-				<a
-					href={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/transactions")) }
-					class="text-sm font-medium text-primary hover:underline"
-				>
-					{ d.Tr("overview.see_all") }
-				</a>
+		} else if v.NoWallet {
+			<div data-home-no-wallet>
+				@EmptyState(EmptyStateProps{Title: d.Tr("overview.no_wallet_title"), Body: d.Tr("overview.no_wallet_body"), Icon: "wallet"}) {
+					@AppButton(d.ProjectPath(v.ProjectSlug, "/wallets/new"), "btn-primary", nil) {
+						{ d.Tr("overview.create_wallet") }
+					}
+				}
 			</div>
-			@TransactionList(d, v.List)
-		</div>
-		@ToastHost()
+		} else {
+			@homeBody(d, v)
+		}
+		@TxRowAssets(d)
+		@TxToastHost(d, v.Toast)
 	</section>
 }
 
-templ yasakuPeriodCard(d web.LayoutData, v YasakuOverviewView) {
-	<div class="@container rounded-xl border border-border bg-card p-4 shadow-sm">
-		<div class="flex items-baseline justify-between">
-			<h2 class="text-sm font-medium text-muted-foreground">{ d.Tr("overview.this_period") }</h2>
-			if v.HasPeriod {
-				<span class="text-xs text-muted-foreground">{ v.PeriodName }</span>
+templ homeFailed(d web.LayoutData, v YasakuOverviewView) {
+	<div class="flex flex-col items-start gap-3">
+		@ErrorBanner(d, d.Tr("overview.load_failed"), "")
+		<p class="text-sm text-base-content/70">{ d.Tr("overview.load_failed_hint") }</p>
+		@AppButton(d.ProjectPath(v.ProjectSlug, "/overview"), "", nil) {
+			{ d.Tr("overview.try_again") }
+		}
+	</div>
+}
+
+templ homeBody(d web.LayoutData, v YasakuOverviewView) {
+	<div class="grid gap-4 lg:flex lg:items-start lg:gap-6">
+		<div class="flex min-w-0 flex-col gap-4 lg:sticky lg:top-6 lg:order-last lg:w-80 lg:shrink-0">
+			@homeSummary(d, v)
+			if v.Ended {
+				@homeEnded(d, v)
+			}
+			if len(v.QuickAdd) > 0 {
+				@homeQuickAdd(d, v)
 			}
 		</div>
-		if !v.HasPeriod {
-			<p class="mt-3 text-sm text-muted-foreground">{ d.Tr("period.no_period") }</p>
+		<div class="flex min-w-0 flex-col gap-4 lg:flex-1">
+			if v.Closed {
+				<div role="status" data-home-closed class="alert alert-soft alert-info alert-vertical items-start sm:alert-horizontal sm:items-center">
+					@icons.Icon("lock", "size-5 shrink-0")
+					<span class="min-w-0">{ d.Tr("overview.closed", "Period", v.PeriodName) }</span>
+					@AppButton(d.ProjectPath(v.ProjectSlug, "/periods"), "", nil) {
+						{ d.Tr("overview.manage_periods") }
+					}
+				</div>
+			}
+			if len(v.Days) == 0 {
+				@homeEmpty(d, v)
+			} else {
+				for i, day := range v.Days {
+					@homeDay(d, v, day, i == 0 && v.Entries >= homeTipEntries)
+				}
+				if v.More {
+					<a href={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/transactions?period="+v.PeriodID)) } class="link link-primary self-start">
+						{ d.Tr("overview.see_all") }
+					</a>
+				}
+			}
+		</div>
+	</div>
+}
+
+templ homeSummary(d web.LayoutData, v YasakuOverviewView) {
+	<section class="flex min-w-0 flex-col gap-3 rounded-box bg-base-200 p-4" aria-label={ d.Tr("overview.summary") }>
+		if v.HasPeriod {
+			@homePeriodNav(d, v)
+		}
+		if v.Entries == 0 {
+			<p class="text-sm text-base-content/70">{ d.Tr("overview.nothing_yet") }</p>
 		} else {
-			<dl class="mt-3 grid grid-cols-1 gap-2 @min-[30rem]:grid-cols-3">
-				@yasakuStat(d.Tr("overview.income"), Money(d, v.Income), "text-success")
-				@yasakuStat(d.Tr("overview.expense"), Money(d, v.Expense), "text-foreground")
-				@yasakuStat(d.Tr("overview.net"), SignedMoney(d, v.Net), "text-foreground")
-			</dl>
-		}
-	</div>
-}
-
-templ yasakuStat(label, value, tone string) {
-	<div class="flex items-baseline justify-between gap-4 @min-[30rem]:block">
-		<dt class="text-xs text-muted-foreground">{ label }</dt>
-		<dd class={ "whitespace-nowrap text-base font-semibold tabular-nums @min-[30rem]:mt-0.5", tone }>{ value }</dd>
-	</div>
-}
-
-templ yasakuWalletCards(d web.LayoutData, v YasakuOverviewView) {
-	<div class="rounded-xl border border-border bg-card p-4 shadow-sm">
-		<div class="flex items-baseline justify-between">
-			<h2 class="text-sm font-medium text-muted-foreground">{ d.Tr("nav.wallets") }</h2>
-			<a
-				href={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/wallets")) }
-				class="text-sm font-medium text-primary hover:underline"
-			>
-				{ d.Tr("overview.see_all") }
-			</a>
-		</div>
-		if len(v.Wallets) == 0 {
-			<p class="mt-3 text-sm font-medium text-foreground">{ d.Tr("overview.no_wallets") }</p>
-			<p class="mt-1 text-sm text-muted-foreground">{ d.Tr("overview.no_wallets_hint") }</p>
-		}
-		<ul class="mt-3 space-y-2">
-			for _, w := range v.Wallets {
-				<li class="flex items-center gap-2">
-					@icons.Icon("wallet", "h-4 w-4 shrink-0 text-muted-foreground")
-					<span class="min-w-0 flex-1 truncate text-sm text-foreground">{ w.Name }</span>
-					<span class={ "shrink-0 text-sm tabular-nums", templ.KV("text-muted-foreground", w.Excluded) }>
-						{ Money(d, w.Balance) }
-					</span>
-				</li>
+			<div class="min-w-0">
+				<p class="mt-1 text-sm text-base-content/70">
+					if v.PeriodMonthly {
+						{ d.Tr("overview.net_month") }
+					} else {
+						{ d.Tr("overview.net_period") }
+					}
+				</p>
+				<p class={ "break-words text-3xl font-extrabold tabular-nums tracking-tight", templ.KV("text-error", v.Net.Minor < 0) }>{ SignedMoney(d, v.Net) }</p>
+			</div>
+			<div class="stats stats-vertical w-full min-w-0 bg-base-100 sm:stats-horizontal lg:stats-vertical">
+				<div class="stat min-w-0 px-4 py-3">
+					<div class="stat-title flex items-center gap-1 whitespace-normal text-base-content/80">
+						@icons.Icon("arrow-down-left", "size-4 shrink-0 text-success")
+						{ d.Tr("overview.money_in") }
+					</div>
+					<div class="stat-value text-lg tabular-nums text-success">{ SignedMoney(d, v.Income) }</div>
+				</div>
+				<div class="stat min-w-0 px-4 py-3">
+					<div class="stat-title flex items-center gap-1 whitespace-normal text-base-content/80">
+						@icons.Icon("arrow-up-right", "size-4 shrink-0 text-error")
+						{ d.Tr("overview.money_out") }
+					</div>
+					<div class="stat-value text-lg tabular-nums">{ SignedMoney(d, v.Expense.Neg()) }</div>
+				</div>
+			</div>
+			if !v.Adjustments.IsZero() {
+				<p data-balance-fixes class="flex min-w-0 items-baseline justify-between gap-2 px-1 text-sm text-base-content/80">
+					<span>{ d.Tr("overview.balance_fixes") }</span>
+					<span class="shrink-0 whitespace-nowrap tabular-nums">{ SignedMoney(d, v.Adjustments) }</span>
+				</p>
 			}
-		</ul>
+		}
+	</section>
+}
+
+templ homePeriodNav(d web.LayoutData, v YasakuOverviewView) {
+	<div class="join w-full" role="group" aria-label={ d.Tr("overview.period_nav") }>
+		if v.PrevPeriodID != "" {
+			<a href={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/overview?period="+v.PrevPeriodID)) } class="btn btn-ghost btn-square join-item" aria-label={ d.Tr("overview.prev_period") }>
+				@icons.Icon("chevron-left", "size-5 rtl:-scale-x-100")
+			</a>
+		} else {
+			<button type="button" class="btn btn-ghost btn-square join-item" disabled aria-label={ d.Tr("overview.prev_period") }>
+				@icons.Icon("chevron-left", "size-5 rtl:-scale-x-100")
+			</button>
+		}
+		<label class="btn btn-ghost join-item pointer-events-none min-w-0 flex-1 font-semibold" aria-live="polite">
+			if v.PeriodMonthly {
+				@LedgerDate(d, v.PeriodStart, nil, Month())
+			} else {
+				{ v.PeriodName }
+			}
+		</label>
+		if v.NextPeriodID != "" {
+			<a href={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/overview?period="+v.NextPeriodID)) } class="btn btn-ghost btn-square join-item" aria-label={ d.Tr("overview.next_period") }>
+				@icons.Icon("chevron-right", "size-5 rtl:-scale-x-100")
+			</a>
+		} else {
+			<button type="button" class="btn btn-ghost btn-square join-item" disabled aria-label={ d.Tr("overview.next_period") }>
+				@icons.Icon("chevron-right", "size-5 rtl:-scale-x-100")
+			</button>
+		}
 	</div>
+}
+
+templ homeEnded(d web.LayoutData, v YasakuOverviewView) {
+	<div data-home-ended class="card border border-accent/50 bg-accent/10">
+		<div class="card-body gap-2 p-4">
+			<p class="flex min-w-0 items-start gap-2 font-semibold">
+				@icons.Icon("calendar-check", "size-5 shrink-0 text-accent")
+				<span class="min-w-0 break-words">{ d.Tr("overview.ended", "Period", v.PeriodName, "Amount", Money(d, v.Expense)) }</span>
+			</p>
+			<div class="card-actions">
+				@AppButton(d.ProjectPath(v.ProjectSlug, "/reports?period="+v.PeriodID), "", nil) {
+					{ d.Tr("overview.see_report") }
+				}
+				@AppButton(d.ProjectPath(v.ProjectSlug, "/periods/"+v.PeriodID+"/close"), "btn-ghost", nil) {
+					{ d.Tr("overview.close_named", "Period", v.PeriodName) }
+				}
+			</div>
+		</div>
+	</div>
+}
+
+templ homeQuickAdd(d web.LayoutData, v YasakuOverviewView) {
+	<section aria-labelledby="home-quick-add">
+		<h2 id="home-quick-add" class="text-sm font-semibold">{ d.Tr("overview.quick_add") }</h2>
+		<p class="mb-2 text-sm text-base-content/70">{ d.Tr("overview.quick_add_hint") }</p>
+		<div class="grid grid-cols-4 gap-2">
+			for _, c := range v.QuickAdd {
+				<a
+					href={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/transactions/new?kind=expense&category="+c.ID)) }
+					data-dialog-open={ TxAddDialogID }
+					data-dialog-src={ d.ProjectPath(v.ProjectSlug, "/transactions/new?kind=expense&category="+c.ID) }
+					title={ c.Name }
+					class="btn h-auto min-w-0 flex-col gap-1 px-1 py-2 text-xs font-medium"
+				>
+					@icons.Icon(homeCategoryIcon(c.Icon), "size-5 shrink-0")
+					<span data-label-fit data-scan-wrap="tile labels take two lines by design" class="line-clamp-2 max-w-full text-center leading-tight text-ellipsis">{ c.Name }</span>
+				</a>
+			}
+		</div>
+	</section>
+}
+
+templ homeEmpty(d web.LayoutData, v YasakuOverviewView) {
+	<div data-home-empty class="card card-border bg-base-100">
+		<div class="card-body py-0">
+			@EmptyState(EmptyStateProps{Title: homeEmptyTitle(d, v), Body: d.Tr("overview.empty_body"), Icon: "notebook-text"}) {
+				if !v.Closed {
+					@AppButton(d.ProjectPath(v.ProjectSlug, "/transactions/new?kind=expense"), "btn-primary", templ.Attributes{"data-dialog-open": TxAddDialogID, "data-dialog-src": d.ProjectPath(v.ProjectSlug, "/transactions/new?kind=expense")}) {
+						@icons.Icon("plus", "size-4")
+						{ d.Tr("overview.log_first") }
+					}
+				}
+			}
+		</div>
+	</div>
+}
+
+templ homeDay(d web.LayoutData, v YasakuOverviewView, day YasakuDay, tip bool) {
+	<section data-day-group aria-labelledby={ "home-day-" + day.Day.String() }>
+		<h3 id={ "home-day-" + day.Day.String() } class="sticky top-14 z-10 flex items-center justify-between gap-2 bg-base-100/95 py-2 text-sm font-semibold backdrop-blur lg:top-0">
+			<span class="min-w-0">
+				if day.Today {
+					{ d.Tr("tx.today") + " · " }
+				} else if day.Yesterday {
+					{ d.Tr("tx.yesterday") + " · " }
+				}
+				@LedgerDate(d, day.Day, nil, Weekday())
+			</span>
+			<span data-day-total class="shrink-0 whitespace-nowrap text-end tabular-nums text-base-content/70">{ SignedMoney(d, day.Total) }</span>
+		</h3>
+		<div class="overflow-hidden rounded-box border border-base-300 bg-base-100">
+			for i, row := range day.Rows {
+				@TxRowItem(d, v.ProjectSlug, row)
+				if tip && i == 0 {
+					<div class="border-t border-base-300 empty:hidden [&>[data-tip]]:rounded-none">
+						@Tip(d, "row-actions")
+					</div>
+				}
+			}
+		</div>
+	</section>
+}
+
+func homeEmptyTitle(d web.LayoutData, v YasakuOverviewView) string {
+	if v.HasPeriod {
+		return d.Tr("overview.empty_title", "Period", v.PeriodName)
+	}
+	return d.Tr("overview.empty_title_none")
+}
+
+func homeCategoryIcon(name string) string {
+	if name == "" {
+		return "receipt"
+	}
+	return name
 }
 
 templ YasakuOverviewLayout(d web.LayoutData, v YasakuOverviewView) {
-	@Layout(web.WithContent(d, YasakuOverviewPage(d, v)))
+	@Layout(web.WithDialogs(web.WithContent(d, YasakuOverviewPage(d, v)), homeDialogs(d, v)))
+}
+
+templ homeDialogs(d web.LayoutData, v YasakuOverviewView) {
+	if !v.Failed && !v.NoWallet && !v.SetupPending {
+		@TxRowActions(d)
+	}
 }

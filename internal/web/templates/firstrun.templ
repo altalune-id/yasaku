@@ -1,0 +1,174 @@
+package templates
+
+import (
+	"strconv"
+
+	"altalune.id/yasaku/internal/web"
+	"altalune.id/yasaku/internal/web/icons"
+)
+
+// FirstRunChip is one preset wallet button.
+type FirstRunChip struct {
+	Kind     string
+	LabelKey string
+}
+
+// FirstRunCurrency is one currency option: its code and localized label.
+type FirstRunCurrency struct {
+	Code  string
+	Label string
+}
+
+// FirstRunRow is one wallet being set up; AmountErrKey is the i18n key of its amount error.
+type FirstRunRow struct {
+	Kind         string
+	KindKey      string
+	Name         string
+	Amount       string
+	NameMissing  bool
+	NameDup      bool
+	AmountErrKey string
+}
+
+// FirstRunView backs both first-run steps: Step 1 is the currency, Step 2 the wallets.
+type FirstRunView struct {
+	ProjectSlug string
+	Step        int
+	Currency    string
+	Symbol      string
+	Currencies  []FirstRunCurrency
+	Chips       []FirstRunChip
+	Rows        []FirstRunRow
+	NoWallets   bool
+	ErrorKey    string
+	ErrorCode   string
+}
+
+func firstRunStepClass(step, at int) string {
+	if step >= at {
+		return "step step-primary"
+	}
+	return "step"
+}
+
+templ FirstRunPage(d web.LayoutData, v FirstRunView) {
+	<div class="mx-auto flex max-w-md flex-col gap-6 py-2 lg:py-10">
+		<ul class="steps w-full text-sm">
+			<li class={ firstRunStepClass(v.Step, 1) }>{ d.Tr("firstrun.step_currency") }</li>
+			<li class={ firstRunStepClass(v.Step, 2) }>{ d.Tr("firstrun.step_money") }</li>
+			<li class="step">{ d.Tr("firstrun.step_start") }</li>
+		</ul>
+		<section class="card border border-base-300 bg-base-100">
+			<div class="card-body gap-4 p-4 sm:p-6">
+				if v.Step == 1 {
+					@firstRunCurrency(d, v)
+				} else {
+					@firstRunWallets(d, v)
+				}
+			</div>
+		</section>
+	</div>
+}
+
+templ firstRunCurrency(d web.LayoutData, v FirstRunView) {
+	<h1 class="text-2xl font-bold text-balance">{ d.Tr("firstrun.currency_title") }</h1>
+	if v.ErrorKey != "" {
+		@ErrorBanner(d, d.Tr(v.ErrorKey), v.ErrorCode)
+	}
+	<form method="post" action={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/first-run")) } class="grid gap-4">
+		<input type="hidden" name="step" value="currency"/>
+		{{ currencyField := FieldProps{ID: "fr-currency", Label: d.Tr("wallet.currency"), Hint: d.Tr("firstrun.currency_hint")} }}
+		@FormField(currencyField) {
+			<select { currencyField.Attrs()... } name="currency" class="select w-full text-base">
+				for _, c := range v.Currencies {
+					<option value={ c.Code } selected?={ c.Code == v.Currency }>{ c.Label }</option>
+				}
+			</select>
+		}
+		<button type="submit" class="btn btn-primary btn-block">{ d.Tr("firstrun.continue") }</button>
+	</form>
+}
+
+templ firstRunWallets(d web.LayoutData, v FirstRunView) {
+	<h1 class="text-2xl font-bold text-balance">{ d.Tr("firstrun.wallets_title") }</h1>
+	<p class="text-base-content/70">{ d.Tr("firstrun.wallets_intro") }</p>
+	if v.NoWallets {
+		@ErrorBanner(d, d.Tr("firstrun.wallets_required"), "")
+	}
+	if v.ErrorKey != "" {
+		@ErrorBanner(d, d.Tr(v.ErrorKey), v.ErrorCode)
+	}
+	<form method="post" action={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/first-run")) } class="grid gap-4">
+		<input type="hidden" name="step" value="wallets"/>
+		<button type="submit" class="sr-only" tabindex="-1" aria-hidden="true"></button>
+		<div class="flex flex-wrap gap-2" role="group" aria-label={ d.Tr("firstrun.add_group") }>
+			for _, c := range v.Chips {
+				<button type="submit" name="add" value={ c.Kind } formnovalidate class="btn">
+					@icons.Icon(walletKindIcon(c.Kind), "size-4")
+					@icons.Icon("plus", "size-3.5 -ms-1 opacity-70")
+					{ d.Tr(c.LabelKey) }
+				</button>
+			}
+		</div>
+		if len(v.Rows) == 0 {
+			<p class="rounded-box border border-dashed border-base-300 p-4 text-center text-sm text-base-content/70">{ d.Tr("firstrun.empty", "Cash", d.Tr("wallet.kind_cash"), "Bank", d.Tr("wallet.kind_bank"), "Ewallet", d.Tr("wallet.kind_ewallet")) }</p>
+		}
+		<ul class="flex flex-col gap-3">
+			for i, r := range v.Rows {
+				{{ n := strconv.Itoa(i + 1) }}
+				{{ nameField := FieldProps{ID: "fr-n" + n, Label: d.Tr("wallet.name")} }}
+				{{ amountField := FieldProps{ID: "fr-a" + n, Label: d.Tr("firstrun.balance_label")} }}
+				if r.NameMissing {
+					{{ nameField.Error = d.Tr("firstrun.name_required") }}
+				}
+				if r.NameDup {
+					{{ nameField.Error = d.Tr("firstrun.name_duplicate") }}
+				}
+				if r.AmountErrKey != "" {
+					{{ amountField.Error = d.Tr(r.AmountErrKey) }}
+				}
+				<li class="min-w-0 rounded-box border border-base-300 p-3">
+					<input type="hidden" name="kind" value={ r.Kind }/>
+					<div class="mb-2 flex items-center justify-between gap-2">
+						<span class="badge badge-sm badge-ghost">{ d.Tr(r.KindKey) }</span>
+						<button type="submit" name="remove" value={ n } formnovalidate class="btn btn-ghost btn-square" aria-label={ d.Tr("firstrun.remove", "Name", r.Name) }>
+							@icons.Icon("x", "size-4")
+						</button>
+					</div>
+					<div class="grid grid-cols-2 gap-2">
+						@FormField(nameField) {
+							<input { nameField.Attrs()... } name="name" value={ r.Name } autocomplete="off" aria-label={ d.Tr("firstrun.name_aria", "N", n) } class="input w-full text-base"/>
+						}
+						@FormField(amountField) {
+							<div class="join w-full">
+								<span class="join-item flex items-center border border-base-300 bg-base-200 px-3 text-base-content/70">{ v.Symbol }</span>
+								<input { amountField.Attrs()... } name="amount" type="text" inputmode="decimal" placeholder="0" value={ r.Amount } autocomplete="off" aria-label={ d.Tr("firstrun.balance_aria", "Name", r.Name) } class="input join-item w-full text-base tabular-nums"/>
+							</div>
+						}
+					</div>
+				</li>
+			}
+		</ul>
+		<p class="text-sm text-base-content/70">
+			@icons.Icon("info", "inline size-4 align-[-3px]")
+			{ d.Tr("firstrun.balance_hint") }
+		</p>
+		if v.ErrorKey != "" {
+			<p class="text-sm text-base-content/70">{ d.Tr("firstrun.retry_hint", "Continue", d.Tr("firstrun.continue")) }</p>
+		}
+		<button type="submit" class="btn btn-primary btn-block" disabled?={ len(v.Rows) == 0 }>{ d.Tr("firstrun.continue") }</button>
+		if len(v.Rows) == 0 {
+			<p class="-mt-2 text-center text-sm text-base-content/70">{ d.Tr("firstrun.continue_unlocks") }</p>
+		}
+	</form>
+}
+
+templ FirstRunLayout(d web.LayoutData, v FirstRunView) {
+	@Layout(web.WithContent(firstRunChrome(d), FirstRunPage(d, v)))
+}
+
+// NOTE: first run is a focused setup step like onboarding, so it drops the app sidebar and dock.
+func firstRunChrome(d web.LayoutData) web.LayoutData {
+	d.ActiveNav.Scope = web.NavScopeNone
+	return d
+}

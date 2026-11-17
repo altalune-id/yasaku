@@ -128,6 +128,8 @@ type LayoutData struct {
 	CSPEnforced bool
 	// TimeZone is the active project's zone for display; nil outside a project.
 	TimeZone *time.Location
+	// AddPulse makes the add control pulse and shows its first-entry tip; Home sets it while the project has no entries.
+	AddPulse bool
 	// Opensheet shows the Opensheet project nav entry; true only when the server mounts the module.
 	Opensheet bool
 }

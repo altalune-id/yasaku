@@ -41,4 +41,10 @@ func (c Currency) Exponent() int { return currencies[c].exponent }
 // DisplayExponent is the number of decimals shown to users.
 func (c Currency) DisplayExponent() int { return currencies[c].display }
 
-func (c Currency) symbol() string { return currencies[c].symbol }
+// Symbol returns the currency sign, e.g. "Rp", or the code when the currency is unknown.
+func (c Currency) Symbol() string {
+	if m, ok := currencies[c]; ok {
+		return m.symbol
+	}
+	return string(c)
+}
