@@ -911,7 +911,7 @@ components:
             - string
             - "null"
           title: period
-          description: Period ID from list_periods or current_period, never a period name. Absent leaves the period alone; it is re-derived when occurred_at moves.
+          description: Period ID from list_periods or current_period, never a period name. Absent or empty leaves the period alone; it is re-derived when occurred_at moves.
         confirm:
           type: boolean
           title: confirm

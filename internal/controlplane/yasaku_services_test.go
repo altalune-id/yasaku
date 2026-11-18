@@ -722,6 +722,27 @@ func TestReviseAndDeleteTransaction_PreviewsKeepTheStoredID(t *testing.T) {
 	require.Len(t, after.Msg.GetTransactions(), 1)
 }
 
+func TestReviseTransaction_EmptyPeriodKeepsThePeriod(t *testing.T) {
+	h := newYasakuHarness(t)
+	ctx := t.Context()
+	h.createWallet(ctx, "BCA", &yasakuv1.Money{Amount: "1000000"})
+	tc := h.txClient()
+
+	created, err := tc.RecordExpense(ctx, connect.NewRequest(&yasakuv1.RecordExpenseRequest{
+		Wallet: "BCA", Amount: &yasakuv1.Money{Amount: "15000"}, Note: "geprek", Confirm: true,
+	}))
+	require.NoError(t, err)
+	period := created.Msg.GetResult().GetPeriodId()
+	require.NotEmpty(t, period)
+
+	note, empty := "ayam geprek", ""
+	revised, err := tc.ReviseTransaction(ctx, connect.NewRequest(&yasakuv1.ReviseTransactionRequest{
+		Id: created.Msg.GetResult().GetId(), Note: &note, Period: &empty, Confirm: true,
+	}))
+	require.NoError(t, err)
+	require.Equal(t, period, revised.Msg.GetResult().GetPeriodId())
+}
+
 func TestSearchTransactions_MatchesNoteWithinAnInclusiveRange(t *testing.T) {
 	h := newYasakuHarness(t)
 	ctx := t.Context()

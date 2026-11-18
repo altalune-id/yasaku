@@ -305,15 +305,19 @@ func (h *TransactionHandler) PostUpdate(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	at := h.occurredAt(sc, in)
-	updated, err := h.Transactions.Revise(sc.req.Context(), t.ID, transaction.RevisePatch{
+	patch := transaction.RevisePatch{
 		WalletID:   &in.WalletID,
 		ToWalletID: &in.ToWalletID,
 		Amount:     &amount,
 		CategoryID: &in.CategoryID,
-		PeriodID:   &in.PeriodID,
 		Note:       &in.Note,
 		OccurredAt: &at,
-	})
+	}
+	// Revise reads a nil inner pointer as detach, so a hidden or Auto period field must stay unset.
+	if in.PeriodID != nil {
+		patch.PeriodID = &in.PeriodID
+	}
+	updated, err := h.Transactions.Revise(sc.req.Context(), t.ID, patch)
 	if err != nil {
 		h.LogErr("web transaction: revise", err)
 		h.refuse(w, sc, err, txDraft{in: in, id: t.ID.String(), filled: true})
