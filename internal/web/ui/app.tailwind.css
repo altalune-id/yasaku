@@ -105,3 +105,11 @@
     cursor: pointer;
   }
 }
+
+/* daisyUI sets the row divider's faint color in an @supports nested under ::after, which Chrome on Android drops, leaving a full-contrast line. */
+@layer utilities {
+  .list > :not(:last-child).list-row::after,
+  .list > :not(:last-child) .list-row::after {
+    border-color: var(--color-base-300);
+  }
+}

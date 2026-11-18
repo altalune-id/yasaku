@@ -5856,6 +5856,13 @@
   button:not(:disabled), [role="button"]:not(:disabled) {
     cursor: pointer;
   }
+}
+@layer utilities {
+  .list > :not(:last-child).list-row::after, .list > :not(:last-child) .list-row::after {
+    border-color: var(--color-base-300);
+  }
+}
+@layer base {
   :root {
     --page-has-backdrop: var(--page-scroll-lock) 1;
     --page-scroll-bg: var(--page-scroll-lock)
