@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"altalune.id/yasaku/internal/apperror"
 	"altalune.id/yasaku/internal/transaction"
 	"altalune.id/yasaku/money"
 )
@@ -124,8 +125,12 @@ func TestNew_Invariants(t *testing.T) {
 		p := baseParams(walletID)
 		p.Kind = transaction.KindTransfer
 		_, err := transaction.New(orgID, projID, p)
-		if !transaction.IsInvalidKindError(err) {
-			t.Errorf("want IsInvalidKindError, got %v", err)
+		if !transaction.IsMissingDestinationError(err) {
+			t.Fatalf("want IsMissingDestinationError, got %v", err)
+		}
+		ae, ok := apperror.AsAppError(err)
+		if !ok || ae.Code() != apperror.CodeTransactionInvalidKind {
+			t.Errorf("wire code = %v, want %s unchanged for live callers", ae, apperror.CodeTransactionInvalidKind)
 		}
 	})
 	t.Run("transfer to the same wallet", func(t *testing.T) {

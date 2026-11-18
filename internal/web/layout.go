@@ -83,6 +83,8 @@ type ActiveOrg struct {
 	Name   string
 	Role   string
 	System bool
+	// CanManage is true for an owner or admin.
+	CanManage bool
 }
 
 // ActiveProject is what the project switcher pill and sidebar heading show.

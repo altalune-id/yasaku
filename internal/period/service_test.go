@@ -14,6 +14,7 @@ import (
 
 	"altalune.id/yasaku/civil"
 	"altalune.id/yasaku/internal/apperror"
+	"altalune.id/yasaku/internal/org"
 	"altalune.id/yasaku/internal/period"
 	"altalune.id/yasaku/internal/platform/tenant"
 	"altalune.id/yasaku/internal/testutil/fakes"
@@ -36,13 +37,30 @@ func (f *fakeSettings) StartDay(_ context.Context, _, _ uuid.UUID) (int, error) 
 }
 
 type fakeSnapshotter struct {
-	mu    sync.Mutex
-	snap  period.Snapshot
-	err   error
-	calls int
-	hook  func()
-	end   civil.Date
-	at    time.Time
+	mu     sync.Mutex
+	snap   period.Snapshot
+	err    error
+	calls  int
+	hook   func()
+	end    civil.Date
+	at     time.Time
+	latest map[uuid.UUID]time.Time
+}
+
+func (f *fakeSnapshotter) LatestAt(_ context.Context, _, _, periodID uuid.UUID) (time.Time, bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	at, ok := f.latest[periodID]
+	return at, ok, nil
+}
+
+func (f *fakeSnapshotter) setLatest(periodID uuid.UUID, at time.Time) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.latest == nil {
+		f.latest = map[uuid.UUID]time.Time{}
+	}
+	f.latest[periodID] = at
 }
 
 func (f *fakeSnapshotter) Snapshot(_ context.Context, _, _, _ uuid.UUID, end civil.Date, at time.Time) (period.Snapshot, error) {
@@ -74,6 +92,7 @@ type fixture struct {
 	ctx           context.Context //nolint:containedctx // test fixture convenience
 	tc            tenant.Context
 	now           time.Time
+	members       *fakes.Members
 }
 
 func jakarta(t *testing.T) *time.Location {
@@ -116,7 +135,9 @@ func newFixture(t *testing.T) *fixture {
 		defer func() { f.insideUOW = false }()
 		return fn(ctx)
 	}
-	f.svc = period.NewService(f.store, log, unexpected, f.settings, f.snap, uow, func() time.Time { return f.now })
+	f.members = fakes.NewMembers()
+	f.members.SeatManager(f.tc.OrgID, f.tc.UserID)
+	f.svc = period.NewService(f.store, log, unexpected, f.settings, f.snap, f.snap, uow, func() time.Time { return f.now }, f.members)
 	return f
 }
 
@@ -764,4 +785,155 @@ func TestClose_RecheckesInsideTheUnitOfWork(t *testing.T) {
 	closings, err := f.svc.Closings(f.ctx, p1.ID)
 	require.NoError(t, err)
 	assert.Len(t, closings, 2, "the losing request must not append a third closing")
+}
+
+// SECURITY: closing freezes the totals for everyone in the project, so a plain member is refused before any read or lock.
+func TestCloseAndReopen_OnlyAManager(t *testing.T) {
+	f := newFixture(t)
+	p1, err := f.svc.EnsureCurrent(f.ctx)
+	require.NoError(t, err)
+	member := uuid.New()
+	f.members.SeatMember(f.tc.OrgID, member)
+	mctx := tenant.Into(t.Context(), tenant.Context{OrgID: f.tc.OrgID, ProjectID: f.tc.ProjectID, UserID: member})
+
+	_, err = f.svc.Close(mctx, p1.ID, date(2026, 9, 14), member)
+	require.True(t, org.IsNotManagerError(err), "got %T: %v", err, err)
+	_, err = f.svc.Close(mctx, uuid.New(), date(2026, 9, 14), member)
+	require.True(t, org.IsNotManagerError(err), "the gate runs before the period lookup, got %T: %v", err, err)
+	require.Zero(t, f.uowCalls, "a refused close never opens the unit of work")
+
+	_, err = f.svc.Close(f.ctx, p1.ID, date(2026, 9, 14), f.tc.UserID)
+	require.NoError(t, err)
+
+	_, err = f.svc.Reopen(mctx, p1.ID)
+	require.True(t, org.IsNotManagerError(err), "got %T: %v", err, err)
+	got, err := f.svc.ByID(f.ctx, p1.ID)
+	require.NoError(t, err)
+	require.True(t, got.IsLocked(), "a refused reopen leaves the period closed")
+
+	_, err = f.svc.Reopen(f.ctx, p1.ID)
+	require.NoError(t, err)
+}
+
+// SECURITY: money correctness: a closed period never holds an entry dated after its end, or its frozen totals disagree with the dates.
+func TestClose_RefusesAnEndBeforeTheLatestEntry(t *testing.T) {
+	f := newFixture(t)
+	p1, err := f.svc.EnsureCurrent(f.ctx)
+	require.NoError(t, err)
+	f.setNow(t, 2026, 10, 10)
+	f.snap.setLatest(p1.ID, time.Date(2026, 10, 10, 9, 0, 0, 0, jakarta(t)))
+
+	_, err = f.svc.PreviewClose(f.ctx, p1.ID, date(2026, 10, 9))
+	require.True(t, period.IsEntriesAfterEndError(err), "preview: got %T: %v", err, err)
+	_, err = f.svc.Close(f.ctx, p1.ID, date(2026, 10, 9), f.tc.UserID)
+	require.True(t, period.IsEntriesAfterEndError(err), "close: got %T: %v", err, err)
+	var ee *period.EntriesAfterEndError
+	require.ErrorAs(t, err, &ee)
+	assert.Equal(t, date(2026, 10, 10), ee.Latest)
+
+	got, err := f.svc.ByID(f.ctx, p1.ID)
+	require.NoError(t, err)
+	assert.False(t, got.IsLocked(), "the period stays open")
+	closings, err := f.svc.Closings(f.ctx, p1.ID)
+	require.NoError(t, err)
+	assert.Empty(t, closings)
+	cur, err := f.svc.Current(f.ctx)
+	require.NoError(t, err)
+	assert.Equal(t, p1.ID, cur.ID, "no next period is opened")
+
+	_, err = f.svc.Close(f.ctx, p1.ID, date(2026, 10, 10), f.tc.UserID)
+	require.NoError(t, err, "an end on the latest entry's day closes")
+}
+
+func TestClose_TheEntryDateIsReadInTheProjectTimeZone(t *testing.T) {
+	f := newFixture(t)
+	p1, err := f.svc.EnsureCurrent(f.ctx)
+	require.NoError(t, err)
+	f.setNow(t, 2026, 10, 12)
+	jkt := jakarta(t)
+
+	f.snap.setLatest(p1.ID, time.Date(2026, 10, 9, 23, 30, 0, 0, jkt))
+	_, err = f.svc.PreviewClose(f.ctx, p1.ID, date(2026, 10, 9))
+	require.NoError(t, err, "23:30 local (16:30 UTC) on the end day is inside the period")
+
+	f.snap.setLatest(p1.ID, time.Date(2026, 10, 10, 0, 30, 0, 0, jkt))
+	_, err = f.svc.PreviewClose(f.ctx, p1.ID, date(2026, 10, 9))
+	require.True(t, period.IsEntriesAfterEndError(err), "00:30 local the next day (17:30 UTC on the end day) is after it: got %v", err)
+}
+
+func TestSuggestedEnd_MovesToTheLatestEntry(t *testing.T) {
+	f := newFixture(t)
+	f.settings.startDay = 1
+	f.setNow(t, 2026, 10, 1)
+	p1, err := f.svc.EnsureCurrent(f.ctx)
+	require.NoError(t, err)
+	f.setNow(t, 2026, 10, 16)
+
+	got, err := f.svc.SuggestedEnd(f.ctx, p1.ID)
+	require.NoError(t, err)
+	assert.Equal(t, date(2026, 10, 15), got, "no entry today: yesterday")
+
+	f.snap.setLatest(p1.ID, time.Date(2026, 10, 16, 8, 0, 0, 0, jakarta(t)))
+	got, err = f.svc.SuggestedEnd(f.ctx, p1.ID)
+	require.NoError(t, err)
+	assert.Equal(t, date(2026, 10, 16), got, "an entry dated today keeps today in the period")
+}
+
+// SECURITY: a period's name is project-wide, so a plain member is refused before the period is read.
+func TestRename_OnlyAManager(t *testing.T) {
+	f := newFixture(t)
+	p1, err := f.svc.EnsureCurrent(f.ctx)
+	require.NoError(t, err)
+	member := uuid.New()
+	f.members.SeatMember(f.tc.OrgID, member)
+	mctx := tenant.Into(t.Context(), tenant.Context{OrgID: f.tc.OrgID, ProjectID: f.tc.ProjectID, UserID: member})
+
+	_, err = f.svc.Rename(mctx, p1.ID, "Mine")
+	require.True(t, org.IsNotManagerError(err), "got %T: %v", err, err)
+	got, err := f.svc.ByID(f.ctx, p1.ID)
+	require.NoError(t, err)
+	assert.Equal(t, p1.Name, got.Name)
+
+	renamed, err := f.svc.Rename(f.ctx, p1.ID, "Ours")
+	require.NoError(t, err)
+	assert.Equal(t, "Ours", renamed.Name)
+}
+
+func TestClose_AFutureEntryIsNamedNotARangeError(t *testing.T) {
+	f := newFixture(t)
+	p1, err := f.svc.EnsureCurrent(f.ctx)
+	require.NoError(t, err)
+	f.setNow(t, 2026, 10, 10)
+	f.snap.setLatest(p1.ID, time.Date(2026, 10, 11, 9, 0, 0, 0, jakarta(t)))
+
+	end, err := f.svc.SuggestedEnd(f.ctx, p1.ID)
+	require.NoError(t, err)
+	assert.Equal(t, date(2026, 10, 10), end, "the default never passes today")
+	_, err = f.svc.Close(f.ctx, p1.ID, end, f.tc.UserID)
+	require.False(t, period.IsInvalidRangeError(err), "got %v", err)
+	var ee *period.EntriesAfterEndError
+	require.ErrorAs(t, err, &ee)
+	assert.Equal(t, date(2026, 10, 11), ee.Latest)
+}
+
+// NOTE: an entry explicitly assigned to a reopened period may be dated after its fixed end; the re-close keeps it.
+func TestReclose_KeepsAnEntryExplicitlyAssignedAfterTheFixedEnd(t *testing.T) {
+	f := newFixture(t)
+	p1, err := f.svc.EnsureCurrent(f.ctx)
+	require.NoError(t, err)
+	f.setNow(t, 2026, 9, 25)
+	_, err = f.svc.Close(f.ctx, p1.ID, date(2026, 9, 24), f.tc.UserID)
+	require.NoError(t, err)
+	_, err = f.svc.Reopen(f.ctx, p1.ID)
+	require.NoError(t, err)
+
+	f.snap.setLatest(p1.ID, time.Date(2026, 9, 25, 9, 0, 0, 0, jakarta(t)))
+	f.snap.snap.TxCount = 8
+	end, err := f.svc.SuggestedEnd(f.ctx, p1.ID)
+	require.NoError(t, err)
+	require.Equal(t, date(2026, 9, 24), end, "a reopened period keeps its fixed end")
+	closed, err := f.svc.Close(f.ctx, p1.ID, end, f.tc.UserID)
+	require.NoError(t, err, "the re-close must not trap the explicitly assigned entry")
+	require.NotNil(t, closed.Snapshot)
+	assert.Equal(t, 8, closed.Snapshot.TxCount, "the snapshot counts by period, so the assigned entry is in it")
 }

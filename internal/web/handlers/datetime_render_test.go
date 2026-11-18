@@ -151,7 +151,7 @@ func TestProjectZone_IsResolvedOncePerRequest(t *testing.T) {
 	})
 	require.NoError(t, err)
 	store := &countingLedgerStore{Store: fakes.NewLedger()}
-	f.Ledgers = ledger.NewService(store, discardLogger(), passthroughUnexpected())
+	f.Ledgers = ledger.NewService(store, discardLogger(), passthroughUnexpected(), f.Orgs)
 	f.Deps.ProjectLocation = f.Ledgers.Location
 
 	mux := http.NewServeMux()

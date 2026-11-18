@@ -692,3 +692,28 @@ func mustExec(t *testing.T, sqlDB *sql.DB, query string, args ...any) {
 		t.Fatalf("exec %q: %v", query, err)
 	}
 }
+
+// SECURITY: on SQLite no RLS backs the predicate, so this is where dropping the org or project filter must show.
+func TestSQLiteReader_LatestEntry_IsScopedToOrgAndProject(t *testing.T) {
+	assertLatestEntryIsScoped(t, newSQLiteSeed(t))
+}
+
+func assertLatestEntryIsScoped(t *testing.T, s seed) {
+	t.Helper()
+	aug := &s.periodAug
+	s.addTxn(t, txnRow{wallet: s.walletCash, kind: "expense", minor: 1_000, category: &s.catFood, period: aug, at: "2026-08-20T03:00:00Z"})
+	s.siblingTxn(t, txnRow{kind: "expense", minor: 1_000, period: aug, at: "2026-08-30T03:00:00Z"})
+
+	at, ok, err := s.reader.LatestEntry(s.ctx(), s.tc.OrgID, s.tc.ProjectID, s.periodAug)
+	require.NoError(t, err)
+	require.True(t, ok)
+	assert.True(t, at.Before(time.Date(2026, 8, 30, 0, 0, 0, 0, time.UTC)), "a sibling project's row in the same period id must not count: got %s", at)
+
+	_, ok, err = s.reader.LatestEntry(s.ctx(), s.tc.OrgID, s.tc.ProjectID, s.foreign.periodID)
+	require.NoError(t, err)
+	assert.False(t, ok, "another org's period reads as empty")
+
+	_, ok, err = s.reader.LatestEntry(s.ctx(), s.tc.OrgID, s.tc.ProjectID, uuid.New())
+	require.NoError(t, err)
+	assert.False(t, ok, "a period with no entries reports none")
+}

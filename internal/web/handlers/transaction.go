@@ -447,8 +447,8 @@ func (h *TransactionHandler) parseForm(sc ProjectScope, want transaction.Kind) (
 	if err != nil {
 		return txInput{}, errBadForm
 	}
-	if kind == transaction.KindTransfer {
-		to, tErr := uuid.Parse(strings.TrimSpace(f.Get("to_wallet_id")))
+	if raw := strings.TrimSpace(f.Get("to_wallet_id")); raw != "" && kind == transaction.KindTransfer {
+		to, tErr := uuid.Parse(raw)
 		if tErr != nil {
 			return txInput{}, errBadForm
 		}
@@ -544,8 +544,11 @@ func (h *TransactionHandler) refuse(w http.ResponseWriter, sc ProjectScope, caus
 	if transaction.IsPeriodLockedError(cause) {
 		list.Error = d.Tr("tx.locked")
 	}
-	amountErr, walletErr := fieldErrors(d, cause)
-	if amountErr != "" || walletErr != "" {
+	fe := fieldErrors(d, cause)
+	if draft.filled && draft.id == "" && transaction.IsPeriodLockedError(cause) {
+		fe.date = h.closedPeriodDate(sc, d, cause)
+	}
+	if fe.any() {
 		draft.filled = true
 	}
 	list.ErrorCode = ae.Code()
@@ -559,10 +562,7 @@ func (h *TransactionHandler) refuse(w http.ResponseWriter, sc ProjectScope, caus
 		form.InDialog = sc.req.PostForm.Get("surface") == "dialog"
 		form.Return = sc.req.PostForm.Get("return")
 		form.Recent = sc.req.PostForm.Get("list") == "recent"
-		form.AmountError, form.WalletError = amountErr, walletErr
-		if amountErr == "" && walletErr == "" {
-			form.Error, form.ErrorCode = list.Error, list.ErrorCode
-		}
+		fe.apply(&form, list)
 		RenderStatus(w, sc.req, http.StatusUnprocessableEntity, templates.TransactionForm(d, form))
 		return
 	}
@@ -570,21 +570,79 @@ func (h *TransactionHandler) refuse(w http.ResponseWriter, sc ProjectScope, caus
 		RenderStatus(w, sc.req, http.StatusUnprocessableEntity, templates.TransactionList(d, list))
 		return
 	}
-	h.refusePage(w, sc, d, list, draft, amountErr, walletErr)
+	h.refusePage(w, sc, d, list, draft, fe)
+}
+
+type txFieldErrors struct{ amount, wallet, toWallet, date string }
+
+func (fe txFieldErrors) any() bool {
+	return fe.amount != "" || fe.wallet != "" || fe.toWallet != "" || fe.date != ""
+}
+
+func (fe txFieldErrors) apply(form *templates.TxFormView, list templates.TxListView) {
+	form.AmountError, form.WalletError, form.ToWalletError, form.DateError = fe.amount, fe.wallet, fe.toWallet, fe.date
+	if !fe.any() {
+		form.Error, form.ErrorCode = list.Error, list.ErrorCode
+	}
+}
+
+//i18n:use tx.date_error.closed_period
+func (h *TransactionHandler) closedPeriodDate(sc ProjectScope, d web.LayoutData, cause error) string {
+	le, ok := errors.AsType[*transaction.PeriodLockedError](cause)
+	if !ok {
+		return ""
+	}
+	closed, err := uuid.Parse(le.PeriodID)
+	if err != nil {
+		return ""
+	}
+	ctx := sc.req.Context()
+	items, err := h.Periods.List(ctx, period.ListOpts{})
+	if err != nil {
+		h.LogErr("web transaction: periods", err)
+		return ""
+	}
+	i := slices.IndexFunc(items, func(p *period.Period) bool { return p.ID == closed })
+	if i < 0 {
+		return ""
+	}
+	locked := items[i]
+	var open *period.Period
+	if cur, cErr := h.Periods.Current(ctx); cErr == nil {
+		open = cur
+	} else if !period.IsNotFoundError(cErr) {
+		h.LogErr("web transaction: current period", cErr)
+		return ""
+	}
+	from, ok := firstOpenDate(open, locked)
+	if !ok {
+		return ""
+	}
+	return d.Tr("tx.date_error.closed_period",
+		"Period", templates.PeriodLabelText(d, labelsOf(items)[closed]),
+		"Date", templates.LedgerDateText(d, from))
 }
 
 //i18n:use tx.wallet_error.required
-func fieldErrors(d web.LayoutData, cause error) (amount, walletErr string) {
+//i18n:use tx.to_wallet_error.required
+//i18n:use tx.to_wallet_error.same
+func fieldErrors(d web.LayoutData, cause error) txFieldErrors {
 	if key := amountErrorKey(cause); key != "" {
-		return d.Tr(key), ""
+		return txFieldErrors{amount: d.Tr(key)}
 	}
 	if wallet.IsNotFoundError(cause) {
-		return "", d.Tr("tx.wallet_error.required")
+		return txFieldErrors{wallet: d.Tr("tx.wallet_error.required")}
 	}
-	return "", ""
+	if transaction.IsSameWalletError(cause) {
+		return txFieldErrors{toWallet: d.Tr("tx.to_wallet_error.same")}
+	}
+	if transaction.IsMissingDestinationError(cause) {
+		return txFieldErrors{toWallet: d.Tr("tx.to_wallet_error.required")}
+	}
+	return txFieldErrors{}
 }
 
-func (h *TransactionHandler) refusePage(w http.ResponseWriter, sc ProjectScope, d web.LayoutData, list templates.TxListView, draft txDraft, amountErr, walletErr string) {
+func (h *TransactionHandler) refusePage(w http.ResponseWriter, sc ProjectScope, d web.LayoutData, list templates.TxListView, draft txDraft, fe txFieldErrors) {
 	in := draft.in
 	if !draft.filled {
 		in = txInput{Kind: transaction.KindExpense}
@@ -596,10 +654,7 @@ func (h *TransactionHandler) refusePage(w http.ResponseWriter, sc ProjectScope, 
 		return
 	}
 	if draft.filled || draft.id != "" {
-		form.AmountError, form.WalletError = amountErr, walletErr
-		if amountErr == "" && walletErr == "" {
-			form.Error, form.ErrorCode = list.Error, list.ErrorCode
-		}
+		fe.apply(&form, list)
 		Render(w, sc.req, templates.TransactionFormLayout(d, form, d.Tr(txFormTitleKey(draft.id))))
 		return
 	}
@@ -841,7 +896,7 @@ func (h *TransactionHandler) formView(sc ProjectScope, d web.LayoutData, in txIn
 			Suggested: in.Suggested != nil && *in.Suggested == c.ID,
 		})
 	}
-	v.Periods = h.periodOptions(sc, in)
+	v.Periods = h.periodOptions(sc, d, in)
 	if id == "" {
 		v.RecentEntries = h.recentOptions(sc, cats, tag)
 	}
@@ -911,26 +966,30 @@ func (h *TransactionHandler) preferredWallet(sc ProjectScope, in txInput, wallet
 	}).ID
 }
 
-func (h *TransactionHandler) periodOptions(sc ProjectScope, in txInput) []templates.TxPeriodOption {
-	cur, err := h.Periods.Current(sc.req.Context())
+func (h *TransactionHandler) periodOptions(sc ProjectScope, d web.LayoutData, in txInput) []templates.TxPeriodOption {
+	current, err := h.Periods.Current(sc.req.Context())
 	if err != nil {
 		if !period.IsNotFoundError(err) {
 			h.LogErr("web transaction: current period", err)
 		}
 		return nil
 	}
-	prev, next, err := h.Periods.Neighbors(sc.req.Context(), cur.ID)
+	items, err := h.Periods.List(sc.req.Context(), period.ListOpts{})
 	if err != nil {
-		h.LogErr("web transaction: period neighbors", err)
+		h.LogErr("web transaction: periods", err)
+		return nil
 	}
+	cur := slices.IndexFunc(items, func(p *period.Period) bool { return p.ID == current.ID })
+	if cur < 0 {
+		return nil
+	}
+	labels := labelsOf(items)
 	out := make([]templates.TxPeriodOption, 0, 3)
-	for _, p := range []*period.Period{prev, cur, next} {
-		if p == nil {
-			continue
-		}
+	for i := min(cur+1, len(items)-1); i >= max(cur-1, 0); i-- {
+		p := items[i]
 		out = append(out, templates.TxPeriodOption{
 			ID:       p.ID.String(),
-			Label:    p.Name,
+			Label:    templates.PeriodLabelText(d, labels[p.ID]),
 			Selected: in.PeriodID != nil && *in.PeriodID == p.ID,
 		})
 	}
@@ -956,13 +1015,14 @@ func (h *TransactionHandler) fillFilters(sc ProjectScope, d web.LayoutData, v *t
 			Value: c.ID.String(), Label: c.Name, Selected: q.Get("category") == c.ID.String(),
 		})
 	}
-	periods, err := h.Periods.List(sc.req.Context(), period.ListOpts{Limit: txPeriodFilters})
+	periods, err := h.Periods.List(sc.req.Context(), period.ListOpts{Limit: txPeriodFilters + 1})
 	if err != nil {
 		return err
 	}
-	for _, p := range periods {
+	labels := labelsOf(periods)
+	for _, p := range periods[:min(len(periods), txPeriodFilters)] {
 		v.Periods = append(v.Periods, templates.TxFilter{
-			Value: p.ID.String(), Label: p.Name, Selected: q.Get("period") == p.ID.String(),
+			Value: p.ID.String(), Label: templates.PeriodLabelText(d, labels[p.ID]), Selected: q.Get("period") == p.ID.String(),
 		})
 	}
 	for _, k := range txUserKinds {

@@ -135,11 +135,12 @@ func (h *OverviewHandler) view(sc ProjectScope, d web.LayoutData, wallets []*wal
 	if err != nil || p == nil {
 		return v, err
 	}
-	v.HasPeriod, v.PeriodID, v.PeriodName, v.Closed = true, p.ID.String(), p.Name, p.Status == period.StatusClosed
-	v.PeriodStart, v.PeriodMonthly = p.StartDate, p.Name == period.DefaultName(p.StartDate)
-	if err := h.fillNeighbors(sc, p.ID, &v); err != nil {
+	v.HasPeriod, v.PeriodID, v.Closed = true, p.ID.String(), p.Status == period.StatusClosed
+	prev, next, err := h.fillNeighbors(sc, p.ID, &v)
+	if err != nil {
 		return v, err
 	}
+	v.Period = periodLabel(p, prev, next)
 	summary, err := h.Reports.Summary(ctx, p.ID)
 	if err != nil {
 		return v, err
@@ -201,10 +202,10 @@ func (h *OverviewHandler) selectedPeriod(sc ProjectScope) (*period.Period, bool,
 	return p, false, nil
 }
 
-func (h *OverviewHandler) fillNeighbors(sc ProjectScope, id uuid.UUID, v *templates.YasakuOverviewView) error {
-	prev, next, err := h.Periods.Neighbors(sc.req.Context(), id)
+func (h *OverviewHandler) fillNeighbors(sc ProjectScope, id uuid.UUID, v *templates.YasakuOverviewView) (prev, next *period.Period, err error) { //nolint:nonamedreturns // mirrors period.Service.Neighbors
+	prev, next, err = h.Periods.Neighbors(sc.req.Context(), id)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 	if prev != nil {
 		v.PrevPeriodID = prev.ID.String()
@@ -212,7 +213,7 @@ func (h *OverviewHandler) fillNeighbors(sc ProjectScope, id uuid.UUID, v *templa
 	if next != nil {
 		v.NextPeriodID = next.ID.String()
 	}
-	return nil
+	return prev, next, nil
 }
 
 func (h *OverviewHandler) quickAdd(sc ProjectScope) ([]templates.YasakuQuickAdd, error) {

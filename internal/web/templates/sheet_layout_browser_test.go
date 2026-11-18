@@ -203,3 +203,34 @@ func TestTxSheet_UnderlineSaveAndMoreBehave(t *testing.T) {
 		t.Fatal(strings.Join(got, "\n"))
 	}
 }
+
+const toWalletRequiredProbe = `
+window.addEventListener("load", function () {
+  var out = [], form = document.querySelector("form[data-tx-sheet]"), to = form.querySelector("#tx-to-wallet");
+  function pick(kind) {
+    var r = form.querySelector('[name=kind][value="' + kind + '"]');
+    r.checked = true;
+    r.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+  if (to.required) out.push("To wallet required on expense");
+  pick("transfer");
+  if (!to.required) out.push("To wallet not required on transfer");
+  pick("income");
+  if (to.required) out.push("To wallet still required on income");
+  document.getElementById("out").textContent = btoa(unescape(encodeURIComponent(JSON.stringify(out))));
+});
+`
+
+// TestTxSheet_ToWalletRequiredFollowsKind drives keypad.js: the hidden To wallet never blocks an expense, and Transfer requires it.
+func TestTxSheet_ToWalletRequiredFollowsKind(t *testing.T) {
+	d := web.LayoutData{ActiveOrg: &web.ActiveOrg{Slug: "acme"}, CurrentPath: "/orgs/acme/projects/main/overview"}
+	body := render(t, TxSheet(d, sheetFormView()))
+	script, err := os.ReadFile(filepath.Join(repoRoot(t), "internal/web/static/keypad.js"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body += "<script>" + string(script) + "</script>"
+	if got := runLayoutProbe(t, 1280, 800, body, toWalletRequiredProbe); len(got) > 0 {
+		t.Fatal(strings.Join(got, "\n"))
+	}
+}

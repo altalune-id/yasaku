@@ -35,6 +35,7 @@ import (
 	"altalune.id/yasaku/internal/web"
 	"altalune.id/yasaku/internal/web/handlers"
 	"altalune.id/yasaku/internal/web/middleware"
+	"altalune.id/yasaku/internal/web/templates"
 	"altalune.id/yasaku/money"
 )
 
@@ -114,6 +115,10 @@ func (s *txSnapshotter) Snapshot(context.Context, uuid.UUID, uuid.UUID, uuid.UUI
 	return period.Snapshot{Currency: money.IDR, Openings: s.openings}, nil
 }
 
+func (s *txSnapshotter) LatestAt(context.Context, uuid.UUID, uuid.UUID, uuid.UUID) (time.Time, bool, error) {
+	return time.Time{}, false, nil
+}
+
 func txPassthroughUoW(ctx context.Context, fn func(ctx context.Context) error) error { return fn(ctx) }
 
 func newTxFixture(t *testing.T) *txFixture {
@@ -127,16 +132,16 @@ func newTxFixture(t *testing.T) *txFixture {
 
 	users := user.NewService(fakes.NewUser(), user.GenesisConfig{}, discardLogger(), passthroughUnexpected())
 	orgs := org.NewService(fakes.NewOrg(), caps, discardLogger(), passthroughUnexpected())
-	projects := project.NewService(fakes.NewProject(), discardLogger(), passthroughUnexpected())
+	projects := project.NewService(fakes.NewProject(), discardLogger(), passthroughUnexpected(), orgs)
 
-	ledgers := ledger.NewService(fakes.NewLedger(), discardLogger(), passthroughUnexpected())
+	ledgers := ledger.NewService(fakes.NewLedger(), discardLogger(), passthroughUnexpected(), orgs)
 	wallets := wallet.NewService(fakes.NewWallet(), discardLogger(), passthroughUnexpected())
 	cats := category.NewService(fakes.NewTxCategory(), discardLogger(), passthroughUnexpected(), txNamer{})
 	reader := fakes.NewReportReader()
 	reports := report.NewService(reader, discardLogger(), passthroughUnexpected(), ledgers)
 	snaps := &txSnapshotter{}
 	periods := period.NewService(fakes.NewPeriod(), discardLogger(), passthroughUnexpected(),
-		ledgers, snaps, period.UnitOfWork(txPassthroughUoW), time.Now)
+		ledgers, snaps, snaps, period.UnitOfWork(txPassthroughUoW), time.Now, orgs)
 	txs := transaction.NewService(fakes.NewTransaction(), discardLogger(), passthroughUnexpected(),
 		txWalletReader(wallets), txCategoryReader(cats),
 		txPeriodResolver{periods: periods}, transaction.UnitOfWork(txPassthroughUoW))
@@ -314,7 +319,7 @@ func TestTransactionHandler_PostCreate_RecordsExpenseAndReturnsFragment(t *testi
 	assert.Equal(t, f.Cash.String(), last)
 }
 
-func TestTransactionHandler_PostCreate_ClosedPeriodRendersBannerAndWritesNothing(t *testing.T) {
+func TestTransactionHandler_PostCreate_ClosedPeriodAsksForAnotherDateAndWritesNothing(t *testing.T) {
 	t.Parallel()
 	f := newTxFixture(t)
 	ctx := f.projectCtx(t)
@@ -341,8 +346,16 @@ func TestTransactionHandler_PostCreate_ClosedPeriodRendersBannerAndWritesNothing
 	body := rec.Body.String()
 	assert.Contains(t, body, `id="tx-quick-add"`, "a refusal re-renders the sheet with what the user typed")
 	assert.Contains(t, body, `value="Kopi"`)
-	assert.Contains(t, body, "TXN008")
-	assert.Contains(t, body, "Periode ini sudah ditutup")
+	assert.Contains(t, body, `id="tx-date-error"`, "a new entry is told to change its date")
+	end := civil.DateOf(time.Now(), loc)
+	next := end.AddDays(1)
+	d := web.LayoutData{Translator: f.Bundle.For(i18n.IdID)}
+	label := templates.PeriodLabelText(d, templates.PeriodLabel{
+		Name: cur.Name, Start: cur.StartDate, End: &end, Monthly: true,
+		Shared: next.Month == cur.StartDate.Month && next.Year == cur.StartDate.Year,
+	})
+	assert.Contains(t, body, label+" sudah ditutup. Pilih tanggal mulai "+templates.LedgerDateText(d, next)+".")
+	assert.NotContains(t, body, "hanya bisa dibaca", "read-only is for editing, never for a new entry")
 
 	items, _, err := f.Transactions.List(ctx, transaction.ListOpts{})
 	require.NoError(t, err)
@@ -904,6 +917,8 @@ func TestTransactionHandler_RefusedUpdateKeepsTheUsersInputOnTheEditForm(t *test
 	assert.Contains(t, body, "Nasi Padang", "the note the user typed must survive the refusal")
 	assert.Contains(t, body, f.path("/transactions/"+id.String()),
 		"the form must still post back to the transaction being edited, not to create")
+	assert.Contains(t, body, "hanya bisa dibaca", "an edit in a closed period keeps the read-only message")
+	assert.NotContains(t, body, `id="tx-date-error"`)
 }
 
 func TestTransactionQuickAddRefusalIs422(t *testing.T) {

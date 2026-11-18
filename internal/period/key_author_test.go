@@ -28,10 +28,16 @@ func newAuthorCloseService(t *testing.T, store period.Store, uow period.UnitOfWo
 		store, log, apperror.NewReporter(log, false).Unexpected,
 		&fakeSettings{loc: loc, startDay: 25},
 		&fakeSnapshotter{snap: sampleSnapshot()},
+		&fakeSnapshotter{},
 		uow,
 		func() time.Time { return time.Date(2026, 9, 25, 10, 0, 0, 0, loc) },
+		anyCaller{},
 	)
 }
+
+type anyCaller struct{}
+
+func (anyCaller) RequireCallerManager(context.Context) error { return nil }
 
 func keyPrincipalCtx(ctx context.Context, tc tenant.Context, keyID uuid.UUID) context.Context {
 	ctx = session.PrincipalInto(ctx, session.Principal{KeyID: keyID, Source: session.SourceAPIKey})

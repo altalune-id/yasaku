@@ -65,6 +65,20 @@ func (s *Service) SnapshotFor(ctx context.Context, orgID, projectID, periodID uu
 	})
 }
 
+// LatestEntryAt reports when the latest transaction recorded against the period occurred, and false when it has none.
+func (s *Service) LatestEntryAt(ctx context.Context, orgID, projectID, periodID uuid.UUID) (time.Time, bool, error) {
+	ctx, span := tracer.Start(ctx, "report.LatestEntryAt",
+		trace.WithAttributes(attribute.String("period.id", periodID.String())))
+	defer span.End()
+
+	at, ok, err := s.reader.LatestEntry(ctx, orgID, projectID, periodID)
+	if err != nil {
+		span.RecordError(err)
+		return time.Time{}, false, s.unexpected(ctx, "report.LatestEntryAt: read", err, "period_id", periodID)
+	}
+	return at, ok, nil
+}
+
 // SpendByCategory breaks the identified period's expenses down by category, largest first.
 func (s *Service) SpendByCategory(ctx context.Context, periodID uuid.UUID) ([]CategorySlice, error) {
 	ctx, span := tracer.Start(ctx, "report.SpendByCategory",

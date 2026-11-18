@@ -122,11 +122,14 @@ func (h *FirstRunHandler) Post(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *FirstRunHandler) postCurrency(w http.ResponseWriter, sc ProjectScope) {
-	if !h.requireManager(w, sc) || !h.stillPending(w, sc) {
+	if !h.stillPending(w, sc) {
 		return
 	}
 	cur := money.Currency(strings.TrimSpace(sc.req.PostForm.Get("currency")))
 	if _, err := h.Ledgers.Update(sc.req.Context(), ledger.Patch{Currency: &cur}); err != nil {
+		if h.refuseNotManager(w, sc.req, err, "firstrun.manager_only", "Only an owner or admin can set the project currency.") {
+			return
+		}
 		h.LogErr("web first-run: currency", err)
 		v := h.view(sc, cur)
 		v.Step, v.ErrorKey, v.ErrorCode = 1, "firstrun.save_failed", ErrorRef(err)

@@ -116,6 +116,7 @@ func (d Deps) layout(r *http.Request, title string, nav web.ActiveNav, pinnedOrg
 	orgID := uuidFromString(base.ActiveOrg.ID)
 	if m, mErr := d.Orgs.MembershipOf(ctx, orgID, p.UserID); mErr == nil && m != nil {
 		base.ActiveOrg.Role = capitaliseRole(string(m.Role))
+		base.ActiveOrg.CanManage = m.Role.CanManage()
 	}
 	if d.Projects == nil {
 		return base

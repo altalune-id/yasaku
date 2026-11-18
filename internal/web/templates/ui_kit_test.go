@@ -120,3 +120,13 @@ func TestKeyValueDenseIsATwoColumnListAndANodeReplacesTheValue(t *testing.T) {
 		t.Fatalf("dense KeyValue = %q", got)
 	}
 }
+
+func TestFieldProps_ErrorIDPointsAtAnErrorRenderedElsewhere(t *testing.T) {
+	a := FieldProps{ID: "f", Hint: "hint", ErrorID: "f-error"}.Attrs()
+	if a["aria-invalid"] != "true" || a["aria-describedby"] != "f-hint f-error" {
+		t.Errorf("attrs = %v", a)
+	}
+	if a := (FieldProps{ID: "f", ErrorID: "f-error"}).Attrs(); a["aria-describedby"] != "f-error" {
+		t.Errorf("without a hint: %v", a)
+	}
+}

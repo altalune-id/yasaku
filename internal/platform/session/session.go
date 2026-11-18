@@ -18,11 +18,25 @@ const (
 	SourceAPIKey  Source = "apikey"
 )
 
+// KeyKind is the kind of API key a key principal holds; the empty kind is no key.
+type KeyKind string
+
+// The key kinds a key principal can hold.
+const (
+	KeyKindProject  KeyKind = "project"
+	KeyKindOrg      KeyKind = "org"
+	KeyKindPersonal KeyKind = "personal"
+)
+
 type Principal struct {
 	UserID uuid.UUID
 	// KeyID is the API key id when this principal is a key rather than a person.
 	// SECURITY: a key principal keeps UserID == uuid.Nil, so it is never mistaken for a signed-in human.
-	KeyID      uuid.UUID
+	KeyID uuid.UUID
+	// KeyKind is the kind of key this principal is. SECURITY: used only for role checks, rebuilt from the key on every request.
+	KeyKind KeyKind `json:"-"`
+	// KeyOwnerID is the person a personal key acts for. SECURITY: used only for role checks, never as an identity.
+	KeyOwnerID uuid.UUID `json:"-"`
 	Email      string
 	Name       string
 	Source     Source

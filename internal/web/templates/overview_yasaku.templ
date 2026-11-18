@@ -23,7 +23,7 @@ type YasakuDay struct {
 	Rows      []TxRow
 }
 
-// YasakuOverviewView is Home: one period's totals, quick add and entries grouped by day; PeriodMonthly shows a default-named period as its localized month.
+// YasakuOverviewView is Home: one period's totals, quick add and entries grouped by day.
 type YasakuOverviewView struct {
 	ProjectSlug  string
 	Failed       bool
@@ -31,9 +31,7 @@ type YasakuOverviewView struct {
 	SetupPending bool
 	HasPeriod    bool
 	PeriodID     string
-	PeriodName   string
-	PeriodStart  civil.Date
-	PeriodMonthly bool
+	Period       PeriodLabel
 	Closed       bool
 	Ended        bool
 	PrevPeriodID string
@@ -102,7 +100,7 @@ templ homeBody(d web.LayoutData, v YasakuOverviewView) {
 			if v.Closed {
 				<div role="status" data-home-closed class="alert alert-soft alert-info alert-vertical items-start sm:alert-horizontal sm:items-center">
 					@icons.Icon("lock", "size-5 shrink-0")
-					<span class="min-w-0">{ d.Tr("overview.closed", "Period", v.PeriodName) }</span>
+					<span class="min-w-0">{ d.Tr("overview.closed", "Period", PeriodLabelText(d, v.Period)) }</span>
 					@AppButton(d.ProjectPath(v.ProjectSlug, "/periods"), "", nil) {
 						{ d.Tr("overview.manage_periods") }
 					}
@@ -134,7 +132,7 @@ templ homeSummary(d web.LayoutData, v YasakuOverviewView) {
 		} else {
 			<div class="min-w-0">
 				<p class="mt-1 text-sm text-base-content/70">
-					if v.PeriodMonthly {
+					if v.Period.IsMonth() {
 						{ d.Tr("overview.net_month") }
 					} else {
 						{ d.Tr("overview.net_period") }
@@ -186,11 +184,7 @@ templ homePeriodNav(d web.LayoutData, v YasakuOverviewView) {
 			</button>
 		}
 		<label class="btn btn-ghost join-item pointer-events-none min-w-0 flex-1 font-semibold" aria-live="polite">
-			if v.PeriodMonthly {
-				@LedgerDate(d, v.PeriodStart, nil, Month())
-			} else {
-				{ v.PeriodName }
-			}
+			@PeriodLabelView(d, v.Period)
 		</label>
 		if v.NextPeriodID != "" {
 			<a href={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/overview?period="+v.NextPeriodID)) } class="btn btn-ghost btn-square join-item" aria-label={ d.Tr("overview.next_period") }>
@@ -209,14 +203,16 @@ templ homeEnded(d web.LayoutData, v YasakuOverviewView) {
 		<div class="card-body gap-2 p-4">
 			<p class="flex min-w-0 items-start gap-2 font-semibold">
 				@icons.Icon("calendar-check", "size-5 shrink-0 text-accent")
-				<span class="min-w-0 break-words">{ d.Tr("overview.ended", "Period", v.PeriodName, "Amount", Money(d, v.Expense)) }</span>
+				<span class="min-w-0 break-words">{ d.Tr("overview.ended", "Period", PeriodLabelText(d, v.Period), "Amount", Money(d, v.Expense)) }</span>
 			</p>
 			<div class="card-actions">
 				@AppButton(d.ProjectPath(v.ProjectSlug, "/reports?period="+v.PeriodID), "", nil) {
 					{ d.Tr("overview.see_report") }
 				}
-				@AppButton(d.ProjectPath(v.ProjectSlug, "/periods/"+v.PeriodID+"/close"), "btn-ghost", nil) {
-					{ d.Tr("overview.close_named", "Period", v.PeriodName) }
+				if canManageOrg(d) {
+					@AppButton(d.ProjectPath(v.ProjectSlug, "/periods/"+v.PeriodID+"/close"), "btn-ghost", nil) {
+						{ periodCloseNamed(d, v.Period) }
+					}
 				}
 			</div>
 		</div>
@@ -287,7 +283,7 @@ templ homeDay(d web.LayoutData, v YasakuOverviewView, day YasakuDay, tip bool) {
 
 func homeEmptyTitle(d web.LayoutData, v YasakuOverviewView) string {
 	if v.HasPeriod {
-		return d.Tr("overview.empty_title", "Period", v.PeriodName)
+		return d.Tr("overview.empty_title", "Period", PeriodLabelText(d, v.Period))
 	}
 	return d.Tr("overview.empty_title_none")
 }

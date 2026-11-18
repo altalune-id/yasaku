@@ -62,7 +62,7 @@ templ switcherList(d web.LayoutData, projectIcon string) {
 		for _, p := range d.OtherProjects {
 			@switcherProject(d.ProjectPath(p.Slug, "/overview"), projectIcon, p.Name, false)
 		}
-		if d.ActiveOrg != nil {
+		if canManageOrg(d) {
 			<li>
 				<a href={ templ.SafeURL(d.OrgPath("/projects/new")) }>
 					@icons.Icon("plus", "size-4")

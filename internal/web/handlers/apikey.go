@@ -237,7 +237,7 @@ func (h *APIKeyHandler) projectWriter(w http.ResponseWriter, sc ProjectScope) li
 			h.listFailed(w, sc.req, err)
 			return
 		}
-		Render(w, sc.req, templates.APIKeyList(h.ProjectFragmentBase(sc), v))
+		RenderStatus(w, sc.req, apiKeyListStatus(errKind), templates.APIKeyList(h.ProjectFragmentBase(sc), v))
 	}
 }
 
@@ -248,8 +248,15 @@ func (h *APIKeyHandler) orgWriter(w http.ResponseWriter, sc OrgScope) listWriter
 			h.listFailed(w, sc.req, err)
 			return
 		}
-		Render(w, sc.req, templates.APIKeyList(h.OrgFragmentBase(sc), v))
+		RenderStatus(w, sc.req, apiKeyListStatus(errKind), templates.APIKeyList(h.OrgFragmentBase(sc), v))
 	}
+}
+
+func apiKeyListStatus(errKind string) int {
+	if errKind == templates.APIKeyErrorNotManager {
+		return http.StatusForbidden
+	}
+	return http.StatusOK
 }
 
 func (h *APIKeyHandler) listFailed(w http.ResponseWriter, r *http.Request, err error) {

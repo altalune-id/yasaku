@@ -21,6 +21,7 @@ import (
 	"altalune.id/yasaku/internal/platform/config"
 	"altalune.id/yasaku/internal/platform/db"
 	"altalune.id/yasaku/internal/platform/tenant"
+	"altalune.id/yasaku/internal/testutil/fakes"
 	"altalune.id/yasaku/internal/testutil/pgtest"
 	"altalune.id/yasaku/schema"
 )
@@ -81,8 +82,8 @@ func TestPostgres_Period_TwoConcurrentEnsureCurrentInUnitsOfWorkShareTheFirstPer
 	f := newPgRaceFixture(t)
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	svc := period.NewService(f.store, log, apperror.NewReporter(log, false).Unexpected,
-		&fakeSettings{loc: time.UTC, startDay: 1}, &fakeSnapshotter{}, period.UnitOfWork(f.uow),
-		func() time.Time { return time.Date(2026, 8, 10, 12, 0, 0, 0, time.UTC) })
+		&fakeSettings{loc: time.UTC, startDay: 1}, &fakeSnapshotter{}, &fakeSnapshotter{}, period.UnitOfWork(f.uow),
+		func() time.Time { return time.Date(2026, 8, 10, 12, 0, 0, 0, time.UTC) }, fakes.PermissiveMembers())
 	ctx, cancel := context.WithTimeout(tenant.Into(t.Context(), f.tc), 30*time.Second)
 	defer cancel()
 

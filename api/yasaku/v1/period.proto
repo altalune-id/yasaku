@@ -27,14 +27,14 @@ service PeriodService {
   rpc PreviewClose(PreviewCloseRequest) returns (PreviewCloseResponse) {
     option (mcp.v1.tool) = {
       name: "preview_close"
-      description: "Calculate what closing a period on a given date would freeze, without saving anything. Period must be a period ID from list_periods or current_period, never a period name; leave it empty for the current period. The end date is YYYY-MM-DD, must be today or earlier, must not precede the period start, and empty means today in the project's timezone."
+      description: "Calculate what closing a period on a given date would freeze, without saving anything. Period must be a period ID from list_periods or current_period, never a period name; leave it empty for the current period. The end date is YYYY-MM-DD, must be today or earlier, must not precede the period start, and must not precede the period's latest entry (refused with PRD009); empty means yesterday in the project's timezone, capped at the cycle end, never before the period start, and moved to the latest entry's date when that is later."
       ui: "app"
     };
   }
   rpc ClosePeriod(ClosePeriodRequest) returns (ClosePeriodResponse) {
     option (mcp.v1.tool) = {
       name: "close_period"
-      description: "Close the books: freeze the period totals and, on a first close, open the next period the following day. Period must be a period ID from list_periods or current_period, never a period name; leave it empty for the current period. The end date is YYYY-MM-DD, must be today or earlier, and on a reopened period it is fixed and must match the stored end date. A closed period refuses new transactions until it is reopened. Call without confirm to preview the snapshot; call again with confirm=true to close. The preview is the resolved intent, not the frozen record: it is recomputed at close time, so a transaction landing in between changes the totals that are actually saved."
+      description: "Close the books: freeze the period totals and, on a first close, open the next period the following day. Period must be a period ID from list_periods or current_period, never a period name; leave it empty for the current period. The end date is YYYY-MM-DD, must be today or earlier, must not precede the period's latest entry (refused with PRD009 in preview and in close), empty means yesterday in the project's timezone (capped at the cycle end, never before the period start, moved to the latest entry's date when that is later), and on a reopened period it is fixed and must match the stored end date. A closed period refuses new transactions until it is reopened. Call without confirm to preview the snapshot; call again with confirm=true to close. The preview is the resolved intent, not the frozen record: it is recomputed at close time, so a transaction landing in between changes the totals that are actually saved."
       mutation: true
       ui: "app"
       destructive: true
@@ -106,7 +106,7 @@ message PreviewCloseRequest {
   Target target = 1;
   // Period ID from list_periods or current_period, never a period name. Empty means the current period.
   string period = 2;
-  // YYYY-MM-DD; must be today or earlier and not before the period start.
+  // YYYY-MM-DD; must be today or earlier and not before the period start. Never before the period's latest entry (PRD009). Empty means yesterday, capped at the cycle end, never before the period start, and moved to the latest entry's date when that is later.
   string end_date = 3;
 }
 
@@ -119,7 +119,7 @@ message ClosePeriodRequest {
   Target target = 1;
   // Period ID from list_periods or current_period, never a period name. Empty means the current period.
   string period = 2;
-  // YYYY-MM-DD; must be today or earlier and not before the period start. On a reopened period it is fixed and must match the stored end date.
+  // YYYY-MM-DD; must be today or earlier and not before the period start. Never before the period's latest entry (PRD009). Empty means yesterday, capped at the cycle end, never before the period start, and moved to the latest entry's date when that is later. On a reopened period it is fixed and must match the stored end date.
   string end_date = 3;
   bool confirm = 4;
 }

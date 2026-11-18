@@ -4234,6 +4234,9 @@
       border-color: color-mix(in oklab, var(--color-base-300) 70%, transparent);
     }
   }
+  .border-error {
+    border-color: var(--color-error);
+  }
   .border-error\/30 {
     border-color: var(--color-error);
     @supports (color: color-mix(in lab, red, red)) {
@@ -5012,6 +5015,11 @@
   }
   :is(:where(.group\/cats):has(:is([data-cat-more]:checked)) .group-has-\[\[data-cat-more\]\:checked\]\/cats\:hidden) {
     display: none;
+  }
+  @layer daisyui.l1.l2 {
+    :is(:is(:where(.group\/close):has(:is([data-end-error])) .group-has-\[\[data-end-error\]\]\/close\:input-error)), :is(:where(.group\/close):has(:is([data-end-error])) .group-has-\[\[data-end-error\]\]\/close\:input-error):focus, :is(:where(.group\/close):has(:is([data-end-error])) .group-has-\[\[data-end-error\]\]\/close\:input-error):focus-within {
+      --input-color: var(--color-error);
+    }
   }
   :is(:where(.group):has(:is([data-note-toggle]:checked)) .group-has-\[\[data-note-toggle\]\:checked\]\:grid) {
     display: grid;

@@ -29,8 +29,15 @@ type Service struct {
 	unexpected apperror.UnexpectedFunc
 	settings   SettingsReader
 	snap       Snapshotter
+	entries    Entries
 	uow        UnitOfWork
 	now        func() time.Time
+	managers   Managers
+}
+
+// Managers is the role gate close, reopen and rename ask before anything else.
+type Managers interface {
+	RequireCallerManager(ctx context.Context) error
 }
 
 // NewService binds the service to its dependencies.
@@ -40,8 +47,10 @@ func NewService(
 	unexpected apperror.UnexpectedFunc,
 	settings SettingsReader,
 	snap Snapshotter,
+	entries Entries,
 	uow UnitOfWork,
 	now func() time.Time,
+	managers Managers,
 ) *Service {
 	if now == nil {
 		now = time.Now
@@ -52,8 +61,10 @@ func NewService(
 		unexpected: unexpected,
 		settings:   settings,
 		snap:       snap,
+		entries:    entries,
 		uow:        uow,
 		now:        now,
+		managers:   managers,
 	}
 }
 
@@ -111,7 +122,54 @@ func (s *Service) SuggestedEnd(ctx context.Context, id uuid.UUID) (civil.Date, e
 	ctx, span := tracer.Start(ctx, "period.SuggestedEnd",
 		trace.WithAttributes(attribute.String("period.id", id.String())))
 	defer span.End()
-	return s.endOf(ctx, id, SuggestedEnd)
+	tc, err := tenant.From(ctx)
+	if err != nil {
+		return civil.Date{}, err
+	}
+	p, err := s.scoped(ctx, tc, id)
+	if err != nil {
+		return civil.Date{}, err
+	}
+	if p.EndDate != nil {
+		return *p.EndDate, nil
+	}
+	loc, startDay, err := s.cycle(ctx, tc)
+	if err != nil {
+		return civil.Date{}, err
+	}
+	latest, ok, err := s.latestEntry(ctx, tc, p.ID, loc)
+	if err != nil {
+		return civil.Date{}, err
+	}
+	var at *civil.Date
+	if ok {
+		at = &latest
+	}
+	return SuggestedEnd(p.StartDate, civil.DateOf(s.now(), loc), at, startDay), nil
+}
+
+// Today returns the current date in the project's time zone, on the service clock.
+func (s *Service) Today(ctx context.Context) (civil.Date, error) {
+	tc, err := tenant.From(ctx)
+	if err != nil {
+		return civil.Date{}, err
+	}
+	loc, err := s.location(ctx, tc)
+	if err != nil {
+		return civil.Date{}, err
+	}
+	return civil.DateOf(s.now(), loc), nil
+}
+
+func (s *Service) latestEntry(ctx context.Context, tc tenant.Context, periodID uuid.UUID, loc *time.Location) (civil.Date, bool, error) {
+	at, ok, err := s.entries.LatestAt(ctx, tc.OrgID, tc.ProjectID, periodID)
+	if err != nil {
+		return civil.Date{}, false, s.unexpected(ctx, "period: latest entry", err, "period_id", periodID)
+	}
+	if !ok {
+		return civil.Date{}, false, nil
+	}
+	return civil.DateOf(at, loc), true, nil
 }
 
 // CycleEnd returns the last day of the identified period's cycle under the project's cycle settings, or its stored end once set.
@@ -221,6 +279,10 @@ func (s *Service) Rename(ctx context.Context, id uuid.UUID, name string) (*Perio
 	if err != nil {
 		return nil, err
 	}
+	if err := s.managers.RequireCallerManager(ctx); err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
 	p, err := s.scoped(ctx, tc, id)
 	if err != nil {
 		return nil, err
@@ -269,6 +331,10 @@ func (s *Service) Close(ctx context.Context, id uuid.UUID, end civil.Date, by uu
 
 	tc, err := tenant.From(ctx)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.managers.RequireCallerManager(ctx); err != nil {
+		span.RecordError(err)
 		return nil, err
 	}
 	if _, err := s.closable(ctx, tc, id, end); err != nil {
@@ -351,6 +417,10 @@ func (s *Service) Reopen(ctx context.Context, id uuid.UUID) (*Period, error) {
 
 	tc, err := tenant.From(ctx)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.managers.RequireCallerManager(ctx); err != nil {
+		span.RecordError(err)
 		return nil, err
 	}
 	p, err := s.scoped(ctx, tc, id)
@@ -560,6 +630,13 @@ func (s *Service) checkClosable(ctx context.Context, tc tenant.Context, p *Perio
 	}
 	if civil.DateOf(s.now(), loc).Before(end) {
 		return &InvalidRangeError{Reason: "end date is in the future"}
+	}
+	latest, ok, err := s.latestEntry(ctx, tc, p.ID, loc)
+	if err != nil {
+		return err
+	}
+	if ok && end.Before(latest) {
+		return &EntriesAfterEndError{PeriodID: p.ID.String(), End: end, Latest: latest}
 	}
 	return nil
 }

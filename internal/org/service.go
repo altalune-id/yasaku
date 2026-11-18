@@ -11,6 +11,7 @@ import (
 
 	"altalune.id/yasaku/internal/apperror"
 	"altalune.id/yasaku/internal/platform/capabilities"
+	"altalune.id/yasaku/internal/platform/session"
 	"altalune.id/yasaku/internal/platform/tenant"
 	slugs "altalune.id/yasaku/slug"
 )
@@ -400,6 +401,55 @@ func (s *Service) RequireManager(ctx context.Context, orgID, userID uuid.UUID) e
 		return &NotManagerError{OrgID: orgID.String(), UserID: userID.String()}
 	}
 	return nil
+}
+
+// RequireCallerManager refuses with *NotManagerError unless the caller on ctx may manage its org, by the rule in ManagerCaller. SECURITY: ctx must already carry the tenant scope.
+func (s *Service) RequireCallerManager(ctx context.Context) error {
+	orgID, userID, managerKey, err := ManagerCaller(ctx)
+	if err != nil || managerKey {
+		return err
+	}
+	return s.RequireManager(ctx, orgID, userID)
+}
+
+// RequireCallerManagerOf is RequireCallerManager for a write into orgID, refusing any orgID other than the tenant org on ctx.
+func (s *Service) RequireCallerManagerOf(ctx context.Context, orgID uuid.UUID) error {
+	if err := RequireTenantOrg(ctx, orgID); err != nil {
+		return err
+	}
+	return s.RequireCallerManager(ctx)
+}
+
+// RequireTenantOrg refuses with *NotManagerError when orgID is not the tenant org on ctx.
+func RequireTenantOrg(ctx context.Context, orgID uuid.UUID) error {
+	tc, err := tenant.From(ctx)
+	if err != nil {
+		return err
+	}
+	if tc.OrgID != orgID {
+		return &NotManagerError{OrgID: orgID.String()}
+	}
+	return nil
+}
+
+// ManagerCaller resolves the caller on ctx for a manager-only write: a person or a personal key's owner whose role decides, or an org or project key that passes since only a manager mints one. SECURITY: any other caller is refused, so an unknown key kind fails closed.
+func ManagerCaller(ctx context.Context) (orgID, userID uuid.UUID, managerKey bool, err error) { //nolint:nonamedreturns // four results read better named
+	tc, err := tenant.From(ctx)
+	if err != nil {
+		return uuid.Nil, uuid.Nil, false, err
+	}
+	if tc.UserID != uuid.Nil {
+		return tc.OrgID, tc.UserID, false, nil
+	}
+	p := session.PrincipalFrom(ctx)
+	switch {
+	case p.KeyID == uuid.Nil:
+	case p.KeyKind == session.KeyKindOrg, p.KeyKind == session.KeyKindProject:
+		return tc.OrgID, uuid.Nil, true, nil
+	case p.KeyKind == session.KeyKindPersonal && p.KeyOwnerID != uuid.Nil:
+		return tc.OrgID, p.KeyOwnerID, false, nil
+	}
+	return uuid.Nil, uuid.Nil, false, &NotManagerError{OrgID: tc.OrgID.String()}
 }
 
 // RequireMember refuses with *MembershipMissingError unless userID holds any membership in orgID. SECURITY: ctx must already carry the tenant scope.

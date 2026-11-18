@@ -120,12 +120,19 @@
 		preview(form);
 	}
 
+	function syncKind(form) {
+		var to = form.querySelector('[name=to_wallet_id]');
+		var kind = form.querySelector('[name=kind]:checked');
+		if (to && kind) to.required = kind.value === 'transfer';
+	}
+
 	function mount() {
 		document.querySelectorAll('form[data-tx-sheet]').forEach(function (form) {
 			var pad = form.querySelector('[data-keypad]');
 			var input = amountOf(form);
 			if (!pad || !input || form.dataset.keypadMounted) return;
 			form.dataset.keypadMounted = '1';
+			syncKind(form);
 			pad.hidden = false;
 			if (coarse.matches) input.setAttribute('inputmode', 'none');
 			syncWallet(form);
@@ -145,6 +152,7 @@
 
 	document.addEventListener('change', function (e) {
 		if (e.target.matches && e.target.matches('form[data-tx-sheet] [name=wallet_id]')) syncWallet(e.target.form);
+		if (e.target.matches && e.target.matches('form[data-tx-sheet] [name=kind]')) syncKind(e.target.form);
 	});
 
 	document.addEventListener('submit', function (e) {

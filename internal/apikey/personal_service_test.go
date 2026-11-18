@@ -15,6 +15,7 @@ import (
 	"altalune.id/yasaku/internal/apikey"
 	orgpkg "altalune.id/yasaku/internal/org"
 	"altalune.id/yasaku/internal/platform/authn"
+	"altalune.id/yasaku/internal/platform/session"
 	"altalune.id/yasaku/internal/platform/tenant"
 	"altalune.id/yasaku/internal/testutil/fakes"
 )
@@ -219,4 +220,23 @@ func TestAProjectKeyRefusesAnOrgLevelScope(t *testing.T) {
 	assert.True(t, apikey.IsScopeLevelError(err), "got %v", err)
 	_, _, err = f.svc.MintOrg(f.ctx(t, f.admin), "org", []string{authn.ScopeMembersRead}, apikey.ProjectGrant{All: true}, in(time.Hour))
 	require.NoError(t, err, "an org key may hold an org-level scope")
+}
+
+// SECURITY: role checks read KeyOwnerID, so only a personal token carries it and UserID stays empty.
+func TestAPersonalTokenPrincipalCarriesItsOwnerForRoleChecks(t *testing.T) {
+	f := newPersonalFixture(t)
+	_, plaintext := f.mint(t, f.alice, apikey.ProjectGrant{ProjectIDs: []uuid.UUID{f.a}})
+	auth := apikey.NewAuthenticator(f.store, nil, apikey.Scheme{}, f.members)
+	p, err := auth.Authenticate(t.Context(), plaintext)
+	require.NoError(t, err)
+	assert.Equal(t, f.alice, p.KeyOwnerID)
+	assert.Equal(t, session.KeyKindPersonal, p.KeyKind)
+	assert.Equal(t, uuid.Nil, p.UserID)
+
+	_, orgPlain, err := f.svc.MintOrg(f.ctx(t, f.admin), "ci", []string{authn.ScopeYasakuRead}, apikey.ProjectGrant{All: true}, in(30*24*time.Hour))
+	require.NoError(t, err)
+	p, err = auth.Authenticate(t.Context(), orgPlain)
+	require.NoError(t, err)
+	assert.Equal(t, uuid.Nil, p.KeyOwnerID, "an org key acts for nobody")
+	assert.Equal(t, session.KeyKindOrg, p.KeyKind)
 }

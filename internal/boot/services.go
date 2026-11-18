@@ -102,7 +102,7 @@ func buildServices(cfg *config.Config, k *platform.Kernel, caps capabilities.Cap
 	onboardStore := onboard.NewStore(cfg.DB, pool)
 
 	orgs := org.NewService(orgStore, caps, log, reporter.Unexpected)
-	projects := project.NewService(projectStore, log, reporter.Unexpected)
+	projects := project.NewService(projectStore, log, reporter.Unexpected, orgs)
 	todos := todo.NewService(todoStore, log, reporter.Unexpected, k.Queue)
 	jobs := newJobSubmitter(k.Queue, k.Tracer, log)
 	onboards := onboard.NewService(onboardStore, log, reporter.Unexpected)
@@ -123,13 +123,13 @@ func buildServices(cfg *config.Config, k *platform.Kernel, caps capabilities.Cap
 	periodStore := period.NewStore(cfg.DB, pool, pgConn)
 	transactionStore := transaction.NewStore(cfg.DB, pool, pgConn)
 
-	ledgers := ledger.NewService(ledgerStore, log, reporter.Unexpected)
+	ledgers := ledger.NewService(ledgerStore, log, reporter.Unexpected, orgs)
 	wallets := wallet.NewService(walletStore, log, reporter.Unexpected, wallet.WithMirror(osw.walletMirror(), wallet.UnitOfWork(uow)))
 	txCategories := category.NewService(txCategoryStore, log, reporter.Unexpected, namerAdapter{},
 		category.WithMirror(osw.categoryMirror(), category.UnitOfWork(uow)))
 	reports := report.NewService(report.NewReader(cfg.DB, pool, pgConn), log, reporter.Unexpected, ledgers)
 	periods := period.NewService(periodStore, log, reporter.Unexpected,
-		ledgers, snapshotterAdapter{reports: reports, now: time.Now}, period.UnitOfWork(uow), time.Now)
+		ledgers, snapshotterAdapter{reports: reports, now: time.Now}, snapshotterAdapter{reports: reports}, period.UnitOfWork(uow), time.Now, orgs)
 	transactions := transaction.NewService(transactionStore, log, reporter.Unexpected,
 		walletReaderFor(wallets), categoryReaderFor(txCategories),
 		periodResolverAdapter{periods: periods}, transaction.UnitOfWork(uow), transaction.WithMirror(osw.transactionMirror()))

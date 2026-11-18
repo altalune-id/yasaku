@@ -85,6 +85,8 @@ type TxFormView struct {
 	ErrorCode     string
 	AmountError   string
 	WalletError   string
+	ToWalletError string
+	DateError     string
 	RecordedAt    time.Time
 	UpdatedAt     time.Time
 }
@@ -240,7 +242,7 @@ templ txAmountField(d web.LayoutData, v TxFormView) {
 						inputmode="decimal"
 						enterkeyhint="done"
 						autocomplete="off"
-						autofocus
+						autofocus?={ v.ToWalletError == "" }
 						required
 						value={ v.Amount }
 						placeholder="0"
@@ -376,7 +378,18 @@ templ txChips(d web.LayoutData, v TxFormView) {
 			@icons.Icon("chevron-right", "size-4 shrink-0 text-base-content/70 rtl:-scale-x-100")
 			<span class="relative">
 				@icons.Icon("wallet", "pointer-events-none absolute start-3 top-1/2 z-10 size-4 -translate-y-1/2")
-				<select id="tx-to-wallet" name="to_wallet_id" aria-label={ d.Tr("tx.to_wallet") } class="select h-11 w-auto max-w-48 border-base-200 bg-base-200 bg-none ps-9 pe-8 font-medium">
+				<select
+					id="tx-to-wallet"
+					name="to_wallet_id"
+					required?={ v.Kind == "transfer" }
+					autofocus?={ v.ToWalletError != "" }
+					aria-label={ d.Tr("tx.to_wallet") }
+					if v.ToWalletError != "" {
+						aria-invalid="true"
+						aria-describedby="tx-to-wallet-hint"
+					}
+					class={ "select h-11 w-auto max-w-48 bg-base-200 bg-none ps-9 pe-8 font-medium", templ.KV("border-base-200", v.ToWalletError == ""), templ.KV("border-error", v.ToWalletError != "") }
+				>
 					<option value="">{ d.Tr("tx.to_wallet") }</option>
 					for _, w := range v.Wallets {
 						<option value={ w.ID } selected?={ w.ID == v.ToWalletID }>{ w.Name }</option>
@@ -393,6 +406,7 @@ templ txChips(d web.LayoutData, v TxFormView) {
 			Today:     v.Today,
 			Yesterday: v.Yesterday,
 			Max:       max(v.Today, v.Date),
+			ErrorID:   txDateErrorID(v),
 			Chip:      true,
 		})
 		<label class="btn btn-ghost h-11 gap-1.5 font-medium has-checked:btn-active has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline-primary">
@@ -404,6 +418,19 @@ templ txChips(d web.LayoutData, v TxFormView) {
 	if v.WalletError != "" {
 		<p id="tx-wallet-hint" class="mt-1 text-xs text-error">{ v.WalletError }</p>
 	}
+	if v.ToWalletError != "" {
+		<p id="tx-to-wallet-hint" class="mt-1 text-xs text-error">{ v.ToWalletError }</p>
+	}
+	if v.DateError != "" {
+		<p id="tx-date-error" class="mt-1 text-xs text-error">{ v.DateError }</p>
+	}
+}
+
+func txDateErrorID(v TxFormView) string {
+	if v.DateError == "" {
+		return ""
+	}
+	return "tx-date-error"
 }
 
 templ txKeypad(d web.LayoutData, v TxFormView) {

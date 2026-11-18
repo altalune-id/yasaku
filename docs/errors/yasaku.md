@@ -64,6 +64,7 @@ rules (append-only, `900`-`999` reserved) are the same, and `TestCodes_EveryRefI
 | `PRD006` | `apperror.CodePeriodNotClosed`       | Period Not Closed        |
 | `PRD007` | `apperror.CodePeriodNotLatestClosed` | Period Not Latest Closed |
 | `PRD008` | `apperror.CodePeriodAuthorMissing`   | Period Author Missing    |
+| `PRD009` | `apperror.CodePeriodEntriesAfterEnd` | Period Entries After End |
 
 ## OSL — Opensheet mirror
 

@@ -392,7 +392,7 @@ components:
         endDate:
           type: string
           title: end_date
-          description: YYYY-MM-DD; must be today or earlier and not before the period start. On a reopened period it is fixed and must match the stored end date.
+          description: YYYY-MM-DD; must be today or earlier and not before the period start. Never before the period's latest entry (PRD009). Empty means yesterday, capped at the cycle end, never before the period start, and moved to the latest entry's date when that is later. On a reopened period it is fixed and must match the stored end date.
         confirm:
           type: boolean
           title: confirm
@@ -538,7 +538,7 @@ components:
         endDate:
           type: string
           title: end_date
-          description: YYYY-MM-DD; must be today or earlier and not before the period start.
+          description: YYYY-MM-DD; must be today or earlier and not before the period start. Never before the period's latest entry (PRD009). Empty means yesterday, capped at the cycle end, never before the period start, and moved to the latest entry's date when that is later.
       title: PreviewCloseRequest
       additionalProperties: false
     yasaku.v1.PreviewCloseResponse:

@@ -73,6 +73,22 @@ func New(orgID, projectID uuid.UUID, start civil.Date, name string) (*Period, er
 // DefaultName renders the start month in English, e.g. "Sep 2026"; the UI translates it.
 func DefaultName(start civil.Date) string { return start.In(time.UTC).Format("Jan 2006") }
 
+// SharesMonth reports whether p and an adjacent period are both auto-named and start in the same calendar month, so a month label alone would repeat.
+func SharesMonth(p, prev, next *Period) bool {
+	if !p.MonthNamed() {
+		return false
+	}
+	return sameMonthAuto(p, prev) || sameMonthAuto(p, next)
+}
+
+func sameMonthAuto(p, other *Period) bool {
+	return other != nil && other.MonthNamed() &&
+		other.StartDate.Year == p.StartDate.Year && other.StartDate.Month == p.StartDate.Month
+}
+
+// MonthNamed reports whether p still carries the default month name, so a UI may show its localized month instead.
+func (p *Period) MonthNamed() bool { return p.Name == DefaultName(p.StartDate) }
+
 // ClampStartDay confines a configured cycle start day to a day that exists in every month.
 func ClampStartDay(day int) int {
 	if day < MinStartDay {
@@ -99,14 +115,20 @@ func CycleEnd(start civil.Date, startDay int) civil.Date {
 	return nextCycleStart(start, startDay).AddDays(-1)
 }
 
-// SuggestedEnd returns the end date a close defaults to: the cycle end, capped at today and never before start.
-func SuggestedEnd(start, today civil.Date, startDay int) civil.Date {
+// SuggestedEnd returns the end date a close defaults to: the cycle end capped at yesterday, never before start, moved to latest (the period's latest entry date) when later, and never after today.
+func SuggestedEnd(start, today civil.Date, latest *civil.Date, startDay int) civil.Date {
 	end := CycleEnd(start, startDay)
+	if yesterday := today.AddDays(-1); yesterday.Before(end) {
+		end = yesterday
+	}
+	if latest != nil && end.Before(*latest) {
+		end = *latest
+	}
 	if today.Before(end) {
 		end = today
 	}
 	if end.Before(start) {
-		return start
+		end = start
 	}
 	return end
 }

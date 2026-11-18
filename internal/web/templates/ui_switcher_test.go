@@ -24,7 +24,7 @@ func renderSwitcher(t *testing.T, d web.LayoutData) string {
 
 func TestSwitcher_OneOrgHidesOrgGroups(t *testing.T) {
 	out := renderSwitcher(t, web.LayoutData{
-		ActiveOrg:     &web.ActiveOrg{Slug: "home", Name: "Home Org"},
+		ActiveOrg:     &web.ActiveOrg{Slug: "home", Name: "Home Org", CanManage: true},
 		ActiveProject: &web.ActiveProject{Slug: "b", Name: "Budget"},
 	})
 	if strings.Contains(out, "menu-title") {

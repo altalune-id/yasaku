@@ -76,8 +76,13 @@ func (h *ReportHandler) GetReports(w http.ResponseWriter, r *http.Request) {
 		h.reportFailed(w, sc, "cashflow window", err)
 		return
 	}
-	v.Periods = reportPeriodOptions(recent, selected)
-	v.PeriodName = selected.Name
+	labels, err := periodLabels(sc.req.Context(), h.Periods)
+	if err != nil {
+		h.reportFailed(w, sc, "period labels", err)
+		return
+	}
+	v.Periods = reportPeriodOptions(d, labels, recent, selected)
+	v.PeriodName = templates.PeriodLabelText(d, labels[selected.ID])
 	if !h.fill(w, sc, d, selected, window, &v) {
 		return
 	}
@@ -187,7 +192,7 @@ func reportCashflowIDs(window []*period.Period) []uuid.UUID {
 	return ids
 }
 
-func reportPeriodOptions(recent []*period.Period, selected *period.Period) []templates.ReportPeriodOption {
+func reportPeriodOptions(d web.LayoutData, labels map[uuid.UUID]templates.PeriodLabel, recent []*period.Period, selected *period.Period) []templates.ReportPeriodOption {
 	opts := make([]templates.ReportPeriodOption, 0, len(recent)+1)
 	found := false
 	for _, p := range recent {
@@ -195,14 +200,14 @@ func reportPeriodOptions(recent []*period.Period, selected *period.Period) []tem
 			found = true
 		}
 		opts = append(opts, templates.ReportPeriodOption{
-			ID: p.ID.String(), Name: p.Name, Selected: p.ID == selected.ID,
+			ID: p.ID.String(), Name: templates.PeriodLabelText(d, labels[p.ID]), Selected: p.ID == selected.ID,
 		})
 	}
 	if found {
 		return opts
 	}
 	return append([]templates.ReportPeriodOption{
-		{ID: selected.ID.String(), Name: selected.Name, Selected: true},
+		{ID: selected.ID.String(), Name: templates.PeriodLabelText(d, labels[selected.ID]), Selected: true},
 	}, opts...)
 }
 

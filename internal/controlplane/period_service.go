@@ -6,10 +6,10 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"github.com/google/uuid"
 
 	"altalune.id/yasaku/civil"
 	yasakuv1 "altalune.id/yasaku/gen/go/yasaku/v1"
-	"altalune.id/yasaku/internal/ledger"
 	"altalune.id/yasaku/internal/org"
 	"altalune.id/yasaku/internal/period"
 	"altalune.id/yasaku/internal/project"
@@ -23,18 +23,16 @@ type PeriodService struct {
 	projects *project.Service
 	periods  *period.Service
 	reports  *report.Service
-	ledgers  *ledger.Service
 	now      func() time.Time
 }
 
 // NewPeriodService binds the handler to its collaborators.
-func NewPeriodService(orgs *org.Service, projects *project.Service, periods *period.Service, reports *report.Service, ledgers *ledger.Service) *PeriodService {
+func NewPeriodService(orgs *org.Service, projects *project.Service, periods *period.Service, reports *report.Service) *PeriodService {
 	return &PeriodService{
 		orgs:     orgs,
 		projects: projects,
 		periods:  periods,
 		reports:  reports,
-		ledgers:  ledgers,
 		now:      time.Now,
 	}
 }
@@ -205,26 +203,18 @@ func (s *PeriodService) target(ctx context.Context, t *yasakuv1.Target, periodQ,
 	if err != nil || nd != nil {
 		return sc, nil, civil.Date{}, nd, err
 	}
-	end, err := s.endDate(sc.ctx, endRaw)
+	end, err := s.endDate(sc.ctx, p.ID, endRaw)
 	if err != nil {
 		return sc, nil, civil.Date{}, nil, err
 	}
 	return sc, p, end, nil, nil
 }
 
-func (s *PeriodService) endDate(ctx context.Context, raw string) (civil.Date, error) {
+func (s *PeriodService) endDate(ctx context.Context, id uuid.UUID, raw string) (civil.Date, error) {
 	if strings.TrimSpace(raw) != "" {
 		return parseDate("end_date", raw)
 	}
-	settings, err := s.ledgers.Get(ctx)
-	if err != nil {
-		return civil.Date{}, err
-	}
-	loc, err := settings.Location()
-	if err != nil {
-		return civil.Date{}, err
-	}
-	return civil.DateOf(s.now(), loc), nil
+	return s.periods.SuggestedEnd(ctx, id)
 }
 
 func summarySnapshot(sum report.PeriodSummary, computedAt time.Time) *yasakuv1.Snapshot {

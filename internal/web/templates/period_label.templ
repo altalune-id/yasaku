@@ -1,0 +1,96 @@
+package templates
+
+import (
+	"strings"
+
+	"altalune.id/yasaku/civil"
+	"altalune.id/yasaku/internal/web"
+)
+
+// PeriodLabel names a period: a custom name verbatim, an auto name as its month, and an auto name sharing its month with a neighbor as its dates.
+type PeriodLabel struct {
+	Name    string
+	Start   civil.Date
+	End     *civil.Date
+	Monthly bool
+	Shared  bool
+}
+
+// IsMonth reports whether the label reads as a whole month.
+func (l PeriodLabel) IsMonth() bool { return l.Monthly && !l.Shared }
+
+const (
+	periodLabelStart = "\uE000"
+	periodLabelEnd   = "\uE001"
+)
+
+func periodLabelStartOpts(l PeriodLabel) []DateOption {
+	if l.End != nil && l.End.Year == l.Start.Year {
+		return []DateOption{Compact()}
+	}
+	return nil
+}
+
+func periodLabelPattern(d web.LayoutData, l PeriodLabel) string {
+	if l.End == nil {
+		return d.Tr("period.label_from", "Start", periodLabelStart)
+	}
+	return d.Tr("period.label_range", "Start", periodLabelStart, "End", periodLabelEnd)
+}
+
+func periodLabelParts(pattern string) []string {
+	var parts []string
+	for pattern != "" {
+		i := strings.IndexAny(pattern, periodLabelStart+periodLabelEnd)
+		if i < 0 {
+			return append(parts, pattern)
+		}
+		if i > 0 {
+			parts = append(parts, pattern[:i])
+		}
+		n := len(periodLabelStart)
+		parts = append(parts, pattern[i:i+n])
+		pattern = pattern[i+n:]
+	}
+	return parts
+}
+
+// PeriodLabelText is the label as plain text, for option elements and translation arguments.
+func PeriodLabelText(d web.LayoutData, l PeriodLabel) string {
+	switch {
+	case !l.Monthly:
+		return l.Name
+	case !l.Shared:
+		return dateText(d, l.Start, "month", "long")
+	}
+	end := ""
+	if l.End != nil {
+		end = LedgerDateText(d, *l.End)
+	}
+	start := LedgerDateText(d, l.Start)
+	if len(periodLabelStartOpts(l)) > 0 {
+		start = dateText(d, l.Start, "compact", "short")
+	}
+	return strings.NewReplacer(periodLabelStart, start, periodLabelEnd, end).Replace(periodLabelPattern(d, l))
+}
+
+// PeriodLabelView renders the label with its dates as ledger dates the browser localizes.
+templ PeriodLabelView(d web.LayoutData, l PeriodLabel) {
+	switch {
+		case !l.Monthly:
+			{ l.Name }
+		case !l.Shared:
+			@LedgerDate(d, l.Start, nil, Month())
+		default:
+			for _, part := range periodLabelParts(periodLabelPattern(d, l)) {
+				switch part {
+					case periodLabelStart:
+						@LedgerDate(d, l.Start, nil, periodLabelStartOpts(l)...)
+					case periodLabelEnd:
+						@LedgerDate(d, *l.End, nil)
+					default:
+						{ part }
+				}
+			}
+	}
+}

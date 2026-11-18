@@ -95,6 +95,38 @@ SELECT id         AS "period.id",
 	return ref, nil
 }
 
+type sqliteLatestRow struct {
+	At *string `alias:"latest.at"`
+}
+
+func (r *sqliteReader) LatestEntry(ctx context.Context, orgID, projectID, periodID uuid.UUID) (time.Time, bool, error) {
+	tx, owned, tc, err := r.txAcquire(ctx)
+	if err != nil {
+		return time.Time{}, false, err
+	}
+	if owned {
+		defer func() { _ = tx.Rollback() }()
+	}
+	var row sqliteLatestRow
+	qErr := sqlite.RawStatement(latestEntrySQL(r.tables), sqlite.RawArgs{
+		"#periodID":  periodID.String(),
+		"#orgID":     orgID.String(),
+		"#scopeOrg":  tc.OrgID.String(),
+		"#projectID": projectID.String(),
+	}).QueryContext(ctx, tx, &row)
+	if qErr != nil && !errors.Is(qErr, qrm.ErrNoRows) {
+		return time.Time{}, false, fmt.Errorf("report.sqlite.LatestEntry: %w", qErr)
+	}
+	if row.At == nil || *row.At == "" {
+		return time.Time{}, false, nil
+	}
+	at, err := time.Parse(time.RFC3339Nano, *row.At)
+	if err != nil {
+		return time.Time{}, false, fmt.Errorf("report.sqlite.LatestEntry: parse occurred_at: %w", err)
+	}
+	return at, true, nil
+}
+
 type sqliteWalletRow struct {
 	WalletID string `alias:"line.wallet_id"`
 	Name     string `alias:"line.name"`

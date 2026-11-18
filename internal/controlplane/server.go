@@ -118,7 +118,7 @@ func New(cfg *config.Config, kernel *platform.Kernel, d Deps) *Server {
 		CategorySvc: NewCategoryService(d.Orgs, d.Projects, d.TxCategories),
 		TransactionSvc: NewTransactionService(d.Orgs, d.Projects, d.Transactions,
 			d.Wallets, d.TxCategories, d.Periods, d.Ledgers),
-		PeriodSvc: NewPeriodService(d.Orgs, d.Projects, d.Periods, d.Reports, d.Ledgers),
+		PeriodSvc: NewPeriodService(d.Orgs, d.Projects, d.Periods, d.Reports),
 		ReportSvc: NewReportService(d.Orgs, d.Projects, d.Reports, d.Periods),
 	}
 	if d.Opensheet != nil {

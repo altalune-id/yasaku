@@ -18,16 +18,22 @@ import (
 //nolint:gochecknoglobals // OTel tracer is a package-level fixture, not runtime state.
 var tracer trace.Tracer = otel.Tracer("altalune.id/yasaku/internal/project")
 
+// Managers is the role gate project create and rename ask before anything else, for the org they write into.
+type Managers interface {
+	RequireCallerManagerOf(ctx context.Context, orgID uuid.UUID) error
+}
+
 // Service is the projects driving port.
 type Service struct {
 	store      Store
 	log        *slog.Logger
 	unexpected apperror.UnexpectedFunc
+	managers   Managers
 }
 
 // NewService binds the service to its dependencies.
-func NewService(store Store, log *slog.Logger, unexpected apperror.UnexpectedFunc) *Service {
-	return &Service{store: store, log: log.With("module", "project"), unexpected: unexpected}
+func NewService(store Store, log *slog.Logger, unexpected apperror.UnexpectedFunc, managers Managers) *Service {
+	return &Service{store: store, log: log.With("module", "project"), unexpected: unexpected, managers: managers}
 }
 
 // Create constructs a Project inside orgID and persists it; an empty slug is generated.
@@ -39,7 +45,8 @@ func (s *Service) Create(ctx context.Context, orgID uuid.UUID, slug, name string
 		))
 	defer span.End()
 
-	if _, err := tenant.From(ctx); err != nil {
+	if err := s.managers.RequireCallerManagerOf(ctx, orgID); err != nil {
+		span.RecordError(err)
 		return nil, err
 	}
 
@@ -174,7 +181,12 @@ func (s *Service) Rename(ctx context.Context, id uuid.UUID, name string) (*Proje
 		trace.WithAttributes(attribute.String("project.id", id.String())))
 	defer span.End()
 
-	if _, err := tenant.From(ctx); err != nil {
+	tc, err := tenant.From(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.managers.RequireCallerManagerOf(ctx, tc.OrgID); err != nil {
+		span.RecordError(err)
 		return nil, err
 	}
 	p, err := s.store.ByID(ctx, id)

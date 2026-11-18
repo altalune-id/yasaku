@@ -45,6 +45,7 @@ type yasakuHarness struct {
 	user    *user.User
 	org     *org.Org
 	project *project.Project
+	live    authn.Chain
 }
 
 func newYasakuCfg(t *testing.T) *config.Config {
@@ -104,12 +105,13 @@ func newYasakuHarnessOn(t *testing.T, cfg *config.Config) *yasakuHarness {
 		IDPSubject: testSubject,
 	})}
 
+	live := srv.API.Authn
 	srv.API.Authn = authn.Chain{tokens.NewAuthenticator(srv.Platform.Verifier, authn.Scheme{Prefix: apikey.DefaultPrefix})}
 
 	ts := httptest.NewServer(srv.API.Handler(""))
 	t.Cleanup(ts.Close)
 
-	return &yasakuHarness{t: t, boot: srv, server: ts, user: u, org: o, project: p}
+	return &yasakuHarness{t: t, boot: srv, server: ts, user: u, org: o, project: p, live: live}
 }
 
 func testBearer() connect.UnaryInterceptorFunc {

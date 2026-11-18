@@ -21,6 +21,9 @@ Defined in `internal/platform/authn/scope.go`, one `catalog` row per scope with 
   personal token may hold one only while its owner is an owner or admin, checked on every request.
 - **Who manages keys.** Org and project keys: an owner or admin person (`org.Service.RequireManager`),
   on every surface. A personal token: its owner, a member of its org. A key never manages keys.
+- **Manager-only writes.** Ledger settings update, project create and rename, and period close,
+  reopen and rename need an owner or admin (`org.Service.RequireCallerManager`) on every surface. A personal
+  token acts as its owner; an org or project key passes, since only a manager mints one.
 - **Every new key expires** within `apikey.MaxLifetime` (a year).
 - **No implication.** `yasaku:write` does not grant `yasaku:read`. The check is
   `slices.Contains`. A key that reads and writes holds both strings.

@@ -25,7 +25,7 @@ func renameFixture(t *testing.T) (*handlerFixture, *http.ServeMux, uuid.UUID, *o
 	_, err := f.Projects.Create(setTenant(t.Context(), o.ID, owner), o.ID, "alpha", "Alpha")
 	require.NoError(t, err)
 	mux := http.NewServeMux()
-	handlers.NewSettingsHandler(f.Deps, f.Projects, ledger.NewService(fakes.NewLedger(), discardLogger(), passthroughUnexpected()), nil).Register(mux)
+	handlers.NewSettingsHandler(f.Deps, f.Projects, ledger.NewService(fakes.NewLedger(), discardLogger(), passthroughUnexpected(), f.Orgs), nil).Register(mux)
 	return f, mux, owner, o
 }
 
@@ -102,7 +102,7 @@ type storeDownError struct{}
 
 func (*storeDownError) Error() string { return "store down" }
 
-func TestProjectHandler_PostRename_RoleLookupFailureIsForbidden(t *testing.T) {
+func TestProjectHandler_PostRename_RoleLookupFailureRefuses(t *testing.T) {
 	t.Parallel()
 	f, mux, owner, o := renameFixture(t)
 	before := f.OrgStore.MembershipOfCalls()
@@ -113,7 +113,7 @@ func TestProjectHandler_PostRename_RoleLookupFailureIsForbidden(t *testing.T) {
 	f.OrgStore.MembershipOfErr = nil
 
 	require.Equal(t, before+2, f.OrgStore.MembershipOfCalls(), "expected the scope gate then IsManager to read membership; a changed call order makes this test meaningless")
-	assert.Equal(t, http.StatusForbidden, rec.Code)
+	assert.Equal(t, http.StatusInternalServerError, rec.Code, "a role store outage is a server fault, and it still refuses")
 	assert.Equal(t, "Alpha", f.projectName(t, o, owner))
 }
 

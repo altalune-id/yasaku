@@ -14,7 +14,10 @@ import (
 	"altalune.id/yasaku/money"
 )
 
-const settingsNavKey = "settings"
+const (
+	settingsNavKey       = "settings"
+	settingsLedgerMember = "Only an owner or admin can change these settings."
+)
 
 //i18n:use settings.name_error
 //i18n:use settings.name_locked
@@ -81,19 +84,15 @@ func (h *SettingsHandler) PostRename(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	r = sc.req
-	// SECURITY: membership is org-wide, so a plain member reaches this route; only an owner or admin may rename, and a failed lookup refuses.
-	if !h.CanManage(sc) {
-		h.ErrorPage(w, r, http.StatusForbidden,
-			localizedDefault(r, "settings.name_forbidden_title", "Not allowed"),
-			localizedDefault(r, "settings.name_member", "Only an owner or admin can rename this project."))
-		return
-	}
 	if err := r.ParseForm(); err != nil {
 		h.ErrorPage(w, r, http.StatusBadRequest, pageTitle(r, "error_title.bad_request"), "Could not parse form body.")
 		return
 	}
 	name := strings.TrimSpace(r.PostForm.Get("name"))
 	if _, err := h.Projects.Rename(r.Context(), sc.project.ID, name); err != nil {
+		if h.refuseNotManager(w, r, err, "settings.name_member", "Only an owner or admin can rename this project.") {
+			return
+		}
 		status, key := http.StatusUnprocessableEntity, "settings.name_error"
 		switch {
 		case project.IsSystemProtectedError(err):
@@ -124,11 +123,11 @@ func (h *SettingsHandler) PostSettings(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	// SECURITY: membership is org-wide, so a plain member reaches this route; only an owner or admin may change the ledger settings, and a failed lookup refuses.
-	if !h.CanManage(sc) {
-		h.ErrorPage(w, sc.req, http.StatusForbidden,
-			localizedDefault(sc.req, "settings.name_forbidden_title", "Not allowed"),
-			localizedDefault(sc.req, "settings.ledger_member", "Only an owner or admin can change these settings."))
+	if err := h.Orgs.RequireCallerManager(sc.req.Context()); err != nil {
+		if !h.refuseNotManager(w, sc.req, err, "settings.ledger_member", settingsLedgerMember) {
+			h.LogErr("web settings: role", err)
+			h.ErrorPage(w, sc.req, http.StatusInternalServerError, pageTitle(sc.req, "error_title.save_failed"), "Could not save project settings.", err)
+		}
 		return
 	}
 	if err := sc.req.ParseForm(); err != nil {
@@ -155,6 +154,9 @@ func (h *SettingsHandler) PostSettings(w http.ResponseWriter, r *http.Request) {
 	cur := money.Currency(currency)
 	st, err := h.Ledgers.Update(sc.req.Context(), ledger.Patch{Timezone: &tz, Currency: &cur, PeriodStartDay: &day})
 	if err != nil {
+		if h.refuseNotManager(w, sc.req, err, "settings.ledger_member", settingsLedgerMember) {
+			return
+		}
 		if !isLedgerDomainError(err) {
 			h.LogErr("web settings: update", err)
 			h.ErrorPage(w, sc.req, http.StatusInternalServerError, pageTitle(sc.req, "error_title.save_failed"), "Could not save project settings.", err)

@@ -19,6 +19,8 @@ type Reader interface {
 	IncomeByCategory(ctx context.Context, orgID, projectID, periodID uuid.UUID, currency money.Currency) ([]CategorySlice, error)
 	Cashflow(ctx context.Context, orgID, projectID uuid.UUID, periodIDs []uuid.UUID, currency money.Currency) ([]CashflowPoint, error)
 	Flows(ctx context.Context, orgID, projectID, periodID uuid.UUID, currency money.Currency) ([]Flow, error)
+	// LatestEntry reports when the latest transaction recorded against the period occurred, and false when it has none.
+	LatestEntry(ctx context.Context, orgID, projectID, periodID uuid.UUID) (time.Time, bool, error)
 	// WalletBalances reports live balances: Opening is zero, In and Out are all-time, Closing is the derived balance.
 	WalletBalances(ctx context.Context, orgID, projectID uuid.UUID) ([]WalletLine, error)
 }

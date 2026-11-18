@@ -80,7 +80,7 @@ func newHarnessOpts(t *testing.T, p session.Principal, verr error, mods ...func(
 	ledgers := fakes.NewLedger()
 
 	orgSvc := org.NewService(orgs, capabilities.Capabilities{OrgCreation: true}, log, reporter.Unexpected)
-	projectSvc := project.NewService(projs, log, reporter.Unexpected)
+	projectSvc := project.NewService(projs, log, reporter.Unexpected, orgSvc)
 	todoSvc := todo.NewService(tds, log, reporter.Unexpected, &fakes.Queue{})
 	postSvc := blog.NewService(posts, log, reporter.Unexpected, fakes.UnitOfWork, &fakes.Webhooks{})
 	catSvc := category.NewService(cats, log, reporter.Unexpected)
@@ -95,7 +95,7 @@ func newHarnessOpts(t *testing.T, p session.Principal, verr error, mods ...func(
 	deps := controlplane.Deps{
 		Orgs:     orgSvc,
 		Projects: projectSvc,
-		Ledgers:  ledger.NewService(ledgers, log, reporter.Unexpected),
+		Ledgers:  ledger.NewService(ledgers, log, reporter.Unexpected, orgSvc),
 	}
 	for _, mod := range mods {
 		mod(&deps)

@@ -143,6 +143,7 @@ func TestAPIKeys_MemberIsReadOnly(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			rec := x.as(t, x.member, http.MethodPost, target, url.Values{"name": {"sneaky"}, "grant": {"all"}, "expires_in": {"30"}})
+			assert.Equal(t, http.StatusForbidden, rec.Code)
 			assert.Contains(t, rec.Body.String(), "apikey.error_not_manager", "body=%s", rec.Body.String())
 		})
 	}
@@ -268,4 +269,15 @@ func TestPersonalTokens_UnknownOrgFallsBackToTheFirst(t *testing.T) {
 	page := x.as(t, x.member, http.MethodGet, "/settings/tokens?org=nope", nil)
 	require.Equal(t, http.StatusOK, page.Code)
 	assert.Contains(t, page.Body.String(), x.alpha.ID.String(), "the picker must show the selected org's projects")
+}
+
+// SECURITY: an org-level scope makes a personal token act org-wide, so a member hand-posting one is refused with a 403 and nothing is minted.
+func TestPersonalTokens_AMemberIsRefusedAnOrgLevelScope(t *testing.T) {
+	x := newAPIKeyWebFixture(t)
+	rec := x.as(t, x.member, http.MethodPost, "/settings/tokens", url.Values{
+		"org": {"acme"}, "name": {"laptop"}, "scopes": {authn.ScopeMembersRead}, "grant": {"all"}, "expires_in": {"7"},
+	})
+	assert.Equal(t, http.StatusForbidden, rec.Code)
+	assert.Contains(t, rec.Body.String(), "apikey.error_not_manager")
+	assert.Empty(t, x.personalKeys(t, x.member))
 }

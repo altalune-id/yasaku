@@ -91,6 +91,34 @@ SELECT id         AS "period.id",
 	return ref, nil
 }
 
+type pgLatestRow struct {
+	At *time.Time `alias:"latest.at"`
+}
+
+func (r *postgresReader) LatestEntry(ctx context.Context, orgID, projectID, periodID uuid.UUID) (time.Time, bool, error) {
+	tx, owned, tc, err := r.txAcquire(ctx)
+	if err != nil {
+		return time.Time{}, false, err
+	}
+	if owned {
+		defer func() { _ = tx.Rollback() }()
+	}
+	var row pgLatestRow
+	qErr := postgres.RawStatement(latestEntrySQL(r.tables), postgres.RawArgs{
+		"#periodID":  periodID,
+		"#orgID":     orgID,
+		"#scopeOrg":  tc.OrgID,
+		"#projectID": projectID,
+	}).QueryContext(ctx, tx, &row)
+	if qErr != nil && !errors.Is(qErr, qrm.ErrNoRows) {
+		return time.Time{}, false, fmt.Errorf("report.postgres.LatestEntry: %w", qErr)
+	}
+	if row.At == nil {
+		return time.Time{}, false, nil
+	}
+	return row.At.UTC(), true, nil
+}
+
 type pgWalletRow struct {
 	WalletID uuid.UUID `alias:"line.wallet_id"`
 	Name     string    `alias:"line.name"`

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 	"time"
@@ -10,6 +11,7 @@ import (
 
 	"altalune.id/yasaku/civil"
 	"altalune.id/yasaku/internal/apperror"
+	"altalune.id/yasaku/internal/i18n"
 	"altalune.id/yasaku/internal/ledger"
 	"altalune.id/yasaku/internal/period"
 	"altalune.id/yasaku/internal/project"
@@ -19,7 +21,13 @@ import (
 	"altalune.id/yasaku/money"
 )
 
-const periodNavKey = "periods"
+//i18n:use period.manager_only
+//i18n:use period.rename_manager_only
+const (
+	periodNavKey            = "periods"
+	periodManagerOnly       = "Only an owner or admin can close or reopen a period."
+	periodRenameManagerOnly = "Only an owner or admin can rename a period."
+)
 
 // PeriodHandler serves the "tutup buku" close-book screens for one project.
 type PeriodHandler struct {
@@ -59,6 +67,10 @@ func (h *PeriodHandler) GetClose(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if !h.CanManage(sc) {
+		h.forbidNonManager(w, sc.req, "period.manager_only", periodManagerOnly)
+		return
+	}
 	v := h.closeView(sc, p, h.requestedEnd(sc, p))
 	d := h.layout(sc)
 	if web.IsHTMXRequest(sc.req) {
@@ -85,6 +97,9 @@ func (h *PeriodHandler) PostClose(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if _, closeErr := h.Periods.Close(sc.req.Context(), p.ID, end, sc.principal.UserID); closeErr != nil {
+		if h.refuseNotManager(w, sc.req, closeErr, "period.manager_only", periodManagerOnly) {
+			return
+		}
 		h.closeFailed(w, sc, p, end, closeErr)
 		return
 	}
@@ -98,6 +113,9 @@ func (h *PeriodHandler) PostReopen(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if _, err := h.Periods.Reopen(sc.req.Context(), p.ID); err != nil {
+		if h.refuseNotManager(w, sc.req, err, "period.manager_only", periodManagerOnly) {
+			return
+		}
 		if !isPeriodDomainError(err) {
 			h.LogErr("web period: reopen", err)
 			h.ErrorPage(w, sc.req, http.StatusInternalServerError, pageTitle(sc.req, "error_title.reopen_failed"), "Could not reopen that period.", err)
@@ -121,6 +139,9 @@ func (h *PeriodHandler) PostRename(w http.ResponseWriter, r *http.Request) {
 	}
 	name := strings.TrimSpace(sc.req.PostForm.Get("name"))
 	if _, err := h.Periods.Rename(sc.req.Context(), p.ID, name); err != nil {
+		if h.refuseNotManager(w, sc.req, err, "period.rename_manager_only", periodRenameManagerOnly) {
+			return
+		}
 		if !isPeriodDomainError(err) {
 			h.LogErr("web period: rename", err)
 			h.ErrorPage(w, sc.req, http.StatusInternalServerError, pageTitle(sc.req, "error_title.rename_failed"), "Could not rename that period.", err)
@@ -197,6 +218,12 @@ func (h *PeriodHandler) closeFailed(w http.ResponseWriter, sc ProjectScope, p *p
 		h.renderClose(w, sc, fresh, end, nil)
 		return
 	}
+	if period.IsEntriesAfterEndError(err) {
+		d := h.layout(sc)
+		d.Title = pageTitle(sc.req, "title.period_close", sc.project.Name)
+		RenderStatus(w, sc.req, http.StatusUnprocessableEntity, templates.ClosePeriodLayout(d, h.closeView(sc, p, end)))
+		return
+	}
 	if !isPeriodDomainError(err) {
 		h.LogErr("web period: close", err)
 		h.ErrorPage(w, sc.req, http.StatusInternalServerError, pageTitle(sc.req, "error_title.close_failed"), "Could not close that period.", err)
@@ -222,11 +249,13 @@ func (h *PeriodHandler) periodsView(sc ProjectScope, cause error) (templates.Per
 	if err != nil {
 		return templates.PeriodsView{}, err
 	}
+	labels := labelsOf(items)
 	for _, p := range items {
 		row := templates.PeriodRow{
 			ID:    p.ID.String(),
 			Name:  p.Name,
 			Start: p.StartDate,
+			Label: labels[p.ID],
 		}
 		if p.IsCurrent() {
 			v.HasCurrent = true
@@ -261,6 +290,7 @@ func (h *PeriodHandler) closeDialog(ctx context.Context, p *period.Period, v *te
 		return
 	}
 	v.CloseEnd, v.CloseEndDay = end.String(), end
+	v.CloseEndToday = end == h.today(ctx)
 	v.Close, v.HasClose = previewFromSnapshot(&snap)
 }
 
@@ -287,7 +317,7 @@ func (h *PeriodHandler) requestedEnd(sc ProjectScope, p *period.Period) civil.Da
 	end, err := h.Periods.SuggestedEnd(ctx, p.ID)
 	if err != nil {
 		h.LogErr("web period: suggested end", err)
-		return civil.DateOf(time.Now(), h.location(ctx))
+		return h.today(ctx)
 	}
 	return end
 }
@@ -299,18 +329,27 @@ func (h *PeriodHandler) closeView(sc ProjectScope, p *period.Period, end civil.D
 		ProjectSlug:   sc.project.Slug,
 		ProjectName:   sc.project.Name,
 		PeriodID:      p.ID.String(),
-		PeriodName:    p.Name,
 		Start:         p.StartDate.String(),
 		EndDate:       end.String(),
-		MaxDate:       civil.DateOf(time.Now(), h.location(ctx)).String(),
+		MaxDate:       h.today(ctx).String(),
 		DateLocked:    p.EndDate != nil,
 		AlreadyClosed: p.IsLocked(),
+		Label:         periodLabel(p, nil, nil),
+	}
+	if prev, next, err := h.Periods.Neighbors(ctx, p.ID); err == nil {
+		v.Label = periodLabel(p, prev, next)
+	} else {
+		h.LogErr("web period: neighbors", err)
 	}
 	if p.IsLocked() {
 		v.Preview, v.HasPreview = previewFromSnapshot(p.Snapshot)
 		return v
 	}
 	snap, err := h.Periods.PreviewClose(ctx, p.ID, end)
+	if ee, ok := errors.AsType[*period.EntriesAfterEndError](err); ok {
+		v.EndError = endBeforeLatest(sc.req, ee, h.today(ctx))
+		snap, err = h.Periods.PreviewClose(ctx, p.ID, ee.Latest)
+	}
 	if err != nil {
 		if !isPeriodDomainError(err) {
 			h.LogErr("web period: preview close", err)
@@ -320,6 +359,26 @@ func (h *PeriodHandler) closeView(sc ProjectScope, p *period.Period, end civil.D
 	}
 	v.Preview, v.HasPreview = previewFromSnapshot(&snap)
 	return v
+}
+
+//i18n:use period.end_before_latest
+//i18n:use period.end_future_entry
+func endBeforeLatest(r *http.Request, ee *period.EntriesAfterEndError, today civil.Date) string {
+	d := web.LayoutData{Translator: i18n.TranslatorFrom(r.Context())}
+	if today.Before(ee.Latest) {
+		return d.Tr("period.end_future_entry", "Latest", templates.LedgerDateText(d, ee.Latest))
+	}
+	return d.Tr("period.end_before_latest",
+		"End", templates.LedgerDateText(d, ee.End), "Latest", templates.LedgerDateText(d, ee.Latest))
+}
+
+func (h *PeriodHandler) today(ctx context.Context) civil.Date {
+	d, err := h.Periods.Today(ctx)
+	if err != nil {
+		h.LogErr("web period: today", err)
+		return civil.DateOf(time.Now(), h.location(ctx))
+	}
+	return d
 }
 
 func (h *PeriodHandler) location(ctx context.Context) *time.Location {
@@ -383,5 +442,5 @@ func isPeriodDomainError(err error) bool {
 	return period.IsNotFoundError(err) || period.IsInvalidNameError(err) ||
 		period.IsInvalidRangeError(err) || period.IsOverlapError(err) ||
 		period.IsAlreadyClosedError(err) || period.IsNotClosedError(err) ||
-		period.IsNotLatestClosedError(err)
+		period.IsNotLatestClosedError(err) || period.IsEntriesAfterEndError(err)
 }

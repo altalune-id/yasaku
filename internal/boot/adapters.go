@@ -20,7 +20,15 @@ type snapshotterAdapter struct {
 	now     func() time.Time
 }
 
-var _ period.Snapshotter = snapshotterAdapter{}
+var (
+	_ period.Snapshotter = snapshotterAdapter{}
+	_ period.Entries     = snapshotterAdapter{}
+)
+
+// LatestAt reports the latest entry the report module sees for the period, filtered by org and project as well as period.
+func (a snapshotterAdapter) LatestAt(ctx context.Context, orgID, projectID, periodID uuid.UUID) (time.Time, bool, error) {
+	return a.reports.LatestEntryAt(ctx, orgID, projectID, periodID)
+}
 
 // Snapshot stamps ComputedAt here because period.Close persists the document verbatim into both the period row and its immutable closing record.
 func (a snapshotterAdapter) Snapshot(ctx context.Context, orgID, projectID, periodID uuid.UUID, end civil.Date, at time.Time) (period.Snapshot, error) {
