@@ -318,21 +318,15 @@ func (s *TransactionService) ReviseTransaction(ctx context.Context, req *connect
 		preview.OccurredAt = toTimestamp(at)
 		preview.Date = civil.DateOf(at, loc).String()
 	}
-	if v := req.Msg.Period; v != nil {
-		if strings.TrimSpace(*v) == "" {
-			var none *uuid.UUID
-			patch.PeriodID = &none
-			preview.PeriodId, preview.PeriodName = "", ""
-		} else {
-			p, pNd, pErr := resolvePeriod(sc.ctx, s.periods, *v)
-			if pErr != nil || pNd != nil {
-				return respondReviseNeeds(pNd, pErr)
-			}
-			id := p.ID
-			ptr := &id
-			patch.PeriodID = &ptr
-			preview.PeriodId, preview.PeriodName = p.ID.String(), p.Name
+	if v := req.Msg.Period; v != nil && strings.TrimSpace(*v) != "" {
+		p, pNd, pErr := resolvePeriod(sc.ctx, s.periods, *v)
+		if pErr != nil || pNd != nil {
+			return respondReviseNeeds(pNd, pErr)
 		}
+		id := p.ID
+		ptr := &id
+		patch.PeriodID = &ptr
+		preview.PeriodId, preview.PeriodName = p.ID.String(), p.Name
 	}
 
 	if !req.Msg.GetConfirm() {

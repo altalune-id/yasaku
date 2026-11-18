@@ -679,6 +679,38 @@ func TestTransactionHandler_PostUpdate_RevisesAmountAndKeepsTheStoredKind(t *tes
 	assert.Equal(t, "Bakso urat", got.Note)
 }
 
+func TestTransactionHandler_PostUpdate_WithoutAPeriodFieldKeepsThePeriod(t *testing.T) {
+	t.Parallel()
+	f := newTxFixture(t)
+	ctx := f.projectCtx(t)
+	tx, err := f.Transactions.Record(ctx, transaction.RecordInput{
+		WalletID:   f.Cash,
+		Kind:       transaction.KindExpense,
+		Amount:     money.New(1000000, money.IDR),
+		Note:       "geprek",
+		OccurredAt: f.noonToday(),
+	})
+	require.NoError(t, err)
+	require.NotNil(t, tx.PeriodID)
+
+	mux := http.NewServeMux()
+	f.txHandler().Register(mux)
+	form := url.Values{
+		"amount":    {"10000"},
+		"wallet_id": {f.Cash.String()},
+		"date":      {f.today()},
+		"note":      {"ayam geprek"},
+	}
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, f.request(t, http.MethodPost, f.path("/transactions/"+tx.ID.String()), form, true))
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	got, err := f.Transactions.ByID(ctx, tx.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "ayam geprek", got.Note)
+	assert.Equal(t, tx.PeriodID, got.PeriodID)
+}
+
 func TestTransactionHandler_PostDelete_RemovesTheTransaction(t *testing.T) {
 	t.Parallel()
 	f := newTxFixture(t)

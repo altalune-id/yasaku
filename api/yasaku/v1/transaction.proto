@@ -205,7 +205,7 @@ message ReviseTransactionRequest {
   optional string category = 6;
   optional string note = 7;
   optional string occurred_at = 8;
-  // Period ID from list_periods or current_period, never a period name. Absent leaves the period alone; it is re-derived when occurred_at moves.
+  // Period ID from list_periods or current_period, never a period name. Absent or empty leaves the period alone; it is re-derived when occurred_at moves.
   optional string period = 9;
   bool confirm = 10;
 }

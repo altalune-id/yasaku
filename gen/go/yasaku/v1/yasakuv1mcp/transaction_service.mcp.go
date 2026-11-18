@@ -162,7 +162,7 @@ func RegisterTransactionServiceTools(reg *mcp.Registry, h yasakuv1connect.Transa
 		Mutation:    true,
 		Destructive: true,
 		UI:          "ui://yasaku/app",
-		InputSchema: json.RawMessage(`{"type":"object","properties":{"target":{"type":"object","properties":{"org":{"type":"string"},"project":{"type":"string"}},"additionalProperties":false},"id":{"type":"string"},"wallet":{"type":"string"},"toWallet":{"type":"string"},"amount":{"type":"object","properties":{"amount":{"type":"string"},"currency":{"type":"string"}},"additionalProperties":false},"category":{"type":"string"},"note":{"type":"string"},"occurredAt":{"type":"string"},"period":{"type":"string","description":"Period ID from list_periods or current_period, never a period name. Absent leaves the period alone; it is re-derived when occurred_at moves."},"confirm":{"type":"boolean"}},"additionalProperties":false}`),
+		InputSchema: json.RawMessage(`{"type":"object","properties":{"target":{"type":"object","properties":{"org":{"type":"string"},"project":{"type":"string"}},"additionalProperties":false},"id":{"type":"string"},"wallet":{"type":"string"},"toWallet":{"type":"string"},"amount":{"type":"object","properties":{"amount":{"type":"string"},"currency":{"type":"string"}},"additionalProperties":false},"category":{"type":"string"},"note":{"type":"string"},"occurredAt":{"type":"string"},"period":{"type":"string","description":"Period ID from list_periods or current_period, never a period name. Absent or empty leaves the period alone; it is re-derived when occurred_at moves."},"confirm":{"type":"boolean"}},"additionalProperties":false}`),
 		Handler: func(ctx context.Context, input json.RawMessage) (json.RawMessage, error) {
 			if len(input) == 0 {
 				input = json.RawMessage(`{}`)

@@ -64,14 +64,22 @@ func (f *txFixture) archiveAllWallets(t *testing.T) {
 	}
 }
 
-func (f *txFixture) today() string {
-	loc := time.UTC
+func (f *txFixture) location() *time.Location {
 	if st, err := f.Ledgers.Get(f.scoped(f.OrgID, f.ProjID, f.Principal.UserID)); err == nil {
 		if l, lerr := time.LoadLocation(st.Timezone); lerr == nil {
-			loc = l
+			return l
 		}
 	}
-	return civil.DateOf(time.Now(), loc).String()
+	return time.UTC
+}
+
+func (f *txFixture) today() string {
+	return civil.DateOf(time.Now(), f.location()).String()
+}
+
+func (f *txFixture) noonToday() time.Time {
+	loc := f.location()
+	return civil.DateOf(time.Now(), loc).In(loc).Add(12 * time.Hour)
 }
 
 func (f *txFixture) savedMinor(t *testing.T) []int64 {

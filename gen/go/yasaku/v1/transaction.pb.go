@@ -983,7 +983,7 @@ type ReviseTransactionRequest struct {
 	Category   *string                `protobuf:"bytes,6,opt,name=category,proto3,oneof" json:"category,omitempty"`
 	Note       *string                `protobuf:"bytes,7,opt,name=note,proto3,oneof" json:"note,omitempty"`
 	OccurredAt *string                `protobuf:"bytes,8,opt,name=occurred_at,json=occurredAt,proto3,oneof" json:"occurred_at,omitempty"`
-	// Period ID from list_periods or current_period, never a period name. Absent leaves the period alone; it is re-derived when occurred_at moves.
+	// Period ID from list_periods or current_period, never a period name. Absent or empty leaves the period alone; it is re-derived when occurred_at moves.
 	Period        *string `protobuf:"bytes,9,opt,name=period,proto3,oneof" json:"period,omitempty"`
 	Confirm       bool    `protobuf:"varint,10,opt,name=confirm,proto3" json:"confirm,omitempty"`
 	unknownFields protoimpl.UnknownFields
