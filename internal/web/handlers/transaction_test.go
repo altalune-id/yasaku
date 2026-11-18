@@ -53,6 +53,7 @@ type txFixture struct {
 	Reports      *report.Service
 	Ledgers      *ledger.Service
 	ReportReader *fakes.ReportReader
+	Snapshots    *txSnapshotter
 
 	Principal session.Principal
 	OrgID     uuid.UUID
@@ -107,10 +108,10 @@ func (a txPeriodResolver) info(ctx context.Context, p *period.Period) (transacti
 	return info, nil
 }
 
-type txSnapshotter struct{}
+type txSnapshotter struct{ openings int64 }
 
-func (txSnapshotter) Snapshot(context.Context, uuid.UUID, uuid.UUID, uuid.UUID, civil.Date, time.Time) (period.Snapshot, error) {
-	return period.Snapshot{Currency: money.IDR}, nil
+func (s *txSnapshotter) Snapshot(context.Context, uuid.UUID, uuid.UUID, uuid.UUID, civil.Date, time.Time) (period.Snapshot, error) {
+	return period.Snapshot{Currency: money.IDR, Openings: s.openings}, nil
 }
 
 func txPassthroughUoW(ctx context.Context, fn func(ctx context.Context) error) error { return fn(ctx) }
@@ -133,8 +134,9 @@ func newTxFixture(t *testing.T) *txFixture {
 	cats := category.NewService(fakes.NewTxCategory(), discardLogger(), passthroughUnexpected(), txNamer{})
 	reader := fakes.NewReportReader()
 	reports := report.NewService(reader, discardLogger(), passthroughUnexpected(), ledgers)
+	snaps := &txSnapshotter{}
 	periods := period.NewService(fakes.NewPeriod(), discardLogger(), passthroughUnexpected(),
-		ledgers, txSnapshotter{}, period.UnitOfWork(txPassthroughUoW), time.Now)
+		ledgers, snaps, period.UnitOfWork(txPassthroughUoW), time.Now)
 	txs := transaction.NewService(fakes.NewTransaction(), discardLogger(), passthroughUnexpected(),
 		txWalletReader(wallets), txCategoryReader(cats),
 		txPeriodResolver{periods: periods}, transaction.UnitOfWork(txPassthroughUoW))
@@ -152,9 +154,9 @@ func newTxFixture(t *testing.T) *txFixture {
 		Cfg: cfg, Sessions: sessions, Bundle: bundle,
 		Orgs: orgs, Projects: projects, Wallets: wallets, TxCategories: cats,
 		Periods: periods, Transactions: txs, Reports: reports, Ledgers: ledgers,
-		ReportReader: reader,
-		Principal:    session.Principal{UserID: u.ID, ActiveOrgID: o.ID, IssuedAt: time.Now().UTC()},
-		OrgID:        o.ID, ProjID: proj.ID,
+		ReportReader: reader, Snapshots: snaps,
+		Principal: session.Principal{UserID: u.ID, ActiveOrgID: o.ID, IssuedAt: time.Now().UTC()},
+		OrgID:     o.ID, ProjID: proj.ID,
 		OrgSlug: o.Slug, ProjSlug: proj.Slug,
 	}
 	f.Deps = handlers.Deps{

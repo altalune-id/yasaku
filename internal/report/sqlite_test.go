@@ -215,6 +215,31 @@ func assertAdjustmentsNet(t *testing.T, s seed) {
 	assert.Equal(t, money.New(0, "USD"), usd.Adjustments)
 }
 
+func TestSQLiteReader_Summary_Openings(t *testing.T) {
+	assertOpeningsSum(t, newSQLiteSeed(t))
+}
+
+func assertOpeningsSum(t *testing.T, s seed) {
+	t.Helper()
+	aug := &s.periodAug
+	s.addTxn(t, txnRow{wallet: s.walletBank, kind: "opening", minor: 40_000, period: aug, at: "2026-08-01T02:00:00Z"})
+	s.siblingTxn(t, txnRow{kind: "opening", minor: 999_000, period: aug, at: "2026-08-01T02:00:00Z"})
+
+	got, err := s.reader.Summary(s.ctx(), s.tc.OrgID, s.tc.ProjectID, s.periodAug, money.IDR, s.augStartUTC(t), nil)
+	require.NoError(t, err)
+	assert.Equal(t, idr(1_040_000), got.Openings, "opening rows only; the transfer, the adjustment and the sibling project are left out")
+	assert.Equal(t, idr(500_000), got.Income, "an opening is never income")
+	assert.Equal(t, idr(-10_000), got.Adjustments, "an opening is never a balance fix")
+
+	sep, err := s.reader.Summary(s.ctx(), s.tc.OrgID, s.tc.ProjectID, s.periodSep, money.IDR, s.sepStartUTC(t), nil)
+	require.NoError(t, err)
+	assert.Equal(t, idr(0), sep.Openings, "an earlier period's opening does not carry into the next")
+
+	usd, err := s.reader.Summary(s.ctx(), s.tc.OrgID, s.tc.ProjectID, s.periodAug, "USD", s.augStartUTC(t), nil)
+	require.NoError(t, err)
+	assert.Equal(t, money.New(0, "USD"), usd.Openings)
+}
+
 func TestSQLiteReader_Summary_OpeningOfTheNextPeriodEqualsTheClosingOfThePrevious(t *testing.T) {
 	s := newSQLiteSeed(t)
 	aug, err := s.reader.Summary(s.ctx(), s.tc.OrgID, s.tc.ProjectID, s.periodAug, money.IDR, s.augStartUTC(t), nil)

@@ -178,6 +178,7 @@ func TestSnapshotterAdapter_StampsComputedAt(t *testing.T) {
 		Expense:     money.New(250, money.IDR),
 		Net:         money.New(450, money.IDR),
 		Adjustments: money.New(-30, money.IDR),
+		Openings:    money.New(1_200, money.IDR),
 		TxCount:     6,
 		Wallets: []report.WalletLine{
 			{WalletID: uuid.New(), Name: "Cash", Closing: money.New(1_000, money.IDR)},
@@ -207,6 +208,7 @@ func TestSnapshotterAdapter_StampsComputedAt(t *testing.T) {
 	assert.Equal(t, int64(250), snap.Expense)
 	assert.Equal(t, int64(450), snap.Net)
 	assert.Equal(t, int64(-30), snap.Adjustments, "the snapshot freezes the period's signed adjustments net")
+	assert.Equal(t, int64(1_200), snap.Openings, "the snapshot freezes the period's starting balances")
 	assert.Equal(t, 6, snap.TxCount)
 	require.Len(t, snap.Wallets, 1)
 	assert.Equal(t, int64(1_000), snap.Wallets[0].Closing)

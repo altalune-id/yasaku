@@ -25,10 +25,12 @@ type Snapshot struct {
 	Expense  int64          `json:"expense"`
 	Net      int64          `json:"net"`
 	// Adjustments is the signed net of balance corrections; a snapshot stored before the field reads zero.
-	Adjustments int64           `json:"adjustments,omitempty"`
-	TxCount     int             `json:"tx_count"`
-	Wallets     []WalletClosing `json:"wallets"`
-	ComputedAt  time.Time       `json:"computed_at"`
+	Adjustments int64 `json:"adjustments,omitempty"`
+	// Openings is the sum of starting balances recorded in the period; a snapshot stored before the field reads zero.
+	Openings   int64           `json:"openings,omitempty"`
+	TxCount    int             `json:"tx_count"`
+	Wallets    []WalletClosing `json:"wallets"`
+	ComputedAt time.Time       `json:"computed_at"`
 }
 
 // Closing is one "tutup buku" event; a reopened period accumulates more than one.

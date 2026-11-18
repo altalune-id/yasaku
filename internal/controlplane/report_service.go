@@ -70,6 +70,7 @@ func (s *ReportService) PeriodReport(ctx context.Context, req *connect.Request[y
 		Expense:          toMoney(sum.Expense),
 		Net:              toMoney(sum.Net),
 		Adjustments:      toMoney(sum.Adjustments),
+		Openings:         toMoney(sum.Openings),
 		TxCount:          int32(sum.TxCount), //nolint:gosec // a row count, far below int32.
 		SpendByCategory:  toProtoCategorySlices(spend),
 		IncomeByCategory: toProtoCategorySlices(income),

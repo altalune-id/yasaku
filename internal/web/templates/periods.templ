@@ -23,6 +23,7 @@ type PeriodRow struct {
 	Expense   money.Amount
 	Net       money.Amount
 	Adjust    money.Amount
+	Openings  money.Amount
 	TxCount   int
 	CanReopen bool
 	CanClose  bool
@@ -53,12 +54,13 @@ type CloseWalletRow struct {
 
 // ClosePreview is what closing the period would freeze.
 type ClosePreview struct {
-	Income  money.Amount
-	Expense money.Amount
-	Net     money.Amount
-	Adjust  money.Amount
-	TxCount int
-	Wallets []CloseWalletRow
+	Income   money.Amount
+	Expense  money.Amount
+	Net      money.Amount
+	Adjust   money.Amount
+	Openings money.Amount
+	TxCount  int
+	Wallets  []CloseWalletRow
 }
 
 // ClosePeriodView is the "tutup buku" confirmation page model.
@@ -109,6 +111,12 @@ templ periodTotals(d web.LayoutData, r PeriodRow) {
 			<div class="stat-desc text-base-content/80">{ d.TrN("category.entries_period", r.TxCount) }</div>
 		</div>
 	</div>
+	if !r.Openings.IsZero() {
+		<p data-starting-balances class="flex min-w-0 items-baseline justify-between gap-2 px-1 text-sm text-base-content/80">
+			<span>{ d.Tr("overview.starting_balances") }</span>
+			<span class="break-all tabular-nums">{ SignedMoney(d, r.Openings) }</span>
+		</p>
+	}
 	if !r.Adjust.IsZero() {
 		<p data-balance-fixes class="flex min-w-0 items-baseline justify-between gap-2 px-1 text-sm text-base-content/80">
 			<span>{ d.Tr("overview.balance_fixes") }</span>
@@ -181,6 +189,12 @@ templ closePreviewList(d web.LayoutData, p ClosePreview) {
 			<dt>{ d.Tr("overview.money_out") }</dt>
 			<dd class="min-w-0 font-semibold tabular-nums break-words">{ SignedMoney(d, p.Expense.Neg()) }</dd>
 		</div>
+		if !p.Openings.IsZero() {
+			<div data-starting-balances class="flex items-baseline justify-between gap-4">
+				<dt>{ d.Tr("overview.starting_balances") }</dt>
+				<dd class="min-w-0 font-semibold tabular-nums break-words">{ SignedMoney(d, p.Openings) }</dd>
+			</div>
+		}
 		if !p.Adjust.IsZero() {
 			<div data-balance-fixes class="flex items-baseline justify-between gap-4">
 				<dt>{ d.Tr("overview.balance_fixes") }</dt>

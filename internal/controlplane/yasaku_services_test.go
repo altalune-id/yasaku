@@ -397,6 +397,8 @@ func TestPeriodReport_ReturnsTheSignedAdjustmentsNet(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "-50000", rep.Msg.GetAdjustments().GetAmount(), "the opening balance is not a balance fix")
 	require.Equal(t, "0", rep.Msg.GetExpense().GetAmount(), "an adjustment out is never expense")
+	require.Equal(t, "250000", rep.Msg.GetOpenings().GetAmount(), "the opening balance is a starting balance")
+	require.Equal(t, "0", rep.Msg.GetIncome().GetAmount(), "an opening balance is never income")
 }
 
 func TestPeriodSnapshots_CarryTheSignedAdjustmentsNet(t *testing.T) {
@@ -414,10 +416,12 @@ func TestPeriodSnapshots_CarryTheSignedAdjustmentsNet(t *testing.T) {
 	cur, err := pc.GetCurrentPeriod(ctx, connect.NewRequest(&yasakuv1.GetCurrentPeriodRequest{}))
 	require.NoError(t, err)
 	require.Equal(t, "-50000", cur.Msg.GetRunning().GetAdjustments().GetAmount(), "current_period")
+	require.Equal(t, "250000", cur.Msg.GetRunning().GetOpenings().GetAmount(), "current_period openings")
 
 	preview, err := pc.PreviewClose(ctx, connect.NewRequest(&yasakuv1.PreviewCloseRequest{}))
 	require.NoError(t, err)
 	require.Equal(t, "-50000", preview.Msg.GetSnapshot().GetAdjustments().GetAmount(), "preview_close")
+	require.Equal(t, "250000", preview.Msg.GetSnapshot().GetOpenings().GetAmount(), "preview_close openings")
 
 	closed, err := pc.ClosePeriod(ctx, connect.NewRequest(&yasakuv1.ClosePeriodRequest{Confirm: true}))
 	require.NoError(t, err)
@@ -432,6 +436,7 @@ func TestPeriodSnapshots_CarryTheSignedAdjustmentsNet(t *testing.T) {
 		}
 	}
 	require.Equal(t, "-50000", stored.GetAdjustments().GetAmount(), "list_periods")
+	require.Equal(t, "250000", stored.GetOpenings().GetAmount(), "list_periods openings")
 }
 
 func TestPeriodField_RefusesANameAndOffersIDs(t *testing.T) {

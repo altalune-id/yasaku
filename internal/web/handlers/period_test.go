@@ -72,6 +72,7 @@ func (a periodSnapshotter) Snapshot(ctx context.Context, orgID, projectID, perio
 		Expense:     sum.Expense.Minor,
 		Net:         sum.Net.Minor,
 		Adjustments: sum.Adjustments.Minor,
+		Openings:    sum.Openings.Minor,
 		TxCount:     sum.TxCount,
 		ComputedAt:  time.Now().UTC(),
 	}
@@ -339,6 +340,38 @@ func TestPeriods_NoBalanceFixesLineWithoutCorrections(t *testing.T) {
 	f.seedBooks(t)
 	rec := f.do(t, http.MethodGet, f.path("/periods"), nil)
 	assert.NotContains(t, rec.Body.String(), "data-balance-fixes")
+}
+
+func TestPeriods_StartingBalancesShowBesideMoneyInAndOut(t *testing.T) {
+	f := newPeriodFixture(t, defaultCaps())
+	cur := f.seedBooks(t)
+	ctx := f.scoped(t)
+	ws, err := f.Wallets.List(ctx, wallet.ListOpts{})
+	require.NoError(t, err)
+	_, err = f.Txs.RecordOpening(ctx, ws[0].ID, money.New(250_000, money.IDR), time.Now(), f.Principal.UserID)
+	require.NoError(t, err)
+	_, err = f.Txs.Adjust(ctx, ws[0].ID, money.New(500_000, money.IDR), time.Now(), f.Principal.UserID)
+	require.NoError(t, err)
+
+	for _, path := range []string{"/periods", "/periods/" + cur.ID.String() + "/close"} {
+		rec := f.do(t, http.MethodGet, f.path(path), nil)
+		require.Equal(t, http.StatusOK, rec.Code, path)
+		body := rec.Body.String()
+		require.Contains(t, body, "data-starting-balances", path)
+		if path == "/periods" {
+			assert.GreaterOrEqual(t, strings.Count(body, "data-starting-balances"), 2, "both the period card and the close dialog show the line")
+		}
+		assert.Contains(t, body, "+IDR\u00a02,500", "%s: the starting balance shows as its own line", path)
+		assert.Contains(t, body, "+IDR\u00a05,000", "%s: money in stays the real income only", path)
+		assert.Less(t, strings.Index(body, "data-starting-balances"), strings.Index(body, "data-balance-fixes"), "%s: starting balances sit just above balance fixes", path)
+	}
+}
+
+func TestPeriods_NoStartingBalancesLineWithoutOpenings(t *testing.T) {
+	f := newPeriodFixture(t, defaultCaps())
+	f.seedBooks(t)
+	rec := f.do(t, http.MethodGet, f.path("/periods"), nil)
+	assert.NotContains(t, rec.Body.String(), "data-starting-balances")
 }
 
 func TestPeriods_GetClose_HTMXReturnsOnlyThePreviewFragment(t *testing.T) {

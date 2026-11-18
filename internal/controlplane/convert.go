@@ -191,6 +191,7 @@ func toProtoSnapshot(s *period.Snapshot) *yasakuv1.Snapshot {
 		Expense:     toMoney(money.New(s.Expense, s.Currency)),
 		Net:         toMoney(money.New(s.Net, s.Currency)),
 		Adjustments: toMoney(money.New(s.Adjustments, s.Currency)),
+		Openings:    toMoney(money.New(s.Openings, s.Currency)),
 		TxCount:     int32(s.TxCount), //nolint:gosec // a row count, far below int32.
 		ComputedAt:  toTimestamp(s.ComputedAt),
 	}

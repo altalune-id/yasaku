@@ -59,7 +59,9 @@ type PeriodSummary struct {
 	Expense  money.Amount
 	Net      money.Amount
 	// Adjustments is the signed net of balance corrections: adjustments in minus adjustments out.
-	Adjustments    money.Amount
+	Adjustments money.Amount
+	// Openings is the sum of starting balances recorded in the period; never income.
+	Openings       money.Amount
 	TxCount        int
 	Wallets        []WalletLine
 	SpendableTotal money.Amount

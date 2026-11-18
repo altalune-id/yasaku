@@ -38,6 +38,7 @@ func (a snapshotterAdapter) Snapshot(ctx context.Context, orgID, projectID, peri
 		Expense:     sum.Expense.Minor,
 		Net:         sum.Net.Minor,
 		Adjustments: sum.Adjustments.Minor,
+		Openings:    sum.Openings.Minor,
 		TxCount:     sum.TxCount,
 		ComputedAt:  now().UTC(),
 	}
