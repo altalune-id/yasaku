@@ -110,8 +110,8 @@ func newWalletFixture(t *testing.T) *walletFixture {
 
 	users := user.NewService(user.NewStore(dbCfg, pool), user.GenesisConfig{}, log, unexpected)
 	orgs := org.NewService(org.NewStore(dbCfg, pool, nil), caps, log, unexpected)
-	projects := project.NewService(project.NewStore(dbCfg, pool, nil), log, unexpected)
-	ledgers := ledger.NewService(ledger.NewStore(dbCfg, pool, nil), log, unexpected)
+	projects := project.NewService(project.NewStore(dbCfg, pool, nil), log, unexpected, orgs)
+	ledgers := ledger.NewService(ledger.NewStore(dbCfg, pool, nil), log, unexpected, orgs)
 	wallets := wallet.NewService(wallet.NewStore(dbCfg, pool, nil), log, unexpected)
 	cats := category.NewService(category.NewStore(dbCfg, pool, nil), log, unexpected, bundleNamer{})
 	txs := transaction.NewService(
@@ -121,7 +121,7 @@ func newWalletFixture(t *testing.T) *walletFixture {
 	)
 	reports := report.NewService(report.NewReader(dbCfg, pool, nil), log, unexpected, ledgers)
 	periods := period.NewService(period.NewStore(dbCfg, pool, nil), log, unexpected,
-		ledgers, reportSnapshotter{}, period.UnitOfWork(uow), time.Now)
+		ledgers, reportSnapshotter{}, reportSnapshotter{}, period.UnitOfWork(uow), time.Now, orgs)
 	walletOpen := wallet.NewOpenWorkflow(wallets, txs, openingDater(periods), wallet.UnitOfWork(uow), log, unexpected)
 
 	bundle := i18n.NewEmbeddedBundle(i18n.EnUS)

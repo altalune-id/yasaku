@@ -47,11 +47,11 @@ func (f *txFixture) record(t *testing.T, kind transaction.Kind, minor int64, cat
 func (f *txFixture) withClock(at time.Time) *period.Service {
 	store := fakes.NewPeriod()
 	uow := period.UnitOfWork(txPassthroughUoW)
-	f.Periods = period.NewService(store, discardLogger(), passthroughUnexpected(), f.Ledgers, f.Snapshots, uow, time.Now)
+	f.Periods = period.NewService(store, discardLogger(), passthroughUnexpected(), f.Ledgers, f.Snapshots, f.Snapshots, uow, time.Now, f.Orgs)
 	f.Transactions = transaction.NewService(fakes.NewTransaction(), discardLogger(), passthroughUnexpected(),
 		txWalletReader(f.Wallets), txCategoryReader(f.TxCategories),
 		txPeriodResolver{periods: f.Periods}, transaction.UnitOfWork(txPassthroughUoW))
-	return period.NewService(store, discardLogger(), passthroughUnexpected(), f.Ledgers, f.Snapshots, uow, func() time.Time { return at })
+	return period.NewService(store, discardLogger(), passthroughUnexpected(), f.Ledgers, f.Snapshots, f.Snapshots, uow, func() time.Time { return at }, f.Orgs)
 }
 
 var dayTotalRe = regexp.MustCompile(`data-day-total[^>]*>([^<]+)<`)
@@ -331,7 +331,7 @@ func TestHome_UnknownPeriodFallsBackToCurrent(t *testing.T) {
 	rec := f.home(t, "/overview?period="+uuid.NewString())
 
 	require.Equal(t, http.StatusOK, rec.Code)
-	assert.Contains(t, rec.Body.String(), cur.Name)
+	assert.Contains(t, rec.Body.String(), cur.StartDate.In(time.UTC).Format("January 2006"))
 }
 
 func TestHome_EndedPeriodShowsTheCloseBanner(t *testing.T) {
@@ -474,6 +474,6 @@ func TestHome_SiblingProjectPeriodFallsBackToCurrent(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, rec.Code)
 	body := rec.Body.String()
-	assert.Contains(t, body, cur.Name)
+	assert.Contains(t, body, cur.StartDate.In(time.UTC).Format("January 2006"))
 	assert.NotContains(t, body, "Sibling period")
 }

@@ -470,7 +470,7 @@ type PreviewCloseRequest struct {
 	Target *Target                `protobuf:"bytes,1,opt,name=target,proto3" json:"target,omitempty"`
 	// Period ID from list_periods or current_period, never a period name. Empty means the current period.
 	Period string `protobuf:"bytes,2,opt,name=period,proto3" json:"period,omitempty"`
-	// YYYY-MM-DD; must be today or earlier and not before the period start.
+	// YYYY-MM-DD; must be today or earlier and not before the period start. Never before the period's latest entry (PRD009). Empty means yesterday, capped at the cycle end, never before the period start, and moved to the latest entry's date when that is later.
 	EndDate       string `protobuf:"bytes,3,opt,name=end_date,json=endDate,proto3" json:"end_date,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -584,7 +584,7 @@ type ClosePeriodRequest struct {
 	Target *Target                `protobuf:"bytes,1,opt,name=target,proto3" json:"target,omitempty"`
 	// Period ID from list_periods or current_period, never a period name. Empty means the current period.
 	Period string `protobuf:"bytes,2,opt,name=period,proto3" json:"period,omitempty"`
-	// YYYY-MM-DD; must be today or earlier and not before the period start. On a reopened period it is fixed and must match the stored end date.
+	// YYYY-MM-DD; must be today or earlier and not before the period start. Never before the period's latest entry (PRD009). Empty means yesterday, capped at the cycle end, never before the period start, and moved to the latest entry's date when that is later. On a reopened period it is fixed and must match the stored end date.
 	EndDate       string `protobuf:"bytes,3,opt,name=end_date,json=endDate,proto3" json:"end_date,omitempty"`
 	Confirm       bool   `protobuf:"varint,4,opt,name=confirm,proto3" json:"confirm,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -1021,16 +1021,16 @@ const file_yasaku_v1_period_proto_rawDesc = "" +
 	"\x06period\x18\x02 \x01(\tR\x06period\x12\x12\n" +
 	"\x04name\x18\x03 \x01(\tR\x04name\"A\n" +
 	"\x14RenamePeriodResponse\x12)\n" +
-	"\x06period\x18\x01 \x01(\v2\x11.yasaku.v1.PeriodR\x06period2\xbd\x14\n" +
+	"\x06period\x18\x01 \x01(\v2\x11.yasaku.v1.PeriodR\x06period2\xed\x17\n" +
 	"\rPeriodService\x12\xc2\x02\n" +
 	"\x10GetCurrentPeriod\x12\".yasaku.v1.GetCurrentPeriodRequest\x1a#.yasaku.v1.GetCurrentPeriodResponse\"\xe4\x01\xca\xf3\x18\xdf\x01\n" +
 	"\x0ecurrent_period\x12\xc7\x01Read the running period and its provisional totals. The running snapshot is computed live and changes with every transaction until the period is closed. A project with no period yet comes back empty.*\x03app\x12\xd9\x02\n" +
 	"\vListPeriods\x12\x1d.yasaku.v1.ListPeriodsRequest\x1a\x1e.yasaku.v1.ListPeriodsResponse\"\x8a\x02\xca\xf3\x18\x85\x02\n" +
-	"\flist_periods\x12\xef\x01List the periods, newest first. Use the returned id wherever another tool asks for a period. A closed period carries the snapshot frozen at its close; the current period has an empty end_date. Limit defaults to every period in the project.*\x03app\x12\xca\x03\n" +
-	"\fPreviewClose\x12\x1e.yasaku.v1.PreviewCloseRequest\x1a\x1f.yasaku.v1.PreviewCloseResponse\"\xf8\x02\xca\xf3\x18\xf3\x02\n" +
-	"\rpreview_close\x12\xdc\x02Calculate what closing a period on a given date would freeze, without saving anything. Period must be a period ID from list_periods or current_period, never a period name; leave it empty for the current period. The end date is YYYY-MM-DD, must be today or earlier, must not precede the period start, and empty means today in the project's timezone.*\x03app\x12\x90\x06\n" +
-	"\vClosePeriod\x12\x1d.yasaku.v1.ClosePeriodRequest\x1a\x1e.yasaku.v1.ClosePeriodResponse\"\xc1\x05\xca\xf3\x18\xbc\x05\n" +
-	"\fclose_period\x12\xa2\x05Close the books: freeze the period totals and, on a first close, open the next period the following day. Period must be a period ID from list_periods or current_period, never a period name; leave it empty for the current period. The end date is YYYY-MM-DD, must be today or earlier, and on a reopened period it is fixed and must match the stored end date. A closed period refuses new transactions until it is reopened. Call without confirm to preview the snapshot; call again with confirm=true to close. The preview is the resolved intent, not the frozen record: it is recomputed at close time, so a transaction landing in between changes the totals that are actually saved. \x01*\x03app0\x01\x12\xd9\x04\n" +
+	"\flist_periods\x12\xef\x01List the periods, newest first. Use the returned id wherever another tool asks for a period. A closed period carries the snapshot frozen at its close; the current period has an empty end_date. Limit defaults to every period in the project.*\x03app\x12\x81\x05\n" +
+	"\fPreviewClose\x12\x1e.yasaku.v1.PreviewCloseRequest\x1a\x1f.yasaku.v1.PreviewCloseResponse\"\xaf\x04\xca\xf3\x18\xaa\x04\n" +
+	"\rpreview_close\x12\x93\x04Calculate what closing a period on a given date would freeze, without saving anything. Period must be a period ID from list_periods or current_period, never a period name; leave it empty for the current period. The end date is YYYY-MM-DD, must be today or earlier, must not precede the period start, and must not precede the period's latest entry (refused with PRD009); empty means yesterday in the project's timezone, capped at the cycle end, never before the period start, and moved to the latest entry's date when that is later.*\x03app\x12\x89\b\n" +
+	"\vClosePeriod\x12\x1d.yasaku.v1.ClosePeriodRequest\x1a\x1e.yasaku.v1.ClosePeriodResponse\"\xba\a\xca\xf3\x18\xb5\a\n" +
+	"\fclose_period\x12\x9b\aClose the books: freeze the period totals and, on a first close, open the next period the following day. Period must be a period ID from list_periods or current_period, never a period name; leave it empty for the current period. The end date is YYYY-MM-DD, must be today or earlier, must not precede the period's latest entry (refused with PRD009 in preview and in close), empty means yesterday in the project's timezone (capped at the cycle end, never before the period start, moved to the latest entry's date when that is later), and on a reopened period it is fixed and must match the stored end date. A closed period refuses new transactions until it is reopened. Call without confirm to preview the snapshot; call again with confirm=true to close. The preview is the resolved intent, not the frozen record: it is recomputed at close time, so a transaction landing in between changes the totals that are actually saved. \x01*\x03app0\x01\x12\xd9\x04\n" +
 	"\fReopenPeriod\x12\x1e.yasaku.v1.ReopenPeriodRequest\x1a\x1f.yasaku.v1.ReopenPeriodResponse\"\x87\x04\xca\xf3\x18\x82\x04\n" +
 	"\rreopen_period\x12\xe7\x03Reopen the most recently closed period so its transactions can be corrected. Name the closed period explicitly; period must be a period ID from list_periods, never a period name, and it is not defaulted. Only the latest closed period may be reopened, and its end date stays fixed. Call without confirm to preview; call again with confirm=true to reopen. The preview is the stored period read at preview time, so a concurrent close landing in between can change what is actually reopened. \x01*\x03app0\x01\x12O\n" +
 	"\fRenamePeriod\x12\x1e.yasaku.v1.RenamePeriodRequest\x1a\x1f.yasaku.v1.RenamePeriodResponseB\x8f\x01\n" +

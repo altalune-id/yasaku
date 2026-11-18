@@ -142,7 +142,7 @@ func (t *Transaction) validate() error {
 	}
 	if t.Kind == KindTransfer {
 		if t.ToWalletID == nil {
-			return &InvalidKindError{Kind: string(t.Kind), Reason: "transfer needs a destination wallet"}
+			return &MissingDestinationError{}
 		}
 		if *t.ToWalletID == t.WalletID {
 			return &SameWalletError{WalletID: t.WalletID.String()}

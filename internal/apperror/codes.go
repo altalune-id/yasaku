@@ -119,6 +119,7 @@ const (
 	CodePeriodNotClosed       = "PRD006"
 	CodePeriodNotLatestClosed = "PRD007"
 	CodePeriodAuthorMissing   = "PRD008"
+	CodePeriodEntriesAfterEnd = "PRD009"
 
 	CodeOpensheetLinkNotFound        = "OSL001"
 	CodeOpensheetInvalidSetting      = "OSL002"

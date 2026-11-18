@@ -33,7 +33,7 @@ func openAPIServer(t *testing.T, enabled bool, auth *controlplane.BasicAuth) *ht
 	}
 	srv := controlplane.New(nil, kernel, controlplane.Deps{
 		Orgs:     org.NewService(orgs, capabilities.Capabilities{OrgCreation: true}, log, reporter.Unexpected),
-		Projects: project.NewService(projs, log, reporter.Unexpected),
+		Projects: project.NewService(projs, log, reporter.Unexpected, fakes.PermissiveMembers()),
 	})
 	srv.OpenAPIEnabled = enabled
 	srv.OpenAPIBasicAuth = auth

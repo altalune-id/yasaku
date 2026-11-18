@@ -39,5 +39,10 @@ type Snapshotter interface {
 	Snapshot(ctx context.Context, orgID, projectID, periodID uuid.UUID, end civil.Date, at time.Time) (Snapshot, error)
 }
 
+// Entries reports when the latest entry recorded against a period occurred; satisfied by the report module in boot.
+type Entries interface {
+	LatestAt(ctx context.Context, orgID, projectID, periodID uuid.UUID) (time.Time, bool, error)
+}
+
 // UnitOfWork runs fn inside one transaction.
 type UnitOfWork func(ctx context.Context, fn func(ctx context.Context) error) error

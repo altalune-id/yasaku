@@ -30,15 +30,21 @@ type ProjectSummary struct {
 templ DashboardPage(d web.LayoutData, v DashboardView) {
 	<section>
 		@PageHeader(dashboardTitle(d, v), d.Tr("dashboard.subtitle")) {
-			@AppButton(d.OrgPath("/projects/new"), "btn-primary", nil) {
-				@icons.Icon("plus", "size-4")
-				{ d.Tr("dashboard.new_project") }
+			if canManageOrg(d) {
+				@AppButton(d.OrgPath("/projects/new"), "btn-primary", nil) {
+					@icons.Icon("plus", "size-4")
+					{ d.Tr("dashboard.new_project") }
+				}
 			}
 		}
 		if len(v.Projects) == 0 {
 			<div class="mt-8 rounded-lg border border-dashed border-border bg-card p-8 text-center">
-				<p class="text-sm text-muted-foreground">{ d.Tr("projects.empty") }</p>
-				<a href={ templ.SafeURL(d.OrgPath("/projects/new")) } class="btn btn-primary mt-4">{ d.Tr("projects.create_first") }</a>
+				if canManageOrg(d) {
+					<p class="text-sm text-muted-foreground">{ d.Tr("projects.empty") }</p>
+					<a href={ templ.SafeURL(d.OrgPath("/projects/new")) } class="btn btn-primary mt-4">{ d.Tr("projects.create_first") }</a>
+				} else {
+					<p class="text-sm text-muted-foreground">{ d.Tr("projects.empty_member") }</p>
+				}
 			</div>
 		} else {
 			<ul class="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">

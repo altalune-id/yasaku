@@ -33,11 +33,14 @@ func TestHomeDay_FollowsThePrototypeRows(t *testing.T) {
 func TestHomePeriodNav_ADefaultNamedPeriodShowsTheLocalizedMonth(t *testing.T) {
 	d := web.LayoutData{ActiveOrg: &web.ActiveOrg{Slug: "acme"}}
 	start := civil.Date{Year: 2026, Month: 11, Day: 1}
-	got := render(t, homePeriodNav(d, YasakuOverviewView{ProjectSlug: "p", PeriodName: "Nov 2026", PeriodStart: start, PeriodMonthly: true}))
+	got := render(t, homePeriodNav(d, YasakuOverviewView{ProjectSlug: "p", Period: PeriodLabel{Name: "Nov 2026", Start: start, Monthly: true}}))
 	requireContains(t, got, `datetime="2026-11-01"`, `data-date-style="month"`, `>November 2026</time>`)
 
-	renamed := render(t, homePeriodNav(d, YasakuOverviewView{ProjectSlug: "p", PeriodName: "Payday cycle", PeriodStart: start}))
+	renamed := render(t, homePeriodNav(d, YasakuOverviewView{ProjectSlug: "p", Period: PeriodLabel{Name: "Payday cycle", Start: start}}))
 	requireContains(t, renamed, `>Payday cycle</label>`)
+
+	shared := render(t, homePeriodNav(d, YasakuOverviewView{ProjectSlug: "p", Period: PeriodLabel{Name: "Nov 2026", Start: civil.Date{Year: 2026, Month: 11, Day: 18}, Monthly: true, Shared: true}}))
+	requireContains(t, shared, `period.label_from`)
 }
 
 func TestHomeQuickAdd_FourColumnsAtEveryWidth(t *testing.T) {
@@ -47,7 +50,7 @@ func TestHomeQuickAdd_FourColumnsAtEveryWidth(t *testing.T) {
 
 func TestHomePeriodNav_SpansTheCardWithGhostChevrons(t *testing.T) {
 	d := web.LayoutData{ActiveOrg: &web.ActiveOrg{Slug: "acme"}}
-	got := render(t, homePeriodNav(d, YasakuOverviewView{ProjectSlug: "p", PeriodName: "Payday", PrevPeriodID: "a"}))
+	got := render(t, homePeriodNav(d, YasakuOverviewView{ProjectSlug: "p", Period: PeriodLabel{Name: "Payday"}, PrevPeriodID: "a"}))
 	requireContains(t, got, `class="join w-full"`, `class="btn btn-ghost btn-square join-item"`, `flex-1`)
 	if strings.Contains(got, "self-start") || strings.Contains(got, `class="btn btn-square join-item"`) {
 		t.Fatalf("period nav must span the card with ghost chevrons: %s", got)

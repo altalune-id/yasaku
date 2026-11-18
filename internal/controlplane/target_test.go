@@ -32,7 +32,7 @@ func newTargetHarness(t *testing.T) *targetHarness {
 	return &targetHarness{
 		t:        t,
 		orgs:     org.NewService(fakes.NewOrg(), capabilities.Capabilities{OrgCreation: true}, log, reporter.Unexpected),
-		projects: project.NewService(fakes.NewProject(), log, reporter.Unexpected),
+		projects: project.NewService(fakes.NewProject(), log, reporter.Unexpected, fakes.PermissiveMembers()),
 	}
 }
 
@@ -55,7 +55,7 @@ func (h *targetHarness) project(o *org.Org, slug string) *project.Project {
 
 func (h *targetHarness) projectNamed(o *org.Org, slug, name string) *project.Project {
 	h.t.Helper()
-	ctx := tenant.Into(context.Background(), tenant.Context{OrgID: o.ID})
+	ctx := tenant.Into(context.Background(), tenant.Context{OrgID: o.ID, UserID: uuid.New()})
 	p, err := h.projects.Create(ctx, o.ID, slug, name)
 	if err != nil {
 		h.t.Fatalf("create project %s: %v", slug, err)

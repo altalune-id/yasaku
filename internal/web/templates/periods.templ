@@ -14,6 +14,7 @@ import (
 type PeriodRow struct {
 	ID        string
 	Name      string
+	Label     PeriodLabel
 	Start     civil.Date
 	End       *civil.Date
 	Closed    bool
@@ -39,6 +40,7 @@ type PeriodsView struct {
 	// CloseEnd is the suggested end date the close dialog posts; HasClose is false when the preview could not be computed.
 	CloseEnd    string
 	CloseEndDay civil.Date
+	CloseEndToday bool
 	HasClose bool
 	Close    ClosePreview
 	History     []PeriodRow
@@ -69,11 +71,12 @@ type ClosePeriodView struct {
 	ProjectSlug   string
 	ProjectName   string
 	PeriodID      string
-	PeriodName    string
+	Label         PeriodLabel
 	Start         string
 	EndDate       string
 	MaxDate       string
 	DateLocked    bool
+	EndError      string
 	AlreadyClosed bool
 	HasPreview    bool
 	Preview       ClosePreview
@@ -152,30 +155,43 @@ templ periodRenameCollapse(d web.LayoutData, projectSlug string, r PeriodRow) {
 
 templ periodCurrentCard(d web.LayoutData, v PeriodsView) {
 	<section class="flex min-w-0 flex-col gap-3 rounded-box border border-base-300 bg-base-100 p-4" aria-labelledby="period-current-title">
-		<h2 id="period-current-title" class="text-lg font-semibold break-words">{ v.Current.Name }</h2>
+		<h2 id="period-current-title" class="text-lg font-semibold break-words">
+			@PeriodLabelView(d, v.Current.Label)
+		</h2>
 		if v.Current.HasTotals {
 			@periodTotals(d, v.Current)
 		} else {
 			<p role="alert" class="alert alert-soft alert-error text-sm">{ d.Tr("period.totals_unavailable") }</p>
 		}
-		<p class="text-sm text-base-content/70">{ d.Tr("period.close_hint", "Name", v.Current.Name) }</p>
+		if canManageOrg(d) {
+			<p class="text-sm text-base-content/70">{ periodCloseHint(d, v.Current.Label) }</p>
+		} else {
+			<p data-period-read-only class="flex items-center gap-2 text-sm text-base-content/70">
+				@icons.Icon("lock", "size-4 shrink-0")
+				<span>{ d.Tr("period.manager_only") }</span>
+			</p>
+		}
 		<div class="flex flex-wrap items-center gap-2">
-			if v.HasClose {
-				<button type="button" data-dialog-open="close-month-dialog" class="btn btn-primary">
-					@icons.Icon("lock", "size-4")
-					{ d.Tr("overview.close_named", "Period", v.Current.Name) }
-				</button>
-			} else {
-				@AppButton(d.ProjectPath(v.ProjectSlug, "/periods/"+v.Current.ID+"/close"), "btn-primary", nil) {
-					@icons.Icon("lock", "size-4")
-					{ d.Tr("overview.close_named", "Period", v.Current.Name) }
-				}
+			switch {
+				case !canManageOrg(d):
+				case v.HasClose:
+					<button type="button" data-dialog-open="close-month-dialog" class="btn btn-primary">
+						@icons.Icon("lock", "size-4")
+						{ periodCloseNamed(d, v.Current.Label) }
+					</button>
+				default:
+					@AppButton(d.ProjectPath(v.ProjectSlug, "/periods/"+v.Current.ID+"/close"), "btn-primary", nil) {
+						@icons.Icon("lock", "size-4")
+						{ periodCloseNamed(d, v.Current.Label) }
+					}
 			}
 			@AppButton(d.ProjectPath(v.ProjectSlug, "/reports?period="+v.Current.ID), "btn-ghost", nil) {
 				{ d.Tr("period.see_report_first") }
 			}
 		</div>
-		@periodRenameCollapse(d, v.ProjectSlug, v.Current)
+		if canManageOrg(d) {
+			@periodRenameCollapse(d, v.ProjectSlug, v.Current)
+		}
 	</section>
 }
 
@@ -213,7 +229,7 @@ templ closePreviewList(d web.LayoutData, p ClosePreview) {
 }
 
 templ periodCloseDialog(d web.LayoutData, v PeriodsView) {
-	@AppModal(d, "close-month-dialog", d.Tr("period.close_title", "Name", v.Current.Name)) {
+	@AppModal(d, "close-month-dialog", periodCloseTitle(d, v.Current.Label)) {
 		<form
 			method="post"
 			action={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/periods/"+v.Current.ID+"/close")) }
@@ -228,19 +244,28 @@ templ periodCloseDialog(d web.LayoutData, v PeriodsView) {
 				</span>
 				<a class="link ms-1" href={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/periods/"+v.Current.ID+"/close")) }>{ d.Tr("period.change_end") }</a>
 			</p>
+			if v.CloseEndToday {
+				@periodEndTodayAlert(d)
+			}
 			<input type="hidden" name="end_date" value={ v.CloseEnd }/>
 			<div class="modal-action mt-0">
 				<button type="button" data-dialog-close class="btn btn-ghost">{ d.Tr("common.cancel") }</button>
 				<button type="submit" class="btn btn-primary">
 					@icons.Icon("lock", "size-4")
-					{ d.Tr("overview.close_named", "Period", v.Current.Name) }
+					{ periodCloseNamed(d, v.Current.Label) }
 				</button>
 			</div>
 		</form>
 	}
 }
 
-templ periodListRow(d web.LayoutData, projectSlug string, r PeriodRow, current bool) {
+templ periodEndTodayAlert(d web.LayoutData) {
+	<div role="status" data-end-today class="alert alert-soft alert-info text-sm">
+		<span>{ d.Tr("period.end_today_hint") }</span>
+	</div>
+}
+
+templ periodListRow(d web.LayoutData, v PeriodsView, r PeriodRow, current bool) {
 	<li class="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2 p-4">
 		<span class="grid size-10 shrink-0 place-items-center rounded-full bg-base-200" aria-hidden="true">
 			if r.Closed {
@@ -250,7 +275,9 @@ templ periodListRow(d web.LayoutData, projectSlug string, r PeriodRow, current b
 			}
 		</span>
 		<div class="min-w-0 flex-1 basis-32">
-			<p class="font-medium break-words">{ r.Name }</p>
+			<p class="font-medium break-words">
+				@PeriodLabelView(d, r.Label)
+			</p>
 			<p class="text-sm tabular-nums text-base-content/70">
 				if current {
 					{ d.Tr("period.current") + " · " }
@@ -264,14 +291,14 @@ templ periodListRow(d web.LayoutData, projectSlug string, r PeriodRow, current b
 				}
 			</p>
 		</div>
-		if r.CanReopen {
-			<form method="post" action={ templ.SafeURL(d.ProjectPath(projectSlug, "/periods/"+r.ID+"/reopen")) }>
+		if canManageOrg(d) && r.CanReopen {
+			<form method="post" action={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/periods/"+r.ID+"/reopen")) }>
 				<button type="submit" class="btn btn-ghost">{ d.Tr("period.reopen") }</button>
 			</form>
 		}
-		if r.CanClose {
-			@AppButton(d.ProjectPath(projectSlug, "/periods/"+r.ID+"/close"), "btn-ghost", nil) {
-				{ d.Tr("period.close") }
+		if canManageOrg(d) && r.CanClose {
+			@AppButton(d.ProjectPath(v.ProjectSlug, "/periods/"+r.ID+"/close"), "btn-ghost", nil) {
+				{ periodCloseShort(d, r.Label) }
 			}
 		}
 		if r.Closed {
@@ -284,7 +311,7 @@ templ periodListRow(d web.LayoutData, projectSlug string, r PeriodRow, current b
 
 templ PeriodsPage(d web.LayoutData, v PeriodsView) {
 	<section class="flex max-w-2xl flex-col gap-4 lg:gap-6">
-		@PageHeader(d.Tr("period.title"), "")
+		@PageHeader(periodsTitle(d, v.HasCurrent, v.Current.Label), "")
 		if v.Error != "" {
 			@ErrorBanner(d, v.Error, v.ErrorCode)
 		}
@@ -303,10 +330,10 @@ templ PeriodsPage(d web.LayoutData, v PeriodsView) {
 				<h2 id="period-list-title" class="mb-2 text-sm font-semibold text-base-content/70">{ d.Tr("period.all") }</h2>
 				<ul class="divide-y divide-base-300 rounded-box border border-base-300 bg-base-100">
 					if v.HasCurrent {
-						@periodListRow(d, v.ProjectSlug, v.Current, true)
+						@periodListRow(d, v, v.Current, true)
 					}
 					for _, r := range v.History {
-						@periodListRow(d, v.ProjectSlug, r, false)
+						@periodListRow(d, v, r, false)
 					}
 				</ul>
 			</section>
@@ -315,7 +342,7 @@ templ PeriodsPage(d web.LayoutData, v PeriodsView) {
 }
 
 templ PeriodsLayout(d web.LayoutData, v PeriodsView) {
-	if v.HasCurrent && v.HasClose {
+	if v.HasCurrent && v.HasClose && canManageOrg(d) {
 		@Layout(web.WithDialogs(web.WithContent(d, PeriodsPage(d, v)), periodCloseDialog(d, v)))
 	} else {
 		@Layout(web.WithContent(d, PeriodsPage(d, v)))
@@ -326,8 +353,14 @@ templ PeriodsLayout(d web.LayoutData, v PeriodsView) {
 templ ClosePreviewFragment(d web.LayoutData, v ClosePeriodView) {
 	<div id="close-preview" class="mt-6 flex flex-col gap-3 rounded-box border border-base-300 bg-base-100 p-4">
 		<h2 class="text-sm font-semibold text-base-content/70">{ d.Tr("period.preview") }</h2>
+		if v.EndError != "" {
+			<p id="close-end-error" data-end-error role="alert" class="text-sm text-error">{ v.EndError }</p>
+		}
 		if v.Error != "" {
 			@ErrorBanner(d, v.Error, v.ErrorCode)
+		}
+		if !v.DateLocked && v.EndDate == v.MaxDate {
+			@periodEndTodayAlert(d)
 		}
 		if v.HasPreview {
 			@closePreviewList(d, v.Preview)
@@ -350,16 +383,18 @@ templ ClosePreviewFragment(d web.LayoutData, v ClosePeriodView) {
 
 templ ClosePeriodPage(d web.LayoutData, v ClosePeriodView) {
 	<section class="max-w-2xl">
-		@PageHeader(d.Tr("period.close"), v.PeriodName+" · "+v.Start) {
+		@PageHeader(periodCloseShort(d, v.Label), PeriodLabelText(d, v.Label)+" · "+v.Start) {
 			@AppButton(d.ProjectPath(v.ProjectSlug, "/periods"), "btn-ghost", nil) {
-				{ d.Tr("period.title") }
+				{ periodsTitle(d, true, v.Label) }
 			}
 		}
 		if v.AlreadyClosed {
 			<div class="mt-6 flex flex-col gap-3 rounded-box border border-base-300 bg-base-100 p-4">
 				<div class="flex flex-wrap items-center gap-2">
 					@periodStatusBadge(d, true)
-					<span class="text-sm break-words">{ v.PeriodName }</span>
+					<span class="text-sm break-words">
+						@PeriodLabelView(d, v.Label)
+					</span>
 				</div>
 				<p class="text-sm text-base-content/70">{ d.Tr("period.locked_hint") }</p>
 			</div>
@@ -368,10 +403,13 @@ templ ClosePeriodPage(d web.LayoutData, v ClosePeriodView) {
 			<form
 				method="post"
 				action={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/periods/"+v.PeriodID+"/close")) }
-				class="mt-6"
+				class="group/close mt-6"
 			>
 				{{ end := FieldProps{ID: "close-end-date", Label: d.Tr("period.end_date")} }}
-				{{ end.Hint = d.Tr("period.end_date_hint") }}
+				{{ end.Hint = d.Tr("period.end_default_hint") }}
+				if v.EndError != "" {
+					{{ end.ErrorID = "close-end-error" }}
+				}
 				if v.DateLocked {
 					{{ end.Hint = d.Tr("period.locked_hint") }}
 				}
@@ -383,6 +421,7 @@ templ ClosePeriodPage(d web.LayoutData, v ClosePeriodView) {
 						value={ v.EndDate }
 						max={ v.MaxDate }
 						disabled?={ v.DateLocked }
+						autofocus?={ v.EndError != "" }
 						hx-get={ d.ProjectPath(v.ProjectSlug, "/periods/"+v.PeriodID+"/close") }
 						hx-nonce={ d.Nonce }
 						hx-trigger="change"
@@ -390,7 +429,7 @@ templ ClosePeriodPage(d web.LayoutData, v ClosePeriodView) {
 						hx-swap="outerHTML"
 						hx-status:4xx="target:#hx-error swap:innerHTML"
 						hx-status:5xx="target:#hx-error swap:innerHTML"
-						class="input w-full text-base sm:max-w-xs"
+						class="input w-full text-base sm:max-w-xs group-has-[[data-end-error]]/close:input-error"
 						{ end.Attrs()... }
 					/>
 				}
@@ -404,7 +443,7 @@ templ ClosePeriodPage(d web.LayoutData, v ClosePeriodView) {
 				<div class="mt-3 flex flex-wrap gap-2">
 					<button type="submit" class="btn btn-primary w-full sm:w-auto">
 						@icons.Icon("lock", "size-4")
-						{ d.Tr("period.close") }
+						{ periodCloseShort(d, v.Label) }
 					</button>
 					@AppButton(d.ProjectPath(v.ProjectSlug, "/periods"), "w-full sm:w-auto", nil) {
 						{ d.Tr("common.cancel") }
@@ -417,4 +456,39 @@ templ ClosePeriodPage(d web.LayoutData, v ClosePeriodView) {
 
 templ ClosePeriodLayout(d web.LayoutData, v ClosePeriodView) {
 	@Layout(web.WithContent(d, ClosePeriodPage(d, v)))
+}
+
+func periodCloseNamed(d web.LayoutData, l PeriodLabel) string {
+	if l.Shared {
+		return d.Tr("period.close_period")
+	}
+	return d.Tr("overview.close_named", "Period", PeriodLabelText(d, l))
+}
+
+func periodCloseTitle(d web.LayoutData, l PeriodLabel) string {
+	if l.Shared {
+		return d.Tr("period.close_period_title")
+	}
+	return d.Tr("period.close_title", "Name", PeriodLabelText(d, l))
+}
+
+func periodCloseShort(d web.LayoutData, l PeriodLabel) string {
+	if l.IsMonth() {
+		return d.Tr("period.close")
+	}
+	return d.Tr("period.close_period")
+}
+
+func periodsTitle(d web.LayoutData, hasCurrent bool, l PeriodLabel) string {
+	if hasCurrent && !l.IsMonth() {
+		return d.Tr("period.close_period")
+	}
+	return d.Tr("period.title")
+}
+
+func periodCloseHint(d web.LayoutData, l PeriodLabel) string {
+	if l.IsMonth() {
+		return d.Tr("period.close_hint", "Name", PeriodLabelText(d, l))
+	}
+	return d.Tr("period.close_hint_this")
 }

@@ -94,12 +94,12 @@ func RegisterPeriodServiceTools(reg *mcp.Registry, h yasakuv1connect.PeriodServi
 	}, h)
 	reg.Register(mcp.ToolSpec{
 		Name:        PreviewCloseToolName,
-		Description: "Calculate what closing a period on a given date would freeze, without saving anything. Period must be a period ID from list_periods or current_period, never a period name; leave it empty for the current period. The end date is YYYY-MM-DD, must be today or earlier, must not precede the period start, and empty means today in the project's timezone.",
+		Description: "Calculate what closing a period on a given date would freeze, without saving anything. Period must be a period ID from list_periods or current_period, never a period name; leave it empty for the current period. The end date is YYYY-MM-DD, must be today or earlier, must not precede the period start, and must not precede the period's latest entry (refused with PRD009); empty means yesterday in the project's timezone, capped at the cycle end, never before the period start, and moved to the latest entry's date when that is later.",
 		Scope:       scopeFor(PreviewCloseToolName),
 		Mutation:    false,
 		Destructive: false,
 		UI:          "ui://yasaku/app",
-		InputSchema: json.RawMessage(`{"type":"object","properties":{"target":{"type":"object","properties":{"org":{"type":"string"},"project":{"type":"string"}},"additionalProperties":false},"period":{"type":"string","description":"Period ID from list_periods or current_period, never a period name. Empty means the current period."},"endDate":{"type":"string","description":"YYYY-MM-DD; must be today or earlier and not before the period start."}},"additionalProperties":false}`),
+		InputSchema: json.RawMessage(`{"type":"object","properties":{"target":{"type":"object","properties":{"org":{"type":"string"},"project":{"type":"string"}},"additionalProperties":false},"period":{"type":"string","description":"Period ID from list_periods or current_period, never a period name. Empty means the current period."},"endDate":{"type":"string","description":"YYYY-MM-DD; must be today or earlier and not before the period start. Never before the period's latest entry (PRD009). Empty means yesterday, capped at the cycle end, never before the period start, and moved to the latest entry's date when that is later."}},"additionalProperties":false}`),
 		Handler: func(ctx context.Context, input json.RawMessage) (json.RawMessage, error) {
 			if len(input) == 0 {
 				input = json.RawMessage(`{}`)
@@ -121,12 +121,12 @@ func RegisterPeriodServiceTools(reg *mcp.Registry, h yasakuv1connect.PeriodServi
 	}, h)
 	reg.Register(mcp.ToolSpec{
 		Name:        ClosePeriodToolName,
-		Description: "Close the books: freeze the period totals and, on a first close, open the next period the following day. Period must be a period ID from list_periods or current_period, never a period name; leave it empty for the current period. The end date is YYYY-MM-DD, must be today or earlier, and on a reopened period it is fixed and must match the stored end date. A closed period refuses new transactions until it is reopened. Call without confirm to preview the snapshot; call again with confirm=true to close. The preview is the resolved intent, not the frozen record: it is recomputed at close time, so a transaction landing in between changes the totals that are actually saved.",
+		Description: "Close the books: freeze the period totals and, on a first close, open the next period the following day. Period must be a period ID from list_periods or current_period, never a period name; leave it empty for the current period. The end date is YYYY-MM-DD, must be today or earlier, must not precede the period's latest entry (refused with PRD009 in preview and in close), empty means yesterday in the project's timezone (capped at the cycle end, never before the period start, moved to the latest entry's date when that is later), and on a reopened period it is fixed and must match the stored end date. A closed period refuses new transactions until it is reopened. Call without confirm to preview the snapshot; call again with confirm=true to close. The preview is the resolved intent, not the frozen record: it is recomputed at close time, so a transaction landing in between changes the totals that are actually saved.",
 		Scope:       scopeFor(ClosePeriodToolName),
 		Mutation:    true,
 		Destructive: true,
 		UI:          "ui://yasaku/app",
-		InputSchema: json.RawMessage(`{"type":"object","properties":{"target":{"type":"object","properties":{"org":{"type":"string"},"project":{"type":"string"}},"additionalProperties":false},"period":{"type":"string","description":"Period ID from list_periods or current_period, never a period name. Empty means the current period."},"endDate":{"type":"string","description":"YYYY-MM-DD; must be today or earlier and not before the period start. On a reopened period it is fixed and must match the stored end date."},"confirm":{"type":"boolean"}},"additionalProperties":false}`),
+		InputSchema: json.RawMessage(`{"type":"object","properties":{"target":{"type":"object","properties":{"org":{"type":"string"},"project":{"type":"string"}},"additionalProperties":false},"period":{"type":"string","description":"Period ID from list_periods or current_period, never a period name. Empty means the current period."},"endDate":{"type":"string","description":"YYYY-MM-DD; must be today or earlier and not before the period start. Never before the period's latest entry (PRD009). Empty means yesterday, capped at the cycle end, never before the period start, and moved to the latest entry's date when that is later. On a reopened period it is fixed and must match the stored end date."},"confirm":{"type":"boolean"}},"additionalProperties":false}`),
 		Handler: func(ctx context.Context, input json.RawMessage) (json.RawMessage, error) {
 			if len(input) == 0 {
 				input = json.RawMessage(`{}`)

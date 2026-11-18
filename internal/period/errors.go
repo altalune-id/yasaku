@@ -6,6 +6,7 @@ import (
 
 	"google.golang.org/grpc/codes"
 
+	"altalune.id/yasaku/civil"
 	apperrorv1 "altalune.id/yasaku/gen/go/apperror/v1"
 	"altalune.id/yasaku/internal/apperror"
 )
@@ -79,6 +80,35 @@ func (e *InvalidRangeError) ToAppError() *apperror.AppError {
 // IsInvalidRangeError reports whether err's chain contains an *InvalidRangeError.
 func IsInvalidRangeError(err error) bool {
 	_, ok := errors.AsType[*InvalidRangeError](err)
+	return ok
+}
+
+// EntriesAfterEndError reports a close whose end date is before the period's latest entry, which would freeze entries dated after the end into its totals.
+type EntriesAfterEndError struct {
+	PeriodID    string
+	End, Latest civil.Date
+}
+
+func (e *EntriesAfterEndError) Error() string {
+	return fmt.Sprintf("period %s: entries dated up to %s are after the end date %s", e.PeriodID, e.Latest, e.End)
+}
+
+// ToAppError converts the typed error into the wire envelope.
+func (e *EntriesAfterEndError) ToAppError() *apperror.AppError {
+	return apperror.New(
+		apperror.CodePeriodEntriesAfterEnd,
+		"period has entries dated after the chosen end date; choose an end date on or after the latest entry",
+		codes.FailedPrecondition,
+		&apperrorv1.ErrorDetail{
+			Code: apperror.CodePeriodEntriesAfterEnd,
+			Meta: map[string]string{"period_id": e.PeriodID, "end_date": e.End.String(), "latest_entry_date": e.Latest.String()},
+		},
+	)
+}
+
+// IsEntriesAfterEndError reports whether err's chain contains an *EntriesAfterEndError.
+func IsEntriesAfterEndError(err error) bool {
+	_, ok := errors.AsType[*EntriesAfterEndError](err)
 	return ok
 }
 
@@ -206,5 +236,5 @@ func IsAuthorMissingError(err error) bool {
 func isDomainError(err error) bool {
 	return IsNotFoundError(err) || IsInvalidNameError(err) || IsInvalidRangeError(err) ||
 		IsOverlapError(err) || IsAlreadyClosedError(err) || IsNotClosedError(err) ||
-		IsNotLatestClosedError(err) || IsAuthorMissingError(err)
+		IsNotLatestClosedError(err) || IsAuthorMissingError(err) || IsEntriesAfterEndError(err)
 }

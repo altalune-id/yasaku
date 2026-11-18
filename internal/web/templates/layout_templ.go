@@ -1246,7 +1246,7 @@ func projectMenu(d web.LayoutData) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-		} else {
+		} else if canManageOrg(d) {
 			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 89, "<li class=\"menu-title flex h-8 justify-center px-3 py-0\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
@@ -2297,6 +2297,10 @@ func layoutDir(d web.LayoutData) string {
 		return d.Dir
 	}
 	return "ltr"
+}
+
+func canManageOrg(d web.LayoutData) bool {
+	return d.ActiveOrg != nil && d.ActiveOrg.CanManage
 }
 
 var _ = templruntime.GeneratedTemplate

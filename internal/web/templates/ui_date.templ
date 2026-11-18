@@ -19,7 +19,9 @@ type DateFieldProps struct {
 	Today     string
 	Yesterday string
 	Error     string
-	Chip      bool
+	// ErrorID names an error line the caller renders outside the field, so it stays visible once the chip replaces the native input.
+	ErrorID string
+	Chip    bool
 	// Max is the latest pickable ISO date; datepicker.js raises it to the browser's today when that is later.
 	Max string
 }
@@ -50,6 +52,10 @@ templ DateField(d web.LayoutData, p DateFieldProps) {
 						max={ p.Max }
 					}
 					required
+					if p.ErrorID != "" {
+						aria-invalid="true"
+						aria-describedby={ p.ErrorID }
+					}
 					data-date-input
 					class="input w-full"
 				/>
@@ -62,6 +68,10 @@ templ DateField(d web.LayoutData, p DateFieldProps) {
 				data-dialog-open={ p.ID + "-dialog" }
 				aria-haspopup="dialog"
 				aria-labelledby={ p.ID + "-chip-label " + p.ID + "-chip-value" }
+				if p.ErrorID != "" {
+					aria-invalid="true"
+					aria-describedby={ p.ErrorID }
+				}
 				class="btn h-11 justify-start gap-2 font-medium"
 			>
 				@icons.Icon("calendar-range", "size-4")

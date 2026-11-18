@@ -132,6 +132,6 @@ func (h *APIKeyHandler) personalWriter(w http.ResponseWriter, sc OrgScope) listW
 			h.listFailed(w, sc.req, err)
 			return
 		}
-		Render(w, sc.req, templates.APIKeyList(h.OrgFragmentBase(sc), v))
+		RenderStatus(w, sc.req, apiKeyListStatus(errKind), templates.APIKeyList(h.OrgFragmentBase(sc), v))
 	}
 }

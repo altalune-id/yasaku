@@ -68,6 +68,13 @@ const scopePredicate = `org_id = #orgID AND org_id = #scopeOrg AND project_id = 
 
 const scopePredicateT = `t.org_id = #orgID AND t.org_id = #scopeOrg AND t.project_id = #projectID`
 
+func latestEntrySQL(t tableNames) string {
+	return fmt.Sprintf(`
+SELECT MAX(occurred_at) AS "latest.at"
+  FROM %s
+ WHERE `+scopePredicate+` AND period_id = #periodID`, t.txn)
+}
+
 func summaryTotalsSQL(t tableNames, pg bool) string {
 	income, expense := incomeExpenseSums("")
 	return fmt.Sprintf(`

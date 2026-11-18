@@ -13,12 +13,18 @@ import (
 	apperrorv1 "altalune.id/yasaku/gen/go/apperror/v1"
 	"altalune.id/yasaku/internal/apperror"
 	"altalune.id/yasaku/internal/ledger"
+	"altalune.id/yasaku/internal/org"
 	"altalune.id/yasaku/internal/platform/tenant"
 	"altalune.id/yasaku/internal/testutil/fakes"
 	"altalune.id/yasaku/money"
 )
 
 func newSvc(t *testing.T, store ledger.Store) (*ledger.Service, *int) {
+	t.Helper()
+	return newSvcWith(t, store, fakes.PermissiveMembers())
+}
+
+func newSvcWith(t *testing.T, store ledger.Store, members ledger.Managers) (*ledger.Service, *int) {
 	t.Helper()
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	calls := 0
@@ -27,7 +33,7 @@ func newSvc(t *testing.T, store ledger.Store) (*ledger.Service, *int) {
 		return apperror.New("yasaku.unexpected", err.Error(), codes.Internal,
 			&apperrorv1.ErrorDetail{Code: "yasaku.unexpected"}).WithCause(err)
 	}
-	return ledger.NewService(store, log, unexpected), &calls
+	return ledger.NewService(store, log, unexpected, members), &calls
 }
 
 func tenantCtx(t *testing.T) (context.Context, tenant.Context) {
@@ -279,4 +285,40 @@ func TestService_StoreFailuresRouteThroughUnexpected(t *testing.T) {
 			t.Errorf("unexpected() called %d times, want 1", *unexCalls)
 		}
 	})
+}
+
+// SECURITY: the ledger settings are project-wide, so this gate is the one check every surface shares.
+func TestService_Update_OnlyAManagerChangesTheSettings(t *testing.T) {
+	store := fakes.NewLedger()
+	members := fakes.NewMembers()
+	svc, _ := newSvcWith(t, store, members)
+	ctx, tc := tenantCtx(t)
+	members.SeatMember(tc.OrgID, tc.UserID)
+	day := 25
+	bad := "Not/AZone"
+
+	_, err := svc.Update(ctx, ledger.Patch{PeriodStartDay: &day})
+	if !org.IsNotManagerError(err) {
+		t.Fatalf("member Update err = %v, want NotManagerError", err)
+	}
+	_, err = svc.Update(ctx, ledger.Patch{Timezone: &bad})
+	if !org.IsNotManagerError(err) {
+		t.Fatalf("member Update with a bad patch err = %v, want NotManagerError before validation", err)
+	}
+	got, err := svc.Get(ctx)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.PeriodStartDay == day {
+		t.Fatal("a refused Update must not change the settings")
+	}
+
+	members.SeatManager(tc.OrgID, tc.UserID)
+	got, err = svc.Update(ctx, ledger.Patch{PeriodStartDay: &day})
+	if err != nil {
+		t.Fatalf("manager Update: %v", err)
+	}
+	if got.PeriodStartDay != day {
+		t.Fatalf("PeriodStartDay = %d, want %d", got.PeriodStartDay, day)
+	}
 }

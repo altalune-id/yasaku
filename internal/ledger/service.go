@@ -17,16 +17,22 @@ import (
 //nolint:gochecknoglobals // OTel tracer is a package-level fixture, not runtime state.
 var tracer = otel.Tracer("altalune.id/yasaku/internal/ledger")
 
+// Managers is the role gate a settings write asks before anything else.
+type Managers interface {
+	RequireCallerManager(ctx context.Context) error
+}
+
 // Service is the ledger settings driving port.
 type Service struct {
 	store      Store
 	log        *slog.Logger
 	unexpected apperror.UnexpectedFunc
+	managers   Managers
 }
 
 // NewService binds the service to its dependencies.
-func NewService(store Store, log *slog.Logger, unexpected apperror.UnexpectedFunc) *Service {
-	return &Service{store: store, log: log.With("module", "ledger"), unexpected: unexpected}
+func NewService(store Store, log *slog.Logger, unexpected apperror.UnexpectedFunc, managers Managers) *Service {
+	return &Service{store: store, log: log.With("module", "ledger"), unexpected: unexpected, managers: managers}
 }
 
 // Get returns the caller's project settings, or the defaults when none were ever saved.
@@ -58,6 +64,10 @@ func (s *Service) Update(ctx context.Context, p Patch) (*Settings, error) {
 		attribute.String("org_id", tc.OrgID.String()),
 		attribute.String("project_id", tc.ProjectID.String()),
 	)
+	if err := s.managers.RequireCallerManager(ctx); err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
 
 	cur, err := s.effective(ctx, "ledger.Update", tc.OrgID, tc.ProjectID)
 	if err != nil {

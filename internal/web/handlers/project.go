@@ -10,6 +10,9 @@ import (
 	slugs "altalune.id/yasaku/slug"
 )
 
+//i18n:use project_new.error_not_manager
+const projectNewNotManager = "Only an owner or admin can create a project."
+
 // ProjectHandler owns the /projects routes.
 type ProjectHandler struct{ Deps }
 
@@ -44,6 +47,10 @@ func (h *ProjectHandler) GetNew(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if !h.CanManageOrg(sc) {
+		h.forbidNonManager(w, sc.req, "project_new.error_not_manager", projectNewNotManager)
+		return
+	}
 	o := sc.org
 	Render(w, r, templates.ProjectNewLayout(
 		h.LayoutForOrg(r, pageTitle(r, "nav.create_project"), o.Slug, "projects"),
@@ -66,6 +73,9 @@ func (h *ProjectHandler) PostCreate(w http.ResponseWriter, r *http.Request) {
 	name := strings.TrimSpace(r.PostForm.Get("name"))
 	created, err := h.Projects.Create(r.Context(), o.ID, slug, name)
 	if err != nil {
+		if h.refuseNotManager(w, r, err, "project_new.error_not_manager", projectNewNotManager) {
+			return
+		}
 		h.LogErr("web project: create", err)
 		msg := err.Error()
 		if project.IsAlreadyExistsError(err) {

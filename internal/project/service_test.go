@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 
 	"altalune.id/yasaku/internal/apperror"
+	"altalune.id/yasaku/internal/org"
 	"altalune.id/yasaku/internal/platform/tenant"
 	"altalune.id/yasaku/internal/project"
 	"altalune.id/yasaku/internal/testutil/fakes"
@@ -18,7 +19,7 @@ import (
 func newTestService(t *testing.T) (*project.Service, *fakes.Project) {
 	t.Helper()
 	store := fakes.NewProject()
-	return project.NewService(store, discardLog(), failOnUnexpected(t)), store
+	return project.NewService(store, discardLog(), failOnUnexpected(t), fakes.PermissiveMembers()), store
 }
 
 func discardLog() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }
@@ -269,7 +270,7 @@ func TestService_Unexpected_Wraps(t *testing.T) {
 		}
 		return apperror.New(apperror.CodeUnexpectedError, "unexpected", 0)
 	}
-	svc := project.NewService(store, log, unexpected)
+	svc := project.NewService(store, log, unexpected, fakes.PermissiveMembers())
 	ctx := tenantCtx(orgID, userID)
 	if _, err := svc.List(ctx, orgID); err == nil {
 		t.Fatal("expected error")
@@ -290,4 +291,62 @@ func (s *erroringStore) BySlug(context.Context, uuid.UUID, string) (*project.Pro
 }
 func (s *erroringStore) List(context.Context, uuid.UUID) ([]*project.Project, error) {
 	return nil, s.err
+}
+
+// SECURITY: membership is org-wide, so this gate is what keeps a plain member from creating or renaming projects on every surface.
+func TestService_CreateAndRename_OnlyAManager(t *testing.T) {
+	store := fakes.NewProject()
+	members := fakes.NewMembers()
+	svc := project.NewService(store, discardLog(), failOnUnexpected(t), members)
+	orgID, member, manager := uuid.New(), uuid.New(), uuid.New()
+	members.SeatMember(orgID, member)
+	members.SeatManager(orgID, manager)
+
+	_, err := svc.Create(tenantCtx(orgID, member), orgID, "side", "Side")
+	if !org.IsNotManagerError(err) {
+		t.Fatalf("member Create err = %v, want NotManagerError", err)
+	}
+	items, err := svc.List(tenantCtx(orgID, manager), orgID)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(items) != 0 {
+		t.Fatalf("a refused Create stored %d projects", len(items))
+	}
+
+	p, err := svc.Create(tenantCtx(orgID, manager), orgID, "side", "Side")
+	if err != nil {
+		t.Fatalf("manager Create: %v", err)
+	}
+	if _, err := svc.Rename(tenantCtx(orgID, member), p.ID, "Mine"); !org.IsNotManagerError(err) {
+		t.Fatalf("member Rename err = %v, want NotManagerError", err)
+	}
+	got, err := svc.Rename(tenantCtx(orgID, manager), p.ID, "Ours")
+	if err != nil {
+		t.Fatalf("manager Rename: %v", err)
+	}
+	if got.Name != "Ours" {
+		t.Fatalf("Name = %q, want Ours", got.Name)
+	}
+}
+
+// SECURITY: the gate authorizes the tenant org, so a create naming another org is refused before it is written there.
+func TestService_Create_RefusesAnOrgOtherThanTheTenants(t *testing.T) {
+	store := fakes.NewProject()
+	members := fakes.NewMembers()
+	svc := project.NewService(store, discardLog(), failOnUnexpected(t), members)
+	orgA, orgB, manager := uuid.New(), uuid.New(), uuid.New()
+	members.SeatManager(orgA, manager)
+
+	_, err := svc.Create(tenantCtx(orgA, manager), orgB, "side", "Side")
+	if !org.IsNotManagerError(err) {
+		t.Fatalf("cross-org Create err = %v, want NotManagerError", err)
+	}
+	items, err := svc.List(tenantCtx(orgB, manager), orgB)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(items) != 0 {
+		t.Fatalf("a refused cross-org Create stored %d projects in the other org", len(items))
+	}
 }

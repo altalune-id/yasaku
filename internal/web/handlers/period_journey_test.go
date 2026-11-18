@@ -26,7 +26,7 @@ func TestPeriods_Page_ClosesInTwoTapsThroughAPreviewDialog(t *testing.T) {
 	require.NotEmpty(t, dialog, "the close preview dialog must render on the periods page")
 	assert.Contains(t, dialog, f.path("/periods/"+cur.ID.String()+"/close"))
 	end := f.today(t)
-	assert.Contains(t, dialog, `name="end_date" value="`+end.String()+`"`, "a running period closes through today, so entries already dated today stay inside it")
+	assert.Contains(t, dialog, `name="end_date" value="`+end.String()+`"`, "the books hold entries dated today, so the default keeps today inside the period")
 	assert.Contains(t, dialog, `<time datetime="`+end.String()+`" data-ledger-date`, "the end date renders as a localized ledger date")
 	assert.Contains(t, dialog, "IDR\u00a05,000")
 	assert.Contains(t, dialog, "IDR\u00a02,000")

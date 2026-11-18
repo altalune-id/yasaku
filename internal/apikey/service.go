@@ -448,7 +448,7 @@ func ownerRefusal(err error) error {
 
 // SECURITY: a key is not a person, so UserID stays nil and no secret travels with the principal.
 func principalFor(k *APIKey) session.Principal {
-	return session.Principal{
+	p := session.Principal{
 		UserID:          uuid.Nil,
 		KeyID:           k.ID,
 		Name:            k.Name,
@@ -461,4 +461,13 @@ func principalFor(k *APIKey) session.Principal {
 		ResourceIDs:     slices.Clone(k.ResourceIDs),
 		IssuedAt:        k.CreatedAt,
 	}
+	switch k.Kind {
+	case KindProject:
+		p.KeyKind = session.KeyKindProject
+	case KindOrg:
+		p.KeyKind = session.KeyKindOrg
+	case KindPersonal:
+		p.KeyKind, p.KeyOwnerID = session.KeyKindPersonal, k.CreatedBy
+	}
+	return p
 }

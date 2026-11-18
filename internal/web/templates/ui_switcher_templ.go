@@ -341,7 +341,7 @@ func switcherList(d web.LayoutData, projectIcon string) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		}
-		if d.ActiveOrg != nil {
+		if canManageOrg(d) {
 			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, "<li><a href=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err

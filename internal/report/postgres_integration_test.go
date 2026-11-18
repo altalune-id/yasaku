@@ -291,3 +291,7 @@ func mustExecPg(t *testing.T, sqlDB *sql.DB, query string, args ...any) {
 		t.Fatalf("exec %q: %v", query, err)
 	}
 }
+
+func TestPgReader_LatestEntry_IsScopedToOrgAndProject(t *testing.T) {
+	assertLatestEntryIsScoped(t, newPgSeed(t))
+}

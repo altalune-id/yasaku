@@ -91,6 +91,21 @@ func (d Deps) CanManage(sc ProjectScope) bool {
 	return d.CanManageOrg(OrgScope{principal: sc.principal, sid: sc.sid, org: sc.org, req: sc.req})
 }
 
+func (d Deps) refuseNotManager(w http.ResponseWriter, r *http.Request, err error, msgKey, fallback string) bool {
+	if !org.IsNotManagerError(err) {
+		return false
+	}
+	d.forbidNonManager(w, r, msgKey, fallback)
+	return true
+}
+
+//i18n:use error_title.not_allowed
+func (d Deps) forbidNonManager(w http.ResponseWriter, r *http.Request, msgKey, fallback string) {
+	d.ErrorPage(w, r, http.StatusForbidden,
+		localizedDefault(r, "error_title.not_allowed", "Not allowed"),
+		localizedDefault(r, msgKey, fallback))
+}
+
 // CanManageOrg reports whether the principal may manage sc's org. SECURITY: the one role seam; a failed lookup refuses.
 func (d Deps) CanManageOrg(sc OrgScope) bool {
 	ok, err := d.Orgs.IsManager(sc.req.Context(), sc.org.ID, sc.principal.UserID)

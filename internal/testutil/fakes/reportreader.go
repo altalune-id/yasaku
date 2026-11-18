@@ -35,6 +35,7 @@ type ReportReader struct {
 	Points     []report.CashflowPoint
 	FlowLines  []report.Flow
 	Balances   []report.WalletLine
+	Latest     map[uuid.UUID]time.Time
 	PeriodErr  error
 	SummaryErr error
 	Err        error
@@ -76,6 +77,15 @@ func (f *ReportReader) Period(_ context.Context, orgID, projectID, periodID uuid
 		return report.PeriodRef{}, f.PeriodErr
 	}
 	return f.Ref, nil
+}
+
+// LatestEntry returns the canned latest entry time for periodID.
+func (f *ReportReader) LatestEntry(_ context.Context, orgID, projectID, periodID uuid.UUID) (time.Time, bool, error) {
+	f.record(ReportCall{Method: "LatestEntry", OrgID: orgID, ProjectID: projectID, PeriodID: periodID})
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	at, ok := f.Latest[periodID]
+	return at, ok, nil
 }
 
 func (f *ReportReader) Summary(_ context.Context, orgID, projectID, periodID uuid.UUID, currency money.Currency, startUTC time.Time, archivedBefore *time.Time) (report.PeriodSummary, error) {

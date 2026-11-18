@@ -3,6 +3,7 @@ package period_test
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -113,21 +114,27 @@ func TestSuggestedEnd_FollowsTheConfiguredStartDay(t *testing.T) {
 		today    civil.Date
 		startDay int
 		want     civil.Date
+		latest   *civil.Date
 	}{
-		{"payday moved later", civil.Date{Year: 2026, Month: 3, Day: 1}, civil.Date{Year: 2026, Month: 9, Day: 16}, 25, civil.Date{Year: 2026, Month: 3, Day: 24}},
-		{"month starts on the first", civil.Date{Year: 2026, Month: 3, Day: 1}, civil.Date{Year: 2026, Month: 9, Day: 16}, 1, civil.Date{Year: 2026, Month: 3, Day: 31}},
-		{"start already on the cycle day", civil.Date{Year: 2026, Month: 8, Day: 25}, civil.Date{Year: 2026, Month: 9, Day: 30}, 25, civil.Date{Year: 2026, Month: 9, Day: 24}},
-		{"december rolls into january", civil.Date{Year: 2026, Month: 12, Day: 25}, civil.Date{Year: 2027, Month: 3, Day: 1}, 25, civil.Date{Year: 2027, Month: 1, Day: 24}},
-		{"start day clamped to 28", civil.Date{Year: 2026, Month: 3, Day: 1}, civil.Date{Year: 2026, Month: 9, Day: 16}, 31, civil.Date{Year: 2026, Month: 3, Day: 27}},
-		{"never later than today", civil.Date{Year: 2026, Month: 9, Day: 1}, civil.Date{Year: 2026, Month: 9, Day: 16}, 25, civil.Date{Year: 2026, Month: 9, Day: 16}},
-		{"closing on the cycle's last day keeps that day in the month", civil.Date{Year: 2026, Month: 9, Day: 1}, civil.Date{Year: 2026, Month: 9, Day: 30}, 1, civil.Date{Year: 2026, Month: 9, Day: 30}},
-		{"the day after the cycle ends closes the whole cycle", civil.Date{Year: 2026, Month: 9, Day: 1}, civil.Date{Year: 2026, Month: 10, Day: 1}, 1, civil.Date{Year: 2026, Month: 9, Day: 30}},
-		{"a period that started today", civil.Date{Year: 2026, Month: 9, Day: 16}, civil.Date{Year: 2026, Month: 9, Day: 16}, 1, civil.Date{Year: 2026, Month: 9, Day: 16}},
-		{"never before the start", civil.Date{Year: 2026, Month: 9, Day: 1}, civil.Date{Year: 2026, Month: 8, Day: 20}, 25, civil.Date{Year: 2026, Month: 9, Day: 1}},
+		{"payday moved later", civil.Date{Year: 2026, Month: 3, Day: 1}, civil.Date{Year: 2026, Month: 9, Day: 16}, 25, civil.Date{Year: 2026, Month: 3, Day: 24}, nil},
+		{"month starts on the first", civil.Date{Year: 2026, Month: 3, Day: 1}, civil.Date{Year: 2026, Month: 9, Day: 16}, 1, civil.Date{Year: 2026, Month: 3, Day: 31}, nil},
+		{"start already on the cycle day", civil.Date{Year: 2026, Month: 8, Day: 25}, civil.Date{Year: 2026, Month: 9, Day: 30}, 25, civil.Date{Year: 2026, Month: 9, Day: 24}, nil},
+		{"december rolls into january", civil.Date{Year: 2026, Month: 12, Day: 25}, civil.Date{Year: 2027, Month: 3, Day: 1}, 25, civil.Date{Year: 2027, Month: 1, Day: 24}, nil},
+		{"start day clamped to 28", civil.Date{Year: 2026, Month: 3, Day: 1}, civil.Date{Year: 2026, Month: 9, Day: 16}, 31, civil.Date{Year: 2026, Month: 3, Day: 27}, nil},
+		{"yesterday, so today belongs to the next period", civil.Date{Year: 2026, Month: 9, Day: 1}, civil.Date{Year: 2026, Month: 9, Day: 16}, 25, civil.Date{Year: 2026, Month: 9, Day: 15}, nil},
+		{"closing on the cycle's last day leaves that day open", civil.Date{Year: 2026, Month: 9, Day: 1}, civil.Date{Year: 2026, Month: 9, Day: 30}, 1, civil.Date{Year: 2026, Month: 9, Day: 29}, nil},
+		{"yesterday crosses back into the previous month", civil.Date{Year: 2026, Month: 8, Day: 25}, civil.Date{Year: 2026, Month: 9, Day: 1}, 25, civil.Date{Year: 2026, Month: 8, Day: 31}, nil},
+		{"the day after the cycle ends closes the whole cycle", civil.Date{Year: 2026, Month: 9, Day: 1}, civil.Date{Year: 2026, Month: 10, Day: 1}, 1, civil.Date{Year: 2026, Month: 9, Day: 30}, nil},
+		{"a period that started today", civil.Date{Year: 2026, Month: 9, Day: 16}, civil.Date{Year: 2026, Month: 9, Day: 16}, 1, civil.Date{Year: 2026, Month: 9, Day: 16}, nil},
+		{"never before the start", civil.Date{Year: 2026, Month: 9, Day: 1}, civil.Date{Year: 2026, Month: 8, Day: 20}, 25, civil.Date{Year: 2026, Month: 9, Day: 1}, nil},
+		{"an entry dated today moves the end to today", civil.Date{Year: 2026, Month: 9, Day: 1}, civil.Date{Year: 2026, Month: 9, Day: 16}, 1, civil.Date{Year: 2026, Month: 9, Day: 16}, &civil.Date{Year: 2026, Month: 9, Day: 16}},
+		{"an entry after the cycle end moves the end to it", civil.Date{Year: 2026, Month: 9, Day: 1}, civil.Date{Year: 2026, Month: 10, Day: 3}, 1, civil.Date{Year: 2026, Month: 10, Day: 2}, &civil.Date{Year: 2026, Month: 10, Day: 2}},
+		{"a future entry never pushes the default past today", civil.Date{Year: 2026, Month: 9, Day: 1}, civil.Date{Year: 2026, Month: 9, Day: 16}, 1, civil.Date{Year: 2026, Month: 9, Day: 16}, &civil.Date{Year: 2026, Month: 9, Day: 17}},
+		{"an earlier entry leaves yesterday", civil.Date{Year: 2026, Month: 9, Day: 1}, civil.Date{Year: 2026, Month: 9, Day: 16}, 1, civil.Date{Year: 2026, Month: 9, Day: 15}, &civil.Date{Year: 2026, Month: 9, Day: 3}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.want, period.SuggestedEnd(tt.start, tt.today, tt.startDay))
+			assert.Equal(t, tt.want, period.SuggestedEnd(tt.start, tt.today, tt.latest, tt.startDay))
 		})
 	}
 }
@@ -195,4 +202,32 @@ func closedAt(t *testing.T, start, end civil.Date) *period.Period {
 	p.EndDate = &endCopy
 	p.Status = period.StatusClosed
 	return p
+}
+
+func TestSharesMonth(t *testing.T) {
+	d := func(m time.Month, day int) civil.Date { return civil.Date{Year: 2026, Month: m, Day: day} }
+	renamed := func(p *period.Period) *period.Period { p.Name = "Holiday"; return p }
+	novFirst := closedAt(t, d(11, 1), d(11, 17))
+	novMid := mustPeriod(t, d(11, 18))
+	octPayday := closedAt(t, d(10, 25), d(11, 24))
+	novPayday := mustPeriod(t, d(11, 25))
+
+	tests := []struct {
+		name          string
+		p, prev, next *period.Period
+		want          bool
+	}{
+		{"closed half of a mid-month close", novFirst, nil, novMid, true},
+		{"open half of a mid-month close", novMid, novFirst, nil, true},
+		{"payday cycles keep their month", novPayday, octPayday, nil, false},
+		{"no neighbors", novMid, nil, nil, false},
+		{"a renamed period keeps its name", renamed(mustPeriod(t, d(11, 18))), novFirst, nil, false},
+		{"a renamed neighbor frees the month", novMid, renamed(closedAt(t, d(11, 1), d(11, 17))), nil, false},
+		{"same month in another year", mustPeriod(t, civil.Date{Year: 2027, Month: 11, Day: 1}), novFirst, nil, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, period.SharesMonth(tt.p, tt.prev, tt.next))
+		})
+	}
 }

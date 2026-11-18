@@ -226,7 +226,7 @@ templ projectMenu(d web.LayoutData) {
 				<span class="truncate">{ d.Tr("more.tips_again") }</span>
 			</button>
 		</li>
-	} else {
+	} else if canManageOrg(d) {
 		<li class="menu-title flex h-8 justify-center px-3 py-0">{ d.Tr("common.project") }</li>
 		@menuLink(d.OrgPath("/projects/new"), "plus", d.Tr("nav.create_project"), false)
 	}
@@ -441,4 +441,8 @@ func layoutDir(d web.LayoutData) string {
 		return d.Dir
 	}
 	return "ltr"
+}
+
+func canManageOrg(d web.LayoutData) bool {
+	return d.ActiveOrg != nil && d.ActiveOrg.CanManage
 }

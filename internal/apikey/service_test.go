@@ -235,6 +235,7 @@ func TestPrincipalCarriesTheKeyID(t *testing.T) {
 	p, err := auth.Authenticate(t.Context(), plaintext)
 	require.NoError(t, err)
 	assert.Equal(t, k.ID, p.KeyID, "principalFor must carry the minted key's id so downstream writers can attribute rows to it")
+	assert.Equal(t, session.KeyKindProject, p.KeyKind)
 }
 
 func TestService_MintListRevoke(t *testing.T) {

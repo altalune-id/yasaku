@@ -43,6 +43,7 @@ type periodFixture struct {
 	Cfg       *config.Config
 	Sessions  session.Store
 	DB        *sql.DB
+	Users     *user.Service
 	Orgs      *org.Service
 	Projects  *project.Service
 	Ledgers   *ledger.Service
@@ -57,9 +58,14 @@ type periodFixture struct {
 	Project   *project.Project
 	Sibling   *project.Project
 	Principal session.Principal
+	setNow    func(at time.Time)
 }
 
 type periodSnapshotter struct{ reports *report.Service }
+
+func (a periodSnapshotter) LatestAt(ctx context.Context, orgID, projectID, periodID uuid.UUID) (time.Time, bool, error) {
+	return a.reports.LatestEntryAt(ctx, orgID, projectID, periodID)
+}
 
 func (a periodSnapshotter) Snapshot(ctx context.Context, orgID, projectID, periodID uuid.UUID, end civil.Date, at time.Time) (period.Snapshot, error) {
 	sum, err := a.reports.SnapshotFor(ctx, orgID, projectID, periodID, end, at)
@@ -147,14 +153,15 @@ func newPeriodFixture(t *testing.T, caps capabilities.Capabilities) *periodFixtu
 
 	users := user.NewService(user.NewStore(dbCfg, pool), user.GenesisConfig{}, discardLogger(), passthroughUnexpected())
 	orgs := org.NewService(org.NewStore(dbCfg, pool, nil), caps, discardLogger(), passthroughUnexpected())
-	projects := project.NewService(project.NewStore(dbCfg, pool, nil), discardLogger(), passthroughUnexpected())
-	ledgers := ledger.NewService(ledger.NewStore(dbCfg, pool, nil), discardLogger(), passthroughUnexpected())
+	projects := project.NewService(project.NewStore(dbCfg, pool, nil), discardLogger(), passthroughUnexpected(), orgs)
+	ledgers := ledger.NewService(ledger.NewStore(dbCfg, pool, nil), discardLogger(), passthroughUnexpected(), orgs)
 	wallets := wallet.NewService(wallet.NewStore(dbCfg, pool, nil), discardLogger(), passthroughUnexpected())
 	cats := category.NewService(category.NewStore(dbCfg, pool, nil), discardLogger(), passthroughUnexpected(), nil)
 	reports := report.NewService(report.NewReader(dbCfg, pool, nil), discardLogger(), passthroughUnexpected(), ledgers)
 	perStore := period.NewStore(dbCfg, pool, nil)
+	clock := time.Now
 	periods := period.NewService(perStore, discardLogger(), passthroughUnexpected(),
-		ledgers, periodSnapshotter{reports: reports}, period.UnitOfWork(uow), time.Now)
+		ledgers, periodSnapshotter{reports: reports}, periodSnapshotter{reports: reports}, period.UnitOfWork(uow), func() time.Time { return clock() }, orgs)
 	txs := transaction.NewService(transaction.NewStore(dbCfg, pool, nil), discardLogger(), passthroughUnexpected(),
 		transaction.WalletReaderFunc(func(ctx context.Context, orgID, projectID, id uuid.UUID) (transaction.WalletInfo, error) {
 			w, wErr := wallets.ByID(ctx, id)
@@ -187,6 +194,7 @@ func newPeriodFixture(t *testing.T, caps capabilities.Capabilities) *periodFixtu
 		Cfg:      cfg,
 		Sessions: session.NewMemoryStore(),
 		DB:       sqlDB,
+		Users:    users,
 		Orgs:     orgs,
 		Projects: projects,
 		Ledgers:  ledgers,
@@ -211,6 +219,7 @@ func newPeriodFixture(t *testing.T, caps capabilities.Capabilities) *periodFixtu
 		Projects: projects,
 	}
 	f.Principal = session.Principal{UserID: u.ID, ActiveOrgID: o.ID, ActiveProjectID: proj.ID, IssuedAt: time.Now().UTC()}
+	f.setNow = func(at time.Time) { clock = func() time.Time { return at } }
 	return f
 }
 
@@ -234,6 +243,16 @@ func (f *periodFixture) mux(t *testing.T) *http.ServeMux {
 
 func (f *periodFixture) do(t *testing.T, method, target string, form url.Values) *httptest.ResponseRecorder {
 	t.Helper()
+	return f.doWith(t, method, target, form, false)
+}
+
+func (f *periodFixture) doHTMX(t *testing.T, method, target string, form url.Values) *httptest.ResponseRecorder {
+	t.Helper()
+	return f.doWith(t, method, target, form, true)
+}
+
+func (f *periodFixture) doWith(t *testing.T, method, target string, form url.Values, htmx bool) *httptest.ResponseRecorder {
+	t.Helper()
 	sid, err := web.NewSID()
 	require.NoError(t, err)
 	require.NoError(t, f.Sessions.Save(t.Context(), sid, f.Principal, time.Now().Add(web.SessionTTL)))
@@ -246,6 +265,9 @@ func (f *periodFixture) do(t *testing.T, method, target string, form url.Values)
 		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	}
 	r.AddCookie(&http.Cookie{Name: web.SessionCookieName, Value: web.SignCookie(f.Deps.Key(web.PurposeSession), sid)})
+	if htmx {
+		r.Header.Set("HX-Request", "true")
+	}
 	r = r.WithContext(session.PrincipalInto(r.Context(), f.Principal))
 
 	rec := httptest.NewRecorder()

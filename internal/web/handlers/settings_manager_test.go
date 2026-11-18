@@ -38,7 +38,7 @@ func newLedgerFixture(t *testing.T) ledgerFixture {
 	member := uuid.New()
 	_, err = f.Orgs.AddMember(setTenant(t.Context(), o.ID, owner), o.ID, member, org.RoleMember)
 	require.NoError(t, err)
-	ledgers := ledger.NewService(fakes.NewLedger(), discardLogger(), passthroughUnexpected())
+	ledgers := ledger.NewService(fakes.NewLedger(), discardLogger(), passthroughUnexpected(), f.Orgs)
 	mux := http.NewServeMux()
 	handlers.NewSettingsHandler(f.Deps, f.Projects, ledgers, nil).Register(mux)
 	return ledgerFixture{f: f, mux: mux, owner: owner, member: member, o: o, ledger: ledgers}
@@ -98,4 +98,17 @@ func TestSettings_ManagerPostSaves(t *testing.T) {
 	assert.Equal(t, "UTC", st.Timezone)
 	assert.EqualValues(t, "USD", st.Currency)
 	assert.Equal(t, 15, st.PeriodStartDay)
+}
+
+// SECURITY: the role gate runs before the form is read, so a member is refused even a post the form would reject.
+func TestSettings_MemberPostWithABadFormIsStillForbidden(t *testing.T) {
+	t.Parallel()
+	l := newLedgerFixture(t)
+	before := l.stored(t)
+
+	for _, body := range []string{"timezone=UTC&currency=USD&period_start_day=soon", "timezone=Not/AZone&currency=XYZ&period_start_day=15"} {
+		rec := l.do(t, http.MethodPost, l.member, body)
+		assert.Equal(t, http.StatusForbidden, rec.Code, "body=%s", body)
+	}
+	assert.Equal(t, before, l.stored(t))
 }

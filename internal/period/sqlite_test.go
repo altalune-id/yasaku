@@ -21,6 +21,7 @@ import (
 	"altalune.id/yasaku/internal/platform/db"
 	sqliteent "altalune.id/yasaku/internal/platform/db/entity/sqlite"
 	"altalune.id/yasaku/internal/platform/tenant"
+	"altalune.id/yasaku/internal/testutil/fakes"
 	"altalune.id/yasaku/money"
 	"altalune.id/yasaku/schema"
 )
@@ -330,10 +331,12 @@ func newCloseFixture(t *testing.T, wrap func(period.Store) period.Store) (*perio
 		svcStore, log, apperror.NewReporter(log, false).Unexpected,
 		&fakeSettings{loc: loc, startDay: 25},
 		&fakeSnapshotter{snap: sampleSnapshot()},
+		&fakeSnapshotter{},
 		func(ctx context.Context, fn func(ctx context.Context) error) error {
 			return db.RunInTx(ctx, pool, fn)
 		},
 		func() time.Time { return time.Date(2026, 9, 25, 10, 0, 0, 0, loc) },
+		fakes.PermissiveMembers(),
 	)
 	return svc, store, tc, tenant.Into(t.Context(), tc)
 }

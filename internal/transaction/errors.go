@@ -40,6 +40,8 @@ func IsNotFoundError(err error) bool {
 // ReasonNotPositive is the InvalidAmountError reason for a zero or negative amount.
 const ReasonNotPositive = "must be greater than zero"
 
+const reasonNoDestination = "transfer needs a destination wallet"
+
 // InvalidAmountError reports an amount that is not a positive quantity of a known currency.
 type InvalidAmountError struct{ Reason string }
 
@@ -118,6 +120,24 @@ func (e *InvalidKindError) ToAppError() *apperror.AppError {
 // IsInvalidKindError reports whether err's chain contains an *InvalidKindError.
 func IsInvalidKindError(err error) bool {
 	_, ok := errors.AsType[*InvalidKindError](err)
+	return ok
+}
+
+// MissingDestinationError reports a transfer with no destination wallet; on the wire it stays an invalid-kind refusal.
+type MissingDestinationError struct{}
+
+func (e *MissingDestinationError) Error() string {
+	return "transaction: kind \"transfer\": " + reasonNoDestination
+}
+
+// ToAppError converts the typed error into the wire envelope, identical to the InvalidKindError it replaced.
+func (e *MissingDestinationError) ToAppError() *apperror.AppError {
+	return (&InvalidKindError{Kind: string(KindTransfer), Reason: reasonNoDestination}).ToAppError()
+}
+
+// IsMissingDestinationError reports whether err's chain contains a *MissingDestinationError.
+func IsMissingDestinationError(err error) bool {
+	_, ok := errors.AsType[*MissingDestinationError](err)
 	return ok
 }
 

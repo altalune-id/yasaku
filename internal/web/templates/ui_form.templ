@@ -1,6 +1,10 @@
 package templates
 
-import "altalune.id/yasaku/internal/web/icons"
+import (
+	"strings"
+
+	"altalune.id/yasaku/internal/web/icons"
+)
 
 // FieldProps names one labeled form control: its id, label, optional hint and optional error.
 type FieldProps struct {
@@ -9,7 +13,9 @@ type FieldProps struct {
 	Hint     string
 	HintIcon string
 	Error    string
-	Compact  bool
+	// ErrorID names an error line the caller renders outside the field, such as inside a swapped fragment.
+	ErrorID string
+	Compact bool
 }
 
 // HintID is the id of the field's hint or error line, empty when the field shows neither.
@@ -23,10 +29,10 @@ func (p FieldProps) HintID() string {
 // Attrs returns the id and accessibility attributes the field's control carries.
 func (p FieldProps) Attrs() templ.Attributes {
 	a := templ.Attributes{"id": p.ID}
-	if id := p.HintID(); id != "" {
+	if id := strings.TrimSpace(p.HintID() + " " + p.ErrorID); id != "" {
 		a["aria-describedby"] = id
 	}
-	if p.Error != "" {
+	if p.Error != "" || p.ErrorID != "" {
 		a["aria-invalid"] = "true"
 	}
 	return a

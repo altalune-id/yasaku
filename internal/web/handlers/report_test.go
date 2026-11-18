@@ -55,6 +55,10 @@ func (reportSnapshotter) Snapshot(context.Context, uuid.UUID, uuid.UUID, uuid.UU
 	return period.Snapshot{}, nil
 }
 
+func (reportSnapshotter) LatestAt(context.Context, uuid.UUID, uuid.UUID, uuid.UUID) (time.Time, bool, error) {
+	return time.Time{}, false, nil
+}
+
 func newReportFixture(t *testing.T) *reportFixture {
 	t.Helper()
 	cfg := &config.Config{}
@@ -65,13 +69,13 @@ func newReportFixture(t *testing.T) *reportFixture {
 
 	users := user.NewService(fakes.NewUser(), user.GenesisConfig{}, discardLogger(), passthroughUnexpected())
 	orgs := org.NewService(fakes.NewOrg(), caps, discardLogger(), passthroughUnexpected())
-	projects := project.NewService(fakes.NewProject(), discardLogger(), passthroughUnexpected())
-	ledgers := ledger.NewService(fakes.NewLedger(), discardLogger(), passthroughUnexpected())
+	projects := project.NewService(fakes.NewProject(), discardLogger(), passthroughUnexpected(), orgs)
+	ledgers := ledger.NewService(fakes.NewLedger(), discardLogger(), passthroughUnexpected(), orgs)
 
 	perStore := fakes.NewPeriod()
 	uow := func(ctx context.Context, fn func(context.Context) error) error { return fn(ctx) }
 	periods := period.NewService(perStore, discardLogger(), passthroughUnexpected(),
-		ledgers, reportSnapshotter{}, period.UnitOfWork(uow), time.Now)
+		ledgers, reportSnapshotter{}, reportSnapshotter{}, period.UnitOfWork(uow), time.Now, orgs)
 
 	reader := fakes.NewReportReader()
 	reports := report.NewService(reader, discardLogger(), passthroughUnexpected(), ledgers)
@@ -663,7 +667,7 @@ func TestReportHandler_GetReports_PeriodQuerySelectsThatPeriod(t *testing.T) {
 
 	assert.Contains(t, body, `value="`+prev.ID.String()+`" selected`)
 	assert.NotContains(t, body, `value="`+cur.ID.String()+`" selected`)
-	assert.Contains(t, body, "Aug 2026")
+	assert.Contains(t, body, "date.pattern.month", "an auto-named period is labeled by its month")
 }
 
 func TestReportHandler_GetReports_ForeignProjectPeriodIs404(t *testing.T) {

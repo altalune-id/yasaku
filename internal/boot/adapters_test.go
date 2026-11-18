@@ -36,6 +36,10 @@ func (stubSnapshotter) Snapshot(_ context.Context, _, _, _ uuid.UUID, _ civil.Da
 	return period.Snapshot{}, nil
 }
 
+func (stubSnapshotter) LatestAt(context.Context, uuid.UUID, uuid.UUID, uuid.UUID) (time.Time, bool, error) {
+	return time.Time{}, false, nil
+}
+
 type resolverFixture struct {
 	adapter periodResolverAdapter
 	tc      tenant.Context
@@ -55,7 +59,7 @@ func newResolverFixture(t *testing.T) resolverFixture {
 	passthrough := func(ctx context.Context, fn func(context.Context) error) error { return fn(ctx) }
 
 	svc := period.NewService(store, log, reporter.Unexpected,
-		stubSettings{loc: time.UTC}, stubSnapshotter{}, period.UnitOfWork(passthrough), time.Now)
+		stubSettings{loc: time.UTC}, stubSnapshotter{}, stubSnapshotter{}, period.UnitOfWork(passthrough), time.Now, fakes.PermissiveMembers())
 
 	f := resolverFixture{
 		adapter: periodResolverAdapter{periods: svc},
