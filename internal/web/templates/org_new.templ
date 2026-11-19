@@ -11,9 +11,9 @@ type OrgNewView struct {
 
 templ OrgNewPage(d web.LayoutData, v OrgNewView) {
 	<section class="mx-auto max-w-xl">
-		<header class="border-b border-border pb-4">
-			<h1 class="text-2xl font-semibold text-foreground">{ d.Tr("nav.create_organization") }</h1>
-			<p class="mt-1 text-sm text-muted-foreground">{ d.Tr("org_new.subtitle") }</p>
+		<header class="border-b border-base-300 pb-4">
+			<h1 class="text-2xl font-semibold text-base-content">{ d.Tr("nav.create_organization") }</h1>
+			<p class="mt-1 text-sm text-base-content/70">{ d.Tr("org_new.subtitle") }</p>
 		</header>
 		if v.Error != "" {
 			@ErrorBanner(d, v.Error, v.ErrorCode)

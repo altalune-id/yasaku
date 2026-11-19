@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 
 	"altalune.id/yasaku/httpclient"
@@ -23,6 +24,62 @@ const (
 	codeContractViolation     = "SHT023"
 	codeSoftDeleteUnsupported = "SHT029"
 )
+
+//nolint:gochecknoglobals // a compiled pattern, not runtime state.
+var storedCodeRe = regexp.MustCompile(`^[A-Z]{3}\d{3}$`)
+
+// ErrorCode reads the code back out of a stored last_error in the shapes refusalText and failureText write: the token after the first ": ", else a trailing "(CODE)"; "" when it carries none.
+func ErrorCode(lastError string) string {
+	if _, rest, ok := strings.Cut(lastError, ": "); ok {
+		if tok, _, _ := strings.Cut(rest, " "); storedCodeRe.MatchString(tok) {
+			return tok
+		}
+	}
+	if !strings.HasSuffix(lastError, ")") {
+		return ""
+	}
+	i := strings.LastIndex(lastError, "(")
+	if i < 0 {
+		return ""
+	}
+	if tok := lastError[i+1 : len(lastError)-1]; storedCodeRe.MatchString(tok) {
+		return tok
+	}
+	return ""
+}
+
+// Reason is what a stored opensheet code means for the person fixing the link.
+type Reason string
+
+// Reasons a stored refusal can carry.
+const (
+	ReasonOther           Reason = "other"
+	ReasonKeyRejected     Reason = "key_rejected"
+	ReasonSheetReadOnly   Reason = "sheet_read_only"
+	ReasonSheetMissing    Reason = "sheet_missing"
+	ReasonGoogleAccess    Reason = "google_access"
+	ReasonKeyUnreadable   Reason = "key_unreadable"
+	ReasonPrivateEndpoint Reason = "private_endpoint"
+)
+
+// ReasonOf maps an opensheet or yasaku error code to its Reason; an unknown or empty code is ReasonOther.
+func ReasonOf(code string) Reason {
+	switch code {
+	case "GEN002", "AUT001", "GEN003":
+		return ReasonKeyRejected
+	case "SHT009":
+		return ReasonSheetReadOnly
+	case "SHT001", "SHT008":
+		return ReasonSheetMissing
+	case "CRD006", "GSH002":
+		return ReasonGoogleAccess
+	case "OSL015":
+		return ReasonKeyUnreadable
+	case "OSL016":
+		return ReasonPrivateEndpoint
+	}
+	return ReasonOther
+}
 
 func rowMissing(err error) bool {
 	nf, ok := errors.AsType[*opensheet.NotFoundError](err)

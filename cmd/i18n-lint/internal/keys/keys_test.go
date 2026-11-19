@@ -374,3 +374,71 @@ func TestRun_NoSourceDirsSkipsGoScan(t *testing.T) {
 		t.Errorf("empty SourceDirs must skip the Go scan, got sources=%v claims=%v", r.Sources, r.Claims)
 	}
 }
+
+func TestRun_EmptyValueBlocksCheck(t *testing.T) {
+	t.Parallel()
+	opts := setup(t,
+		map[string]string{"a.templ": `d.Tr("nav.overview")`},
+		map[string]string{
+			"active.en-US.yaml": "nav.overview: Overview\nreport.title: Reports\n",
+			"active.ms-MY.yaml": "nav.overview: Ringkasan\nreport.title: \"\"\n",
+		},
+	)
+	r, err := keys.Run(opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !keys.Contains(r.Empty["ms-MY"], "report.title") {
+		t.Errorf("expected report.title empty in ms-MY, got %v", r.Empty)
+	}
+	if len(r.Empty["en-US"]) > 0 {
+		t.Errorf("en-US has no empty value, got %v", r.Empty["en-US"])
+	}
+	if !r.HasBlockingIssues(false) {
+		t.Error("an empty value must fail the check even for an unused key")
+	}
+	var buf bytes.Buffer
+	r.Print(&buf)
+	if !bytes.Contains(buf.Bytes(), []byte("report.title")) {
+		t.Errorf("print should name the empty key:\n%s", buf.String())
+	}
+}
+
+func TestRun_EmptyPluralFormBlocksCheck(t *testing.T) {
+	t.Parallel()
+	opts := setup(t,
+		map[string]string{"a.templ": `d.TrN("tx.count", n)`},
+		map[string]string{"active.en-US.yaml": "tx.count:\n  one: \"{{.Count}} entry\"\n  other: \"   \"\n"},
+	)
+	r, err := keys.Run(opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !keys.Contains(r.Empty["en-US"], "tx.count.other") {
+		t.Errorf("expected tx.count.other empty, got %v", r.Empty)
+	}
+	if !r.HasBlockingIssues(false) {
+		t.Error("a blank plural form must fail the check")
+	}
+}
+
+func TestRun_UnmountedModuleEmptyValueDoesNotBlock(t *testing.T) {
+	t.Parallel()
+	opts := setup(t,
+		map[string]string{"a.templ": `d.Tr("nav.overview")`},
+		map[string]string{"active.ar-SA.yaml": "nav.overview: نظرة\nblog.title: \"\"\nblogger.name: \"\"\n"},
+	)
+	r, err := keys.Run(opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if keys.Contains(r.Empty["ar-SA"], "blog.title") {
+		t.Errorf("blog.* belongs to an unmounted module and is exempt, got %v", r.Empty)
+	}
+	if !keys.Contains(r.Empty["ar-SA"], "blogger.name") {
+		t.Errorf("only the blog. prefix is exempt, got %v", r.Empty)
+	}
+	if !r.HasBlockingIssues(false) {
+		t.Error("a non-blog empty value still fails the check")
+	}
+}

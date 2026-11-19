@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/a-h/templ"
 	"google.golang.org/grpc/codes"
@@ -215,7 +216,7 @@ func (h *OpensheetHandler) respond(w http.ResponseWriter, sc ProjectScope, statu
 }
 
 func (h *OpensheetHandler) opensheetLayout(sc ProjectScope) web.LayoutData {
-	return h.LayoutForProject(sc.req, pageTitle(sc.req, "opensheet.title", sc.project.Name), sc.org.Slug, sc.project, "opensheet")
+	return h.LayoutForProject(sc.req, pageTitle(sc.req, "nav.opensheet", sc.project.Name), sc.org.Slug, sc.project, "opensheet")
 }
 
 //i18n:use opensheet.tab.*
@@ -233,15 +234,27 @@ func (h *OpensheetHandler) view(sc ProjectScope, form *templates.OpensheetForm) 
 		return v, err
 	}
 	v.Pending, v.Failing, v.GivenUp = st.Pending, st.Failing, st.GivenUp
+	v.State = sheetState(st)
 	if l := st.Link; l != nil {
 		v.Linked, v.Enabled, v.Verified, v.AutoDisabled = true, l.Enabled, l.VerifiedAt != nil, l.AutoDisabled()
 		v.AwaitingFirstSync = l.AwaitingFirstSync()
 		v.LastSyncedAt, v.KeyHint = l.LastSyncedAt, l.APIKeyHint
+		v.Streak, v.AutoDisabledAt, v.VerifiedAt = l.FailureStreak, l.AutoDisabledAt, l.VerifiedAt
 		// NOTE: a passing Save resets the streak and keeps last_error, so a zero streak means the error predates the current settings.
-		if l.FailureStreak > 0 {
+		if l.FailureStreak > 0 || l.AutoDisabled() {
 			v.LastError = l.LastError
 		}
+		if v.LastError != "" {
+			v.SyncErrorCode = opensheetsync.ErrorCode(v.LastError)
+			v.ReasonKey = sheetReasonKey(opensheetsync.ReasonOf(v.SyncErrorCode))
+		}
 		v.Form = formOf(l.Settings())
+	}
+	now := time.Now()
+	v.Rows, v.NextRetryAt = sheetRows(st.Rows, now), sheetNextRetry(st, now)
+	v.RowsMore = max(int(st.Failing+st.GivenUp)-len(v.Rows), 0)
+	if !v.CanManage {
+		redactSyncErrors(&v)
 	}
 	if form != nil {
 		v.Form = *form
@@ -293,4 +306,85 @@ func opensheetStatus(err error) int {
 		return http.StatusNotFound
 	}
 	return http.StatusInternalServerError
+}
+
+func sheetState(st opensheetsync.Status) templates.OpensheetState {
+	l := st.Link
+	switch {
+	case l == nil:
+		return templates.OpensheetOff
+	case l.AutoDisabled():
+		return templates.OpensheetPaused
+	case !l.Enabled:
+		return templates.OpensheetOffManual
+	case l.FailureStreak > 0 || st.Failing > 0:
+		return templates.OpensheetFailing
+	case st.GivenUp > 0:
+		return templates.OpensheetGivenUp
+	case l.AwaitingFirstSync():
+		return templates.OpensheetFirst
+	case st.Pending > 0:
+		return templates.OpensheetPending
+	}
+	return templates.OpensheetOK
+}
+
+func sheetNextRetry(st opensheetsync.Status, now time.Time) *time.Time {
+	if st.Link != nil && st.Link.FailureStreak > 0 {
+		return nil
+	}
+	var next *time.Time
+	for _, r := range st.Rows {
+		if r.GivenUp() || r.RetryAfter == nil || !r.RetryAfter.After(now) {
+			continue
+		}
+		if next == nil || r.RetryAfter.Before(*next) {
+			next = r.RetryAfter
+		}
+	}
+	return next
+}
+
+//i18n:use opensheet.reason.key_rejected
+//i18n:use opensheet.reason.sheet_read_only
+//i18n:use opensheet.reason.sheet_missing
+//i18n:use opensheet.reason.google_signin
+//i18n:use opensheet.reason.other
+//i18n:use opensheet.check.private_endpoint
+func sheetReasonKey(r opensheetsync.Reason) string {
+	switch r {
+	case opensheetsync.ReasonKeyRejected, opensheetsync.ReasonSheetReadOnly, opensheetsync.ReasonSheetMissing:
+		return "opensheet.reason." + string(r)
+	case opensheetsync.ReasonGoogleAccess:
+		return "opensheet.reason.google_signin"
+	case opensheetsync.ReasonKeyUnreadable:
+		return "opensheet.error.key_unreadable"
+	case opensheetsync.ReasonPrivateEndpoint:
+		return "opensheet.check.private_endpoint"
+	}
+	return "opensheet.reason.other"
+}
+
+//i18n:use opensheet.reason.row_refused
+func sheetRows(rows []opensheetsync.FailedRow, now time.Time) []templates.OpensheetRowError {
+	out := make([]templates.OpensheetRowError, 0, len(rows))
+	for _, r := range rows {
+		e := templates.OpensheetRowError{
+			EntityKey: "opensheet.tab." + string(r.Entity), Label: r.Name, OccurredOn: r.On, Attempts: r.Attempts,
+			GivenUp: r.GivenUp(), ReasonKey: "opensheet.reason.row_refused", LastError: r.LastError,
+		}
+		if !e.GivenUp && r.RetryAfter != nil && r.RetryAfter.After(now) {
+			e.NextRetryAt = r.RetryAfter
+		}
+		out = append(out, e)
+	}
+	return out
+}
+
+// SECURITY: raw last_error text echoes opensheet's own messages; members get the plain reason only.
+func redactSyncErrors(v *templates.OpensheetView) {
+	v.LastError, v.SyncErrorCode = "", ""
+	for i := range v.Rows {
+		v.Rows[i].LastError = ""
+	}
 }

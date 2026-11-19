@@ -40,7 +40,7 @@ templ webhookGuideNote(text, header string) {
 		<span class="min-w-0 flex-1">
 			{ text }
 			if header != "" {
-				<code class="ms-1 rounded bg-muted px-1 py-0.5 font-mono text-xs text-foreground">{ header }</code>
+				<code class="ms-1 rounded bg-base-200 px-1 py-0.5 font-mono text-xs text-base-content">{ header }</code>
 			}
 		</span>
 	</li>
@@ -48,10 +48,10 @@ templ webhookGuideNote(text, header string) {
 
 // WebhookGuide is the "How to integrate" panel on the endpoint list; it opens by default while the project has no endpoints.
 templ WebhookGuide(d web.LayoutData, g WebhookGuideView) {
-	<details data-webhook-guide open?={ g.Open } class="mt-6 rounded-lg border border-border bg-card p-5 shadow-sm">
-		<summary class="cursor-pointer text-sm font-semibold text-foreground">{ d.Tr("webhooks.guide_heading") }</summary>
-		<p class="mt-2 text-sm text-muted-foreground">{ d.Tr("webhooks.guide_intro") }</p>
-		<ol class="mt-4 space-y-2 text-sm text-foreground/90">
+	<details data-webhook-guide open?={ g.Open } class="mt-6 rounded-lg border border-base-300 bg-base-100 p-5 shadow-sm">
+		<summary class="cursor-pointer text-sm font-semibold text-base-content">{ d.Tr("webhooks.guide_heading") }</summary>
+		<p class="mt-2 text-sm text-base-content/70">{ d.Tr("webhooks.guide_intro") }</p>
+		<ol class="mt-4 space-y-2 text-sm text-base-content/90">
 			@webhookGuideStep(1, d.Tr("webhooks.guide_step_url"))
 			@webhookGuideStep(2, d.Tr("webhooks.guide_step_events"))
 			@webhookGuideStep(3, d.Tr("webhooks.guide_step_secret"))
@@ -65,8 +65,8 @@ templ WebhookGuide(d web.LayoutData, g WebhookGuideView) {
 }
 
 templ webhookReceiverNotes(d web.LayoutData, g WebhookGuideView) {
-	<h3 class="mt-5 text-xs font-semibold uppercase tracking-wide text-muted-foreground/70">{ d.Tr("webhooks.guide_receiver_heading") }</h3>
-	<ul class="mt-2 space-y-2 text-sm text-foreground/90">
+	<h3 class="mt-5 text-xs font-semibold uppercase tracking-wide text-base-content/70">{ d.Tr("webhooks.guide_receiver_heading") }</h3>
+	<ul class="mt-2 space-y-2 text-sm text-base-content/90">
 		@webhookGuideNote(d.Tr("webhooks.guide_respond"), "")
 		@webhookGuideNote(d.Tr("webhooks.guide_dedupe"), g.DeliveryIDHeader)
 		@webhookGuideNote(d.Tr("webhooks.guide_correlate"), g.EventIDHeader)
@@ -76,17 +76,17 @@ templ webhookReceiverNotes(d web.LayoutData, g WebhookGuideView) {
 
 // WebhookVerifyPanel is the collapsible "Verify signatures" section: one copyable verifier per language, switched by tabs.
 templ WebhookVerifyPanel(d web.LayoutData, g WebhookGuideView) {
-	<details data-webhook-verify class="mt-6 rounded-lg border border-border bg-card p-5 shadow-sm">
-		<summary class="cursor-pointer text-sm font-semibold text-foreground">{ d.Tr("webhooks.verify_heading") }</summary>
-		<p class="mt-2 text-sm text-muted-foreground">{ d.Tr("webhooks.verify_intro") }</p>
-		<p class="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+	<details data-webhook-verify class="mt-6 rounded-lg border border-base-300 bg-base-100 p-5 shadow-sm">
+		<summary class="cursor-pointer text-sm font-semibold text-base-content">{ d.Tr("webhooks.verify_heading") }</summary>
+		<p class="mt-2 text-sm text-base-content/70">{ d.Tr("webhooks.verify_intro") }</p>
+		<p class="mt-2 flex flex-wrap items-center gap-2 text-xs text-base-content/70">
 			<span>{ d.Tr("webhooks.verify_headers_label") }</span>
-			<code class="rounded bg-muted px-1 py-0.5 font-mono text-foreground">{ g.TimestampHeader }</code>
-			<code class="rounded bg-muted px-1 py-0.5 font-mono text-foreground">{ g.SignatureHeader }</code>
+			<code class="rounded bg-base-200 px-1 py-0.5 font-mono text-base-content">{ g.TimestampHeader }</code>
+			<code class="rounded bg-base-200 px-1 py-0.5 font-mono text-base-content">{ g.SignatureHeader }</code>
 		</p>
-		<p class="mt-2 text-xs text-muted-foreground">{ d.Tr("webhooks.verify_env") }</p>
+		<p class="mt-2 text-xs text-base-content/70">{ d.Tr("webhooks.verify_env") }</p>
 		if len(g.Snippets) > 0 {
-			<div data-tabs class="mt-3 rounded-md border border-border/70">
+			<div data-tabs class="mt-3 rounded-md border border-base-300/70">
 				<nav role="tablist" aria-orientation="horizontal" aria-label={ d.Tr("webhooks.verify_languages") } class="tab-bar">
 					for i, s := range g.Snippets {
 						<button
@@ -111,7 +111,7 @@ templ WebhookVerifyPanel(d web.LayoutData, g WebhookGuideView) {
 						<div class="flex justify-end">
 							@copyButton(d, s.Code, d.Tr("webhooks.verify_copy"), d.Tr("webhooks.verify_copy_label", "Lang", s.Label))
 						</div>
-						<pre class="mt-1 max-h-96 overflow-auto rounded border border-border/70 bg-background p-2 font-mono text-xs text-foreground"><code>{ s.Code }</code></pre>
+						<pre class="mt-1 max-h-96 overflow-auto rounded border border-base-300/70 bg-base-100 p-2 font-mono text-xs text-base-content"><code>{ s.Code }</code></pre>
 					</div>
 				}
 			</div>

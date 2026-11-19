@@ -13,7 +13,7 @@ type OnboardingView struct {
 templ OnboardingPage(d web.LayoutData, v OnboardingView) {
 	<section class="mx-auto max-w-md">
 		<h1 class="text-2xl font-semibold">{ d.Tr("onboarding.title") }</h1>
-		<p class="mt-2 text-muted-foreground">{ d.Tr("onboarding.subtitle_prefix") } { v.Email }{ d.Tr("onboarding.subtitle_suffix") }</p>
+		<p class="mt-2 text-base-content/70">{ d.Tr("onboarding.subtitle_prefix") } { v.Email }{ d.Tr("onboarding.subtitle_suffix") }</p>
 		if v.Error != "" {
 			@ErrorBanner(d, v.Error, v.ErrorCode)
 		}
@@ -21,17 +21,17 @@ templ OnboardingPage(d web.LayoutData, v OnboardingView) {
 			if v.ReturnTo != "" {
 				<input type="hidden" name="return_to" value={ v.ReturnTo }/>
 			}
-			<div>
-				<label for="display_name" class="block text-sm font-medium">{ d.Tr("onboarding.display_name") }</label>
+			{{ nameField := FieldProps{ID: "display_name", Label: d.Tr("onboarding.display_name")} }}
+			@FormField(nameField) {
 				<input
-					id="display_name"
+					{ nameField.Attrs()... }
 					name="display_name"
 					type="text"
 					required
 					value={ v.DisplayName }
-					class="input mt-1.5 w-full"
+					class="input w-full"
 				/>
-			</div>
+			}
 			<label class="flex items-start gap-2 text-sm">
 				<input type="checkbox" name="accept_terms" value="1" required class="mt-1"/>
 				<span>{ d.Tr("onboarding.accept") }</span>

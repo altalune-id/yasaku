@@ -68,7 +68,7 @@ func (w opensheetWiring) services(k *platform.Kernel, log *slog.Logger, src open
 		return nil, nil
 	}
 	svc := opensheetsync.NewService(w.store, log, k.Reporter.Unexpected, opensheetsync.ServiceDeps{
-		Mirror: w.mirror, Members: members, Sealer: k.Sealer, Endpoint: w.endpoint,
+		Mirror: w.mirror, Members: members, Sealer: k.Sealer, Endpoint: w.endpoint, Source: src,
 		UnitOfWork: opensheetsync.UnitOfWork(uow), Now: time.Now,
 	})
 	d := opensheetsync.SyncerDeps{Sealer: k.Sealer, Endpoint: w.endpoint, Source: src, Jobs: w.jobs, Queued: w.queued, Now: time.Now}

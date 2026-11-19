@@ -145,13 +145,8 @@ func (h *OverviewHandler) view(sc ProjectScope, d web.LayoutData, wallets []*wal
 	if err != nil {
 		return v, err
 	}
-	if summary.Currency != "" {
-		v.Income, v.Expense, v.Net, v.Adjustments, v.Openings = summary.Income, summary.Expense, summary.Net, summary.Adjustments, summary.Openings
-	}
-	if snap := p.Snapshot; v.Closed && snap != nil {
-		v.Income, v.Expense, v.Net = money.New(snap.Income, snap.Currency), money.New(snap.Expense, snap.Currency), money.New(snap.Net, snap.Currency)
-		v.Adjustments, v.Openings = money.New(snap.Adjustments, snap.Currency), money.New(snap.Openings, snap.Currency)
-	}
+	t := periodTotalsOf(p, summary, cur)
+	v.Income, v.Expense, v.Net, v.Adjustments, v.Openings = t.Income, t.Expense, t.Net, t.Adjustments, t.Openings
 	items, more, err := h.Transactions.List(ctx, transaction.ListOpts{PeriodID: &p.ID, Limit: transaction.MaxListLimit})
 	if err != nil {
 		return v, err

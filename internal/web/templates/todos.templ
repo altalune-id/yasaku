@@ -17,9 +17,9 @@ type TodosView struct {
 
 // TodoList is the HTMX-swappable list section — POST to /todos targets #todo-list.
 templ TodoList(d web.LayoutData, items []TodoRow) {
-	<ul id="todo-list" class="mt-6 divide-y divide-border/50 rounded-lg border border-border bg-card shadow-sm">
+	<ul id="todo-list" class="mt-6 divide-y divide-base-300/50 rounded-lg border border-base-300 bg-base-100 shadow-sm">
 		if len(items) == 0 {
-			<li class="px-4 py-8 text-center text-sm text-muted-foreground">{ d.Tr("todos.empty") }</li>
+			<li class="px-4 py-8 text-center text-sm text-base-content/70">{ d.Tr("todos.empty") }</li>
 		}
 		for _, t := range items {
 			@TodoRowFragment(d, t)
@@ -29,10 +29,10 @@ templ TodoList(d web.LayoutData, items []TodoRow) {
 
 templ TodosPage(d web.LayoutData, v TodosView) {
 	<section>
-		<header class="flex items-baseline justify-between border-b border-border pb-4">
+		<header class="flex items-baseline justify-between border-b border-base-300 pb-4">
 			<div>
-				<h1 class="text-2xl font-semibold text-foreground">{ d.Tr("nav.todos") }</h1>
-				<p class="mt-1 text-sm text-muted-foreground">{ v.ProjectName }</p>
+				<h1 class="text-2xl font-semibold text-base-content">{ d.Tr("nav.todos") }</h1>
+				<p class="mt-1 text-sm text-base-content/70">{ v.ProjectName }</p>
 			</div>
 			<form
 				method="post"
@@ -46,7 +46,7 @@ templ TodosPage(d web.LayoutData, v TodosView) {
 				hx-status:5xx="target:#hx-error swap:innerHTML"
 				class="inline"
 			>
-				<button type="submit" class="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
+				<button type="submit" class="inline-flex items-center gap-1.5 text-sm text-base-content/70 hover:text-base-content">
 					@icons.Icon("trash-2", "h-4 w-4")
 					<span>{ d.Tr("todos.clear_completed") }</span>
 				</button>
@@ -75,7 +75,7 @@ templ TodosPage(d web.LayoutData, v TodosView) {
 				placeholder={ d.Tr("todos.placeholder") }
 				class="input flex-1"
 			/>
-			<button type="submit" class="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2">
+			<button type="submit" class="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-content shadow-sm hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2">
 				{ d.Tr("todos.add") }
 			</button>
 		</form>

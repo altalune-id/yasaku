@@ -61,4 +61,6 @@ type Store interface {
 	ListDirty(ctx context.Context, orgID, projectID uuid.UUID, cutoff, at time.Time, limit int) ([]Ref, error)
 	// Backlog counts the project's pending, failing and given-up state rows.
 	Backlog(ctx context.Context, orgID, projectID uuid.UUID) (Backlog, error)
+	// FailingRows returns up to limit of the project's rows refused since their last sync (a sync or a new edit resets attempts), the latest refusal first.
+	FailingRows(ctx context.Context, orgID, projectID uuid.UUID, limit int) ([]RowFailure, error)
 }

@@ -1,0 +1,112 @@
+package templates
+
+import (
+	"strconv"
+
+	"altalune.id/yasaku/internal/web"
+	"altalune.id/yasaku/internal/web/icons"
+	"altalune.id/yasaku/money"
+)
+
+// PeriodNav is the previous and next period switcher a period page shows above its totals.
+type PeriodNav struct {
+	ProjectSlug  string
+	Path         string
+	PrevPeriodID string
+	NextPeriodID string
+	Period       PeriodLabel
+}
+
+// PeriodTotals is one period's net, money in and out, starting balances and balance fixes; deltas compare with Previous.
+type PeriodTotals struct {
+	Period       PeriodLabel
+	Income       money.Amount
+	Expense      money.Amount
+	Net          money.Amount
+	Openings     money.Amount
+	Adjustments  money.Amount
+	Previous     *PeriodLabel
+	IncomeDelta  *int
+	ExpenseDelta *int
+	NetDelta     *int
+}
+
+// PeriodNavBar renders prev and next links to the same page for the neighboring periods; it works without JS.
+templ PeriodNavBar(d web.LayoutData, n PeriodNav) {
+	<div class="join w-full" role="group" aria-label={ d.Tr("overview.period_nav") }>
+		@periodNavStep(d, n, n.PrevPeriodID, "chevron-left", "overview.prev_period")
+		<label class="btn btn-ghost join-item pointer-events-none min-w-0 flex-1 font-semibold" aria-live="polite">
+			@PeriodLabelView(d, n.Period)
+		</label>
+		@periodNavStep(d, n, n.NextPeriodID, "chevron-right", "overview.next_period")
+	</div>
+}
+
+templ periodNavStep(d web.LayoutData, n PeriodNav, id, icon, label string) {
+	if id != "" {
+		<a href={ templ.SafeURL(d.ProjectPath(n.ProjectSlug, n.Path+"?period="+id)) } class="btn btn-ghost btn-square join-item" aria-label={ d.Tr(label) }>
+			@icons.Icon(icon, "size-5 rtl:-scale-x-100")
+		</a>
+	} else {
+		<button type="button" class="btn btn-ghost btn-square join-item" disabled aria-label={ d.Tr(label) }>
+			@icons.Icon(icon, "size-5 rtl:-scale-x-100")
+		</button>
+	}
+}
+
+templ periodTotalsBody(d web.LayoutData, t PeriodTotals) {
+	<div class="min-w-0">
+		<p class="mt-1 text-sm text-base-content/70">
+			if t.Period.IsMonth() {
+				{ d.Tr("overview.net_month") }
+			} else {
+				{ d.Tr("overview.net_period") }
+			}
+		</p>
+		<p class={ "break-words text-3xl font-extrabold tabular-nums tracking-tight", templ.KV("text-error", t.Net.Minor < 0) }>{ SignedMoney(d, t.Net) }</p>
+		@periodDelta(d, t, t.NetDelta)
+	</div>
+	<div class="stats stats-vertical w-full min-w-0 bg-base-100 sm:stats-horizontal lg:stats-vertical">
+		<div class="stat min-w-0 px-4 py-3">
+			<div class="stat-title flex items-center gap-1 whitespace-normal text-base-content/80">
+				@icons.Icon("arrow-down-left", "size-4 shrink-0 text-success")
+				{ d.Tr("overview.money_in") }
+			</div>
+			<div class="stat-value text-lg tabular-nums text-success">{ SignedMoney(d, t.Income) }</div>
+			@periodDelta(d, t, t.IncomeDelta)
+		</div>
+		<div class="stat min-w-0 px-4 py-3">
+			<div class="stat-title flex items-center gap-1 whitespace-normal text-base-content/80">
+				@icons.Icon("arrow-up-right", "size-4 shrink-0 text-error")
+				{ d.Tr("overview.money_out") }
+			</div>
+			<div class="stat-value text-lg tabular-nums">{ SignedMoney(d, t.Expense.Neg()) }</div>
+			@periodDelta(d, t, t.ExpenseDelta)
+		</div>
+	</div>
+	if !t.Openings.IsZero() {
+		<p data-starting-balances class="flex min-w-0 items-baseline justify-between gap-2 px-1 text-sm text-base-content/80">
+			<span>{ d.Tr("overview.starting_balances") }</span>
+			<span class="shrink-0 whitespace-nowrap tabular-nums">{ SignedMoney(d, t.Openings) }</span>
+		</p>
+	}
+	if !t.Adjustments.IsZero() {
+		<p data-balance-fixes class="flex min-w-0 items-baseline justify-between gap-2 px-1 text-sm text-base-content/80">
+			<span>{ d.Tr("overview.balance_fixes") }</span>
+			<span class="shrink-0 whitespace-nowrap tabular-nums">{ SignedMoney(d, t.Adjustments) }</span>
+		</p>
+	}
+}
+
+templ periodDelta(d web.LayoutData, t PeriodTotals, delta *int) {
+	if t.Previous != nil && delta != nil {
+		<p data-delta={ deltaText(*delta) } class="stat-desc mt-1 whitespace-normal text-xs text-base-content/70">{ d.Tr("report.delta", "Delta", deltaText(*delta)) }</p>
+	}
+}
+
+func deltaText(n int) string {
+	if n > 0 {
+		return "+" + strconv.Itoa(n) + "%"
+	}
+	return strconv.Itoa(n) + "%"
+}

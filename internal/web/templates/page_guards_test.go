@@ -8,14 +8,6 @@ import (
 	"testing"
 )
 
-func pagesAwaitingRedesign() []string {
-	return []string{
-		"onboarding.templ",
-		"reports.templ",
-		"opensheet_yasaku.templ",
-	}
-}
-
 func pagesUnmounted() []string {
 	return []string{
 		"categories.templ",
@@ -37,7 +29,7 @@ var (
 	classedTag   = regexp.MustCompile(`(?s)<([a-zA-Z][\w-]*)\b([^<>]*?)\bclass=(?:"([^"]*)"|\{\s*"([^"]*)")`)
 )
 
-// TestPagesFollowTheKitAndThemeScale holds every page outside the redesign and unmounted lists to the form kit, semantic colors and the Tailwind 4 scale.
+// TestPagesFollowTheKitAndThemeScale holds every page outside the unmounted list to the form kit, semantic colors and the Tailwind 4 scale.
 func TestPagesFollowTheKitAndThemeScale(t *testing.T) {
 	for _, f := range guardedPageSources(t) {
 		for _, v := range pageViolations(readTemplate(t, f)) {
@@ -46,17 +38,8 @@ func TestPagesFollowTheKitAndThemeScale(t *testing.T) {
 	}
 }
 
-// TestRedesignAndUnmountedListsOnlyHoldRealLaggards fails when a listed page is gone or already passes every page guard, so the lists only shrink.
-func TestRedesignAndUnmountedListsOnlyHoldRealLaggards(t *testing.T) {
-	for _, f := range pagesAwaitingRedesign() {
-		if _, err := os.Stat(f); err != nil {
-			t.Errorf("%s is listed in pagesAwaitingRedesign but does not exist; remove %s from the list", f, f)
-			continue
-		}
-		if len(pageViolations(readTemplate(t, f))) == 0 {
-			t.Errorf("%s passes every page guard; remove %s from pagesAwaitingRedesign", f, f)
-		}
-	}
+// TestUnmountedListOnlyHoldsRealPages fails when a listed page is gone, so the list only shrinks.
+func TestUnmountedListOnlyHoldsRealPages(t *testing.T) {
 	for _, f := range pagesUnmounted() {
 		if _, err := os.Stat(f); err != nil {
 			t.Errorf("%s is listed in pagesUnmounted but does not exist; remove %s from the list", f, f)
@@ -96,7 +79,7 @@ func guardedPageSources(t *testing.T) []string {
 	out := []string{"flash.go"}
 	for _, e := range files {
 		f := e.Name()
-		if strings.HasSuffix(f, ".templ") && f != "ui_form.templ" && !slices.Contains(pagesAwaitingRedesign(), f) && !slices.Contains(pagesUnmounted(), f) {
+		if strings.HasSuffix(f, ".templ") && f != "ui_form.templ" && !slices.Contains(pagesUnmounted(), f) {
 			out = append(out, f)
 		}
 	}

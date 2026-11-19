@@ -46,9 +46,9 @@ templ categoryBanner(d web.LayoutData, v CategoriesView) {
 templ CategoryList(d web.LayoutData, v CategoriesView) {
 	<div id="category-list" class="mt-6">
 		@categoryBanner(d, v)
-		<ul class="mt-4 divide-y divide-border/50 overflow-hidden rounded-lg border border-border bg-card shadow-sm">
+		<ul class="mt-4 divide-y divide-base-300/50 overflow-hidden rounded-lg border border-base-300 bg-base-100 shadow-sm">
 			if len(v.Items) == 0 {
-				<li class="px-4 py-8 text-center text-sm text-muted-foreground">{ d.Tr("blog.categories_empty") }</li>
+				<li class="px-4 py-8 text-center text-sm text-base-content/70">{ d.Tr("blog.categories_empty") }</li>
 			}
 			for _, c := range v.Items {
 				<li class="flex flex-wrap items-center gap-3 px-4 py-3">
@@ -72,12 +72,12 @@ templ CategoryList(d web.LayoutData, v CategoriesView) {
 							aria-label={ d.Tr("blog.category_name") }
 							class="input min-w-0 flex-1"
 						/>
-						<button type="submit" class="shrink-0 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-foreground/90 hover:bg-muted">
+						<button type="submit" class="shrink-0 rounded-md border border-base-300 px-3 py-1.5 text-xs font-medium text-base-content/90 hover:bg-base-200">
 							{ d.Tr("blog.category_rename") }
 						</button>
 					</form>
-					<code class="shrink-0 font-mono text-xs text-muted-foreground">{ c.Slug }</code>
-					<span class="shrink-0 text-xs text-muted-foreground">{ d.TrN("blog.category_posts", c.Posts) }</span>
+					<code class="shrink-0 font-mono text-xs text-base-content/70">{ c.Slug }</code>
+					<span class="shrink-0 text-xs text-base-content/70">{ d.TrN("blog.category_posts", c.Posts) }</span>
 					<form
 						method="post"
 						action={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/categories/"+c.ID+"/delete")) }
@@ -93,7 +93,7 @@ templ CategoryList(d web.LayoutData, v CategoriesView) {
 						<button
 							type="submit"
 							aria-label={ d.Tr("blog.category_delete") + ": " + c.Name }
-							class="rounded p-1.5 text-muted-foreground/70 hover:bg-error/10 hover:text-error"
+							class="rounded p-1.5 text-base-content/70 hover:bg-error/10 hover:text-error"
 						>
 							@icons.Icon("trash-2", "h-4 w-4")
 						</button>
@@ -106,9 +106,9 @@ templ CategoryList(d web.LayoutData, v CategoriesView) {
 
 templ CategoriesPage(d web.LayoutData, v CategoriesView) {
 	<section>
-		<header class="border-b border-border pb-4">
-			<h1 class="text-2xl font-semibold text-foreground">{ d.Tr("blog.categories_title") }</h1>
-			<p class="mt-1 text-sm text-muted-foreground">{ d.Tr("blog.categories_subtitle") }</p>
+		<header class="border-b border-base-300 pb-4">
+			<h1 class="text-2xl font-semibold text-base-content">{ d.Tr("blog.categories_title") }</h1>
+			<p class="mt-1 text-sm text-base-content/70">{ d.Tr("blog.categories_subtitle") }</p>
 		</header>
 		<form
 			method="post"
@@ -138,7 +138,7 @@ templ CategoriesPage(d web.LayoutData, v CategoriesView) {
 				aria-label={ d.Tr("blog.category_slug") }
 				class="input min-w-48 flex-1"
 			/>
-			<button type="submit" class="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2">
+			<button type="submit" class="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-content shadow-sm hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2">
 				{ d.Tr("blog.category_add") }
 			</button>
 		</form>

@@ -37,6 +37,7 @@ type stubSource struct {
 	category map[uuid.UUID]opensheetsync.CategoryFacts
 	onRead   func()
 	honorCtx bool
+	failOn   uuid.UUID
 }
 
 func (s *stubSource) Transaction(ctx context.Context, id uuid.UUID) (opensheetsync.TransactionFacts, bool, error) {
@@ -56,6 +57,9 @@ func (s *stubSource) Transaction(ctx context.Context, id uuid.UUID) (opensheetsy
 func (s *stubSource) Wallet(_ context.Context, id uuid.UUID) (opensheetsync.WalletFacts, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if id == s.failOn {
+		return opensheetsync.WalletFacts{}, false, errors.New("stub source: broken")
+	}
 	f, ok := s.wallet[id]
 	return f, ok, nil
 }

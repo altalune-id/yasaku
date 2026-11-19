@@ -14,7 +14,7 @@ type TodoRow struct {
 }
 
 templ TodoRowFragment(d web.LayoutData, t TodoRow) {
-	<li id={ "todo-" + t.ID } class="group flex items-center gap-3 px-4 py-3 hover:bg-muted/50">
+	<li id={ "todo-" + t.ID } class="group flex items-center gap-3 px-4 py-3 hover:bg-base-200/50">
 		<form
 			method="post"
 			action={ templ.SafeURL(d.ProjectPath(t.ProjectSlug, "/todos/" + t.ID + "/toggle")) }
@@ -32,8 +32,8 @@ templ TodoRowFragment(d web.LayoutData, t TodoRow) {
 				aria-label={ "Toggle " + t.Title }
 				class={
 					"flex size-5 items-center justify-center rounded border text-xs transition",
-					templ.KV("border-green-500 bg-green-500 text-white", t.Done),
-					templ.KV("border-border bg-card hover:border-muted-foreground", !t.Done),
+					templ.KV("border-success bg-success text-success-content", t.Done),
+					templ.KV("border-base-300 bg-base-100 hover:border-base-content/70", !t.Done),
 				}
 			>
 				if t.Done {
@@ -41,7 +41,7 @@ templ TodoRowFragment(d web.LayoutData, t TodoRow) {
 				}
 			</button>
 		</form>
-		<span class={ "flex-1 text-sm", templ.KV("text-muted-foreground/70 line-through", t.Done), templ.KV("text-foreground", !t.Done) }>{ t.Title }</span>
+		<span class={ "flex-1 text-sm", templ.KV("text-base-content/70 line-through", t.Done), templ.KV("text-base-content", !t.Done) }>{ t.Title }</span>
 		<form
 			method="post"
 			action={ templ.SafeURL(d.ProjectPath(t.ProjectSlug, "/todos/" + t.ID + "/delete")) }
@@ -57,7 +57,7 @@ templ TodoRowFragment(d web.LayoutData, t TodoRow) {
 			<button
 				type="submit"
 				aria-label={ "Delete " + t.Title }
-				class="rounded p-1 text-muted-foreground/70 opacity-0 transition group-hover:opacity-100 hover:bg-error/10 hover:text-error focus:opacity-100"
+				class="rounded p-1 text-base-content/70 opacity-0 transition group-hover:opacity-100 hover:bg-error/10 hover:text-error focus:opacity-100"
 			>
 				@icons.Icon("trash-2", "h-4 w-4")
 			</button>

@@ -91,6 +91,18 @@ type State struct {
 // Dirty reports whether the sheet still trails the row.
 func (s State) Dirty() bool { return s.SyncedVersion < s.Version }
 
+// RowFailure is a dirty row opensheet refused at least once: its last error, the attempts it spent and when it may be tried again.
+type RowFailure struct {
+	Ref
+	Attempts   int
+	LastError  string
+	RetryAfter *time.Time
+	UpdatedAt  time.Time
+}
+
+// GivenUp reports whether the row spent every attempt and waits for its next edit or a "Sync everything now".
+func (f RowFailure) GivenUp() bool { return f.Attempts >= MaxRowAttempts }
+
 // MaxRowAttempts is how many times a row opensheet refuses is tried before it waits for its next edit or a "Sync everything now".
 const MaxRowAttempts = 5
 

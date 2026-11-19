@@ -12,12 +12,12 @@ type ProjectNewView struct {
 
 templ ProjectNewPage(d web.LayoutData, v ProjectNewView) {
 	<section class="mx-auto max-w-xl">
-		<header class="border-b border-border pb-4">
-			<h1 class="text-2xl font-semibold text-foreground">{ d.Tr("nav.create_project") }</h1>
-			<p class="mt-1 text-sm text-muted-foreground">
+		<header class="border-b border-base-300 pb-4">
+			<h1 class="text-2xl font-semibold text-base-content">{ d.Tr("nav.create_project") }</h1>
+			<p class="mt-1 text-sm text-base-content/70">
 				{ d.Tr("project_new.subtitle_prefix") }
 				if d.ActiveOrg != nil {
-					<span class="font-medium text-foreground/90">{ d.ActiveOrg.Name }</span>.
+					<span class="font-medium text-base-content/90">{ d.ActiveOrg.Name }</span>.
 				} else {
 					{ d.Tr("project_new.subtitle_fallback") }
 				}

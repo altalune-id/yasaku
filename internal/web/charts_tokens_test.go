@@ -12,7 +12,7 @@ func TestChartsReadNoRemovedTokens(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read charts.js: %v", err)
 	}
-	removed := regexp.MustCompile(`(?:--|text-|bg-|border-)(?:` + strings.Join(aliasAllowlist(), "|") + `)(?:[^a-z0-9-]|$)`)
+	removed := regexp.MustCompile(`(?:--|text-|bg-|border-)(?:` + strings.Join(oldTokens(), "|") + `)(?:[^a-z0-9-]|$)`)
 	if hits := removed.FindAllString(string(b), -1); len(hits) > 0 {
 		t.Errorf("charts.js uses removed theme tokens %q; read daisyUI --color-* variables instead", hits)
 	}

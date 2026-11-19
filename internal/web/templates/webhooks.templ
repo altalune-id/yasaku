@@ -50,31 +50,31 @@ templ webhookActiveBadge(d web.LayoutData, active bool) {
 	if active {
 		<span class="shrink-0 rounded-full bg-success/10 px-2 py-0.5 text-xs font-medium text-success">{ d.Tr("webhooks.active") }</span>
 	} else {
-		<span class="shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">{ d.Tr("webhooks.inactive") }</span>
+		<span class="shrink-0 rounded-full bg-base-200 px-2 py-0.5 text-xs font-medium text-base-content/70">{ d.Tr("webhooks.inactive") }</span>
 	}
 }
 
 templ webhookEventBadges(d web.LayoutData, keys []string) {
 	<span class="flex flex-wrap gap-1">
 		for _, k := range keys {
-			<span class="rounded-full border border-border px-2 py-0.5 text-[11px] text-muted-foreground">{ d.Tr(k) }</span>
+			<span class="rounded-full border border-base-300 px-2 py-0.5 text-[11px] text-base-content/70">{ d.Tr(k) }</span>
 		}
 	</span>
 }
 
 templ WebhooksPage(d web.LayoutData, v WebhooksView) {
 	<section>
-		<header class="flex flex-wrap items-end justify-between gap-3 border-b border-border pb-4">
+		<header class="flex flex-wrap items-end justify-between gap-3 border-b border-base-300 pb-4">
 			<div>
-				<h1 class="text-2xl font-semibold text-foreground">{ d.Tr("webhooks.title") }</h1>
-				<p class="mt-1 text-sm text-muted-foreground">{ d.Tr("webhooks.subtitle") }</p>
+				<h1 class="text-2xl font-semibold text-base-content">{ d.Tr("webhooks.title") }</h1>
+				<p class="mt-1 text-sm text-base-content/70">{ d.Tr("webhooks.subtitle") }</p>
 			</div>
 			<div class="flex items-center gap-3">
-				<span class="text-xs text-muted-foreground">{ d.Tr("webhooks.count", "Count", len(v.Items), "Limit", v.Limit) }</span>
+				<span class="text-xs text-base-content/70">{ d.Tr("webhooks.count", "Count", len(v.Items), "Limit", v.Limit) }</span>
 				if len(v.Items) < v.Limit {
 					<a
 						href={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/webhooks/new")) }
-						class="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90"
+						class="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-content shadow-sm hover:bg-primary/90"
 					>
 						@icons.Icon("plus", "h-4 w-4")
 						<span>{ d.Tr("webhooks.new") }</span>
@@ -83,19 +83,19 @@ templ WebhooksPage(d web.LayoutData, v WebhooksView) {
 			</div>
 		</header>
 		@webhookEphemeralBanner(d)
-		<ul class="mt-6 divide-y divide-border/50 overflow-hidden rounded-lg border border-border bg-card shadow-sm">
+		<ul class="mt-6 divide-y divide-base-300/50 overflow-hidden rounded-lg border border-base-300 bg-base-100 shadow-sm">
 			if len(v.Items) == 0 {
-				<li class="px-4 py-8 text-center text-sm text-muted-foreground">{ d.Tr("webhooks.empty") }</li>
+				<li class="px-4 py-8 text-center text-sm text-base-content/70">{ d.Tr("webhooks.empty") }</li>
 			}
 			for _, e := range v.Items {
 				<li class="flex flex-wrap items-center gap-3 px-4 py-3">
 					<div class="min-w-0 flex-1">
 						<a
 							href={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/webhooks/"+e.ID)) }
-							class="block truncate font-mono text-sm font-medium text-foreground hover:underline"
+							class="block truncate font-mono text-sm font-medium text-base-content hover:underline"
 						>{ e.URL }</a>
 						if e.Description != "" {
-							<p class="mt-0.5 truncate text-xs text-muted-foreground">{ e.Description }</p>
+							<p class="mt-0.5 truncate text-xs text-base-content/70">{ e.Description }</p>
 						}
 						<p class="mt-1.5">
 							@webhookEventBadges(d, e.EventLabelKeys)

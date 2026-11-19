@@ -653,6 +653,54 @@ func (s *sqliteStore) Backlog(ctx context.Context, orgID, projectID uuid.UUID) (
 	return Backlog{Pending: row.Pending, Failing: row.Failing, GivenUp: row.GivenUp}, s.endTx(tx, owned, nil)
 }
 
+func (s *sqliteStore) FailingRows(ctx context.Context, orgID, projectID uuid.UUID, limit int) ([]RowFailure, error) {
+	tx, owned, err := s.txAcquire(ctx)
+	if err != nil {
+		return nil, err
+	}
+	t := s.state
+	var rows []struct {
+		Entity     string  `alias:"opensheet_sync_state.entity"`
+		EntityID   string  `alias:"opensheet_sync_state.entity_id"`
+		Deleted    int64   `alias:"opensheet_sync_state.deleted"`
+		Attempts   int64   `alias:"opensheet_sync_state.attempts"`
+		LastError  string  `alias:"opensheet_sync_state.last_error"`
+		RetryAfter *string `alias:"opensheet_sync_state.retry_after"`
+		UpdatedAt  string  `alias:"opensheet_sync_state.updated_at"`
+	}
+	err = t.SELECT(t.Entity, t.EntityID, t.Deleted, t.Attempts, t.LastError, t.RetryAfter, t.UpdatedAt).
+		FROM(t).
+		WHERE(t.OrgID.EQ(sqlite.String(orgID.String())).
+			AND(t.ProjectID.EQ(sqlite.String(projectID.String()))).
+			AND(t.Attempts.GT(sqlite.Int(0)))).
+		ORDER_BY(t.UpdatedAt.DESC(), t.Entity.ASC(), t.EntityID.ASC()).
+		LIMIT(int64(limit)).
+		QueryContext(ctx, tx, &rows)
+	if err != nil {
+		return nil, s.endTx(tx, owned, fmt.Errorf("opensheetsync.sqlite.FailingRows: %w", err))
+	}
+	out := make([]RowFailure, 0, len(rows))
+	for _, r := range rows {
+		id, pErr := uuid.Parse(r.EntityID)
+		if pErr != nil {
+			return nil, s.endTx(tx, owned, fmt.Errorf("opensheetsync.sqlite: parse entity_id: %w", pErr))
+		}
+		at, pErr := sqliteTime(r.UpdatedAt)
+		if pErr != nil {
+			return nil, s.endTx(tx, owned, pErr)
+		}
+		retry, pErr := sqliteTimePtr(r.RetryAfter)
+		if pErr != nil {
+			return nil, s.endTx(tx, owned, pErr)
+		}
+		out = append(out, RowFailure{
+			Ref:      Ref{Entity: Entity(r.Entity), ID: id, Deleted: r.Deleted != 0},
+			Attempts: int(r.Attempts), LastError: r.LastError, RetryAfter: retry, UpdatedAt: at,
+		})
+	}
+	return out, s.endTx(tx, owned, nil)
+}
+
 func boolInt(b bool) int64 {
 	if b {
 		return 1

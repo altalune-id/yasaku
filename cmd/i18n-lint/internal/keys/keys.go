@@ -66,6 +66,7 @@ type Report struct {
 	Missing           map[string][]string
 	Dead              []string
 	IncompletePlurals map[string][]string
+	Empty             map[string][]string
 }
 
 // Run scans templates and locales and returns a Report.
@@ -112,7 +113,14 @@ func Run(opts Options) (*Report, error) {
 
 	missing := make(map[string][]string)
 	incomplete := make(map[string][]string)
+	empty := make(map[string][]string)
 	for _, l := range locales {
+		collectEmpty(l.Values, "", func(k string) {
+			if !slices.ContainsFunc(unmountedPrefixes(), func(p string) bool { return strings.HasPrefix(k, p) }) {
+				empty[l.Locale] = append(empty[l.Locale], k)
+			}
+		})
+		sort.Strings(empty[l.Locale])
 		for k := range used {
 			if !containsKey(l.Values, k) {
 				missing[l.Locale] = append(missing[l.Locale], k)
@@ -148,6 +156,7 @@ func Run(opts Options) (*Report, error) {
 		Missing:           missing,
 		Dead:              dead,
 		IncompletePlurals: incomplete,
+		Empty:             empty,
 	}, nil
 }
 
@@ -182,13 +191,22 @@ func (r *Report) Print(w io.Writer) {
 			}
 		}
 	}
+	if len(r.Empty) > 0 {
+		_, _ = fmt.Fprintln(w, "\nempty values per locale:")
+		for _, l := range sortedKeys(r.Empty) {
+			_, _ = fmt.Fprintf(w, "  %s:\n", l)
+			for _, k := range r.Empty[l] {
+				_, _ = fmt.Fprintf(w, "    - %s\n", k)
+			}
+		}
+	}
 	if len(r.Dead) > 0 {
 		_, _ = fmt.Fprintln(w, "\ndead keys (in a locale, referenced by no template, Go callsite or //i18n:use claim):")
 		for _, k := range r.Dead {
 			_, _ = fmt.Fprintf(w, "  - %s\n", k)
 		}
 	}
-	if len(r.Missing) == 0 && len(r.IncompletePlurals) == 0 && len(r.Dead) == 0 {
+	if len(r.Missing) == 0 && len(r.IncompletePlurals) == 0 && len(r.Empty) == 0 && len(r.Dead) == 0 {
 		_, _ = fmt.Fprintln(w, "\nOK — every callsite has a translation in every loaded locale.")
 	}
 }
@@ -204,6 +222,9 @@ func (r *Report) HasBlockingIssues(strict bool) bool {
 		if len(ks) > 0 {
 			return true
 		}
+	}
+	if len(r.Empty) > 0 {
+		return true
 	}
 	if strict && len(r.Dead) > 0 {
 		return true
@@ -375,6 +396,27 @@ func collectLeafKeys(values map[string]any, prefix string, out map[string]bool) 
 			}
 		default:
 			out[full] = true
+		}
+	}
+}
+
+func unmountedPrefixes() []string { return []string{"blog."} }
+
+func collectEmpty(values map[string]any, prefix string, add func(string)) {
+	for k, v := range values {
+		full := k
+		if prefix != "" {
+			full = prefix + "." + k
+		}
+		switch v := v.(type) {
+		case map[string]any:
+			collectEmpty(v, full, add)
+		case string:
+			if strings.TrimSpace(v) == "" {
+				add(full)
+			}
+		case nil:
+			add(full)
 		}
 	}
 }

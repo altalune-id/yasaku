@@ -40,10 +40,18 @@ func (p FieldProps) Attrs() templ.Attributes {
 
 // AppCollapse renders a daisyUI arrow collapse with daisyUI's own title sizing; class styles the box and children are the content.
 templ AppCollapse(id, class string, title templ.Component) {
+	@AppCollapseOpen(id, class, false, title) {
+		{ children... }
+	}
+}
+
+// AppCollapseOpen is AppCollapse that starts open when open is true.
+templ AppCollapseOpen(id, class string, open bool, title templ.Component) {
 	<details
 		if id != "" {
 			id={ id }
 		}
+		open?={ open }
 		class={ "collapse collapse-arrow", class }
 	>
 		<summary class="collapse-title flex items-center gap-2 text-sm" data-scan-asym="daisyUI collapse-title reserves its end padding for the arrow">

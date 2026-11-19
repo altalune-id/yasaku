@@ -115,11 +115,11 @@ templ apikeyMintedBanner(d web.LayoutData, m *APIKeyMinted) {
 }
 
 templ apikeyChip(label string) {
-	<span class="rounded-full border border-border px-2 py-0.5 text-[11px] text-muted-foreground">{ label }</span>
+	<span class="rounded-full border border-base-300 px-2 py-0.5 text-[11px] text-base-content/70">{ label }</span>
 }
 
 templ apikeyGrantSummary(d web.LayoutData, k APIKeyRow) {
-	<p class="mt-1 flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
+	<p class="mt-1 flex flex-wrap items-center gap-1 text-xs text-base-content/70">
 		<span>{ d.Tr("apikey.access_label") }:</span>
 		if k.AllProjects {
 			<span class="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">{ d.Tr("apikey.all_projects") }</span>
@@ -153,14 +153,14 @@ templ apikeyAction(d web.LayoutData, action, confirm string) {
 
 templ apikeyPromote(d web.LayoutData, v APIKeysView, k APIKeyRow) {
 	<details class="mt-2 text-xs">
-		<summary class="cursor-pointer select-none text-muted-foreground hover:text-foreground">{ d.Tr("apikey.widen_access") }</summary>
+		<summary class="cursor-pointer select-none text-base-content/70 hover:text-base-content">{ d.Tr("apikey.widen_access") }</summary>
 		<div class="mt-2 grid gap-2 rounded-box border border-base-300 bg-base-200 p-3 text-sm">
 			if len(k.Grantable) > 0 {
 				@apikeyAction(d, k.Base+"/"+k.ID+"/projects", "") {
 					<div class="flex flex-wrap gap-2">
 						for _, p := range k.Grantable {
-							<label class="inline-flex cursor-pointer items-center gap-2 rounded-full border border-border px-3 py-1 text-foreground/90 hover:bg-muted has-[:checked]:border-primary has-[:checked]:bg-primary/10">
-								<input type="checkbox" name="project_ids" value={ p.ID } class="h-3.5 w-3.5 rounded border-border"/>
+							<label class="inline-flex cursor-pointer items-center gap-2 rounded-full border border-base-300 px-3 py-1 text-base-content/90 hover:bg-base-200 has-[:checked]:border-primary has-[:checked]:bg-primary/10">
+								<input type="checkbox" name="project_ids" value={ p.ID } class="h-3.5 w-3.5 rounded border-base-300"/>
 								<span>{ p.Name }</span>
 							</label>
 						}
@@ -171,7 +171,7 @@ templ apikeyPromote(d web.LayoutData, v APIKeysView, k APIKeyRow) {
 			@apikeyAction(d, k.Base+"/"+k.ID+"/all-projects", d.Tr("apikey.all_projects_confirm")) {
 				<button type="submit" class="btn">{ d.Tr("apikey.grant_all_projects") }</button>
 			}
-			<p class="text-muted-foreground">{ d.Tr("apikey.widen_note") }</p>
+			<p class="text-base-content/70">{ d.Tr("apikey.widen_note") }</p>
 		</div>
 	</details>
 }
@@ -180,12 +180,12 @@ templ apikeyRowItem(d web.LayoutData, v APIKeysView, k APIKeyRow) {
 	<li class="flex flex-wrap items-start gap-3 px-4 py-3">
 		<div class="min-w-0 flex-1">
 			<p class="flex flex-wrap items-baseline gap-2">
-				<span class="truncate text-sm font-medium text-foreground">{ k.Name }</span>
+				<span class="truncate text-sm font-medium text-base-content">{ k.Name }</span>
 				if k.OrgName != "" {
 					@apikeyChip(k.OrgName)
 				}
 				if k.SecretHint != "" {
-					<code class="font-mono text-xs text-muted-foreground">…{ k.SecretHint }</code>
+					<code class="font-mono text-xs text-base-content/70">…{ k.SecretHint }</code>
 				}
 			</p>
 			if len(k.ScopeLabelKeys) > 0 {
@@ -198,7 +198,7 @@ templ apikeyRowItem(d web.LayoutData, v APIKeysView, k APIKeyRow) {
 			if k.HasGrant {
 				@apikeyGrantSummary(d, k)
 			}
-			<p class="mt-1.5 flex flex-wrap gap-x-1.5 text-xs text-muted-foreground">
+			<p class="mt-1.5 flex flex-wrap gap-x-1.5 text-xs text-base-content/70">
 				<span>
 					{ d.Tr("apikey.created_label") }:
 					@DateTime(d, k.CreatedAt)
@@ -236,7 +236,7 @@ templ apikeyRowItem(d web.LayoutData, v APIKeysView, k APIKeyRow) {
 				<button
 					type="submit"
 					aria-label={ d.Tr("apikey.revoke") + ": " + k.Name }
-					class="shrink-0 rounded p-1.5 text-muted-foreground/70 hover:bg-error/10 hover:text-error"
+					class="shrink-0 rounded p-1.5 text-base-content/70 hover:bg-error/10 hover:text-error"
 				>
 					@icons.Icon("trash-2", "h-4 w-4")
 				</button>
@@ -269,11 +269,11 @@ templ apikeyGrantFields(d web.LayoutData, v APIKeysView) {
 	@FieldGroup(d.Tr("apikey.access_label")) {
 		<div class="group grid gap-2">
 			<div class="flex flex-wrap gap-2">
-				<label class="inline-flex cursor-pointer items-center gap-2 rounded-full border border-border px-3 py-1 text-sm text-foreground/90 hover:bg-muted has-[:checked]:border-primary has-[:checked]:bg-primary/10">
+				<label class="inline-flex cursor-pointer items-center gap-2 rounded-full border border-base-300 px-3 py-1 text-sm text-base-content/90 hover:bg-base-200 has-[:checked]:border-primary has-[:checked]:bg-primary/10">
 					<input type="radio" name="grant" value="selected" checked class="h-3.5 w-3.5"/>
 					<span>{ d.Tr("apikey.selected_projects") }</span>
 				</label>
-				<label class="inline-flex cursor-pointer items-center gap-2 rounded-full border border-border px-3 py-1 text-sm text-foreground/90 hover:bg-muted has-[:checked]:border-primary has-[:checked]:bg-primary/10">
+				<label class="inline-flex cursor-pointer items-center gap-2 rounded-full border border-base-300 px-3 py-1 text-sm text-base-content/90 hover:bg-base-200 has-[:checked]:border-primary has-[:checked]:bg-primary/10">
 					<input type="radio" name="grant" value="all" class="h-3.5 w-3.5"/>
 					<span>{ d.Tr("apikey.all_projects") }</span>
 				</label>
@@ -288,8 +288,8 @@ templ apikeyGrantFields(d web.LayoutData, v APIKeysView) {
 templ APIKeyGrantProjects(d web.LayoutData, projects []APIKeyProjectOption) {
 	<div id="apikey-grant-projects" class="flex flex-wrap gap-2 group-has-[input[value=all]:checked]:hidden">
 		for _, p := range projects {
-			<label class="inline-flex cursor-pointer items-center gap-2 rounded-full border border-border px-3 py-1 text-sm text-foreground/90 hover:bg-muted has-[:checked]:border-primary has-[:checked]:bg-primary/10">
-				<input type="checkbox" name="project_ids" value={ p.ID } class="h-3.5 w-3.5 rounded border-border"/>
+			<label class="inline-flex cursor-pointer items-center gap-2 rounded-full border border-base-300 px-3 py-1 text-sm text-base-content/90 hover:bg-base-200 has-[:checked]:border-primary has-[:checked]:bg-primary/10">
+				<input type="checkbox" name="project_ids" value={ p.ID } class="h-3.5 w-3.5 rounded border-base-300"/>
 				<span>{ p.Name }</span>
 			</label>
 		}
@@ -357,8 +357,8 @@ templ apikeyMintForm(d web.LayoutData, v APIKeysView) {
 		@FieldGroup(d.Tr("apikey.scopes_label")) {
 			<div class="flex flex-wrap gap-2">
 				for _, opt := range v.Scopes {
-					<label class="inline-flex cursor-pointer items-center gap-2 rounded-full border border-border px-3 py-1 text-sm text-foreground/90 hover:bg-muted has-[:checked]:border-primary has-[:checked]:bg-primary/10">
-						<input type="checkbox" name="scopes" value={ opt.Value } class="h-3.5 w-3.5 rounded border-border"/>
+					<label class="inline-flex cursor-pointer items-center gap-2 rounded-full border border-base-300 px-3 py-1 text-sm text-base-content/90 hover:bg-base-200 has-[:checked]:border-primary has-[:checked]:bg-primary/10">
+						<input type="checkbox" name="scopes" value={ opt.Value } class="h-3.5 w-3.5 rounded border-base-300"/>
 						<span>{ d.Tr(opt.LabelKey) }</span>
 					</label>
 				}

@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
+	"altalune.id/yasaku/civil"
 	"altalune.id/yasaku/internal/apperror"
 	"altalune.id/yasaku/internal/opensheetsync"
 	"altalune.id/yasaku/internal/org"
@@ -31,6 +32,7 @@ type serviceEnv struct {
 	members *fakes.Members
 	sealer  sealer.Sealer
 	logs    *lockedBuffer
+	source  opensheetsync.Source
 	svc     *opensheetsync.Service
 }
 
@@ -86,7 +88,7 @@ func (e *serviceEnv) serviceWith(store opensheetsync.Store, sl sealer.Sealer, mi
 	log := slog.New(slog.NewTextHandler(e.logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	return opensheetsync.NewService(store, log, apperror.NewReporter(log, false).Unexpected,
 		opensheetsync.ServiceDeps{
-			Mirror: mirror, Members: e.members, Sealer: sl,
+			Mirror: mirror, Members: e.members, Sealer: sl, Source: e.source,
 			Endpoint:   opensheetsync.Endpoint{BaseURL: e.sheets.URL(), AllowPrivateHosts: true, Timeout: 2 * time.Second},
 			UnitOfWork: fakes.UnitOfWork, Now: func() time.Time { return e.now },
 		})
@@ -561,4 +563,58 @@ func mustTab(t *testing.T, e opensheetsync.Entity) opensheetsync.Tab {
 	tab, ok := opensheetsync.TabFor(e)
 	require.True(t, ok)
 	return tab
+}
+
+func TestService_StatusListsRefusedRowsByTheNamePeopleKnow(t *testing.T) {
+	e := newServiceEnv(t)
+	addContractSheets(e.sheets, true)
+	jakarta, err := time.LoadLocation("Asia/Jakarta")
+	require.NoError(t, err)
+	day := time.Date(2026, 10, 4, 18, 0, 0, 0, time.UTC)
+	noted, uncategorized, wallet, gone, broken := uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	src := &stubSource{
+		txs: map[uuid.UUID]opensheetsync.TransactionFacts{
+			noted:         {ID: noted, Note: "Coffee", CategoryName: "Food", OccurredAt: day, Location: jakarta},
+			uncategorized: {ID: uncategorized, CategoryName: "Food", OccurredAt: day},
+		},
+		wallet:   map[uuid.UUID]opensheetsync.WalletFacts{wallet: {ID: wallet, Name: "BCA"}},
+		category: map[uuid.UUID]opensheetsync.CategoryFacts{},
+		failOn:   broken,
+	}
+	e.source = src
+	e.svc = e.service(e.sealer, e.mirror)
+	_, _, err = e.svc.Save(e.ctx, settings(goodKey))
+	require.NoError(t, err)
+	refs := []opensheetsync.Ref{
+		{Entity: opensheetsync.EntityTransaction, ID: noted}, {Entity: opensheetsync.EntityTransaction, ID: uncategorized},
+		{Entity: opensheetsync.EntityWallet, ID: wallet}, {Entity: opensheetsync.EntityCategory, ID: gone},
+		{Entity: opensheetsync.EntityWallet, ID: broken},
+	}
+	require.NoError(t, e.store.Mark(e.ctx, e.tc.OrgID, e.tc.ProjectID, refs, e.now))
+	for i, r := range refs {
+		tok := uuid.New()
+		st, ok, err := e.store.Claim(e.ctx, e.tc.OrgID, e.tc.ProjectID, r, tok, e.now, time.Minute)
+		require.NoError(t, err)
+		require.True(t, ok)
+		require.NoError(t, e.store.Release(e.ctx, e.tc.OrgID, e.tc.ProjectID, r, tok,
+			opensheetsync.Failure{Reason: "refused", At: e.now.Add(time.Duration(i) * time.Second), Count: true, Version: st.Version}))
+	}
+
+	got, err := e.svc.Status(e.ctx)
+	require.NoError(t, err, "a Source error never fails the page")
+	require.EqualValues(t, 5, got.Failing)
+	byID := map[uuid.UUID]opensheetsync.FailedRow{}
+	for _, r := range got.Rows {
+		byID[r.ID] = r
+	}
+	require.Len(t, byID, 5)
+	require.Equal(t, "Coffee", byID[noted].Name)
+	require.Equal(t, &civil.Date{Year: 2026, Month: time.October, Day: 5}, byID[noted].On, "the entry's ledger date in the project zone, not the UTC instant")
+	require.Equal(t, "Food", byID[uncategorized].Name, "a transaction without a note goes by its category")
+	require.Equal(t, "BCA", byID[wallet].Name)
+	require.Nil(t, byID[wallet].On)
+	require.Empty(t, byID[gone].Name, "a gone row shows its kind only")
+	require.Empty(t, byID[broken].Name, "a Source error falls back to the kind")
+	require.Contains(t, e.logs.String(), "opensheetsync.Status: row label")
+	require.Equal(t, "refused", byID[noted].LastError)
 }

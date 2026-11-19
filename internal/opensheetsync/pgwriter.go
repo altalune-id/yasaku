@@ -338,3 +338,44 @@ func (s *postgresStore) Backlog(ctx context.Context, orgID, projectID uuid.UUID)
 	}
 	return Backlog{Pending: row.Pending, Failing: row.Failing, GivenUp: row.GivenUp}, s.endTx(tx, owned, nil)
 }
+
+func (s *postgresStore) FailingRows(ctx context.Context, orgID, projectID uuid.UUID, limit int) ([]RowFailure, error) {
+	tx, owned, err := s.txAcquire(ctx)
+	if err != nil {
+		return nil, err
+	}
+	t := s.state
+	var rows []struct {
+		Entity     string     `alias:"opensheet_sync_state.entity"`
+		EntityID   uuid.UUID  `alias:"opensheet_sync_state.entity_id"`
+		Deleted    bool       `alias:"opensheet_sync_state.deleted"`
+		Attempts   int32      `alias:"opensheet_sync_state.attempts"`
+		LastError  string     `alias:"opensheet_sync_state.last_error"`
+		RetryAfter *time.Time `alias:"opensheet_sync_state.retry_after"`
+		UpdatedAt  time.Time  `alias:"opensheet_sync_state.updated_at"`
+	}
+	err = t.SELECT(t.Entity, t.EntityID, t.Deleted, t.Attempts, t.LastError, t.RetryAfter, t.UpdatedAt).
+		FROM(t).
+		WHERE(t.OrgID.EQ(postgres.UUID(orgID)).
+			AND(t.ProjectID.EQ(postgres.UUID(projectID))).
+			AND(t.Attempts.GT(postgres.Int32(0)))).
+		ORDER_BY(t.UpdatedAt.DESC(), t.Entity.ASC(), t.EntityID.ASC()).
+		LIMIT(int64(limit)).
+		QueryContext(ctx, tx, &rows)
+	if err != nil {
+		return nil, s.endTx(tx, owned, fmt.Errorf("opensheetsync.postgres.FailingRows: %w", err))
+	}
+	out := make([]RowFailure, 0, len(rows))
+	for _, r := range rows {
+		f := RowFailure{
+			Ref:      Ref{Entity: Entity(r.Entity), ID: r.EntityID, Deleted: r.Deleted},
+			Attempts: int(r.Attempts), LastError: r.LastError, UpdatedAt: r.UpdatedAt.UTC(),
+		}
+		if r.RetryAfter != nil {
+			utc := r.RetryAfter.UTC()
+			f.RetryAfter = &utc
+		}
+		out = append(out, f)
+	}
+	return out, s.endTx(tx, owned, nil)
+}

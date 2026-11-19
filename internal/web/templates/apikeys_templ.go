@@ -246,14 +246,14 @@ func apikeyChip(label string) templ.Component {
 			templ_7745c5c3_Var6 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "<span class=\"rounded-full border border-border px-2 py-0.5 text-[11px] text-muted-foreground\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "<span class=\"rounded-full border border-base-300 px-2 py-0.5 text-[11px] text-base-content/70\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var7 string
 		templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(label)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/apikeys.templ`, Line: 118, Col: 102}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/apikeys.templ`, Line: 118, Col: 103}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 		if templ_7745c5c3_Err != nil {
@@ -288,7 +288,7 @@ func apikeyGrantSummary(d web.LayoutData, k APIKeyRow) templ.Component {
 			templ_7745c5c3_Var8 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "<p class=\"mt-1 flex flex-wrap items-center gap-1 text-xs text-muted-foreground\"><span>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "<p class=\"mt-1 flex flex-wrap items-center gap-1 text-xs text-base-content/70\"><span>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -459,14 +459,14 @@ func apikeyPromote(d web.LayoutData, v APIKeysView, k APIKeyRow) templ.Component
 			templ_7745c5c3_Var16 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "<details class=\"mt-2 text-xs\"><summary class=\"cursor-pointer select-none text-muted-foreground hover:text-foreground\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "<details class=\"mt-2 text-xs\"><summary class=\"cursor-pointer select-none text-base-content/70 hover:text-base-content\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var17 string
 		templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.JoinStringErrs(d.Tr("apikey.widen_access"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/apikeys.templ`, Line: 156, Col: 119}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/apikeys.templ`, Line: 156, Col: 120}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var17))
 		if templ_7745c5c3_Err != nil {
@@ -494,7 +494,7 @@ func apikeyPromote(d web.LayoutData, v APIKeysView, k APIKeyRow) templ.Component
 					return templ_7745c5c3_Err
 				}
 				for _, p := range k.Grantable {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "<label class=\"inline-flex cursor-pointer items-center gap-2 rounded-full border border-border px-3 py-1 text-foreground/90 hover:bg-muted has-[:checked]:border-primary has-[:checked]:bg-primary/10\"><input type=\"checkbox\" name=\"project_ids\" value=\"")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "<label class=\"inline-flex cursor-pointer items-center gap-2 rounded-full border border-base-300 px-3 py-1 text-base-content/90 hover:bg-base-200 has-[:checked]:border-primary has-[:checked]:bg-primary/10\"><input type=\"checkbox\" name=\"project_ids\" value=\"")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -507,7 +507,7 @@ func apikeyPromote(d web.LayoutData, v APIKeysView, k APIKeyRow) templ.Component
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "\" class=\"h-3.5 w-3.5 rounded border-border\"> <span>")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "\" class=\"h-3.5 w-3.5 rounded border-base-300\"> <span>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -584,14 +584,14 @@ func apikeyPromote(d web.LayoutData, v APIKeysView, k APIKeyRow) templ.Component
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, "<p class=\"text-muted-foreground\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, "<p class=\"text-base-content/70\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var24 string
 		templ_7745c5c3_Var24, templ_7745c5c3_Err = templ.JoinStringErrs(d.Tr("apikey.widen_note"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/apikeys.templ`, Line: 174, Col: 63}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/apikeys.templ`, Line: 174, Col: 62}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var24))
 		if templ_7745c5c3_Err != nil {
@@ -626,14 +626,14 @@ func apikeyRowItem(d web.LayoutData, v APIKeysView, k APIKeyRow) templ.Component
 			templ_7745c5c3_Var25 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 32, "<li class=\"flex flex-wrap items-start gap-3 px-4 py-3\"><div class=\"min-w-0 flex-1\"><p class=\"flex flex-wrap items-baseline gap-2\"><span class=\"truncate text-sm font-medium text-foreground\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 32, "<li class=\"flex flex-wrap items-start gap-3 px-4 py-3\"><div class=\"min-w-0 flex-1\"><p class=\"flex flex-wrap items-baseline gap-2\"><span class=\"truncate text-sm font-medium text-base-content\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var26 string
 		templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.JoinStringErrs(k.Name)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/apikeys.templ`, Line: 183, Col: 71}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/apikeys.templ`, Line: 183, Col: 73}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var26))
 		if templ_7745c5c3_Err != nil {
@@ -650,14 +650,14 @@ func apikeyRowItem(d web.LayoutData, v APIKeysView, k APIKeyRow) templ.Component
 			}
 		}
 		if k.SecretHint != "" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 34, "<code class=\"font-mono text-xs text-muted-foreground\">…")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 34, "<code class=\"font-mono text-xs text-base-content/70\">…")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var27 string
 			templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.JoinStringErrs(k.SecretHint)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/apikeys.templ`, Line: 188, Col: 76}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/apikeys.templ`, Line: 188, Col: 75}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var27))
 			if templ_7745c5c3_Err != nil {
@@ -694,7 +694,7 @@ func apikeyRowItem(d web.LayoutData, v APIKeysView, k APIKeyRow) templ.Component
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, "<p class=\"mt-1.5 flex flex-wrap gap-x-1.5 text-xs text-muted-foreground\"><span>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, "<p class=\"mt-1.5 flex flex-wrap gap-x-1.5 text-xs text-base-content/70\"><span>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -847,7 +847,7 @@ func apikeyRowItem(d web.LayoutData, v APIKeysView, k APIKeyRow) templ.Component
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 51, "\" class=\"shrink-0 rounded p-1.5 text-muted-foreground/70 hover:bg-error/10 hover:text-error\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 51, "\" class=\"shrink-0 rounded p-1.5 text-base-content/70 hover:bg-error/10 hover:text-error\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -998,7 +998,7 @@ func apikeyGrantFields(d web.LayoutData, v APIKeysView) templ.Component {
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 61, "<div class=\"group grid gap-2\"><div class=\"flex flex-wrap gap-2\"><label class=\"inline-flex cursor-pointer items-center gap-2 rounded-full border border-border px-3 py-1 text-sm text-foreground/90 hover:bg-muted has-[:checked]:border-primary has-[:checked]:bg-primary/10\"><input type=\"radio\" name=\"grant\" value=\"selected\" checked class=\"h-3.5 w-3.5\"> <span>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 61, "<div class=\"group grid gap-2\"><div class=\"flex flex-wrap gap-2\"><label class=\"inline-flex cursor-pointer items-center gap-2 rounded-full border border-base-300 px-3 py-1 text-sm text-base-content/90 hover:bg-base-200 has-[:checked]:border-primary has-[:checked]:bg-primary/10\"><input type=\"radio\" name=\"grant\" value=\"selected\" checked class=\"h-3.5 w-3.5\"> <span>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1011,7 +1011,7 @@ func apikeyGrantFields(d web.LayoutData, v APIKeysView) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 62, "</span></label> <label class=\"inline-flex cursor-pointer items-center gap-2 rounded-full border border-border px-3 py-1 text-sm text-foreground/90 hover:bg-muted has-[:checked]:border-primary has-[:checked]:bg-primary/10\"><input type=\"radio\" name=\"grant\" value=\"all\" class=\"h-3.5 w-3.5\"> <span>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 62, "</span></label> <label class=\"inline-flex cursor-pointer items-center gap-2 rounded-full border border-base-300 px-3 py-1 text-sm text-base-content/90 hover:bg-base-200 has-[:checked]:border-primary has-[:checked]:bg-primary/10\"><input type=\"radio\" name=\"grant\" value=\"all\" class=\"h-3.5 w-3.5\"> <span>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1086,7 +1086,7 @@ func APIKeyGrantProjects(d web.LayoutData, projects []APIKeyProjectOption) templ
 			return templ_7745c5c3_Err
 		}
 		for _, p := range projects {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 67, "<label class=\"inline-flex cursor-pointer items-center gap-2 rounded-full border border-border px-3 py-1 text-sm text-foreground/90 hover:bg-muted has-[:checked]:border-primary has-[:checked]:bg-primary/10\"><input type=\"checkbox\" name=\"project_ids\" value=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 67, "<label class=\"inline-flex cursor-pointer items-center gap-2 rounded-full border border-base-300 px-3 py-1 text-sm text-base-content/90 hover:bg-base-200 has-[:checked]:border-primary has-[:checked]:bg-primary/10\"><input type=\"checkbox\" name=\"project_ids\" value=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1099,7 +1099,7 @@ func APIKeyGrantProjects(d web.LayoutData, projects []APIKeyProjectOption) templ
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 68, "\" class=\"h-3.5 w-3.5 rounded border-border\"> <span>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 68, "\" class=\"h-3.5 w-3.5 rounded border-base-300\"> <span>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1434,7 +1434,7 @@ func apikeyMintForm(d web.LayoutData, v APIKeysView) templ.Component {
 				return templ_7745c5c3_Err
 			}
 			for _, opt := range v.Scopes {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 97, "<label class=\"inline-flex cursor-pointer items-center gap-2 rounded-full border border-border px-3 py-1 text-sm text-foreground/90 hover:bg-muted has-[:checked]:border-primary has-[:checked]:bg-primary/10\"><input type=\"checkbox\" name=\"scopes\" value=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 97, "<label class=\"inline-flex cursor-pointer items-center gap-2 rounded-full border border-base-300 px-3 py-1 text-sm text-base-content/90 hover:bg-base-200 has-[:checked]:border-primary has-[:checked]:bg-primary/10\"><input type=\"checkbox\" name=\"scopes\" value=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -1447,7 +1447,7 @@ func apikeyMintForm(d web.LayoutData, v APIKeysView) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 98, "\" class=\"h-3.5 w-3.5 rounded border-border\"> <span>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 98, "\" class=\"h-3.5 w-3.5 rounded border-base-300\"> <span>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}

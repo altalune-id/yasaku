@@ -13,15 +13,15 @@ type LegalView struct {
 templ LegalPage(d web.LayoutData, v LegalView) {
 	<section class="mx-auto max-w-2xl">
 		<header class="mb-6">
-			<p class="text-xs font-semibold uppercase tracking-wide text-muted-foreground/70">{ d.Tr("legal.eyebrow") }</p>
-			<h1 class="mt-1 text-2xl font-semibold text-foreground">{ v.Doc.Title }</h1>
+			<p class="text-xs font-semibold uppercase tracking-wide text-base-content/70">{ d.Tr("legal.eyebrow") }</p>
+			<h1 class="mt-1 text-2xl font-semibold text-base-content">{ v.Doc.Title }</h1>
 			if !v.Doc.UpdatedAt.IsZero() {
-				<p class="mt-1 text-xs text-muted-foreground">
+				<p class="mt-1 text-xs text-base-content/70">
 					{ d.Tr("legal.updated_at") } { v.Doc.UpdatedAt.Format("2006-01-02") }
 				</p>
 			}
 		</header>
-		<article class="rounded-lg border border-border bg-card p-6 shadow-sm prose">
+		<article class="rounded-lg border border-base-300 bg-base-100 p-6 shadow-sm prose">
 			@templ.Raw(v.Doc.HTML)
 		</article>
 	</section>

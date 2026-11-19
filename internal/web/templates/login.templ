@@ -32,7 +32,7 @@ templ LoginPage(d web.LayoutData, v LoginView) {
 					<span class="btn-sso__label">{ d.Tr("login.continue_as") } { v.LastEmail }</span>
 					<span class="btn-sso__chev" aria-hidden="true">→</span>
 				</a>
-				<p class="mt-3 text-center text-sm text-muted-foreground">
+				<p class="mt-3 text-center text-sm text-base-content/70">
 					<a class="hover:underline" href={ templ.SafeURL(d.Href("/login/oidc?switch=1&return_to=" + v.ReturnTo)) }>{ d.Tr("login.switch_account") }</a>
 				</p>
 			} else {
@@ -47,7 +47,7 @@ templ LoginPage(d web.LayoutData, v LoginView) {
 			}
 			if v.LocalAuth {
 				<div class="mt-6 text-center">
-					<a href={ templ.SafeURL(d.Href("/admin-login")) } class="text-sm text-muted-foreground hover:underline">
+					<a href={ templ.SafeURL(d.Href("/admin-login")) } class="text-sm text-base-content/70 hover:underline">
 						{ d.Tr("login.admin_link") }
 					</a>
 				</div>
@@ -92,7 +92,7 @@ templ LoginPage(d web.LayoutData, v LoginView) {
 			</form>
 		}
 		if !v.LocalAuth && !d.Caps.ExternalIdentity {
-			<p class="mt-6 text-center text-sm text-muted-foreground">
+			<p class="mt-6 text-center text-sm text-base-content/70">
 				{ d.Tr("login.no_method") }
 			</p>
 		}

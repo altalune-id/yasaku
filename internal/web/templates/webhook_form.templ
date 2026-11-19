@@ -44,7 +44,7 @@ templ webhookForm(d web.LayoutData, f WebhookFormView) {
 			hx-disable="find button, find input"
 			hx-status:5xx="target:#hx-error swap:innerHTML"
 		}
-		class="space-y-4 rounded-lg border border-border bg-card p-5 shadow-sm"
+		class="space-y-4 rounded-lg border border-base-300 bg-base-100 p-5 shadow-sm"
 	>
 		@webhookErrorBanner(d, f.Error)
 		{{ urlField := FieldProps{ID: "webhook-url", Label: d.Tr("webhooks.url_label"), Hint: d.Tr("webhooks.url_help")} }}
@@ -75,17 +75,17 @@ templ webhookForm(d web.LayoutData, f WebhookFormView) {
 		@FieldGroup(d.Tr("webhooks.events_label")) {
 			<div class="flex flex-wrap gap-2">
 				for _, opt := range f.Events {
-					<label class="inline-flex cursor-pointer items-center gap-2 rounded-full border border-border px-3 py-1 text-sm text-foreground/90 hover:bg-muted has-[:checked]:border-primary has-[:checked]:bg-primary/10">
-						<input type="checkbox" name="event_types" value={ opt.Value } checked?={ opt.Checked } class="h-3.5 w-3.5 rounded border-border"/>
+					<label class="inline-flex cursor-pointer items-center gap-2 rounded-full border border-base-300 px-3 py-1 text-sm text-base-content/90 hover:bg-base-200 has-[:checked]:border-primary has-[:checked]:bg-primary/10">
+						<input type="checkbox" name="event_types" value={ opt.Value } checked?={ opt.Checked } class="h-3.5 w-3.5 rounded border-base-300"/>
 						<span>{ d.Tr(opt.LabelKey) }</span>
-						<code class="font-mono text-[11px] text-muted-foreground">{ opt.Value }</code>
+						<code class="font-mono text-[11px] text-base-content/70">{ opt.Value }</code>
 					</label>
 				}
 			</div>
 		}
 		if f.ID != "" {
-			<label class="inline-flex items-center gap-2 text-sm text-foreground/90">
-				<input type="checkbox" name="active" value="1" checked?={ f.Active } class="h-3.5 w-3.5 rounded border-border"/>
+			<label class="inline-flex items-center gap-2 text-sm text-base-content/90">
+				<input type="checkbox" name="active" value="1" checked?={ f.Active } class="h-3.5 w-3.5 rounded border-base-300"/>
 				<span>{ d.Tr("webhooks.active_label") }</span>
 			</label>
 		}
@@ -104,10 +104,10 @@ templ webhookForm(d web.LayoutData, f WebhookFormView) {
 
 templ WebhookNewPage(d web.LayoutData, f WebhookFormView) {
 	<section id="webhook-page">
-		<header class="border-b border-border pb-4">
-			<a href={ templ.SafeURL(d.ProjectPath(f.ProjectSlug, "/webhooks")) } class="text-xs text-muted-foreground hover:underline">{ d.Tr("webhooks.back") }</a>
-			<h1 class="mt-1 text-2xl font-semibold text-foreground">{ d.Tr("webhooks.new_title") }</h1>
-			<p class="mt-1 text-sm text-muted-foreground">{ d.Tr("webhooks.new_subtitle") }</p>
+		<header class="border-b border-base-300 pb-4">
+			<a href={ templ.SafeURL(d.ProjectPath(f.ProjectSlug, "/webhooks")) } class="text-xs text-base-content/70 hover:underline">{ d.Tr("webhooks.back") }</a>
+			<h1 class="mt-1 text-2xl font-semibold text-base-content">{ d.Tr("webhooks.new_title") }</h1>
+			<p class="mt-1 text-sm text-base-content/70">{ d.Tr("webhooks.new_subtitle") }</p>
 		</header>
 		@webhookEphemeralBanner(d)
 		<div class="mt-6">

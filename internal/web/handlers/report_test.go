@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"altalune.id/yasaku/civil"
+	"altalune.id/yasaku/internal/i18n"
 	"altalune.id/yasaku/internal/ledger"
 	"altalune.id/yasaku/internal/org"
 	"altalune.id/yasaku/internal/period"
@@ -33,8 +34,7 @@ import (
 	"altalune.id/yasaku/money"
 )
 
-// NOTE: the fixture loads no i18n bundle, so d.Tr renders the key literal; this is the aggregated slice's label.
-const reportOtherLabel = "report.other"
+const reportOtherLabel = "Other"
 
 type reportFixture struct {
 	Deps     handlers.Deps
@@ -84,7 +84,7 @@ func newReportFixture(t *testing.T) *reportFixture {
 		Deps: handlers.Deps{
 			Secret: []byte("0123456789abcdef0123456789abcdef"),
 			Cfg:    cfg, Caps: caps, Sessions: sessions, Logger: discardStdLogger(),
-			Orgs: orgs, Projects: projects,
+			Orgs: orgs, Projects: projects, I18n: i18n.NewEmbeddedBundle(i18n.EnUS),
 		},
 		Cfg: cfg, Sessions: sessions, Users: users, Orgs: orgs, Projects: projects,
 		Periods: periods, PerStore: perStore, Reports: reports, Reader: reader,
@@ -145,7 +145,8 @@ func (f *reportFixture) authedRequest(t *testing.T, method, target string, p ses
 	require.NoError(t, f.Sessions.Save(context.Background(), sid, p, time.Now().Add(web.SessionTTL)))
 	r := httptest.NewRequest(method, target, nil)
 	r.AddCookie(&http.Cookie{Name: web.SessionCookieName, Value: web.SignCookie(f.Deps.Key(web.PurposeSession), sid)})
-	return r.WithContext(session.PrincipalInto(r.Context(), p))
+	ctx := i18n.TranslatorInto(session.PrincipalInto(r.Context(), p), f.Deps.I18n.For(i18n.EnUS))
+	return r.WithContext(ctx)
 }
 
 func (f *reportFixture) get(t *testing.T, sc reportScope, query string) *httptest.ResponseRecorder {
@@ -264,6 +265,7 @@ type reportDonutItemJSON struct {
 	Name      string `json:"name"`
 	Value     int64  `json:"value"`
 	Formatted string `json:"formatted"`
+	Color     string `json:"color"`
 }
 
 type reportDonutJSON struct {
@@ -273,6 +275,7 @@ type reportDonutJSON struct {
 
 type reportBarsJSON struct {
 	Categories []string            `json:"categories"`
+	Full       []string            `json:"full"`
 	Income     []int64             `json:"income"`
 	Expense    []int64             `json:"expense"`
 	Net        []int64             `json:"net"`
@@ -287,7 +290,8 @@ type reportBarsJSON struct {
 
 type reportSankeyJSON struct {
 	Nodes []struct {
-		Name string `json:"name"`
+		Name  string `json:"name"`
+		Color string `json:"color"`
 	} `json:"nodes"`
 	Links []struct {
 		Source    string `json:"source"`
@@ -420,12 +424,12 @@ func TestReportHandler_GetReports_TopCategorySharesSumToOneHundred(t *testing.T)
 	rec := f.get(t, sc, "")
 	require.Equal(t, http.StatusOK, rec.Code)
 
-	shares := regexp.MustCompile(`data-report-share="1"[^>]*>([^<]*)<`).
-		FindAllStringSubmatch(rec.Body.String(), -1)
+	legend := rec.Body.String()[strings.Index(rec.Body.String(), "data-report-legend"):]
+	shares := regexp.MustCompile(`>(\d+)% of spending<`).FindAllStringSubmatch(legend, -1)
 	require.Len(t, shares, 6, "five categories plus the aggregated slice")
 	sum := 0
 	for _, m := range shares {
-		n, err := strconv.Atoi(strings.TrimSuffix(strings.TrimSpace(m[1]), "%"))
+		n, err := strconv.Atoi(m[1])
 		require.NoError(t, err)
 		sum += n
 	}
@@ -450,7 +454,8 @@ func TestReportHandler_GetReports_BarsPayloadRunsOldestFirst(t *testing.T) {
 
 	var got reportBarsJSON
 	require.NoError(t, json.Unmarshal(reportPayloadFor(t, rec.Body.String(), templates.ReportBarsID), &got))
-	assert.Equal(t, []string{"Aug 2026", "Sep 2026"}, got.Categories)
+	assert.Equal(t, []string{"Aug", "Sep"}, got.Categories, "short period labels, not stored names")
+	assert.Equal(t, []string{"August 2026", "September 2026"}, got.Full)
 	assert.Equal(t, []int64{100000000, 200000000}, got.Income)
 	assert.Equal(t, []int64{60000000, 120000000}, got.Expense)
 	assert.Equal(t, []int64{40000000, 80000000}, got.Net)
@@ -630,20 +635,15 @@ func TestReportHandler_GetReports_InAndOutLabelsAreNotSharedAcrossDefinitions(t 
 	require.Equal(t, http.StatusOK, rec.Code)
 	body := rec.Body.String()
 
-	statIn := reportAttrText(t, body, "data-report-stat", "in")
-	statOut := reportAttrText(t, body, "data-report-stat", "out")
 	colIn := reportAttrText(t, body, "data-report-col", "in")
 	colOut := reportAttrText(t, body, "data-report-col", "out")
-	for _, s := range []string{statIn, statOut, colIn, colOut} {
-		require.NotEmpty(t, s)
-	}
-	assert.NotEqual(t, statIn, colIn, "the tile and the wallet column measure different things")
-	assert.NotEqual(t, statOut, colOut, "the tile and the wallet column measure different things")
+	require.NotEmpty(t, colIn)
+	require.NotEmpty(t, colOut)
 
 	var bars reportBarsJSON
 	require.NoError(t, json.Unmarshal(reportPayloadFor(t, body, templates.ReportBarsID), &bars))
-	assert.Equal(t, statIn, bars.Labels["income"], "the bars and the tile share one definition")
-	assert.Equal(t, statOut, bars.Labels["expense"], "the bars and the tile share one definition")
+	assert.NotEqual(t, bars.Labels["income"], colIn, "money in and the wallet column measure different things")
+	assert.NotEqual(t, bars.Labels["expense"], colOut, "money out and the wallet column measure different things")
 
 	assert.Contains(t, body, `data-report-note="wallet-movement"`)
 	assert.Contains(t, body, `data-report-note="expense-only"`)
@@ -665,9 +665,9 @@ func TestReportHandler_GetReports_PeriodQuerySelectsThatPeriod(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, prev.ID, call.PeriodID)
 
-	assert.Contains(t, body, `value="`+prev.ID.String()+`" selected`)
-	assert.NotContains(t, body, `value="`+cur.ID.String()+`" selected`)
-	assert.Contains(t, body, "date.pattern.month", "an auto-named period is labeled by its month")
+	assert.Contains(t, body, `href="/orgs/acme/projects/books/reports?period=`+cur.ID.String()+`"`, "the next link leads to the newer period")
+	assert.NotContains(t, body, `href="/orgs/acme/projects/books/reports?period=`+prev.ID.String()+`"`, "the selected period never links to itself")
+	assert.Contains(t, body, "August 2026", "an auto-named period is labeled by its month")
 }
 
 func TestReportHandler_GetReports_ForeignProjectPeriodIs404(t *testing.T) {
@@ -712,7 +712,7 @@ func TestReportHandler_GetReports_EmptyProjectRendersEmptyStatesAndNoCharts(t *t
 	require.Equal(t, http.StatusOK, rec.Code)
 	body := rec.Body.String()
 
-	assert.Contains(t, body, `data-report-empty="1"`)
+	assert.Contains(t, body, f.Deps.I18n.For(i18n.EnUS).T("report.empty_title"))
 	assert.NotContains(t, body, "data-chart=")
 	assert.NotContains(t, body, "data-chart-for=")
 	assert.NotContains(t, body, "data-report-total=")
@@ -727,9 +727,9 @@ func TestReportHandler_GetReports_NoPeriodRendersThePeriodEmptyState(t *testing.
 	require.Equal(t, http.StatusOK, rec.Code)
 	body := rec.Body.String()
 
-	assert.Contains(t, body, `data-report-empty="1"`)
+	assert.Contains(t, body, f.Deps.I18n.For(i18n.EnUS).T("period.no_period"))
 	assert.NotContains(t, body, "data-chart=")
-	assert.NotContains(t, body, "data-report-stat=")
+	assert.NotContains(t, body, "data-delta=")
 	assert.Empty(t, f.Reader.Calls(), "a project with no period must not be reported on")
 }
 

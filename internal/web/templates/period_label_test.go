@@ -72,3 +72,20 @@ func TestDateText_FollowsTheLocale(t *testing.T) {
 		})
 	}
 }
+
+func TestPeriodShortLabelText_MonthOrStartDate(t *testing.T) {
+	month := PeriodLabel{Name: "Nov 2026", Start: civil.Date{Year: 2026, Month: time.November, Day: 1}, Monthly: true}
+	from := PeriodLabel{Name: "Nov 2026", Start: civil.Date{Year: 2026, Month: time.November, Day: 18}, Monthly: true, Shared: true}
+	custom := PeriodLabel{Name: "Payday", Start: civil.Date{Year: 2026, Month: time.November, Day: 25}}
+	for _, tc := range []struct {
+		loc               i18n.Locale
+		month, from, cust string
+	}{{i18n.EnUS, "Nov", "Nov 18", "Nov 25"}, {i18n.JaJP, "11月", "11月18日", "11月25日"}, {i18n.IdID, "Nov", "18 Nov", "25 Nov"}} {
+		d := web.LayoutData{Translator: i18n.NewEmbeddedBundle(tc.loc).For(tc.loc)}
+		for _, c := range [][2]string{{PeriodShortLabelText(d, month), tc.month}, {PeriodShortLabelText(d, from), tc.from}, {PeriodShortLabelText(d, custom), tc.cust}} {
+			if got, want := c[0], c[1]; got != want {
+				t.Errorf("%s: got %q, want %q", tc.loc, got, want)
+			}
+		}
+	}
+}
