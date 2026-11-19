@@ -371,6 +371,48 @@ func TestSQLiteReader_SpendByCategory(t *testing.T) {
 	assert.InDelta(t, 0.2, got[1].Share, 1e-9)
 }
 
+func TestSQLiteReader_SpendByCategories(t *testing.T) {
+	assertSpendByCategories(t, newSQLiteSeed(t))
+}
+
+// SECURITY: SQLite has no RLS, so a neighbour's period in the batch must still come back empty.
+func TestSQLiteReader_SpendByCategories_DropsPeriodsOutsideTheProject(t *testing.T) {
+	s := newSQLiteSeed(t)
+	got, err := s.reader.SpendByCategories(s.ctx(), s.tc.OrgID, s.tc.ProjectID,
+		[]uuid.UUID{s.periodAug, s.sibling.periodID, s.foreign.periodID}, money.IDR)
+	require.NoError(t, err)
+	assert.Len(t, got[s.periodAug], 2)
+	assert.Empty(t, got[s.sibling.periodID], "a sibling project's period matches nothing")
+	assert.Empty(t, got[s.foreign.periodID], "another org's period matches nothing")
+}
+
+func assertSpendByCategories(t *testing.T, s seed) {
+	t.Helper()
+	s.siblingTxn(t, txnRow{kind: "expense", minor: 999_000, period: &s.periodAug, at: "2026-08-08T03:00:00Z"})
+
+	got, err := s.reader.SpendByCategories(s.ctx(), s.tc.OrgID, s.tc.ProjectID, []uuid.UUID{s.periodSep, s.periodAug}, money.IDR)
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+	for _, id := range []uuid.UUID{s.periodAug, s.periodSep} {
+		one, err := s.reader.SpendByCategory(s.ctx(), s.tc.OrgID, s.tc.ProjectID, id, money.IDR)
+		require.NoError(t, err)
+		assert.Equal(t, one, got[id], "the batch matches the single-period read")
+	}
+	require.Len(t, got[s.periodAug], 2, "a sibling project's row in the same period is not counted")
+	assert.Equal(t, idr(200_000), got[s.periodAug][0].Amount)
+	require.Len(t, got[s.periodSep], 1)
+	assert.Equal(t, idr(25_000), got[s.periodSep][0].Amount)
+	assert.InDelta(t, 1.0, got[s.periodSep][0].Share, 1e-9, "shares are per period")
+
+	empty, err := s.reader.SpendByCategories(s.ctx(), s.tc.OrgID, s.tc.ProjectID, nil, money.IDR)
+	require.NoError(t, err)
+	assert.Empty(t, empty)
+
+	other, err := s.reader.SpendByCategories(s.ctx(), uuid.New(), s.tc.ProjectID, []uuid.UUID{s.periodAug}, money.IDR)
+	require.NoError(t, err)
+	assert.Empty(t, other, "an org that disagrees with the request scope matches nothing")
+}
+
 func TestSQLiteReader_IncomeByCategory(t *testing.T) {
 	s := newSQLiteSeed(t)
 	got, err := s.reader.IncomeByCategory(s.ctx(), s.tc.OrgID, s.tc.ProjectID, s.periodAug, money.IDR)

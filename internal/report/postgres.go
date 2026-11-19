@@ -183,6 +183,7 @@ func (r *postgresReader) Summary(ctx context.Context, orgID, projectID, periodID
 }
 
 type pgSliceRow struct {
+	PeriodID   uuid.UUID  `alias:"slice.period_id"`
 	CategoryID *uuid.UUID `alias:"slice.category_id"`
 	Name       string     `alias:"slice.name"`
 	Icon       string     `alias:"slice.icon"`
@@ -192,14 +193,34 @@ type pgSliceRow struct {
 }
 
 func (r *postgresReader) SpendByCategory(ctx context.Context, orgID, projectID, periodID uuid.UUID, currency money.Currency) ([]CategorySlice, error) {
-	return r.categorySlices(ctx, orgID, projectID, periodID, currency, kindExpense)
+	m, err := r.categorySlices(ctx, orgID, projectID, []uuid.UUID{periodID}, currency, kindExpense)
+	if err != nil {
+		return nil, err
+	}
+	return slicesOf(m, periodID), nil
+}
+
+func (r *postgresReader) SpendByCategories(ctx context.Context, orgID, projectID uuid.UUID, periodIDs []uuid.UUID, currency money.Currency) (map[uuid.UUID][]CategorySlice, error) {
+	return r.categorySlices(ctx, orgID, projectID, periodIDs, currency, kindExpense)
 }
 
 func (r *postgresReader) IncomeByCategory(ctx context.Context, orgID, projectID, periodID uuid.UUID, currency money.Currency) ([]CategorySlice, error) {
-	return r.categorySlices(ctx, orgID, projectID, periodID, currency, kindIncome)
+	m, err := r.categorySlices(ctx, orgID, projectID, []uuid.UUID{periodID}, currency, kindIncome)
+	if err != nil {
+		return nil, err
+	}
+	return slicesOf(m, periodID), nil
 }
 
-func (r *postgresReader) categorySlices(ctx context.Context, orgID, projectID, periodID uuid.UUID, currency money.Currency, kind string) ([]CategorySlice, error) {
+func (r *postgresReader) categorySlices(ctx context.Context, orgID, projectID uuid.UUID, periodIDs []uuid.UUID, currency money.Currency, kind string) (map[uuid.UUID][]CategorySlice, error) {
+	out := map[uuid.UUID][]CategorySlice{}
+	if len(periodIDs) == 0 {
+		return out, nil
+	}
+	tokens, err := periodTokens(periodIDs)
+	if err != nil {
+		return nil, err
+	}
 	tx, owned, tc, err := r.txAcquire(ctx)
 	if err != nil {
 		return nil, err
@@ -207,21 +228,22 @@ func (r *postgresReader) categorySlices(ctx context.Context, orgID, projectID, p
 	if owned {
 		defer func() { _ = tx.Rollback() }()
 	}
-	var rows []pgSliceRow
-	qErr := postgres.RawStatement(categorySlicesSQL(r.tables, true), postgres.RawArgs{
+	args := postgres.RawArgs{
 		"#orgID":     orgID,
 		"#scopeOrg":  tc.OrgID,
 		"#projectID": projectID,
-		"#periodID":  periodID,
 		"#currency":  string(currency),
 		"#kind":      kind,
-	}).QueryContext(ctx, tx, &rows)
-	if qErr != nil {
+	}
+	for token, id := range tokens.args {
+		args[token] = id
+	}
+	var rows []pgSliceRow
+	if qErr := postgres.RawStatement(categorySlicesSQL(r.tables, true, tokens.list), args).QueryContext(ctx, tx, &rows); qErr != nil {
 		return nil, fmt.Errorf("report.postgres.categorySlices: %w", qErr)
 	}
-	out := make([]CategorySlice, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, CategorySlice{
+		out[row.PeriodID] = append(out[row.PeriodID], CategorySlice{
 			CategoryID: row.CategoryID,
 			Name:       row.Name,
 			Icon:       row.Icon,
@@ -230,7 +252,7 @@ func (r *postgresReader) categorySlices(ctx context.Context, orgID, projectID, p
 			Count:      row.Count,
 		})
 	}
-	return assignShares(out), nil
+	return withShares(out), nil
 }
 
 type pgFlowRow struct {

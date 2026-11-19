@@ -97,6 +97,25 @@ func (s *Service) SpendByCategory(ctx context.Context, periodID uuid.UUID) ([]Ca
 	return out, nil
 }
 
+// SpendByCategories is SpendByCategory for many periods in one read, keyed by period id.
+func (s *Service) SpendByCategories(ctx context.Context, periodIDs []uuid.UUID) (map[uuid.UUID][]CategorySlice, error) {
+	ctx, span := tracer.Start(ctx, "report.SpendByCategories",
+		trace.WithAttributes(attribute.Int("report.period_count", len(periodIDs))))
+	defer span.End()
+
+	tc, currency, err := s.scope(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out, err := s.reader.SpendByCategories(ctx, tc.OrgID, tc.ProjectID, periodIDs, currency)
+	if err != nil {
+		span.RecordError(err)
+		return nil, s.unexpected(ctx, "report.SpendByCategories: read", err,
+			"org_id", tc.OrgID, "project_id", tc.ProjectID)
+	}
+	return out, nil
+}
+
 // IncomeByCategory breaks the identified period's income down by category, largest first.
 func (s *Service) IncomeByCategory(ctx context.Context, periodID uuid.UUID) ([]CategorySlice, error) {
 	ctx, span := tracer.Start(ctx, "report.IncomeByCategory",

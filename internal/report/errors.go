@@ -7,4 +7,4 @@ import (
 
 var errPeriodAbsent = errors.New("report: period not found in scope")
 
-var errTooManyPeriods = fmt.Errorf("report: cashflow accepts at most %d periods", maxCashflowPeriods)
+var errTooManyPeriods = fmt.Errorf("report: a read accepts at most %d periods", maxCashflowPeriods)

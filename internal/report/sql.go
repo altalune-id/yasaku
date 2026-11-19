@@ -139,9 +139,10 @@ SELECT w.id                 AS "line.wallet_id",
 		t.txn, t.periods, t.wallets, bigintCast(pg))
 }
 
-func categorySlicesSQL(t tableNames, pg bool) string {
+func categorySlicesSQL(t tableNames, pg bool, inList string) string {
 	return fmt.Sprintf(`
-SELECT t.category_id            AS "slice.category_id",
+SELECT t.period_id              AS "slice.period_id",
+       t.category_id            AS "slice.category_id",
        COALESCE(c.name, '')     AS "slice.name",
        COALESCE(c.icon, '')     AS "slice.icon",
        COALESCE(c.color, '')    AS "slice.color",
@@ -149,11 +150,11 @@ SELECT t.category_id            AS "slice.category_id",
        COUNT(*)%[4]s            AS "slice.count"
   FROM %[1]s t
   LEFT JOIN %[2]s c ON c.id = t.category_id AND c.org_id = t.org_id
- WHERE `+scopePredicateT+` AND t.period_id = #periodID AND t.currency = #currency AND t.kind = #kind
- GROUP BY t.category_id, c.name, c.icon, c.color
- ORDER BY SUM(t.amount_minor) DESC, COALESCE(c.name, '') ASC,
+ WHERE `+scopePredicateT+` AND t.period_id IN (%[5]s) AND t.currency = #currency AND t.kind = #kind
+ GROUP BY t.period_id, t.category_id, c.name, c.icon, c.color
+ ORDER BY t.period_id, SUM(t.amount_minor) DESC, COALESCE(c.name, '') ASC,
           CASE WHEN t.category_id IS NULL THEN 1 ELSE 0 END, t.category_id`,
-		t.txn, t.categories, bigintCast(pg), intCast(pg))
+		t.txn, t.categories, bigintCast(pg), intCast(pg), inList)
 }
 
 func flowsSQL(t tableNames, pg bool) string {
@@ -236,6 +237,20 @@ func periodTokens(ids []uuid.UUID) (tokenSet, error) {
 		args[token] = id
 	}
 	return tokenSet{list: strings.Join(tokens, ", "), args: args}, nil
+}
+
+func slicesOf(m map[uuid.UUID][]CategorySlice, periodID uuid.UUID) []CategorySlice {
+	if s, ok := m[periodID]; ok {
+		return s
+	}
+	return []CategorySlice{}
+}
+
+func withShares(m map[uuid.UUID][]CategorySlice) map[uuid.UUID][]CategorySlice {
+	for id, s := range m {
+		m[id] = assignShares(s)
+	}
+	return m
 }
 
 func cashflowPoint(ref PeriodRef, income, expense int64, currency money.Currency) CashflowPoint {

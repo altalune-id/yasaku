@@ -223,15 +223,7 @@ func (h *ReportHandler) spendByPeriod(sc ProjectScope, window []*period.Period, 
 			ids = append(ids, p.ID)
 		}
 	}
-	out := make(map[uuid.UUID][]report.CategorySlice, len(ids))
-	for _, id := range ids {
-		s, err := h.Reports.SpendByCategory(sc.req.Context(), id)
-		if err != nil {
-			return nil, err
-		}
-		out[id] = s
-	}
-	return out, nil
+	return h.Reports.SpendByCategories(sc.req.Context(), ids)
 }
 
 func (h *ReportHandler) reportFailed(w http.ResponseWriter, sc ProjectScope, d web.LayoutData, what string, err error) {

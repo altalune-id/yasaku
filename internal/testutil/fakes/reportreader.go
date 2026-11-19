@@ -120,6 +120,30 @@ func (f *ReportReader) SpendByCategory(_ context.Context, orgID, projectID, peri
 	return f.Spend, nil
 }
 
+// SpendByCategories answers every requested period as SpendByCategory would, in one recorded call; a period with no spend has no key.
+func (f *ReportReader) SpendByCategories(_ context.Context, orgID, projectID uuid.UUID, periodIDs []uuid.UUID, currency money.Currency) (map[uuid.UUID][]report.CategorySlice, error) {
+	f.record(ReportCall{
+		Method: "SpendByCategories", OrgID: orgID, ProjectID: projectID,
+		PeriodIDs: append([]uuid.UUID(nil), periodIDs...), Currency: currency,
+	})
+	if f.Err != nil {
+		return nil, f.Err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make(map[uuid.UUID][]report.CategorySlice, len(periodIDs))
+	for _, id := range periodIDs {
+		s, ok := f.SpendBy[id]
+		if !ok {
+			s = f.Spend
+		}
+		if len(s) > 0 {
+			out[id] = s
+		}
+	}
+	return out, nil
+}
+
 func (f *ReportReader) IncomeByCategory(_ context.Context, orgID, projectID, periodID uuid.UUID, currency money.Currency) ([]report.CategorySlice, error) {
 	f.record(ReportCall{Method: "IncomeByCategory", OrgID: orgID, ProjectID: projectID, PeriodID: periodID, Currency: currency})
 	if f.Err != nil {

@@ -8,7 +8,8 @@ import (
 )
 
 func periodTotalsOf(p *period.Period, s report.PeriodSummary, cur money.Currency) templates.PeriodTotals {
-	t := templates.PeriodTotals{Income: money.Zero(cur), Expense: money.Zero(cur), Net: money.Zero(cur)}
+	zero := money.Zero(cur)
+	t := templates.PeriodTotals{Income: zero, Expense: zero, Net: zero, Adjustments: zero, Openings: zero}
 	if s.Currency != "" {
 		t.Income, t.Expense, t.Net, t.Adjustments, t.Openings = s.Income, s.Expense, s.Net, s.Adjustments, s.Openings
 	}

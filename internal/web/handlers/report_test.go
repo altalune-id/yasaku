@@ -661,9 +661,12 @@ func TestReportHandler_GetReports_PeriodQuerySelectsThatPeriod(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code)
 	body := rec.Body.String()
 
-	call, ok := f.Reader.Last("SpendByCategory")
+	call, ok := f.Reader.Last("SpendByCategories")
 	require.True(t, ok)
-	assert.Equal(t, prev.ID, call.PeriodID)
+	assert.Contains(t, call.PeriodIDs, prev.ID)
+	for _, c := range f.Reader.Calls() {
+		assert.NotEqual(t, "SpendByCategory", c.Method, "the report reads spend in one batch, not once per period")
+	}
 
 	assert.Contains(t, body, `href="/orgs/acme/projects/books/reports?period=`+cur.ID.String()+`"`, "the next link leads to the newer period")
 	assert.NotContains(t, body, `href="/orgs/acme/projects/books/reports?period=`+prev.ID.String()+`"`, "the selected period never links to itself")
