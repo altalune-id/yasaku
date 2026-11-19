@@ -95,7 +95,8 @@ func (h *FirstRunHandler) Get(w http.ResponseWriter, r *http.Request) {
 	}
 	v := h.view(sc, st.Currency)
 	if st.UpdatedAt.IsZero() {
-		if !h.requireManager(w, sc) {
+		if !h.CanManage(sc) {
+			h.render(w, sc, http.StatusOK, templates.FirstRunView{ProjectSlug: sc.project.Slug, Step: 1, Waiting: true})
 			return
 		}
 		v.Step = 1
@@ -121,6 +122,9 @@ func (h *FirstRunHandler) Post(w http.ResponseWriter, r *http.Request) {
 	h.postWallets(w, sc)
 }
 
+//i18n:use firstrun.manager_only
+//i18n:use firstrun.save_failed
+//i18n:use firstrun.currency_invalid
 func (h *FirstRunHandler) postCurrency(w http.ResponseWriter, sc ProjectScope) {
 	if !h.stillPending(w, sc) {
 		return
@@ -222,21 +226,6 @@ func (h *FirstRunHandler) stillPending(w http.ResponseWriter, sc ProjectScope) b
 		h.redirectHome(w, sc)
 	}
 	return pending
-}
-
-// SECURITY: membership is org-wide and the currency is project-wide, so only an owner or admin may set it, and a failed lookup refuses.
-//
-//i18n:use firstrun.manager_only
-//i18n:use firstrun.save_failed
-//i18n:use firstrun.currency_invalid
-func (h *FirstRunHandler) requireManager(w http.ResponseWriter, sc ProjectScope) bool {
-	if h.CanManage(sc) {
-		return true
-	}
-	h.ErrorPage(w, sc.req, http.StatusForbidden,
-		localizedDefault(sc.req, "settings.name_forbidden_title", "Not allowed"),
-		localizedDefault(sc.req, "firstrun.manager_only", "Only an owner or admin can set the project currency."))
-	return false
 }
 
 func (h *FirstRunHandler) fail(w http.ResponseWriter, sc ProjectScope, v templates.FirstRunView, err error) {

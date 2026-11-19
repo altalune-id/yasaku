@@ -28,9 +28,12 @@ type ReportReader struct {
 	mu    sync.Mutex
 	calls []ReportCall
 
-	Ref        report.PeriodRef
-	Summaries  report.PeriodSummary
-	Spend      []report.CategorySlice
+	Ref       report.PeriodRef
+	Summaries report.PeriodSummary
+	Spend     []report.CategorySlice
+	// SummaryBy and SpendBy override Summaries and Spend for one period id.
+	SummaryBy  map[uuid.UUID]report.PeriodSummary
+	SpendBy    map[uuid.UUID][]report.CategorySlice
 	Income     []report.CategorySlice
 	Points     []report.CashflowPoint
 	FlowLines  []report.Flow
@@ -96,6 +99,11 @@ func (f *ReportReader) Summary(_ context.Context, orgID, projectID, periodID uui
 	if err := firstErr(f.SummaryErr, f.Err); err != nil {
 		return report.PeriodSummary{}, err
 	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if s, ok := f.SummaryBy[periodID]; ok {
+		return s, nil
+	}
 	return f.Summaries, nil
 }
 
@@ -104,7 +112,36 @@ func (f *ReportReader) SpendByCategory(_ context.Context, orgID, projectID, peri
 	if f.Err != nil {
 		return nil, f.Err
 	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if s, ok := f.SpendBy[periodID]; ok {
+		return s, nil
+	}
 	return f.Spend, nil
+}
+
+// SpendByCategories answers every requested period as SpendByCategory would, in one recorded call; a period with no spend has no key.
+func (f *ReportReader) SpendByCategories(_ context.Context, orgID, projectID uuid.UUID, periodIDs []uuid.UUID, currency money.Currency) (map[uuid.UUID][]report.CategorySlice, error) {
+	f.record(ReportCall{
+		Method: "SpendByCategories", OrgID: orgID, ProjectID: projectID,
+		PeriodIDs: append([]uuid.UUID(nil), periodIDs...), Currency: currency,
+	})
+	if f.Err != nil {
+		return nil, f.Err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make(map[uuid.UUID][]report.CategorySlice, len(periodIDs))
+	for _, id := range periodIDs {
+		s, ok := f.SpendBy[id]
+		if !ok {
+			s = f.Spend
+		}
+		if len(s) > 0 {
+			out[id] = s
+		}
+	}
+	return out, nil
 }
 
 func (f *ReportReader) IncomeByCategory(_ context.Context, orgID, projectID, periodID uuid.UUID, currency money.Currency) ([]report.CategorySlice, error) {

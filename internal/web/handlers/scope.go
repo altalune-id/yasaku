@@ -91,11 +91,16 @@ func (d Deps) CanManage(sc ProjectScope) bool {
 	return d.CanManageOrg(OrgScope{principal: sc.principal, sid: sc.sid, org: sc.org, req: sc.req})
 }
 
+//i18n:use error.org_mismatch
 func (d Deps) refuseNotManager(w http.ResponseWriter, r *http.Request, err error, msgKey, fallback string) bool {
-	if !org.IsNotManagerError(err) {
+	switch {
+	case org.IsOrgMismatchError(err):
+		d.forbidNonManager(w, r, "error.org_mismatch", "This action belongs to a different organization.")
+	case org.IsNotManagerError(err):
+		d.forbidNonManager(w, r, msgKey, fallback)
+	default:
 		return false
 	}
-	d.forbidNonManager(w, r, msgKey, fallback)
 	return true
 }
 

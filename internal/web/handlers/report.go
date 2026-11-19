@@ -43,7 +43,7 @@ func (h *ReportHandler) Register(mux web.Mux) {
 	mux.HandleFunc("GET /orgs/{org}/projects/{project}/reports", h.GetReports)
 }
 
-// GetReports renders the summary table and the three charts for one period.
+// GetReports renders the totals, spending, comparison, flows and cashflow for one period.
 func (h *ReportHandler) GetReports(w http.ResponseWriter, r *http.Request) {
 	sc, ok := h.RequireProject(w, r)
 	if !ok {
@@ -51,17 +51,14 @@ func (h *ReportHandler) GetReports(w http.ResponseWriter, r *http.Request) {
 	}
 	d := h.LayoutForProject(sc.req, "", sc.org.Slug, sc.project, "reports")
 	d.Title = pageTitle(sc.req, "nav.reports", sc.project.Name)
-	v := templates.ReportsView{
-		ProjectSlug: sc.project.Slug,
-		ProjectName: sc.project.Name,
-	}
+	v := templates.ReportsView{ProjectSlug: sc.project.Slug}
 
 	recent, err := h.Periods.List(sc.req.Context(), period.ListOpts{Limit: reportPeriodWindow})
 	if err != nil {
-		h.reportFailed(w, sc, "list periods", err)
+		h.reportFailed(w, sc, d, "list periods", err)
 		return
 	}
-	selected, ok := h.selectPeriod(w, sc, recent)
+	selected, ok := h.selectPeriod(w, sc, d, recent)
 	if !ok {
 		return
 	}
@@ -70,27 +67,15 @@ func (h *ReportHandler) GetReports(w http.ResponseWriter, r *http.Request) {
 		Render(w, sc.req, templates.ReportsLayout(d, v))
 		return
 	}
-
-	window, err := h.cashflowWindow(sc, recent, selected)
-	if err != nil {
-		h.reportFailed(w, sc, "cashflow window", err)
-		return
-	}
-	labels, err := periodLabels(sc.req.Context(), h.Periods)
-	if err != nil {
-		h.reportFailed(w, sc, "period labels", err)
-		return
-	}
-	v.Periods = reportPeriodOptions(d, labels, recent, selected)
-	v.PeriodName = templates.PeriodLabelText(d, labels[selected.ID])
-	if !h.fill(w, sc, d, selected, window, &v) {
+	if err := h.fill(sc, d, recent, selected, &v); err != nil {
+		h.reportFailed(w, sc, d, "fill", err)
 		return
 	}
 	Render(w, sc.req, templates.ReportsLayout(d, v))
 }
 
 // selectPeriod resolves ?period=, falling back to the current period and then to the newest in scope. SECURITY: ByID is scope-checked, so a foreign period id renders as a 404 rather than another project's totals.
-func (h *ReportHandler) selectPeriod(w http.ResponseWriter, sc ProjectScope, recent []*period.Period) (*period.Period, bool) {
+func (h *ReportHandler) selectPeriod(w http.ResponseWriter, sc ProjectScope, d web.LayoutData, recent []*period.Period) (*period.Period, bool) {
 	if raw := strings.TrimSpace(sc.req.URL.Query().Get("period")); raw != "" {
 		id, parseErr := uuid.Parse(raw)
 		if parseErr != nil {
@@ -106,7 +91,7 @@ func (h *ReportHandler) selectPeriod(w http.ResponseWriter, sc ProjectScope, rec
 			h.ErrorPage(w, sc.req, http.StatusNotFound, pageTitle(sc.req, "error_title.period_not_found"), "No period with that id in this project.", err)
 			return nil, false
 		}
-		h.reportFailed(w, sc, "period byID", err)
+		h.reportFailed(w, sc, d, "period byID", err)
 		return nil, false
 	}
 	cur, err := h.Periods.Current(sc.req.Context())
@@ -114,7 +99,7 @@ func (h *ReportHandler) selectPeriod(w http.ResponseWriter, sc ProjectScope, rec
 		return cur, true
 	}
 	if !period.IsNotFoundError(err) {
-		h.reportFailed(w, sc, "current period", err)
+		h.reportFailed(w, sc, d, "current period", err)
 		return nil, false
 	}
 	if len(recent) == 0 {
@@ -131,57 +116,120 @@ func (h *ReportHandler) cashflowWindow(sc ProjectScope, recent []*period.Period,
 	return h.Periods.List(sc.req.Context(), period.ListOpts{Limit: reportPeriodWindow, Before: &before})
 }
 
-func (h *ReportHandler) fill(
-	w http.ResponseWriter, sc ProjectScope, d web.LayoutData,
-	selected *period.Period, window []*period.Period, v *templates.ReportsView,
-) bool {
+func (h *ReportHandler) fill(sc ProjectScope, d web.LayoutData, recent []*period.Period, selected *period.Period, v *templates.ReportsView) error {
 	ctx := sc.req.Context()
+	window, err := h.cashflowWindow(sc, recent, selected)
+	if err != nil {
+		return err
+	}
+	prev, next, err := h.Periods.Neighbors(ctx, selected.ID)
+	if err != nil {
+		return err
+	}
+	labels, err := periodLabels(ctx, h.Periods)
+	if err != nil {
+		return err
+	}
 	summary, err := h.Reports.Summary(ctx, selected.ID)
 	if err != nil {
-		h.reportFailed(w, sc, "summary", err)
-		return false
-	}
-	spend, err := h.Reports.SpendByCategory(ctx, selected.ID)
-	if err != nil {
-		h.reportFailed(w, sc, "spend by category", err)
-		return false
+		return err
 	}
 	income, err := h.Reports.IncomeByCategory(ctx, selected.ID)
 	if err != nil {
-		h.reportFailed(w, sc, "income by category", err)
-		return false
+		return err
 	}
 	points, err := h.Reports.Cashflow(ctx, reportCashflowIDs(window))
 	if err != nil {
-		h.reportFailed(w, sc, "cashflow", err)
-		return false
+		return err
 	}
 	flows, err := h.Reports.Flows(ctx, selected.ID)
 	if err != nil {
-		h.reportFailed(w, sc, "flows", err)
-		return false
+		return err
+	}
+	spendBy, err := h.spendByPeriod(sc, window, selected, prev)
+	if err != nil {
+		return err
 	}
 
 	currency := summary.Currency
-	spendFold := reportFoldSlices(d, spend, currency)
-	incomeFold := reportFoldSlices(d, income, currency)
+	v.PeriodID, v.Period = selected.ID.String(), labels[selected.ID]
+	if prev != nil {
+		v.PrevPeriodID = prev.ID.String()
+	}
+	if next != nil {
+		v.NextPeriodID = next.ID.String()
+	}
+	t := periodTotalsOf(selected, summary, currency)
+	v.Income, v.Expense, v.Net, v.Adjustments, v.Openings = t.Income, t.Expense, t.Net, t.Adjustments, t.Openings
 
-	v.Income = templates.Money(d, summary.Income)
-	v.Expense = templates.Money(d, summary.Expense)
-	v.Net = templates.SignedMoney(d, summary.Net)
-	v.TxCount = summary.TxCount
+	var prevSpend []report.CategorySlice
+	if prev != nil {
+		ok, err := h.fillPrevious(sc, prev, labels[prev.ID], currency, v)
+		if err != nil {
+			return err
+		}
+		if ok {
+			prevSpend = spendBy[prev.ID]
+		}
+	}
+
+	fold := reportFoldSlices(d, spendBy[selected.ID], currency)
+	trend := reportTrendPeriods(window, selected.ID, labels, d)
+	v.Spend = reportSpendRows(d, fold, trend, spendBy, prevSpend, v.Previous != nil, currency)
+	v.TopIncome = reportCategoryRows(d, reportFoldSlices(d, income, currency).rows)
+	v.Donut = reportDonutJSON(d, fold.rows)
+	if v.Previous != nil {
+		v.Compare = reportCompareJSON(d, fold, prevSpend, v.Period, *v.Previous, currency)
+	}
+	sk := reportSankey(d, flows, fold)
+	v.Sankey, v.SankeyRows, v.Flows = sk.payload, sk.rows, sk.flows
+	v.Bars, v.Cashflow = reportBars(d, points, labels, currency)
 	v.Wallets, v.Totals = reportWalletRows(d, summary)
-	v.TopSpend = reportCategoryRows(d, spendFold.rows)
-	v.TopIncome = reportCategoryRows(d, incomeFold.rows)
-	v.Donut = reportDonutJSON(d, spendFold.rows)
-	v.Bars = reportBarsJSON(d, points, currency)
-	v.Sankey = reportSankeyJSON(d, flows, spendFold)
-	return true
+	return nil
 }
 
-func (h *ReportHandler) reportFailed(w http.ResponseWriter, sc ProjectScope, what string, err error) {
+func (h *ReportHandler) fillPrevious(sc ProjectScope, prev *period.Period, label templates.PeriodLabel, currency money.Currency, v *templates.ReportsView) (bool, error) {
+	ps, err := h.Reports.Summary(sc.req.Context(), prev.ID)
+	if err != nil {
+		return false, err
+	}
+	if ps.Currency != currency {
+		return false, nil
+	}
+	pt := periodTotalsOf(prev, ps, currency)
+	v.Previous, v.PrevExpense = &label, pt.Expense
+	v.IncomeDelta, v.ExpenseDelta = reportDelta(v.Income, pt.Income), reportDelta(v.Expense, pt.Expense)
+	if !v.Net.IsZero() && !pt.Net.IsZero() {
+		v.NetDelta = reportDelta(v.Net, pt.Net)
+	}
+	return true, nil
+}
+
+func reportDelta(cur, prev money.Amount) *int {
+	pct, ok := templates.PercentChange(cur, prev)
+	if !ok {
+		return nil
+	}
+	return &pct
+}
+
+func (h *ReportHandler) spendByPeriod(sc ProjectScope, window []*period.Period, also ...*period.Period) (map[uuid.UUID][]report.CategorySlice, error) {
+	ids := make([]uuid.UUID, 0, len(window)+len(also))
+	for _, p := range window {
+		ids = append(ids, p.ID)
+	}
+	for _, p := range also {
+		if p != nil && !slices.Contains(ids, p.ID) {
+			ids = append(ids, p.ID)
+		}
+	}
+	return h.Reports.SpendByCategories(sc.req.Context(), ids)
+}
+
+func (h *ReportHandler) reportFailed(w http.ResponseWriter, sc ProjectScope, d web.LayoutData, what string, err error) {
 	h.LogErr("web report: "+what, err)
-	h.ErrorPage(w, sc.req, http.StatusInternalServerError, pageTitle(sc.req, "error_title.report_failed"), "Could not load this report.", err)
+	v := templates.ReportsView{ProjectSlug: sc.project.Slug, Error: d.Tr("report.error"), ErrorCode: ErrorRef(err)}
+	RenderStatus(w, sc.req, http.StatusInternalServerError, templates.ReportsLayout(d, v))
 }
 
 func reportCashflowIDs(window []*period.Period) []uuid.UUID {
@@ -190,25 +238,6 @@ func reportCashflowIDs(window []*period.Period) []uuid.UUID {
 		ids = append(ids, window[i].ID)
 	}
 	return ids
-}
-
-func reportPeriodOptions(d web.LayoutData, labels map[uuid.UUID]templates.PeriodLabel, recent []*period.Period, selected *period.Period) []templates.ReportPeriodOption {
-	opts := make([]templates.ReportPeriodOption, 0, len(recent)+1)
-	found := false
-	for _, p := range recent {
-		if p.ID == selected.ID {
-			found = true
-		}
-		opts = append(opts, templates.ReportPeriodOption{
-			ID: p.ID.String(), Name: templates.PeriodLabelText(d, labels[p.ID]), Selected: p.ID == selected.ID,
-		})
-	}
-	if found {
-		return opts
-	}
-	return append([]templates.ReportPeriodOption{
-		{ID: selected.ID.String(), Name: templates.PeriodLabelText(d, labels[selected.ID]), Selected: true},
-	}, opts...)
 }
 
 func reportWalletRows(d web.LayoutData, s report.PeriodSummary) ([]templates.ReportWalletRow, []templates.ReportWalletTotal) {
@@ -243,6 +272,9 @@ func reportWalletRows(d web.LayoutData, s report.PeriodSummary) ([]templates.Rep
 
 type reportSlice struct {
 	Name   string
+	Key    string
+	Icon   string
+	Other  bool
 	Amount money.Amount
 	Share  float64
 }
@@ -274,12 +306,13 @@ func reportFoldSlices(d web.LayoutData, cats []report.CategorySlice, currency mo
 			label = d.Tr("tx.uncategorized")
 		}
 		label = names.unique(label)
-		f.kept[reportCategoryKey(s.CategoryID)] = label
-		f.rows = append(f.rows, reportSlice{Name: label, Amount: s.Amount, Share: s.Share})
+		key := reportCategoryKey(s.CategoryID)
+		f.kept[key] = label
+		f.rows = append(f.rows, reportSlice{Name: label, Key: key, Icon: s.Icon, Amount: s.Amount, Share: s.Share})
 	}
 	f.other = names.unique(d.Tr(reportOtherKey))
 	if other.Minor > 0 {
-		f.rows = append(f.rows, reportSlice{Name: f.other, Amount: other, Share: otherShare})
+		f.rows = append(f.rows, reportSlice{Name: f.other, Other: true, Amount: other, Share: otherShare})
 	}
 	return f
 }
@@ -302,6 +335,117 @@ func reportCategoryRows(d web.LayoutData, rows []reportSlice) []templates.Report
 		})
 	}
 	return out
+}
+
+func reportSlot(i int, s reportSlice) int {
+	if s.Other {
+		return 0
+	}
+	return i + 1
+}
+
+func reportAmountOf(cats []report.CategorySlice, key string, currency money.Currency) money.Amount {
+	sum := money.Zero(currency)
+	for _, s := range cats {
+		if s.Amount.Currency == currency && reportCategoryKey(s.CategoryID) == key {
+			sum = sum.Add(s.Amount)
+		}
+	}
+	return sum
+}
+
+type reportTrendPeriod struct {
+	id      uuid.UUID
+	short   string
+	label   string
+	current bool
+}
+
+func reportTrendPeriods(window []*period.Period, selected uuid.UUID, labels map[uuid.UUID]templates.PeriodLabel, d web.LayoutData) []reportTrendPeriod {
+	out := make([]reportTrendPeriod, 0, len(window))
+	for i := len(window) - 1; i >= 0; i-- {
+		p := window[i]
+		l := labels[p.ID]
+		out = append(out, reportTrendPeriod{id: p.ID, short: templates.PeriodShortLabelText(d, l), label: templates.PeriodLabelText(d, l), current: p.ID == selected})
+	}
+	return out
+}
+
+func reportSpendRows(
+	d web.LayoutData, fold reportFold, trend []reportTrendPeriod, spendBy map[uuid.UUID][]report.CategorySlice,
+	prevSpend []report.CategorySlice, hasPrev bool, currency money.Currency,
+) []templates.ReportSpendRow {
+	shares := reportSharePercents(fold.rows)
+	out := make([]templates.ReportSpendRow, 0, len(fold.rows))
+	for i, s := range fold.rows {
+		row := templates.ReportSpendRow{Name: s.Name, Icon: s.Icon, Amount: s.Amount, Share: shares[i], Slot: reportSlot(i, s)}
+		if !s.Other {
+			row.Trend, row.TrendPoints = reportTrendJSON(d, s.Key, trend, spendBy, currency)
+			if hasPrev {
+				prev := reportAmountOf(prevSpend, s.Key, currency)
+				row.PrevAmount = &prev
+			}
+		}
+		out = append(out, row)
+	}
+	return out
+}
+
+type reportTrendPayload struct {
+	Labels    []string       `json:"labels"`
+	Values    []int64        `json:"values"`
+	Formatted []string       `json:"formatted"`
+	Current   int            `json:"current"`
+	Unit      reportBarsUnit `json:"unit"`
+}
+
+func reportTrendJSON(d web.LayoutData, key string, trend []reportTrendPeriod, spendBy map[uuid.UUID][]report.CategorySlice, currency money.Currency) (string, []templates.ReportTrendPoint) {
+	p := reportTrendPayload{
+		Labels: make([]string, 0, len(trend)), Values: make([]int64, 0, len(trend)), Formatted: make([]string, 0, len(trend)),
+		Current: -1, Unit: reportBarsUnit{Divisor: reportPow10(currency.Exponent()), Symbol: reportCurrencySymbol(d, currency)},
+	}
+	points := make([]templates.ReportTrendPoint, 0, len(trend))
+	for i, tp := range trend {
+		amt := reportAmountOf(spendBy[tp.id], key, currency)
+		p.Labels = append(p.Labels, tp.short)
+		p.Values = append(p.Values, amt.Minor)
+		p.Formatted = append(p.Formatted, templates.Money(d, amt))
+		if tp.current {
+			p.Current = i
+		}
+		points = append(points, templates.ReportTrendPoint{Label: tp.label, Amount: amt})
+	}
+	return templates.ChartJSON(p), points
+}
+
+type reportComparePayload struct {
+	Categories []string            `json:"categories"`
+	Current    []int64             `json:"current"`
+	Previous   []int64             `json:"previous"`
+	Formatted  map[string][]string `json:"formatted"`
+	Labels     map[string]string   `json:"labels"`
+	Unit       reportBarsUnit      `json:"unit"`
+}
+
+func reportCompareJSON(d web.LayoutData, fold reportFold, prevSpend []report.CategorySlice, cur, prev templates.PeriodLabel, currency money.Currency) string {
+	kept := slices.DeleteFunc(slices.Clone(fold.rows), func(s reportSlice) bool { return s.Other })
+	if len(kept) < 2 {
+		return ""
+	}
+	p := reportComparePayload{
+		Formatted: map[string][]string{"current": {}, "previous": {}},
+		Labels:    map[string]string{"current": templates.PeriodLabelText(d, cur), "previous": templates.PeriodLabelText(d, prev)},
+		Unit:      reportBarsUnit{Divisor: reportPow10(currency.Exponent()), Symbol: reportCurrencySymbol(d, currency)},
+	}
+	for _, s := range kept {
+		before := reportAmountOf(prevSpend, s.Key, currency)
+		p.Categories = append(p.Categories, s.Name)
+		p.Current = append(p.Current, s.Amount.Minor)
+		p.Previous = append(p.Previous, before.Minor)
+		p.Formatted["current"] = append(p.Formatted["current"], templates.Money(d, s.Amount))
+		p.Formatted["previous"] = append(p.Formatted["previous"], templates.Money(d, before))
+	}
+	return templates.ChartJSON(p)
 }
 
 func reportSharePercents(rows []reportSlice) []int {
@@ -353,6 +497,7 @@ type reportDonutItem struct {
 	Name      string `json:"name"`
 	Value     int64  `json:"value"`
 	Formatted string `json:"formatted"`
+	Color     string `json:"color"`
 }
 
 type reportDonutPayload struct {
@@ -365,9 +510,9 @@ func reportDonutJSON(d web.LayoutData, rows []reportSlice) string {
 		return ""
 	}
 	items := make([]reportDonutItem, 0, len(rows))
-	for _, s := range rows {
+	for i, s := range rows {
 		items = append(items, reportDonutItem{
-			Name: s.Name, Value: s.Amount.Minor, Formatted: templates.Money(d, s.Amount),
+			Name: s.Name, Value: s.Amount.Minor, Formatted: templates.Money(d, s.Amount), Color: templates.ReportSlotColor(reportSlot(i, s)).Var,
 		})
 	}
 	return templates.ChartJSON(reportDonutPayload{Items: items, Empty: d.Tr("report.no_data")})
@@ -380,6 +525,7 @@ type reportBarsUnit struct {
 
 type reportBarsPayload struct {
 	Categories []string            `json:"categories"`
+	Full       []string            `json:"full"`
 	Income     []int64             `json:"income"`
 	Expense    []int64             `json:"expense"`
 	Net        []int64             `json:"net"`
@@ -389,12 +535,13 @@ type reportBarsPayload struct {
 	Empty      string              `json:"empty"`
 }
 
-func reportBarsJSON(d web.LayoutData, points []report.CashflowPoint, currency money.Currency) string {
+func reportBars(d web.LayoutData, points []report.CashflowPoint, labels map[uuid.UUID]templates.PeriodLabel, currency money.Currency) (string, []templates.ReportCashflowRow) {
 	if !reportHasMovement(points) {
-		return ""
+		return "", nil
 	}
 	p := reportBarsPayload{
 		Categories: make([]string, 0, len(points)),
+		Full:       make([]string, 0, len(points)),
 		Income:     make([]int64, 0, len(points)),
 		Expense:    make([]int64, 0, len(points)),
 		Net:        make([]int64, 0, len(points)),
@@ -411,20 +558,20 @@ func reportBarsJSON(d web.LayoutData, points []report.CashflowPoint, currency mo
 		Unit:  reportBarsUnit{Divisor: reportPow10(currency.Exponent()), Symbol: reportCurrencySymbol(d, currency)},
 		Empty: d.Tr("report.no_data"),
 	}
+	rows := make([]templates.ReportCashflowRow, 0, len(points))
 	for _, pt := range points {
-		label := strings.TrimSpace(pt.Period.Name)
-		if label == "" {
-			label = pt.Period.Start.String()
-		}
-		p.Categories = append(p.Categories, label)
+		label := templates.PeriodLabelText(d, labels[pt.Period.ID])
+		p.Categories = append(p.Categories, templates.PeriodShortLabelText(d, labels[pt.Period.ID]))
+		p.Full = append(p.Full, label)
 		p.Income = append(p.Income, pt.Income.Minor)
 		p.Expense = append(p.Expense, pt.Expense.Minor)
 		p.Net = append(p.Net, pt.Net.Minor)
 		p.Formatted["income"] = append(p.Formatted["income"], templates.Money(d, pt.Income))
 		p.Formatted["expense"] = append(p.Formatted["expense"], templates.Money(d, pt.Expense))
 		p.Formatted["net"] = append(p.Formatted["net"], templates.SignedMoney(d, pt.Net))
+		rows = append(rows, templates.ReportCashflowRow{Label: label, In: pt.Income, Out: pt.Expense, Net: pt.Net})
 	}
-	return templates.ChartJSON(p)
+	return templates.ChartJSON(p), rows
 }
 
 func reportHasMovement(points []report.CashflowPoint) bool {
@@ -437,7 +584,8 @@ func reportHasMovement(points []report.CashflowPoint) bool {
 }
 
 type reportSankeyNode struct {
-	Name string `json:"name"`
+	Name  string `json:"name"`
+	Color string `json:"color,omitempty"`
 }
 
 type reportSankeyLink struct {
@@ -445,6 +593,7 @@ type reportSankeyLink struct {
 	Target    string `json:"target"`
 	Value     int64  `json:"value"`
 	Formatted string `json:"formatted"`
+	Tooltip   string `json:"tooltip"`
 }
 
 type reportSankeyPayload struct {
@@ -458,7 +607,13 @@ type reportWalletFlows struct {
 	amounts map[string]int64
 }
 
-func reportSankeyJSON(d web.LayoutData, flows []report.Flow, fold reportFold) string {
+type reportSankeyView struct {
+	payload string
+	rows    int
+	flows   []templates.ReportFlowRow
+}
+
+func reportSankey(d web.LayoutData, flows []report.Flow, fold reportFold) reportSankeyView {
 	order := make([]uuid.UUID, 0, len(flows))
 	byWallet := make(map[uuid.UUID]*reportWalletFlows, len(flows))
 	targeted := make(map[string]bool, len(fold.rows)+1)
@@ -480,7 +635,11 @@ func reportSankeyJSON(d web.LayoutData, flows []report.Flow, fold reportFold) st
 		targeted[target] = true
 	}
 	if len(order) == 0 {
-		return ""
+		return reportSankeyView{}
+	}
+	colors := make(map[string]string, len(fold.rows))
+	for i, s := range fold.rows {
+		colors[s.Name] = templates.ReportSlotColor(reportSlot(i, s)).Var
 	}
 
 	names := reportNames{}
@@ -496,10 +655,11 @@ func reportSankeyJSON(d web.LayoutData, flows []report.Flow, fold reportFold) st
 
 	nodes := make([]reportSankeyNode, 0, len(targets)+len(order))
 	for _, t := range targets {
-		nodes = append(nodes, reportSankeyNode{Name: t})
+		nodes = append(nodes, reportSankeyNode{Name: t, Color: colors[t]})
 	}
 	currency := flows[0].Amount.Currency
 	links := make([]reportSankeyLink, 0, len(order)*len(targets))
+	rows := make([]templates.ReportFlowRow, 0, len(order)*len(targets))
 	for _, id := range order {
 		w := byWallet[id]
 		source := names.unique(w.name)
@@ -509,16 +669,20 @@ func reportSankeyJSON(d web.LayoutData, flows []report.Flow, fold reportFold) st
 			if !ok {
 				continue
 			}
+			amt := money.New(minor, currency)
+			formatted := templates.Money(d, amt)
 			links = append(links, reportSankeyLink{
-				Source: source, Target: t, Value: minor,
-				Formatted: templates.Money(d, money.New(minor, currency)),
+				Source: source, Target: t, Value: minor, Formatted: formatted,
+				Tooltip: d.Tr("report.flow_tooltip", "Wallet", w.name, "Category", t, "Amount", formatted),
 			})
+			rows = append(rows, templates.ReportFlowRow{Wallet: w.name, Category: t, Amount: amt})
 		}
 	}
 	if len(links) == 0 {
-		return ""
+		return reportSankeyView{}
 	}
-	return templates.ChartJSON(reportSankeyPayload{Nodes: nodes, Links: links, Empty: d.Tr("report.no_data")})
+	payload := templates.ChartJSON(reportSankeyPayload{Nodes: nodes, Links: links, Empty: d.Tr("report.no_data")})
+	return reportSankeyView{payload: payload, rows: max(len(order), len(targets)), flows: rows}
 }
 
 func reportCurrencySymbol(d web.LayoutData, c money.Currency) string {

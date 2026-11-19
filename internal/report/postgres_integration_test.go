@@ -138,6 +138,10 @@ func TestPgReader_SpendByCategory(t *testing.T) {
 	assert.Equal(t, idr(50_000), got[1].Amount)
 }
 
+func TestPgReader_SpendByCategories(t *testing.T) {
+	assertSpendByCategories(t, newPgSeed(t))
+}
+
 func TestPgReader_IncomeByCategory(t *testing.T) {
 	s := newPgSeed(t)
 	got, err := s.reader.IncomeByCategory(s.ctx(), s.tc.OrgID, s.tc.ProjectID, s.periodAug, money.IDR)

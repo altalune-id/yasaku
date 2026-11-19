@@ -420,14 +420,14 @@ func (s *Service) RequireCallerManagerOf(ctx context.Context, orgID uuid.UUID) e
 	return s.RequireCallerManager(ctx)
 }
 
-// RequireTenantOrg refuses with *NotManagerError when orgID is not the tenant org on ctx.
+// RequireTenantOrg refuses with *OrgMismatchError when orgID is not the tenant org on ctx.
 func RequireTenantOrg(ctx context.Context, orgID uuid.UUID) error {
 	tc, err := tenant.From(ctx)
 	if err != nil {
 		return err
 	}
 	if tc.OrgID != orgID {
-		return &NotManagerError{OrgID: orgID.String()}
+		return &OrgMismatchError{OrgID: orgID.String()}
 	}
 	return nil
 }

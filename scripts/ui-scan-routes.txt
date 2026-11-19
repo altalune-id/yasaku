@@ -98,3 +98,26 @@
 /orgs/{o}/projects/{p}/transactions/{id}	locked	record a transaction, close its period
 /orgs/{o}/projects/{p}/wallets	dialog open	archive a wallet, open its delete confirmation
 /orgs/{o}/projects/{p}/wallets/{id}	default	create a wallet with an opening balance
+/orgs/{o}/projects/{p}/reports	first period	record expenses in 1 period only (no previous period: no comparison)
+/orgs/{o}/projects/{p}/reports	one category	record expenses in a single category this period and some last period
+/orgs/{o}/projects/{p}/reports	income only	record income only this period (spending empty state)
+/orgs/{o}/projects/{p}/reports	trend open	record expenses in 3 categories over 6 periods, tap the top legend row
+/orgs/{o}/projects/{p}/reports	no period	create a project before first run finishes (no period yet)
+/orgs/{o}/projects/{p}/reports?period={id}	previous period	record expenses over 2 periods, open the previous one
+/orgs/{o}/projects/{p}/opensheet	not linked	set opensheet.baseURL, create a project (setup form and coming-soon card)
+/orgs/{o}/projects/{p}/opensheet	paused	link Sheets, then 3 link refusals in a row (auto-disabled)
+/orgs/{o}/projects/{p}/opensheet	off manual	link Sheets, turn Sync off
+/orgs/{o}/projects/{p}/opensheet	failing	link Sheets, 1 link refusal plus 2 refused rows
+/orgs/{o}/projects/{p}/opensheet	given up	link Sheets, one row past its 5 tries
+/orgs/{o}/projects/{p}/opensheet	first sync	link Sheets, save, before the first sync lands
+/orgs/{o}/projects/{p}/opensheet	pending	link Sheets, record 3 transactions before the next sync
+/orgs/{o}/projects/{p}/opensheet	ok	link Sheets, sync with nothing pending
+/orgs/{o}/projects/{p}/opensheet	member	sign in as a plain member of a linked project
+/orgs/{o}/projects/{p}/opensheet	dialog open	link Sheets, tap Remove
+/orgs/{o}/projects/{p}/periods/{id}/close	end error	pick an end date before the latest entry
+/orgs/{o}/projects/{p}/periods/{id}/close	ends today	pick today as the end date
+/orgs/{o}/projects/{p}/reports?period={id}	balance fixes	record a balance adjustment in a closed period, open it
+/orgs/{o}/projects/{p}/opensheet	failing link only	1 link refusal, no refused rows (retry soon line)
+/orgs/{o}/projects/{p}/opensheet	details open	failing link, open every Details
+/orgs/{o}/projects/{p}/opensheet	test result	run Test with opensheet unreachable (checks list)
+/orgs/{o}/projects/{p}/opensheet	other timezone	browser time zone not the project's (project-time line shown)

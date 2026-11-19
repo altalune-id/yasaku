@@ -38,31 +38,31 @@ templ DashboardPage(d web.LayoutData, v DashboardView) {
 			}
 		}
 		if len(v.Projects) == 0 {
-			<div class="mt-8 rounded-lg border border-dashed border-border bg-card p-8 text-center">
+			<div class="mt-8 rounded-lg border border-dashed border-base-300 bg-base-100 p-8 text-center">
 				if canManageOrg(d) {
-					<p class="text-sm text-muted-foreground">{ d.Tr("projects.empty") }</p>
+					<p class="text-sm text-base-content/70">{ d.Tr("projects.empty") }</p>
 					<a href={ templ.SafeURL(d.OrgPath("/projects/new")) } class="btn btn-primary mt-4">{ d.Tr("projects.create_first") }</a>
 				} else {
-					<p class="text-sm text-muted-foreground">{ d.Tr("projects.empty_member") }</p>
+					<p class="text-sm text-base-content/70">{ d.Tr("projects.empty_member") }</p>
 				}
 			</div>
 		} else {
 			<ul class="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
 				for _, p := range v.Projects {
 					<li>
-						<a href={ templ.SafeURL(d.ProjectPath(p.Slug, "/overview")) } class="block rounded-lg border border-border bg-card p-4 shadow-sm transition hover:border-muted-foreground/40 hover:shadow-md">
+						<a href={ templ.SafeURL(d.ProjectPath(p.Slug, "/overview")) } class="block rounded-lg border border-base-300 bg-base-100 p-4 shadow-sm transition hover:border-base-content/30 hover:shadow-md">
 							<div class="flex items-baseline justify-between gap-2">
-								<p class="truncate text-sm font-medium text-foreground">{ p.Name }</p>
+								<p class="truncate text-sm font-medium text-base-content">{ p.Name }</p>
 								<div class="flex shrink-0 items-center gap-1.5">
 									if p.ID == v.ActiveProjID {
-										<span class="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-foreground/90 ring-1 ring-inset ring-border">{ d.Tr("common.current") }</span>
+										<span class="inline-flex items-center rounded-full bg-base-200 px-2 py-0.5 text-xs font-medium text-base-content/90 ring-1 ring-inset ring-base-300">{ d.Tr("common.current") }</span>
 									}
 									if p.System {
 										<span class="inline-flex items-center rounded-full bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning ring-1 ring-inset ring-warning/30">{ d.Tr("common.system") }</span>
 									}
 								</div>
 							</div>
-							<p class="mt-1 text-xs text-muted-foreground">{ p.Slug }</p>
+							<p class="mt-1 text-xs text-base-content/70">{ p.Slug }</p>
 						</a>
 					</li>
 				}

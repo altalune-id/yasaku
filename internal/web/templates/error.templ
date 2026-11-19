@@ -15,7 +15,7 @@ type ErrorView struct {
 
 templ ErrorPage(d web.LayoutData, v ErrorView) {
 	<section class="mx-auto max-w-md text-center py-12">
-		<p class="text-sm uppercase tracking-widest text-muted-foreground">
+		<p class="text-sm uppercase tracking-widest text-base-content/70">
 			if v.Status > 0 {
 				{ d.Tr("error.label") + " " + strconv.Itoa(v.Status) }
 			} else {
@@ -28,7 +28,7 @@ templ ErrorPage(d web.LayoutData, v ErrorView) {
 		}
 		<a href={ templ.SafeURL(d.Href("/")) } class="mt-6 inline-block text-primary hover:underline">{ d.Tr("error.return_home") }</a>
 		if v.Code != "" || v.RequestID != "" {
-			<p class="mt-6 space-x-3 text-xs text-muted-foreground">
+			<p class="mt-6 space-x-3 text-xs text-base-content/70">
 				if v.Code != "" {
 					<span>
 						{ d.Tr("error.code") }

@@ -123,7 +123,7 @@ templ LedgerTimeFooter(d web.LayoutData) {
 			hidden
 			data-tz-hint
 			data-ledger-tz={ dtLedgerZone(d) }
-			class="mt-8 text-center text-xs text-muted-foreground"
+			class="mt-8 text-center text-xs text-base-content/70"
 		>{ d.Tr("datetime.footer_hint", "Offset", "{offset}", "Zone", dtLedgerZone(d), "LedgerOffset", "{ledgerOffset}") }</p>
 	}
 	<template data-dt-template>
@@ -131,12 +131,12 @@ templ LedgerTimeFooter(d web.LayoutData) {
 			<button
 				type="button"
 				data-dt-trigger
-				class="cursor-help rounded-xs text-inherit underline decoration-dotted underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+				class="cursor-help rounded-xs text-inherit underline decoration-dotted underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
 			></button>
 			<span
 				popover
 				data-dt-pop
-				class="m-0 inset-auto max-w-[calc(100vw-2rem)] rounded-md border border-border bg-popover px-3 py-2 text-xs font-normal text-popover-foreground shadow-md"
+				class="m-0 inset-auto max-w-[calc(100vw-2rem)] rounded-md border border-base-300 bg-base-100 px-3 py-2 text-xs font-normal text-base-content shadow-md"
 			></span>
 		</span>
 	</template>
@@ -146,7 +146,7 @@ templ LedgerTimeFooter(d web.LayoutData) {
 // DateInputHint tells a date field's user that dates are ledger days, when the browser and ledger zones differ.
 templ DateInputHint(d web.LayoutData) {
 	if d.TimeZone != nil {
-		<p hidden data-tz-hint data-ledger-tz={ dtLedgerZone(d) } class="mt-1 text-xs text-muted-foreground">
+		<p hidden data-tz-hint data-ledger-tz={ dtLedgerZone(d) } class="mt-1 text-xs text-base-content/70">
 			{ d.Tr("datetime.input_hint", "Zone", dtLedgerZone(d)) }
 		</p>
 	}

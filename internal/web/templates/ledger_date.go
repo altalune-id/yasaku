@@ -19,3 +19,12 @@ func dateText(d web.LayoutData, day civil.Date, pattern, month string) string {
 	monthKey := "date.month_" + month + "." + strconv.Itoa(int(day.Month))
 	return d.Tr(patternKey, "Day", day.Day, "Month", d.Tr(monthKey), "Year", day.Year)
 }
+
+// PeriodShortLabelText is a period's chart axis label: the short month for a whole-month period, else its start day and month.
+func PeriodShortLabelText(d web.LayoutData, l PeriodLabel) string {
+	if l.IsMonth() {
+		monthKey := "date.month_short." + strconv.Itoa(int(l.Start.Month))
+		return d.Tr(monthKey)
+	}
+	return dateText(d, l.Start, "compact", "short")
+}

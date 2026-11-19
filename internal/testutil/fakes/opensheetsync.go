@@ -1,6 +1,7 @@
 package fakes
 
 import (
+	"bytes"
 	"cmp"
 	"context"
 	"fmt"
@@ -381,6 +382,29 @@ func (f *OpensheetSync) ListDirty(_ context.Context, orgID, projectID uuid.UUID,
 		out = append(out, st.Ref)
 	}
 	return out, nil
+}
+
+// FailingRows returns the project's dirty rows refused at least once, the latest refusal first.
+func (f *OpensheetSync) FailingRows(_ context.Context, orgID, projectID uuid.UUID, limit int) ([]opensheetsync.RowFailure, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls = append(f.calls, "FailingRows")
+	var out []opensheetsync.RowFailure
+	for _, st := range f.state {
+		if st.org != orgID || st.ProjectID != projectID || st.Attempts == 0 {
+			continue
+		}
+		rf := opensheetsync.RowFailure{Ref: st.Ref, Attempts: st.Attempts, LastError: st.LastError, UpdatedAt: st.UpdatedAt}
+		if !st.retryAfter.IsZero() {
+			at := st.retryAfter
+			rf.RetryAfter = &at
+		}
+		out = append(out, rf)
+	}
+	slices.SortFunc(out, func(a, b opensheetsync.RowFailure) int {
+		return cmp.Or(b.UpdatedAt.Compare(a.UpdatedAt), cmp.Compare(a.Entity, b.Entity), bytes.Compare(a.ID[:], b.ID[:]))
+	})
+	return out[:min(limit, len(out))], nil
 }
 
 func (f *OpensheetSync) Backlog(_ context.Context, orgID, projectID uuid.UUID) (opensheetsync.Backlog, error) {

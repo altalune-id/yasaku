@@ -16,6 +16,8 @@ type Reader interface {
 	// Summary totals one period in one currency; startUTC is the period's start at local midnight and bounds unassigned carry-in.
 	Summary(ctx context.Context, orgID, projectID, periodID uuid.UUID, currency money.Currency, startUTC time.Time, archivedBefore *time.Time) (PeriodSummary, error)
 	SpendByCategory(ctx context.Context, orgID, projectID, periodID uuid.UUID, currency money.Currency) ([]CategorySlice, error)
+	// SpendByCategories is SpendByCategory for many periods in one read, keyed by period id; a period with no spend has no key.
+	SpendByCategories(ctx context.Context, orgID, projectID uuid.UUID, periodIDs []uuid.UUID, currency money.Currency) (map[uuid.UUID][]CategorySlice, error)
 	IncomeByCategory(ctx context.Context, orgID, projectID, periodID uuid.UUID, currency money.Currency) ([]CategorySlice, error)
 	Cashflow(ctx context.Context, orgID, projectID uuid.UUID, periodIDs []uuid.UUID, currency money.Currency) ([]CashflowPoint, error)
 	Flows(ctx context.Context, orgID, projectID, periodID uuid.UUID, currency money.Currency) ([]Flow, error)

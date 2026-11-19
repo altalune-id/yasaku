@@ -60,6 +60,7 @@ In the Status column, `—` means registered but not yet constructed.
 | `ORG009` | `apperror.CodeOrgSelfRemoval`       | `FailedPrecondition` | Org Self Removal       |
 | `ORG010` | `apperror.CodeOrgOwnerRemoval`      | `FailedPrecondition` | Org Owner Removal      |
 | `ORG011` | `apperror.CodeOrgManagerRequired`   | `PermissionDenied`   | Org Manager Required   |
+| `ORG012` | `apperror.CodeOrgMismatch`          | `PermissionDenied`   | Org Mismatch           |
 
 ## PRJ — Projects
 

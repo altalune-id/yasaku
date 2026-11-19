@@ -212,6 +212,134 @@ func runStoreContract(t *testing.T, newFixture func(t *testing.T) storeFixture) 
 		require.Empty(t, st.LastError)
 	})
 
+	t.Run("failing rows lists refused dirty rows of this project only, newest first", func(t *testing.T) {
+		f := newFixture(t)
+		ctx := f.ctx(f.tc)
+		require.NoError(t, f.store.SaveLink(ctx, linkFor(f.tc, at)))
+		refused, givenUp, clean, waiting := ref(opensheetsync.EntityTransaction, uuid.New()), ref(opensheetsync.EntityWallet, uuid.New()),
+			ref(opensheetsync.EntityCategory, uuid.New()), ref(opensheetsync.EntityWallet, uuid.New())
+		require.NoError(t, f.store.Mark(ctx, f.tc.OrgID, f.tc.ProjectID, []opensheetsync.Ref{refused, givenUp, clean, waiting}, at))
+		failIn := func(projectID uuid.UUID, r opensheetsync.Ref, reason string, when, retry time.Time) {
+			t.Helper()
+			tok := uuid.New()
+			st, ok, err := f.store.Claim(ctx, f.tc.OrgID, projectID, r, tok, when, time.Minute)
+			require.NoError(t, err)
+			require.True(t, ok)
+			require.NoError(t, f.store.Release(ctx, f.tc.OrgID, projectID, r, tok,
+				opensheetsync.Failure{Reason: reason, At: when, Count: true, RetryAfter: retry, Version: st.Version}))
+		}
+		fail := func(r opensheetsync.Ref, reason string, when, retry time.Time) {
+			t.Helper()
+			failIn(f.tc.ProjectID, r, reason, when, retry)
+		}
+		require.NoError(t, f.store.SaveLink(ctx, linkFor(tenant.Context{OrgID: f.tc.OrgID, ProjectID: f.sibling, UserID: f.tc.UserID}, at)))
+		next := ref(opensheetsync.EntityTransaction, uuid.New())
+		require.NoError(t, f.store.Mark(ctx, f.tc.OrgID, f.sibling, []opensheetsync.Ref{next}, at))
+		failIn(f.sibling, next, "sibling refused", at.Add(2*time.Minute), time.Time{})
+		for i := range opensheetsync.MaxRowAttempts {
+			fail(givenUp, "refused again", at.Add(time.Duration(i)*time.Second), time.Time{})
+		}
+		retry := at.Add(time.Hour)
+		fail(refused, "opensheet refused a row of sheet tx (SHT016)", at.Add(time.Minute), retry)
+		tok := uuid.New()
+		_, ok, err := f.store.Claim(ctx, f.tc.OrgID, f.tc.ProjectID, clean, tok, at, time.Minute)
+		require.NoError(t, err)
+		require.True(t, ok)
+		settled, _, err := f.store.Settle(ctx, f.tc.OrgID, f.tc.ProjectID, clean, 1, tok)
+		require.NoError(t, err)
+		require.True(t, settled)
+
+		got, err := f.store.FailingRows(ctx, f.tc.OrgID, f.tc.ProjectID, 10)
+		require.NoError(t, err)
+		require.Len(t, got, 2, "a clean row, a dirty row never refused and a sibling's row are not this project's failures")
+		require.Equal(t, refused.ID, got[0].ID, "the latest refusal comes first")
+		require.Equal(t, opensheetsync.EntityTransaction, got[0].Entity)
+		require.Equal(t, 1, got[0].Attempts)
+		require.Equal(t, "opensheet refused a row of sheet tx (SHT016)", got[0].LastError)
+		require.NotNil(t, got[0].RetryAfter)
+		require.True(t, retry.Equal(*got[0].RetryAfter))
+		require.False(t, got[0].GivenUp())
+		require.Equal(t, givenUp.ID, got[1].ID)
+		require.True(t, got[1].GivenUp())
+		require.Nil(t, got[1].RetryAfter)
+
+		capped, err := f.store.FailingRows(ctx, f.tc.OrgID, f.tc.ProjectID, 1)
+		require.NoError(t, err)
+		require.Len(t, capped, 1)
+
+		foreign, err := f.store.FailingRows(f.ctx(f.other), f.other.OrgID, f.tc.ProjectID, 10)
+		require.NoError(t, err)
+		require.Empty(t, foreign, "another org never reads these rows")
+		sibling, err := f.store.FailingRows(ctx, f.tc.OrgID, f.sibling, 10)
+		require.NoError(t, err)
+		require.Len(t, sibling, 1, "a sibling project reads only its own rows")
+		require.Equal(t, next.ID, sibling[0].ID)
+	})
+
+	t.Run("a refused row that then syncs or is edited again leaves failing rows", func(t *testing.T) {
+		f := newFixture(t)
+		ctx := f.ctx(f.tc)
+		require.NoError(t, f.store.SaveLink(ctx, linkFor(f.tc, at)))
+		synced, edited := ref(opensheetsync.EntityWallet, uuid.New()), ref(opensheetsync.EntityCategory, uuid.New())
+		require.NoError(t, f.store.Mark(ctx, f.tc.OrgID, f.tc.ProjectID, []opensheetsync.Ref{synced, edited}, at))
+		for _, r := range []opensheetsync.Ref{synced, edited} {
+			tok := uuid.New()
+			st, ok, err := f.store.Claim(ctx, f.tc.OrgID, f.tc.ProjectID, r, tok, at, time.Minute)
+			require.NoError(t, err)
+			require.True(t, ok)
+			require.NoError(t, f.store.Release(ctx, f.tc.OrgID, f.tc.ProjectID, r, tok,
+				opensheetsync.Failure{Reason: "refused", At: at, Count: true, Version: st.Version}))
+		}
+		got, err := f.store.FailingRows(ctx, f.tc.OrgID, f.tc.ProjectID, 10)
+		require.NoError(t, err)
+		require.Len(t, got, 2)
+
+		tok := uuid.New()
+		st, ok, err := f.store.Claim(ctx, f.tc.OrgID, f.tc.ProjectID, synced, tok, at.Add(time.Second), time.Minute)
+		require.NoError(t, err)
+		require.True(t, ok)
+		settled, _, err := f.store.Settle(ctx, f.tc.OrgID, f.tc.ProjectID, synced, st.Version, tok)
+		require.NoError(t, err)
+		require.True(t, settled)
+		require.NoError(t, f.store.Mark(ctx, f.tc.OrgID, f.tc.ProjectID, []opensheetsync.Ref{edited}, at.Add(2*time.Second)))
+
+		got, err = f.store.FailingRows(ctx, f.tc.OrgID, f.tc.ProjectID, 10)
+		require.NoError(t, err)
+		require.Empty(t, got, "a sync or a new edit resets attempts, so the list matches the backlog's failing count")
+		b, err := f.store.Backlog(ctx, f.tc.OrgID, f.tc.ProjectID)
+		require.NoError(t, err)
+		require.Zero(t, b.Failing+b.GivenUp)
+	})
+
+	t.Run("a refused row re-marked by sync everything leaves failing rows", func(t *testing.T) {
+		f := newFixture(t)
+		ctx := f.ctx(f.tc)
+		require.NoError(t, f.store.SaveLink(ctx, linkFor(f.tc, at)))
+		live, gone := ref(opensheetsync.EntityWallet, f.wallet(t, f.tc)), ref(opensheetsync.EntityCategory, f.category(t, f.tc))
+		require.NoError(t, f.store.Mark(ctx, f.tc.OrgID, f.tc.ProjectID, []opensheetsync.Ref{live, gone}, at))
+		for _, r := range []opensheetsync.Ref{live, gone} {
+			for i := range opensheetsync.MaxRowAttempts {
+				tok := uuid.New()
+				when := at.Add(time.Duration(i) * time.Second)
+				st, ok, err := f.store.Claim(ctx, f.tc.OrgID, f.tc.ProjectID, r, tok, when, time.Minute)
+				require.NoError(t, err)
+				require.True(t, ok)
+				require.NoError(t, f.store.Release(ctx, f.tc.OrgID, f.tc.ProjectID, r, tok,
+					opensheetsync.Failure{Reason: "refused", At: when, Count: true, Version: st.Version}))
+			}
+		}
+		f.remove(t, f.tc, opensheetsync.EntityCategory, gone.ID)
+		got, err := f.store.FailingRows(ctx, f.tc.OrgID, f.tc.ProjectID, 10)
+		require.NoError(t, err)
+		require.Len(t, got, 2)
+
+		_, err = f.store.MarkAll(ctx, f.tc.OrgID, f.tc.ProjectID, at.Add(time.Minute))
+		require.NoError(t, err)
+		got, err = f.store.FailingRows(ctx, f.tc.OrgID, f.tc.ProjectID, 10)
+		require.NoError(t, err)
+		require.Empty(t, got, "sync everything resets attempts for live and gone rows, so a given-up row starts over")
+	})
+
 	t.Run("a release after a new edit does not charge that edit", func(t *testing.T) {
 		f := newFixture(t)
 		ctx := f.ctx(f.tc)

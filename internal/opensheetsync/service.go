@@ -1,20 +1,27 @@
 package opensheetsync
 
 import (
+	"cmp"
 	"context"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
 
+	"altalune.id/yasaku/civil"
 	"altalune.id/yasaku/internal/apperror"
 	"altalune.id/yasaku/internal/platform/sealer"
 	"altalune.id/yasaku/internal/platform/tenant"
 )
 
-const testTimeout = 10 * time.Second
+const (
+	testTimeout = 10 * time.Second
+	// StatusRows is how many refused rows Status lists.
+	StatusRows = 20
+)
 
 // Members is the role gate: only an org owner or admin changes the link.
 type Members interface {
@@ -30,6 +37,7 @@ type ServiceDeps struct {
 	Members    Members
 	Sealer     sealer.Sealer
 	Endpoint   Endpoint
+	Source     Source
 	UnitOfWork UnitOfWork
 	Now        func() time.Time
 }
@@ -43,6 +51,7 @@ type Service struct {
 	members    Members
 	sealer     sealer.Sealer
 	endpoint   Endpoint
+	source     Source
 	uow        UnitOfWork
 	now        func() time.Time
 }
@@ -51,7 +60,7 @@ type Service struct {
 func NewService(store Store, log *slog.Logger, unexpected apperror.UnexpectedFunc, d ServiceDeps) *Service {
 	s := &Service{
 		store: store, log: log.With("module", "opensheetsync"), unexpected: unexpected,
-		mirror: d.Mirror, members: d.Members, sealer: d.Sealer, endpoint: d.Endpoint, uow: d.UnitOfWork, now: d.Now,
+		mirror: d.Mirror, members: d.Members, sealer: d.Sealer, endpoint: d.Endpoint, source: d.Source, uow: d.UnitOfWork, now: d.Now,
 	}
 	if s.uow == nil {
 		s.uow = func(ctx context.Context, fn func(ctx context.Context) error) error { return fn(ctx) }
@@ -62,10 +71,18 @@ func NewService(store Store, log *slog.Logger, unexpected apperror.UnexpectedFun
 	return s
 }
 
-// Status is the module page's state: the link, nil when there is none, and the project's backlog.
+// Status is the module page's state: the link, nil when there is none, the project's backlog and its latest refused rows.
 type Status struct {
 	Link *Link
 	Backlog
+	Rows []FailedRow
+}
+
+// FailedRow is a refused row with the name a person knows it by; Name is "" when the row is gone or could not be read, and On is a transaction's ledger date in the project zone.
+type FailedRow struct {
+	RowFailure
+	Name string
+	On   *civil.Date
 }
 
 // Status returns the project's link and backlog; any member may read it.
@@ -88,7 +105,51 @@ func (s *Service) Status(ctx context.Context) (Status, error) {
 	if err != nil {
 		return Status{}, s.unexpected(ctx, "opensheetsync.Status: backlog", err, "project_id", tc.ProjectID)
 	}
-	return Status{Link: l, Backlog: b}, nil
+	rows, err := s.store.FailingRows(ctx, tc.OrgID, tc.ProjectID, StatusRows)
+	if err != nil {
+		return Status{}, s.unexpected(ctx, "opensheetsync.Status: failing rows", err, "project_id", tc.ProjectID)
+	}
+	return Status{Link: l, Backlog: b, Rows: s.labelled(ctx, rows)}, nil
+}
+
+func (s *Service) labelled(ctx context.Context, rows []RowFailure) []FailedRow {
+	out := make([]FailedRow, 0, len(rows))
+	for _, r := range rows {
+		fr := FailedRow{RowFailure: r}
+		if s.source != nil && !r.Deleted {
+			if err := s.label(ctx, &fr); err != nil {
+				s.log.LogAttrs(ctx, slog.LevelWarn, "opensheetsync.Status: row label", slog.String("entity", string(r.Entity)),
+					slog.String("entity_id", r.ID.String()), slog.String("err", err.Error()))
+			}
+		}
+		out = append(out, fr)
+	}
+	return out
+}
+
+func (s *Service) label(ctx context.Context, fr *FailedRow) error {
+	switch fr.Entity {
+	case EntityTransaction:
+		f, found, err := s.source.Transaction(ctx, fr.ID)
+		if err != nil || !found {
+			return err
+		}
+		on := civil.DateOf(f.OccurredAt, cmp.Or(f.Location, time.UTC))
+		fr.Name, fr.On = cmp.Or(strings.TrimSpace(f.Note), f.CategoryName, f.WalletName), &on
+	case EntityWallet:
+		f, found, err := s.source.Wallet(ctx, fr.ID)
+		if err != nil || !found {
+			return err
+		}
+		fr.Name = f.Name
+	case EntityCategory:
+		f, found, err := s.source.Category(ctx, fr.ID)
+		if err != nil || !found {
+			return err
+		}
+		fr.Name = f.Name
+	}
+	return nil
 }
 
 // Test checks every tab against opensheet's /capabilities; failing tabs are in the checklist, not the error.

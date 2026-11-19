@@ -42,14 +42,14 @@ type PostFormView struct {
 templ PostTagPicker(d web.LayoutData, v PostTagPickerView) {
 	<div id="post-tag-picker" class="flex flex-wrap gap-2">
 		if len(v.Options) == 0 {
-			<p class="text-sm text-muted-foreground">{ d.Tr("blog.post_tags_empty") }</p>
+			<p class="text-sm text-base-content/70">{ d.Tr("blog.post_tags_empty") }</p>
 		}
 		for _, t := range v.Options {
-			<label class="inline-flex cursor-pointer items-center gap-2 rounded-full border border-border px-3 py-1 text-sm text-foreground/90 hover:bg-muted has-[:checked]:border-primary has-[:checked]:bg-primary/10">
+			<label class="inline-flex cursor-pointer items-center gap-2 rounded-full border border-base-300 px-3 py-1 text-sm text-base-content/90 hover:bg-base-200 has-[:checked]:border-primary has-[:checked]:bg-primary/10">
 				if t.Selected {
-					<input type="checkbox" name="tags" value={ t.ID } checked class="h-3.5 w-3.5 rounded border-border"/>
+					<input type="checkbox" name="tags" value={ t.ID } checked class="h-3.5 w-3.5 rounded border-base-300"/>
 				} else {
-					<input type="checkbox" name="tags" value={ t.ID } class="h-3.5 w-3.5 rounded border-border"/>
+					<input type="checkbox" name="tags" value={ t.ID } class="h-3.5 w-3.5 rounded border-base-300"/>
 				}
 				<span>{ t.Name }</span>
 			</label>
@@ -66,12 +66,12 @@ templ PostTagPicker(d web.LayoutData, v PostTagPickerView) {
 // post form is invalid HTML — so htmx posts the fields it names to the shared /tags/quick route.
 templ postQuickTag(d web.LayoutData, v PostFormView) {
 	<details class="dropdown mt-3 block">
-		<summary class="inline-flex w-fit items-center gap-2 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-foreground/90 hover:bg-muted">
+		<summary class="inline-flex w-fit items-center gap-2 rounded-md border border-base-300 px-3 py-1.5 text-xs font-medium text-base-content/90 hover:bg-base-200">
 			@icons.Icon("plus", "h-3.5 w-3.5")
 			<span>{ d.Tr("blog.post_quick_tag") }</span>
 		</summary>
 		<div class="absolute start-0 top-full z-40 mt-2 w-72 popover-surface p-3">
-			<p class="text-xs font-medium uppercase tracking-wider text-muted-foreground/70">{ d.Tr("blog.post_quick_tag") }</p>
+			<p class="text-xs font-medium uppercase tracking-wider text-base-content/70">{ d.Tr("blog.post_quick_tag") }</p>
 			<div id="quick-tag-fields" class="mt-2">
 				<input type="hidden" name="picker" value="1"/>
 				<input
@@ -94,7 +94,7 @@ templ postQuickTag(d web.LayoutData, v PostFormView) {
 				hx-status:4xx="target:#hx-error swap:innerHTML"
 				hx-status:5xx="target:#hx-error swap:innerHTML"
 				hx-disable="find button, find input"
-				class="mt-2 w-full rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90"
+				class="mt-2 w-full rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-content shadow-sm hover:bg-primary/90"
 			>
 				{ d.Tr("blog.post_quick_tag_add") }
 			</button>
@@ -139,9 +139,9 @@ templ postEditorAssets(d web.LayoutData) {
 }
 
 templ PostPreviewFragment(d web.LayoutData, html string) {
-	<div id="post-preview" class="prose max-w-none text-sm text-foreground">
+	<div id="post-preview" class="prose max-w-none text-sm text-base-content">
 		if html == "" {
-			<p class="text-sm text-muted-foreground">{ d.Tr("blog.post_preview_empty") }</p>
+			<p class="text-sm text-base-content/70">{ d.Tr("blog.post_preview_empty") }</p>
 		} else {
 			@templ.Raw(html)
 		}
@@ -150,21 +150,21 @@ templ PostPreviewFragment(d web.LayoutData, html string) {
 
 templ PostFormPage(d web.LayoutData, v PostFormView) {
 	<section>
-		<header class="border-b border-border pb-4">
-			<h1 class="text-2xl font-semibold text-foreground">
+		<header class="border-b border-base-300 pb-4">
+			<h1 class="text-2xl font-semibold text-base-content">
 				if v.ID == "" {
 					{ d.Tr("blog.post_new_title") }
 				} else {
 					{ d.Tr("blog.post_edit_title") }
 				}
 			</h1>
-			<p class="mt-1 text-sm text-muted-foreground">{ d.Tr("blog.post_form_subtitle") }</p>
+			<p class="mt-1 text-sm text-base-content/70">{ d.Tr("blog.post_form_subtitle") }</p>
 		</header>
 		@postBanner(d, v.ErrorKind, v.ErrorCode)
 		if len(v.Categories) == 0 {
-			<p class="mt-6 rounded-md border border-border bg-muted/40 p-3 text-sm text-muted-foreground">
+			<p class="mt-6 rounded-md border border-base-300 bg-base-200/40 p-3 text-sm text-base-content/70">
 				{ d.Tr("blog.post_needs_category") }
-				<a href={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/categories")) } class="ms-1 font-medium text-foreground underline">
+				<a href={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/categories")) } class="ms-1 font-medium text-base-content underline">
 					{ d.Tr("blog.categories_title") }
 				</a>
 			</p>
@@ -172,7 +172,7 @@ templ PostFormPage(d web.LayoutData, v PostFormView) {
 		<form method="post" action={ templ.SafeURL(postFormAction(d, v)) } class="mt-6 grid gap-6 lg:grid-cols-2">
 			<div class="flex flex-col gap-4">
 				<div>
-					<label for="post-title" class="block text-sm font-medium text-foreground">{ d.Tr("blog.post_title") }</label>
+					<label for="post-title" class="block text-sm font-medium text-base-content">{ d.Tr("blog.post_title") }</label>
 					<input
 						id="post-title"
 						name="title"
@@ -183,7 +183,7 @@ templ PostFormPage(d web.LayoutData, v PostFormView) {
 					/>
 				</div>
 				<div>
-					<label for="post-slug" class="block text-sm font-medium text-foreground">{ d.Tr("blog.post_slug") }</label>
+					<label for="post-slug" class="block text-sm font-medium text-base-content">{ d.Tr("blog.post_slug") }</label>
 					<input
 						id="post-slug"
 						name="slug"
@@ -193,7 +193,7 @@ templ PostFormPage(d web.LayoutData, v PostFormView) {
 					/>
 				</div>
 				<div>
-					<label for="post-category" class="block text-sm font-medium text-foreground">{ d.Tr("blog.post_category") }</label>
+					<label for="post-category" class="block text-sm font-medium text-base-content">{ d.Tr("blog.post_category") }</label>
 					<select
 						id="post-category"
 						name="category_id"
@@ -211,24 +211,24 @@ templ PostFormPage(d web.LayoutData, v PostFormView) {
 					</select>
 				</div>
 				<div>
-					<p class="block text-sm font-medium text-foreground">{ d.Tr("blog.post_tags") }</p>
+					<p class="block text-sm font-medium text-base-content">{ d.Tr("blog.post_tags") }</p>
 					<div class="mt-2">
 						@PostTagPicker(d, v.Tags)
 					</div>
 					@postQuickTag(d, v)
 				</div>
 				<div class="flex flex-wrap items-center gap-2">
-					<button type="submit" class="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2">
+					<button type="submit" class="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-content shadow-sm hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2">
 						{ d.Tr("blog.post_save") }
 					</button>
-					<a href={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/posts")) } class="rounded-md border border-border px-4 py-2 text-sm font-medium text-foreground/90 hover:bg-muted">
+					<a href={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/posts")) } class="rounded-md border border-base-300 px-4 py-2 text-sm font-medium text-base-content/90 hover:bg-base-200">
 						{ d.Tr("blog.post_cancel") }
 					</a>
 				</div>
 			</div>
 			<div class="flex flex-col gap-4">
 				<div>
-					<label for="post-body" class="block text-sm font-medium text-foreground">{ d.Tr("blog.post_body") }</label>
+					<label for="post-body" class="block text-sm font-medium text-base-content">{ d.Tr("blog.post_body") }</label>
 					<textarea
 						id="post-body"
 						name="body"
@@ -250,12 +250,12 @@ templ PostFormPage(d web.LayoutData, v PostFormView) {
 						hx-status:4xx="target:#hx-error swap:innerHTML"
 						hx-status:5xx="target:#hx-error swap:innerHTML"
 						hx-disable="find button, find input"
-						class="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-foreground/90 hover:bg-muted"
+						class="rounded-md border border-base-300 px-3 py-1.5 text-xs font-medium text-base-content/90 hover:bg-base-200"
 					>
 						{ d.Tr("blog.post_preview") }
 						<span id="post-preview-spinner" class="htmx-indicator ms-1.5 inline-block align-middle">…</span>
 					</button>
-					<div class="mt-2 rounded-lg border border-border bg-card p-4 shadow-sm">
+					<div class="mt-2 rounded-lg border border-base-300 bg-base-100 p-4 shadow-sm">
 						@PostPreviewFragment(d, v.PreviewHTML)
 					</div>
 				</div>

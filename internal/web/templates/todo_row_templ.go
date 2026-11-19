@@ -55,7 +55,7 @@ func TodoRowFragment(d web.LayoutData, t TodoRow) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "\" class=\"group flex items-center gap-3 px-4 py-3 hover:bg-muted/50\"><form method=\"post\" action=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "\" class=\"group flex items-center gap-3 px-4 py-3 hover:bg-base-200/50\"><form method=\"post\" action=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -112,8 +112,8 @@ func TodoRowFragment(d web.LayoutData, t TodoRow) templ.Component {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var7 = []any{"flex size-5 items-center justify-center rounded border text-xs transition",
-			templ.KV("border-green-500 bg-green-500 text-white", t.Done),
-			templ.KV("border-border bg-card hover:border-muted-foreground", !t.Done),
+			templ.KV("border-success bg-success text-success-content", t.Done),
+			templ.KV("border-base-300 bg-base-100 hover:border-base-content/70", !t.Done),
 		}
 		templ_7745c5c3_Err = templ.RenderCSSItems(ctx, templ_7745c5c3_Buffer, templ_7745c5c3_Var7...)
 		if templ_7745c5c3_Err != nil {
@@ -159,7 +159,7 @@ func TodoRowFragment(d web.LayoutData, t TodoRow) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		var templ_7745c5c3_Var10 = []any{"flex-1 text-sm", templ.KV("text-muted-foreground/70 line-through", t.Done), templ.KV("text-foreground", !t.Done)}
+		var templ_7745c5c3_Var10 = []any{"flex-1 text-sm", templ.KV("text-base-content/70 line-through", t.Done), templ.KV("text-base-content", !t.Done)}
 		templ_7745c5c3_Err = templ.RenderCSSItems(ctx, templ_7745c5c3_Buffer, templ_7745c5c3_Var10...)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
@@ -184,7 +184,7 @@ func TodoRowFragment(d web.LayoutData, t TodoRow) templ.Component {
 		var templ_7745c5c3_Var12 string
 		templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs(t.Title)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/todo_row.templ`, Line: 44, Col: 141}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/todo_row.templ`, Line: 44, Col: 139}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
 		if templ_7745c5c3_Err != nil {
@@ -255,7 +255,7 @@ func TodoRowFragment(d web.LayoutData, t TodoRow) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "\" class=\"rounded p-1 text-muted-foreground/70 opacity-0 transition group-hover:opacity-100 hover:bg-error/10 hover:text-error focus:opacity-100\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "\" class=\"rounded p-1 text-base-content/70 opacity-0 transition group-hover:opacity-100 hover:bg-error/10 hover:text-error focus:opacity-100\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

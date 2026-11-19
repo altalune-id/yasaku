@@ -17,12 +17,12 @@ type WelcomeView struct {
 
 templ WelcomePage(d web.LayoutData, v WelcomeView) {
 	<section class="mx-auto flex max-w-xl flex-col gap-4 lg:gap-6">
-		<header class="border-b border-border pb-4">
+		<header class="border-b border-base-300 pb-4">
 			<p class="text-xs font-semibold uppercase tracking-wide text-base-content/70">{ d.Tr("welcome.eyebrow") }</p>
-			<h1 class="mt-1 text-2xl font-semibold text-foreground">{ d.Tr("welcome.title") }</h1>
-			<p class="mt-2 text-sm text-muted-foreground">
+			<h1 class="mt-1 text-2xl font-semibold text-base-content">{ d.Tr("welcome.title") }</h1>
+			<p class="mt-2 text-sm text-base-content/70">
 				{ d.Tr("welcome.subtitle_prefix") }
-				<strong class="text-foreground">{ v.Email }</strong>{ d.Tr("welcome.subtitle_suffix") }
+				<strong class="text-base-content">{ v.Email }</strong>{ d.Tr("welcome.subtitle_suffix") }
 			</p>
 		</header>
 		if v.Error != "" {

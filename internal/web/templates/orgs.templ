@@ -25,26 +25,26 @@ templ OrgsPage(d web.LayoutData, v OrgsView) {
 			@ErrorBanner(d, v.Error, v.ErrorCode)
 		}
 		if len(v.Orgs) == 0 {
-			<div class="mt-6 rounded-lg border border-dashed border-border bg-card p-8 text-center">
-				<p class="text-sm text-muted-foreground">{ d.Tr("orgs.empty") }</p>
+			<div class="mt-6 rounded-lg border border-dashed border-base-300 bg-base-100 p-8 text-center">
+				<p class="text-sm text-base-content/70">{ d.Tr("orgs.empty") }</p>
 				if d.Caps.OrgCreation {
 					<a href={ templ.SafeURL(d.Href("/orgs/new")) } class="btn btn-primary mt-4">{ d.Tr("orgs.create_first") }</a>
 				}
 			</div>
 		} else {
-			<ul class="mt-6 divide-y divide-border/50 overflow-hidden rounded-lg border border-border bg-card shadow-sm">
+			<ul class="mt-6 divide-y divide-base-300/50 overflow-hidden rounded-lg border border-base-300 bg-base-100 shadow-sm">
 				for _, o := range v.Orgs {
 					<li class="flex items-center justify-between px-4 py-3">
 						<div class="min-w-0">
-							<p class="flex items-center gap-2 truncate text-sm font-medium text-foreground">
+							<p class="flex items-center gap-2 truncate text-sm font-medium text-base-content">
 								<span class="truncate">{ o.Name }</span>
 								if o.System {
 									<span class="inline-flex items-center rounded-full bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning ring-1 ring-inset ring-warning/30">{ d.Tr("common.system") }</span>
 								}
 							</p>
-							<p class="truncate text-xs text-muted-foreground">{ o.Slug }</p>
+							<p class="truncate text-xs text-base-content/70">{ o.Slug }</p>
 						</div>
-						<a href={ templ.SafeURL(d.Href("/orgs/" + o.Slug + "/projects")) } class="ms-4 text-sm font-medium text-muted-foreground hover:text-foreground">{ d.Tr("common.open") }</a>
+						<a href={ templ.SafeURL(d.Href("/orgs/" + o.Slug + "/projects")) } class="ms-4 text-sm font-medium text-base-content/70 hover:text-base-content">{ d.Tr("common.open") }</a>
 					</li>
 				}
 			</ul>

@@ -3,6 +3,7 @@ package handlers_test
 import (
 	"context"
 	"encoding/json"
+	"html/template"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -138,6 +139,16 @@ func (f *opensheetFixture) seedLink(t *testing.T, sealed []byte) *opensheetsync.
 	return l
 }
 
+func (f *opensheetFixture) seedEnabledLink(t *testing.T) *opensheetsync.Link {
+	t.Helper()
+	l := f.seedLink(t, []byte("sealed"))
+	require.NoError(t, l.Enable(time.Now().UTC()))
+	require.NoError(t, f.store.SaveLink(f.tenantCtx(), l))
+	got, err := f.store.LinkByProject(f.tenantCtx(), f.OrgID, f.ProjectID)
+	require.NoError(t, err)
+	return got
+}
+
 func (f *opensheetFixture) tr(key string, args ...any) string {
 	return f.Deps.I18n.For(i18n.IdID).T(key, args...)
 }
@@ -160,8 +171,7 @@ func TestOpensheet_PageShowsTheTutorialFromTheContractAndTheNavEntry(t *testing.
 		assert.Contains(t, body, tab.HeaderTSV(), "the copy button carries the contract's header row")
 	}
 	assert.Contains(t, body, f.path("/opensheet"), "the project nav links the module")
-	assert.Contains(t, body, `data-opensheet-enabled="false"`)
-	assert.Contains(t, body, `disabled`, "the switch is disabled before a passing Save")
+	assert.NotContains(t, body, `data-opensheet-enabled`, "no Sync switch before a passing Save")
 	assert.Contains(t, body, `autocomplete="new-password"`, "browsers must not autofill a saved password into the key field")
 	assert.Contains(t, body, f.tr("opensheet.subtitle"))
 }
@@ -206,7 +216,7 @@ func TestOpensheet_SaveIsRefusedWith422ThenAllowed(t *testing.T) {
 	assert.Contains(t, body, `id="opensheet-module"`)
 	assert.Contains(t, body, `data-opensheet-notice="opensheet.saved"`)
 	assert.Contains(t, body, "•••• abcd")
-	assert.Contains(t, body, `data-opensheet-awaiting-first-sync="true"`, "no sync has landed since the Save")
+	assert.Contains(t, body, `data-opensheet-state="off_manual"`, "a Save never turns sync on")
 	assert.NotContains(t, body, opensheetTestKey)
 	st, err := f.store.LinkByProject(t.Context(), f.OrgID, f.ProjectID)
 	require.NoError(t, err)
@@ -297,7 +307,7 @@ func TestOpensheet_StatusTellsFailingRowsFromGivenUpOnes(t *testing.T) {
 	f := newOpensheetFixture(t)
 	ctx := f.tenantCtx()
 	now := time.Now().UTC()
-	f.seedLink(t, []byte("sealed"))
+	f.seedEnabledLink(t)
 	waiting, failing, givenUp := uuid.New(), uuid.New(), uuid.New()
 	refs := []opensheetsync.Ref{{Entity: opensheetsync.EntityWallet, ID: waiting}, {Entity: opensheetsync.EntityWallet, ID: failing}, {Entity: opensheetsync.EntityWallet, ID: givenUp}}
 	require.NoError(t, f.store.Mark(ctx, f.OrgID, f.ProjectID, refs, now))
@@ -318,9 +328,11 @@ func TestOpensheet_StatusTellsFailingRowsFromGivenUpOnes(t *testing.T) {
 	rec := f.do(t, f.mux, http.MethodGet, "/opensheet", nil)
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	body := rec.Body.String()
+	assert.Contains(t, body, `data-opensheet-state="failing"`)
 	assert.Contains(t, body, `data-opensheet-pending="2"`, "a given-up row is no longer waiting")
 	assert.Contains(t, body, `data-opensheet-failing="1"`)
-	assert.Contains(t, body, `data-opensheet-given-up="1"`)
+	assert.Contains(t, body, `data-opensheet-given-up="1"`, "the given-up banner also shows while other rows retry")
+	assert.Equal(t, 2, strings.Count(body, "data-opensheet-row="), "each refused row is listed, the waiting one is not")
 }
 
 func TestOpensheet_AnUnreadableSavedKeyIsATranslatedBanner(t *testing.T) {
@@ -363,6 +375,41 @@ func TestOpensheet_AMemberSeesTheModuleReadOnly(t *testing.T) {
 	assert.Equal(t, http.StatusForbidden, refused.Code)
 }
 
+func TestOpensheet_AMemberSeesThePlainReasonButNoRawErrorText(t *testing.T) {
+	t.Parallel()
+	f := newOpensheetFixture(t)
+	l := f.seedEnabledLink(t)
+	raw := "opensheet refused a write to sheet yasaku-transactions: SHT009 sheet is read only"
+	_, err := f.store.SaveOutcome(f.tenantCtx(), f.OrgID, f.ProjectID, opensheetsync.Outcome{At: time.Now().UTC(), Err: raw, LinkUpdatedAt: l.UpdatedAt})
+	require.NoError(t, err)
+	w := opensheetsync.Ref{Entity: opensheetsync.EntityWallet, ID: uuid.New()}
+	ctx := f.tenantCtx()
+	require.NoError(t, f.store.Mark(ctx, f.OrgID, f.ProjectID, []opensheetsync.Ref{w}, time.Now().UTC()))
+	tok := uuid.New()
+	_, ok, err := f.store.Claim(ctx, f.OrgID, f.ProjectID, w, tok, time.Now().UTC(), time.Minute)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.NoError(t, f.store.Release(ctx, f.OrgID, f.ProjectID, w, tok, opensheetsync.Failure{Reason: "row text SHT016 amount bad", At: time.Now().UTC(), Count: true}))
+
+	manager := f.do(t, f.mux, http.MethodGet, "/opensheet", nil).Body.String()
+	assert.Contains(t, manager, "SHT009 sheet is read only", "a manager sees the raw text under Details")
+	assert.Contains(t, manager, "row text SHT016 amount bad")
+
+	pool := db.Pool{W: f.DB, R: f.DB}
+	users := user.NewService(user.NewStore(db.DBConfig{Driver: db.DriverSQLite, TablePrefix: f.Cfg.DB.TablePrefix}, pool), user.GenesisConfig{}, discardLogger(), passthroughUnexpected())
+	u, err := users.Create(t.Context(), user.CreateRequest{Email: "member2@yasaku.test", Name: "Member", Source: user.SourceLocal})
+	require.NoError(t, err)
+	_, err = f.Orgs.AddMember(tenant.Into(t.Context(), tenant.Context{OrgID: f.OrgID, UserID: f.Principal.UserID}), f.OrgID, u.ID, org.RoleMember)
+	require.NoError(t, err)
+	f.Principal.UserID = u.ID
+
+	member := f.do(t, f.mux, http.MethodGet, "/opensheet", nil).Body.String()
+	assert.Contains(t, member, template.HTMLEscapeString(f.tr("opensheet.reason.sheet_read_only")), "a member keeps the plain reason")
+	assert.NotContains(t, member, "SHT009", "raw link error text is for managers only")
+	assert.NotContains(t, member, "row text SHT016", "raw row error text is for managers only")
+	assert.Contains(t, member, "data-opensheet-row=", "a member still sees which entries failed")
+}
+
 func TestOpensheet_AnAutoDisabledLinkSaysSoWithItsLastError(t *testing.T) {
 	t.Parallel()
 	f := newOpensheetFixture(t)
@@ -383,32 +430,26 @@ func TestOpensheet_AnAutoDisabledLinkSaysSoWithItsLastError(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	body := rec.Body.String()
 	assert.Contains(t, body, `data-opensheet-auto-disabled="1"`)
+	assert.Contains(t, body, `data-opensheet-state="paused"`)
+	assert.Contains(t, body, template.HTMLEscapeString(f.tr("opensheet.reason.sheet_read_only")), "SHT009 is said in plain words above the raw details")
 	assert.Contains(t, body, `data-opensheet-status-last-error="true"`)
 	assert.Contains(t, body, "SHT009 sheet is read only")
 	assert.Contains(t, body, `data-opensheet-enabled="false"`)
 }
 
-func TestOpensheet_StatusCountsArePlural(t *testing.T) {
+func TestOpensheet_GivenUpCountIsPlural(t *testing.T) {
 	t.Parallel()
 	f := newOpensheetFixture(t)
-	v := templates.OpensheetView{ProjectSlug: "p", Linked: true, Pending: 1, Failing: 1, GivenUp: 1}
-	render := func(loc i18n.Locale, v templates.OpensheetView) string {
+	render := func(loc i18n.Locale, n int64) string {
 		var b strings.Builder
 		d := web.LayoutData{Translator: f.Deps.I18n.For(loc), Locale: loc}
+		v := templates.OpensheetView{ProjectSlug: "p", Linked: true, Enabled: true, State: "given_up", GivenUp: n}
 		require.NoError(t, templates.OpensheetStatus(d, v).Render(t.Context(), &b))
 		return b.String()
 	}
-	one := render(i18n.EnUS, v)
-	assert.Contains(t, one, "1 row waiting")
-	assert.Contains(t, one, "1 row failing, retrying")
-	assert.Contains(t, one, "1 row given up")
-	v.Pending, v.Failing, v.GivenUp = 3, 3, 3
-	many := render(i18n.EnUS, v)
-	assert.Contains(t, many, "3 rows waiting")
-	assert.Contains(t, many, "3 rows failing, retrying")
-	assert.Contains(t, many, "3 rows given up")
-	v.Pending = 2
-	assert.Contains(t, render(i18n.ArSA, v), "صفّان في الانتظار", "ar-SA picks its dual form")
+	assert.Contains(t, render(i18n.EnUS, 1), "1 entry stopped after 5 tries")
+	assert.Contains(t, render(i18n.EnUS, 3), "3 entries stopped after 5 tries")
+	assert.Contains(t, render(i18n.ArSA, 2), "توقف قيدان", "ar-SA picks its dual form")
 }
 
 func TestOpensheet_CodeLikeContentReadsLeftToRightAndTheLastSyncHasASpace(t *testing.T) {
@@ -428,28 +469,13 @@ func TestOpensheet_CodeLikeContentReadsLeftToRightAndTheLastSyncHasASpace(t *tes
 	for _, name := range []string{"os_org", "os_project", "api_key", "transactions_sheet", "wallets_sheet", "categories_sheet"} {
 		assert.Regexp(t, `<input[^>]*name="`+name+`"[^>]*dir="ltr"`, body, "%s is typed left to right", name)
 	}
-	assert.Contains(t, body, f.tr("opensheet.status.last_sync")+" <time", "the label and the date are apart")
+	assert.Regexp(t, `<dd[^>]*>\s*<time`, body, "the last sync is its own fact, a time element apart from its label")
 	copyBtn := regexp.MustCompile(`<button[^>]*data-copy-text="`+regexp.QuoteMeta(f.tr("opensheet.tutorial.copy_header"))+`"[^>]*>`).FindAllString(body, -1)
 	require.Len(t, copyBtn, len(opensheetsync.Contract()))
 	for _, tag := range copyBtn {
 		assert.NotContains(t, tag, "font-mono", "a translated label in a mono font breaks Arabic joining")
 		assert.NotContains(t, tag, `dir="ltr"`)
 	}
-}
-
-func TestOpensheet_TheSwitchKnobUsesLogicalMarginsSoRTLMirrorsIt(t *testing.T) {
-	t.Parallel()
-	f := newOpensheetFixture(t)
-	render := func(on bool) string {
-		var b strings.Builder
-		d := web.LayoutData{Translator: f.Deps.I18n.For(i18n.ArSA), Locale: i18n.ArSA, Dir: "rtl"}
-		require.NoError(t, templates.OpensheetStatus(d, templates.OpensheetView{ProjectSlug: "p", Enabled: on, Verified: true, CanManage: true}).Render(t.Context(), &b))
-		return b.String()
-	}
-	off, on := render(false), render(true)
-	assert.Regexp(t, `data-opensheet-knob[^>]*class="[^"]*\bms-0\.5\b`, off)
-	assert.Regexp(t, `data-opensheet-knob[^>]*class="[^"]*\bms-5\b`, on)
-	assert.NotContains(t, off+on, "translate-x", "a physical translate does not mirror in RTL")
 }
 
 func TestOpensheet_APrivateBaseURLSaysWhichServerFlagToSet(t *testing.T) {
@@ -489,7 +515,7 @@ func TestOpensheet_AnErrorFromBeforeTheLastSaveIsNotShown(t *testing.T) {
 	t.Parallel()
 	f := newOpensheetFixture(t)
 	f.publishAll(true)
-	l := f.seedLink(t, []byte("sealed"))
+	l := f.seedEnabledLink(t)
 	_, err := f.store.SaveOutcome(f.tenantCtx(), f.OrgID, f.ProjectID, opensheetsync.Outcome{At: time.Now().UTC(), Err: "SHT001 sheet not found", LinkUpdatedAt: l.UpdatedAt})
 	require.NoError(t, err)
 	l, err = f.store.LinkByProject(f.tenantCtx(), f.OrgID, f.ProjectID)
@@ -500,6 +526,7 @@ func TestOpensheet_AnErrorFromBeforeTheLastSaveIsNotShown(t *testing.T) {
 
 	page := f.do(t, f.mux, http.MethodGet, "/opensheet", nil)
 	require.Equal(t, http.StatusOK, page.Code, page.Body.String())
+	assert.Contains(t, page.Body.String(), `data-opensheet-state="first"`)
 	assert.Contains(t, page.Body.String(), `data-opensheet-awaiting-first-sync="true"`)
 	assert.NotContains(t, page.Body.String(), "SHT001", "a passing Save since the refusal makes it history")
 
@@ -511,14 +538,14 @@ func TestOpensheet_AnErrorFromBeforeTheLastSaveIsNotShown(t *testing.T) {
 func TestOpensheet_ARefusalSinceTheSaveStaysVisibleWhileAwaitingTheFirstSync(t *testing.T) {
 	t.Parallel()
 	f := newOpensheetFixture(t)
-	l := f.seedLink(t, []byte("sealed"))
+	l := f.seedEnabledLink(t)
 	_, err := f.store.SaveOutcome(f.tenantCtx(), f.OrgID, f.ProjectID, opensheetsync.Outcome{At: time.Now().UTC(), Err: "SHT014 unknown column note", LinkUpdatedAt: l.UpdatedAt})
 	require.NoError(t, err)
 
 	page := f.do(t, f.mux, http.MethodGet, "/opensheet", nil)
 	require.Equal(t, http.StatusOK, page.Code, page.Body.String())
 	body := page.Body.String()
-	assert.Contains(t, body, `data-opensheet-awaiting-first-sync="true"`)
+	assert.Contains(t, body, `data-opensheet-state="failing"`, "a refused first sync is failing, not still waiting")
 	assert.Contains(t, body, `data-opensheet-status-last-error="true"`, "the first sync after the save was refused, and the person must see why")
 	assert.Contains(t, body, "SHT014 unknown column note")
 }

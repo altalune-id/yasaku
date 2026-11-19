@@ -151,6 +151,32 @@ func TestService_CategoryReports_PassScopeAndCurrency(t *testing.T) {
 	}
 }
 
+func TestService_SpendByCategories_OneReadForEveryPeriod(t *testing.T) {
+	f := newFixture(t)
+	aug, sep := uuid.New(), uuid.New()
+	f.reader.SpendBy = map[uuid.UUID][]report.CategorySlice{
+		aug: {{Name: "Food", Amount: money.New(100, money.IDR)}},
+		sep: {{Name: "Rent", Amount: money.New(900, money.IDR)}},
+	}
+
+	got, err := f.svc.SpendByCategories(f.ctx(), []uuid.UUID{aug, sep})
+	require.NoError(t, err)
+	assert.Equal(t, "Food", got[aug][0].Name)
+	assert.Equal(t, "Rent", got[sep][0].Name)
+
+	calls := 0
+	for _, c := range f.reader.Calls() {
+		if c.Method == "SpendByCategories" {
+			calls++
+			assert.Equal(t, f.tc.OrgID, c.OrgID)
+			assert.Equal(t, f.tc.ProjectID, c.ProjectID)
+			assert.Equal(t, []uuid.UUID{aug, sep}, c.PeriodIDs)
+			assert.Equal(t, money.IDR, c.Currency)
+		}
+	}
+	assert.Equal(t, 1, calls)
+}
+
 func TestService_Flows_PassesScopeAndCurrency(t *testing.T) {
 	f := newFixture(t)
 	periodID := uuid.New()
