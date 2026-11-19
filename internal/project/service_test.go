@@ -339,8 +339,8 @@ func TestService_Create_RefusesAnOrgOtherThanTheTenants(t *testing.T) {
 	members.SeatManager(orgA, manager)
 
 	_, err := svc.Create(tenantCtx(orgA, manager), orgB, "side", "Side")
-	if !org.IsNotManagerError(err) {
-		t.Fatalf("cross-org Create err = %v, want NotManagerError", err)
+	if !org.IsOrgMismatchError(err) {
+		t.Fatalf("cross-org Create err = %v, want OrgMismatchError", err)
 	}
 	items, err := svc.List(tenantCtx(orgB, manager), orgB)
 	if err != nil {

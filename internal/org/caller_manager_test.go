@@ -6,7 +6,9 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
 
+	"altalune.id/yasaku/internal/apperror"
 	"altalune.id/yasaku/internal/org"
 	"altalune.id/yasaku/internal/platform/session"
 	"altalune.id/yasaku/internal/platform/tenant"
@@ -88,7 +90,19 @@ func TestRequireCallerManagerOf_RefusesAnOrgOtherThanTheTenants(t *testing.T) {
 	key := tenant.Into(session.PrincipalInto(ctx, session.Principal{KeyID: uuid.New(), KeyKind: session.KeyKindOrg}), tenant.Context{OrgID: orgID})
 
 	require.NoError(t, svc.RequireCallerManagerOf(person, orgID))
-	require.True(t, org.IsNotManagerError(svc.RequireCallerManagerOf(person, other)))
+	requireOrgMismatch(t, svc.RequireCallerManagerOf(person, other), other)
 	require.NoError(t, svc.RequireCallerManagerOf(key, orgID))
-	require.True(t, org.IsNotManagerError(svc.RequireCallerManagerOf(key, other)))
+	requireOrgMismatch(t, svc.RequireCallerManagerOf(key, other), other)
+}
+
+func requireOrgMismatch(t *testing.T, err error, target uuid.UUID) {
+	t.Helper()
+	require.True(t, org.IsOrgMismatchError(err), "got %T: %v", err, err)
+	require.False(t, org.IsNotManagerError(err), "an org mismatch is not a role refusal")
+	ae, ok := apperror.AsAppError(err)
+	require.True(t, ok)
+	require.Equal(t, apperror.CodeOrgMismatch, ae.Code())
+	require.Equal(t, codes.PermissionDenied, ae.GRPCCode())
+	require.Contains(t, ae.Message(), target.String())
+	require.Contains(t, ae.Message(), "different organization")
 }

@@ -396,3 +396,31 @@ func IsNotManagerError(err error) bool {
 	_, ok := errors.AsType[*NotManagerError](err)
 	return ok
 }
+
+// OrgMismatchError signals a write into an org other than the one the caller's credential belongs to.
+type OrgMismatchError struct {
+	OrgID string
+}
+
+func (e *OrgMismatchError) Error() string {
+	if e == nil {
+		return "org: target org is not the caller's org"
+	}
+	return fmt.Sprintf("org: target org is not the caller's org: org=%s", e.OrgID)
+}
+
+// ToAppError maps OrgMismatchError to a PermissionDenied envelope naming only the org the caller supplied.
+func (e *OrgMismatchError) ToAppError() *apperror.AppError {
+	return apperror.New(
+		apperror.CodeOrgMismatch,
+		fmt.Sprintf("This credential belongs to a different organization than %s", e.OrgID),
+		codes.PermissionDenied,
+		&apperrorv1.ErrorDetail{Code: apperror.CodeOrgMismatch},
+	)
+}
+
+// IsOrgMismatchError reports whether err's tree contains a *OrgMismatchError.
+func IsOrgMismatchError(err error) bool {
+	_, ok := errors.AsType[*OrgMismatchError](err)
+	return ok
+}

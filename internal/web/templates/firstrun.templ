@@ -42,6 +42,8 @@ type FirstRunView struct {
 	NoWallets   bool
 	ErrorKey    string
 	ErrorCode   string
+	// Waiting is set for a member opening a project whose currency a manager has not set yet.
+	Waiting bool
 }
 
 func firstRunStepClass(step, at int) string {
@@ -52,6 +54,20 @@ func firstRunStepClass(step, at int) string {
 }
 
 templ FirstRunPage(d web.LayoutData, v FirstRunView) {
+	if v.Waiting {
+		<div class="mx-auto max-w-md">
+			@EmptyState(EmptyStateProps{Title: d.Tr("firstrun.waiting_title"), Body: d.Tr("firstrun.waiting_body"), Icon: "hourglass", HeadingLevel: 1}) {
+				@AppButton(d.OrgPath("/projects"), "btn-primary", nil) {
+					{ d.Tr("firstrun.waiting_back") }
+				}
+			}
+		</div>
+	} else {
+		@firstRunSteps(d, v)
+	}
+}
+
+templ firstRunSteps(d web.LayoutData, v FirstRunView) {
 	<div class="mx-auto flex max-w-md flex-col gap-6 py-2 lg:py-10">
 		<ul class="steps w-full text-sm">
 			<li class={ firstRunStepClass(v.Step, 1) }>{ d.Tr("firstrun.step_currency") }</li>

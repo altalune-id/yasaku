@@ -239,7 +239,7 @@ func (f *txFixture) firstRunCounts(t *testing.T) firstRunCounts {
 	return firstRunCounts{len(ws), len(txs), len(cats)}
 }
 
-func TestFirstRun_Member_CannotSetCurrency(t *testing.T) {
+func TestFirstRun_Member_WaitsAndCannotSetCurrency(t *testing.T) {
 	t.Parallel()
 	f, mux := newFirstRunFixture(t)
 	member := uuid.New()
@@ -248,7 +248,11 @@ func TestFirstRun_Member_CannotSetCurrency(t *testing.T) {
 	f.Principal.UserID = member
 
 	rec := f.serve(t, mux, http.MethodGet, "/first-run", nil)
-	assert.Equal(t, http.StatusForbidden, rec.Code)
+	require.Equal(t, http.StatusOK, rec.Code)
+	body := rec.Body.String()
+	assert.Contains(t, body, `href="/orgs/`+f.OrgSlug+`/projects"`, "the waiting page links back to the projects list")
+	assert.NotContains(t, body, "<form", "a member gets no write controls")
+	assert.NotContains(t, body, `name="currency"`)
 	rec = f.serve(t, mux, http.MethodPost, "/first-run", url.Values{"step": {"currency"}, "currency": {"USD"}})
 	assert.Equal(t, http.StatusForbidden, rec.Code)
 	st, err := f.Ledgers.Get(f.projectCtx(t))

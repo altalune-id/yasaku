@@ -28,3 +28,8 @@ func IsSignInRefusal(err error) bool { return isRefusal(err) }
 func NewProjectScope(r *http.Request, o *org.Org, userID uuid.UUID) ProjectScope {
 	return ProjectScope{principal: session.Principal{UserID: userID}, org: o, req: r}
 }
+
+// RefuseNotManager exposes refuseNotManager to the external test package.
+func (d Deps) RefuseNotManager(w http.ResponseWriter, r *http.Request, err error, msgKey, fallback string) bool {
+	return d.refuseNotManager(w, r, err, msgKey, fallback)
+}
