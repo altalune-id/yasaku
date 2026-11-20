@@ -48,25 +48,12 @@ go tool i18n-lint --check
 echo "→ go tool comment-lint ."
 go tool comment-lint .
 
-echo "→ golangci-lint run"
-golangci-lint run --timeout=3m ./...
-
-echo "→ buf breaking vs origin/main"
-if [ -z "$has_main" ]; then
-    echo "warn: no origin/main — skipping buf breaking"
-elif git ls-tree -r origin/main --name-only | grep -q '\.proto$'; then
-    pnpm exec buf breaking --against '.git#branch=origin/main' || {
-        echo "buf breaking failed — proto API surface may have broken"; exit 1;
-    }
+if [ -n "$has_main" ]; then
+    echo "→ golangci-lint run (issues new since origin/main)"
+    golangci-lint run --timeout=3m --new-from-rev=origin/main ./...
 else
-    echo "warn: origin/main has no .proto files — skipping buf breaking"
-fi
-
-echo "→ goreleaser check"
-if command -v goreleaser >/dev/null 2>&1; then
-    goreleaser check
-else
-    echo "warn: goreleaser not installed — skipping (brew install goreleaser to enable)"
+    echo "→ golangci-lint run"
+    golangci-lint run --timeout=3m ./...
 fi
 
 serial=
@@ -86,6 +73,9 @@ else
             d=$(dirname "$d")
         done
     done | sort -u)
+    if [ -n "$pkgs" ]; then
+        pkgs=$(go list -e -f '{{if or .GoFiles .TestGoFiles .XTestGoFiles}}{{.ImportPath}}{{end}}' $pkgs)
+    fi
     if [ -z "$pkgs" ]; then
         echo "→ go test: no Go package changed vs origin/main — skipping (PREPUSH_FULL=1 runs every test)"
     else

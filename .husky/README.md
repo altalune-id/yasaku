@@ -14,10 +14,11 @@ automatically on `pnpm install` (via the `prepare` script in `package.json`).
 | `pre-push`   | `go tool gen-config-example --check` (env + yaml) | fail if `.env.example` / `config.example.yaml` drifted from struct tags                    |
 | `pre-push`   | `go tool i18n-lint --check`                       | i18n coverage across locales                                                               |
 | `pre-push`   | `go tool comment-lint .`                          | comment discipline                                                                         |
-| `pre-push`   | `golangci-lint run --timeout=3m ./...`            | static analysis                                                                            |
-| `pre-push`   | `pnpm exec buf breaking --against origin/main`    | protobuf breaking-change guard                                                             |
-| `pre-push`   | `goreleaser check`                                | release config sanity                                                                      |
+| `pre-push`   | `golangci-lint run --new-from-rev=origin/main`    | static analysis on code changed since `origin/main`                                        |
 | `pre-push`   | `go test -race -shuffle=on <changed packages>`    | tests of the packages changed against `origin/main`, with `-p 1` when `TEST_PG_DSN` is set |
+
+CI runs everything else on every pull request: the full golangci-lint, `buf breaking`,
+`goreleaser check` and the integration suite.
 
 The pre-push hook does not run the full suite: CI is the gate for it. A package
 maps to the nearest directory holding a `.go` file, so a migration change tests
