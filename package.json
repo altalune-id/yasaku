@@ -2,7 +2,7 @@
   "name": "yasaku",
   "version": "0.1.0-dev",
   "private": true,
-  "description": "yasaku — altalune multitenant template",
+  "description": "Yasaku: track your money from payday to payday.",
   "engines": {
     "node": ">=24",
     "pnpm": ">=11"
@@ -21,6 +21,8 @@
     "@bufbuild/buf": "^1.73.0",
     "husky": "9.1.7",
     "lint-staged": "15.2.10",
+    "oxfmt": "0.79.0",
+    "oxlint": "1.94.0",
     "prettier": "3.9.9"
   },
   "lint-staged": {

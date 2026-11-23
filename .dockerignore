@@ -42,3 +42,6 @@ coverage.html
 
 # Node/npm noise from any auxiliary tooling (kept out of Go image regardless)
 node_modules/
+
+# Marketing site: its own package, never part of the Go image
+ui/

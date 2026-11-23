@@ -1,0 +1,42 @@
+:root {
+  --shadow-card-tint: color-mix(in oklab, var(--color-primary) 18%, transparent);
+  --shadow-pop-tint: color-mix(in oklab, var(--color-primary) 35%, transparent);
+}
+
+@theme {
+  --shadow-card: 0 1px 0 oklch(0% 0 0 / 0.04), 0 12px 32px -12px var(--shadow-card-tint);
+  --shadow-pop: 0 24px 60px -20px var(--shadow-pop-tint);
+}
+
+@utility btn-brutal {
+  border: 1.5px solid var(--color-base-content);
+  box-shadow: 0 3px 0 var(--color-base-content);
+  transition:
+    transform 120ms ease-out,
+    box-shadow 120ms ease-out;
+  &:hover {
+    transform: translateY(1px);
+    box-shadow: 0 2px 0 var(--color-base-content);
+  }
+  &:active {
+    transform: translateY(3px);
+    box-shadow: 0 0 0 var(--color-base-content);
+  }
+  &:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 3px;
+  }
+}
+
+@utility phrase-highlight {
+  background-image: linear-gradient(
+    var(--highlight, color-mix(in oklch, var(--brand) 35%, transparent)),
+    var(--highlight, color-mix(in oklch, var(--brand) 35%, transparent))
+  );
+  background-repeat: no-repeat;
+  background-position: 0 88%;
+  background-size: 100% 35%;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  animation: var(--animate-highlight-sweep);
+}

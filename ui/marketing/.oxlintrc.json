@@ -1,0 +1,13 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "unicorn", "oxc", "vue", "import"],
+  "categories": { "correctness": "error" },
+  "rules": {
+    "no-unused-vars": "error",
+    "no-self-compare": "error",
+    "no-debugger": "error",
+    "no-console": "warn",
+    "eqeqeq": "error"
+  },
+  "ignorePatterns": ["dist/**", "storybook-static/**", ".vite-ssg-temp/**"]
+}

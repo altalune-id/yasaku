@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      (function () {
+        var root = document.documentElement;
+        var theme = null;
+        var motion = null;
+        try {
+          theme = localStorage.getItem("altalune-theme");
+          motion = localStorage.getItem("altalune-motion");
+        } catch (e) {}
+        if (theme === "site-light" || theme === "site-dark") root.dataset.theme = theme;
+        if (window.matchMedia("(prefers-reduced-motion: reduce)").matches)
+          root.dataset.motion = "reduce";
+        else if (motion === "reduce" || motion === "full") root.dataset.motion = motion;
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

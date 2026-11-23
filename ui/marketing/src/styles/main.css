@@ -1,0 +1,155 @@
+@import "tailwindcss";
+@import "@fontsource-variable/bricolage-grotesque";
+@import "@fontsource-variable/figtree";
+@import "@fontsource/ibm-plex-mono/400.css";
+@import "@fontsource/ibm-plex-mono/500.css";
+@import "../shared/shared.css";
+@import "../shared/motion.css";
+
+@plugin "daisyui" {
+  themes: false;
+}
+
+@plugin "daisyui/theme" {
+  name: "site-light";
+  default: true;
+  prefersdark: false;
+  color-scheme: light;
+  --color-base-100: oklch(99.2% 0.004 285);
+  --color-base-200: oklch(94.5% 0.03 285);
+  --color-base-300: oklch(88% 0.055 285);
+  --color-base-content: oklch(25% 0.03 285);
+  --color-primary: oklch(48% 0.14 285);
+  --color-primary-content: oklch(98% 0.01 285);
+  --color-secondary: oklch(42% 0.06 285);
+  --color-secondary-content: oklch(98% 0.006 285);
+  --color-accent: oklch(80% 0.13 75);
+  --color-accent-content: oklch(25% 0.03 285);
+  --color-neutral: oklch(22% 0.03 285);
+  --color-neutral-content: oklch(97% 0.008 285);
+  --color-info: oklch(52% 0.12 245);
+  --color-info-content: oklch(98% 0.01 245);
+  --color-success: oklch(50% 0.13 155);
+  --color-success-content: oklch(98% 0.01 155);
+  --color-warning: oklch(49% 0.12 65);
+  --color-warning-content: oklch(99% 0.01 65);
+  --color-error: oklch(48% 0.18 25);
+  --color-error-content: oklch(98% 0.01 25);
+  --radius-selector: 2rem;
+  --radius-field: 0.75rem;
+  --radius-box: 1.25rem;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1.5px;
+  --depth: 0;
+  --noise: 0;
+  --brand: #a86f00;
+  --ink: oklch(25% 0.03 285);
+  --highlight: oklch(88% 0.12 85);
+}
+
+@plugin "daisyui/theme" {
+  name: "site-dark";
+  default: false;
+  prefersdark: true;
+  color-scheme: dark;
+  --color-base-100: oklch(20.5% 0.015 285);
+  --color-base-200: oklch(24% 0.03 285);
+  --color-base-300: oklch(29% 0.045 285);
+  --color-base-content: oklch(93% 0.012 285);
+  --color-primary: oklch(76% 0.11 285);
+  --color-primary-content: oklch(20% 0.03 285);
+  --color-secondary: oklch(82% 0.04 285);
+  --color-secondary-content: oklch(22% 0.03 285);
+  --color-accent: oklch(80% 0.11 60);
+  --color-accent-content: oklch(20% 0.03 285);
+  --color-neutral: oklch(15% 0.02 285);
+  --color-neutral-content: oklch(96% 0.008 285);
+  --color-info: oklch(76% 0.1 245);
+  --color-info-content: oklch(22% 0.04 245);
+  --color-success: oklch(74% 0.13 155);
+  --color-success-content: oklch(22% 0.04 155);
+  --color-warning: oklch(82% 0.14 80);
+  --color-warning-content: oklch(24% 0.05 80);
+  --color-error: oklch(73% 0.15 25);
+  --color-error-content: oklch(22% 0.05 25);
+  --radius-selector: 2rem;
+  --radius-field: 0.75rem;
+  --radius-box: 1.25rem;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1.5px;
+  --depth: 0;
+  --noise: 0;
+  --brand: #ffbb00;
+  --ink: oklch(8% 0.02 285);
+  --highlight: oklch(42% 0.09 85);
+}
+
+@theme {
+  --color-brand: var(--brand);
+  --font-display: "Bricolage Grotesque Variable", "Figtree Variable", ui-sans-serif, sans-serif;
+  --font-sans: "Figtree Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+
+  --text-display-1: clamp(2.75rem, 1.6rem + 4.6vw, 4.75rem);
+  --text-display-1--line-height: 0.95;
+  --text-display-1--letter-spacing: -0.035em;
+  --text-hero: clamp(2.75rem, 1.2rem + 5.4vw, 6rem);
+  --text-hero--line-height: 0.95;
+  --text-hero--letter-spacing: -0.035em;
+  --text-display-2: clamp(2rem, 1.63rem + 1.52vw, 3rem);
+  --text-display-2--line-height: 1.05;
+  --text-display-2--letter-spacing: -0.025em;
+  --text-h3: clamp(1.25rem, 1.2rem + 0.19vw, 1.375rem);
+  --text-h3--line-height: 1.25;
+  --text-h3--letter-spacing: -0.01em;
+  --text-lead: clamp(1.0625rem, 0.99rem + 0.29vw, 1.25rem);
+  --text-lead--line-height: 1.5;
+  --text-body: 1rem;
+  --text-body--line-height: 1.6;
+  --text-eyebrow: clamp(0.75rem, 0.73rem + 0.1vw, 0.8125rem);
+  --text-eyebrow--line-height: 1.4;
+  --text-eyebrow--letter-spacing: 0.08em;
+}
+
+[data-theme="site-dark"] {
+  --shadow-card-tint: oklch(0% 0 0 / 0.6);
+  --shadow-pop-tint: oklch(0% 0 0 / 0.7);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="site-light"]) {
+    --shadow-card-tint: oklch(0% 0 0 / 0.6);
+    --shadow-pop-tint: oklch(0% 0 0 / 0.7);
+  }
+}
+
+@utility btn-pop {
+  border: 1.5px solid var(--ink);
+  font-weight: 700;
+  box-shadow: var(--pop, 3px) var(--pop, 3px) 0 var(--ink);
+  transition:
+    transform 150ms ease-out,
+    box-shadow 150ms ease-out;
+  &:hover {
+    transform: translate(-1px, -1px);
+    box-shadow: calc(var(--pop, 3px) + 1px) calc(var(--pop, 3px) + 1px) 0 var(--ink);
+  }
+  &:active {
+    transform: translate(1px, 1px);
+    box-shadow: calc(var(--pop, 3px) - 1px) calc(var(--pop, 3px) - 1px) 0 var(--ink);
+  }
+}
+
+@layer base {
+  html {
+    scroll-padding-top: 6.5rem;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    font-size: var(--text-body);
+    line-height: var(--text-body--line-height);
+  }
+}

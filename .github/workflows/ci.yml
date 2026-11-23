@@ -136,7 +136,7 @@ jobs:
           node-version: '24'
           cache: pnpm
       - name: Install pnpm devDeps
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile --filter yasaku
       - name: buf lint
         run: pnpm exec buf lint
       - name: buf breaking (against main)
@@ -162,7 +162,7 @@ jobs:
           node-version: '24'
           cache: pnpm
       - name: Install pnpm devDeps
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile --filter yasaku
       - name: Verify committed protobuf matches sources
         run: pnpm exec buf generate
       - name: Fail on drift (gen/)
