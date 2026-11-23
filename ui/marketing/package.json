@@ -28,7 +28,7 @@
     "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^26.6.5",
     "@vitejs/plugin-vue": "^6.0.10",
-    "@vue/test-utils": "2.5.1",
+    "@vue/test-utils": "2.6.0",
     "daisyui": "^5.7.50",
     "happy-dom": "21.0.4",
     "oxfmt": "0.79.0",
