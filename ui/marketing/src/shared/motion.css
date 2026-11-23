@@ -1,0 +1,196 @@
+@theme {
+  --animate-rise-in: rise-in 450ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-highlight-sweep: highlight-sweep 550ms cubic-bezier(0.65, 0, 0.35, 1) 450ms both;
+  --animate-type-on: type-on 1200ms steps(var(--type-steps, 20)) 200ms both;
+  --animate-cursor-blink: cursor-blink 1000ms steps(1) infinite;
+  --animate-button-pulse: button-pulse 1200ms ease-out 1600ms 2;
+  --animate-aurora-drift: aurora-drift 18s ease-in-out infinite alternate;
+  --animate-marquee: marquee 30s linear infinite;
+  --animate-beam: beam 2400ms ease-in-out 600ms infinite;
+  --animate-live-dot: live-dot 1600ms ease-out infinite;
+  --animate-fade-up-blur: fade-up-blur 700ms cubic-bezier(0.22, 1, 0.36, 1) both;
+
+  @keyframes rise-in {
+    0% {
+      transform: translateY(0.35em);
+      opacity: 0;
+    }
+    100% {
+      transform: none;
+      opacity: 1;
+    }
+  }
+  @keyframes highlight-sweep {
+    0% {
+      background-size: 0% 35%;
+    }
+    100% {
+      background-size: 100% 35%;
+    }
+  }
+  @keyframes type-on {
+    0% {
+      width: 0ch;
+    }
+    100% {
+      width: var(--type-width, 20ch);
+    }
+  }
+  @keyframes cursor-blink {
+    50% {
+      opacity: 0;
+    }
+  }
+  @keyframes button-pulse {
+    0% {
+      box-shadow: 0 0 0 0 color-mix(in oklch, var(--color-primary) 40%, transparent);
+    }
+    100% {
+      box-shadow: 0 0 0 10px transparent;
+    }
+  }
+  @keyframes aurora-drift {
+    0% {
+      transform: translate(-6%, -4%) scale(1);
+    }
+    100% {
+      transform: translate(6%, 4%) scale(1.15);
+    }
+  }
+  @keyframes marquee {
+    0% {
+      transform: translateX(0);
+    }
+    100% {
+      transform: translateX(-50%);
+    }
+  }
+  @keyframes beam {
+    0% {
+      background-position: -100% 0;
+    }
+    100% {
+      background-position: 200% 0;
+    }
+  }
+  @keyframes live-dot {
+    0% {
+      transform: scale(1);
+      opacity: 0.7;
+    }
+    100% {
+      transform: scale(2.4);
+      opacity: 0;
+    }
+  }
+  @keyframes fade-up-blur {
+    0% {
+      opacity: 0;
+      transform: translateY(24px);
+      filter: blur(8px);
+    }
+    100% {
+      opacity: 1;
+      transform: none;
+      filter: none;
+    }
+  }
+}
+
+[data-inview="false"],
+[data-inview="false"] *,
+[data-inview="false"] *::before,
+[data-inview="false"] *::after {
+  animation-play-state: paused !important;
+}
+
+.marquee {
+  mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+}
+
+.reveal[data-inview="false"] {
+  opacity: 0;
+  transform: translateY(24px);
+  filter: blur(8px);
+}
+
+.reveal[data-inview="true"] {
+  animation: var(--animate-fade-up-blur);
+  animation-delay: calc(var(--reveal-index, 0) * 80ms);
+}
+
+:root[data-motion="reduce"] *,
+:root[data-motion="reduce"] *::before,
+:root[data-motion="reduce"] *::after {
+  animation: none !important;
+  transition: none !important;
+}
+
+:root[data-motion="reduce"] .reveal[data-inview] {
+  opacity: 1;
+  transform: none;
+  filter: none;
+}
+
+:root[data-motion="reduce"] .motion-cursor {
+  visibility: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-motion="full"]) *,
+  :root:not([data-motion="full"]) *::before,
+  :root:not([data-motion="full"]) *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  :root:not([data-motion="full"]) .reveal[data-inview] {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+
+  :root:not([data-motion="full"]) .motion-cursor {
+    visibility: hidden;
+  }
+}
+
+:root[data-motion="reduce"] .marquee {
+  mask-image: none;
+}
+
+:root[data-motion="reduce"] .marquee-track {
+  width: auto;
+}
+
+:root[data-motion="reduce"] .marquee-row {
+  flex-wrap: wrap;
+  flex-shrink: 1;
+  min-width: 0;
+  row-gap: 0.75rem;
+}
+
+:root[data-motion="reduce"] .marquee-row[aria-hidden="true"] {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-motion="full"]) .marquee {
+    mask-image: none;
+  }
+
+  :root:not([data-motion="full"]) .marquee-track {
+    width: auto;
+  }
+
+  :root:not([data-motion="full"]) .marquee-row {
+    flex-wrap: wrap;
+    flex-shrink: 1;
+    min-width: 0;
+    row-gap: 0.75rem;
+  }
+
+  :root:not([data-motion="full"]) .marquee-row[aria-hidden="true"] {
+    display: none;
+  }
+}

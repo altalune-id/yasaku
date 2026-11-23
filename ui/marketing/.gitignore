@@ -1,0 +1,6 @@
+node_modules/
+dist/
+storybook-static/
+.vite-ssg-temp/
+coverage/
+.wrangler/

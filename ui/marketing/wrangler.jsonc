@@ -1,0 +1,15 @@
+{
+  "name": "altalune-yasaku-site",
+  "compatibility_date": "2026-11-17",
+  "assets": {
+    "directory": "./dist",
+    "base_path": "/yasaku"
+  },
+  "routes": [
+    {
+      "pattern": "altalune.id/yasaku*",
+      "zone_name": "altalune.id"
+    }
+  ],
+  "workers_dev": false
+}
