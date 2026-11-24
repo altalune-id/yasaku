@@ -2,12 +2,14 @@ package org_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
 	"altalune.id/yasaku/internal/org"
+	"altalune.id/yasaku/internal/platform/authz"
 	"altalune.id/yasaku/internal/platform/tenant"
 	"altalune.id/yasaku/internal/testutil/fakes"
 )
@@ -36,7 +38,9 @@ func newRemovalFixture(t *testing.T, roles ...org.Role) (*removalFixture, []uuid
 
 func (f *removalFixture) as(t *testing.T, actor uuid.UUID) context.Context {
 	t.Helper()
-	return tenant.Into(t.Context(), tenant.Context{OrgID: f.orgID, UserID: actor})
+	m, err := f.store.MembershipOf(t.Context(), f.orgID, actor)
+	require.NoError(t, err)
+	return fakes.Allow(t.Context(), tenant.Context{OrgID: f.orgID, UserID: actor}, authz.Builtin(string(m.Role))...)
 }
 
 func (f *removalFixture) stillAMember(t *testing.T, actor, target uuid.UUID) bool {
@@ -60,7 +64,8 @@ func TestRemoveMember_RefusesRemovingYourselfAsThePlainMember(t *testing.T) {
 	self := ids[0]
 
 	err := f.svc.RemoveMember(f.as(t, self), f.orgID, self)
-	require.True(t, org.IsSelfRemovalError(err), "want *SelfRemovalError, got %T: %v", err, err)
+	require.True(t, authz.IsDeniedError(err), "a plain member holds no members:write, got %T: %v", err, err)
+	require.True(t, f.stillAMember(t, self, self))
 }
 
 func TestRemoveMember_NonOwnerCannotRemoveAnOwner(t *testing.T) {
@@ -69,7 +74,9 @@ func TestRemoveMember_NonOwnerCannotRemoveAnOwner(t *testing.T) {
 
 	err := f.svc.RemoveMember(f.as(t, admin), f.orgID, owner)
 	require.Error(t, err)
-	require.True(t, org.IsOwnerRemovalError(err), "want *OwnerRemovalError, got %T: %v", err, err)
+	esc, ok := errors.AsType[*authz.EscalationError](err)
+	require.True(t, ok, "want *authz.EscalationError, got %T: %v", err, err)
+	require.Equal(t, authz.EscalationRemove, esc.Op, "the refusal is worded for removal")
 	require.True(t, f.stillAMember(t, admin, owner), "the owner membership must survive")
 }
 

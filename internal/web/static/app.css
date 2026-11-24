@@ -3851,6 +3851,9 @@
   .w-10 {
     width: calc(var(--spacing) * 10);
   }
+  .w-28 {
+    width: calc(var(--spacing) * 28);
+  }
   .w-54 {
     width: calc(var(--spacing) * 54);
   }
@@ -5071,6 +5074,15 @@
     transition-duration: var(--tw-duration, var(--default-transition-duration));
   }
   @layer daisyui.l1.l2 {
+    .select-sm {
+      --sl-size-mul: 8;
+      --font-size-min: 0.75rem;
+      --option-px: 2.5;
+    }
+    .floating-label:has(.select-sm) {
+      --top-mul: 4;
+      --font-size: 0.75rem;
+    }
     .btn-error {
       --btn-color: var(--color-error);
       --btn-fg: var(--color-error-content);
@@ -5486,8 +5498,14 @@
         height: var(--size);
       }
     }
+    .max-sm\:w-full {
+      width: 100%;
+    }
     .max-sm\:grid-cols-\[auto_minmax\(0\,1fr\)\] {
       grid-template-columns: auto minmax(0,1fr);
+    }
+    .max-sm\:justify-start {
+      justify-content: flex-start;
     }
     .max-sm\:justify-items-start {
       justify-items: start;

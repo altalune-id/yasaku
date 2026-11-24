@@ -76,6 +76,7 @@ func TestPostRemoveMember_SystemProtected_Returns409(t *testing.T) {
 		Sessions: sessions,
 		Logger:   log.New(io.Discard, "", 0),
 		Secret:   []byte("0123456789abcdef0123456789abcdef"),
+		Authz:    fakes.Resolver(store),
 	}
 	cookieValue := web.SignCookie(deps.Key(web.PurposeSession), sid)
 	h := handlers.NewOrgHandler(deps, orgSvc)

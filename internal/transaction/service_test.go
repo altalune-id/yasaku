@@ -14,6 +14,7 @@ import (
 
 	apperrorv1 "altalune.id/yasaku/gen/go/apperror/v1"
 	"altalune.id/yasaku/internal/apperror"
+	"altalune.id/yasaku/internal/platform/authz"
 	"altalune.id/yasaku/internal/platform/tenant"
 	"altalune.id/yasaku/internal/testutil/fakes"
 	"altalune.id/yasaku/internal/transaction"
@@ -72,7 +73,7 @@ func newFixture(t *testing.T) *fixture {
 		categories: map[uuid.UUID]transaction.CategoryInfo{},
 		tc:         tenant.Context{OrgID: uuid.New(), ProjectID: uuid.New(), UserID: uuid.New()},
 	}
-	f.ctx = tenant.Into(context.Background(), f.tc)
+	f.ctx = fakes.Owner(context.Background(), f.tc)
 
 	f.walletIDR, f.walletIDR2, f.walletUSD, f.archived = uuid.New(), uuid.New(), uuid.New(), uuid.New()
 	f.wallets[f.walletIDR] = transaction.WalletInfo{ID: f.walletIDR, Currency: money.IDR}
@@ -449,7 +450,7 @@ func TestService_Revise(t *testing.T) {
 	t.Run("is scoped to the caller's project", func(t *testing.T) {
 		f := newFixture(t)
 		tx := f.expense(t, augustDay(10), 25_000, "Kopi")
-		other := tenant.Into(context.Background(), tenant.Context{
+		other := fakes.Owner(context.Background(), tenant.Context{
 			OrgID: f.tc.OrgID, ProjectID: uuid.New(), UserID: f.tc.UserID,
 		})
 		_, err := f.svc.Revise(other, tx.ID, transaction.RevisePatch{Note: ptr("nope")})
@@ -476,14 +477,14 @@ func TestService_ByID_ScopeCheck(t *testing.T) {
 		t.Errorf("id=%v", got.ID)
 	}
 
-	otherProject := tenant.Into(context.Background(), tenant.Context{
+	otherProject := fakes.Owner(context.Background(), tenant.Context{
 		OrgID: f.tc.OrgID, ProjectID: uuid.New(), UserID: f.tc.UserID,
 	})
 	if _, err := f.svc.ByID(otherProject, tx.ID); !transaction.IsNotFoundError(err) {
 		t.Errorf("sibling project: want IsNotFoundError, got %v", err)
 	}
 
-	otherOrg := tenant.Into(context.Background(), tenant.Context{
+	otherOrg := fakes.Owner(context.Background(), tenant.Context{
 		OrgID: uuid.New(), ProjectID: f.tc.ProjectID, UserID: f.tc.UserID,
 	})
 	if _, err := f.svc.ByID(otherOrg, tx.ID); !transaction.IsNotFoundError(err) {
@@ -515,7 +516,7 @@ func TestService_Delete(t *testing.T) {
 	t.Run("is scoped to the caller's project", func(t *testing.T) {
 		f := newFixture(t)
 		tx := f.expense(t, augustDay(10), 25_000, "Kopi")
-		other := tenant.Into(context.Background(), tenant.Context{
+		other := fakes.Owner(context.Background(), tenant.Context{
 			OrgID: f.tc.OrgID, ProjectID: uuid.New(), UserID: f.tc.UserID,
 		})
 		if err := f.svc.Delete(other, tx.ID); !transaction.IsNotFoundError(err) {
@@ -730,7 +731,7 @@ func TestService_SuggestCategory(t *testing.T) {
 func TestService_RecordOpening(t *testing.T) {
 	f := newFixture(t)
 	by := uuid.New()
-	noUser := tenant.Into(context.Background(), tenant.Context{OrgID: f.tc.OrgID, ProjectID: f.tc.ProjectID})
+	noUser := fakes.Owner(context.Background(), tenant.Context{OrgID: f.tc.OrgID, ProjectID: f.tc.ProjectID})
 	if _, err := f.svc.RecordOpening(noUser, f.walletIDR, idr(500_000), augustDay(1), by); err != nil {
 		t.Fatalf("RecordOpening: %v", err)
 	}
@@ -751,7 +752,7 @@ func TestService_RecordOpening(t *testing.T) {
 
 func TestService_TenantMissing(t *testing.T) {
 	f := newFixture(t)
-	_, err := f.svc.Record(context.Background(), transaction.RecordInput{
+	_, err := f.svc.Record(authz.AsSystem(context.Background()), transaction.RecordInput{
 		WalletID:   f.walletIDR,
 		Kind:       transaction.KindExpense,
 		Amount:     idr(1_000),
@@ -836,6 +837,24 @@ func TestService_Balances_OmitsWalletsWithNoTransactions(t *testing.T) {
 	for id, amount := range all {
 		if amount.Currency == "" {
 			t.Errorf("wallet %s has a currency-less amount; every value in the map must be usable in money arithmetic", id)
+		}
+	}
+}
+
+// SECURITY: a batch records through the same gate as one entry, so a reader cannot slip writes in as a batch.
+func TestService_RecordBatchNeedsTransactionsWrite(t *testing.T) {
+	f := newFixture(t)
+	reader := fakes.Allow(context.Background(), f.tc, authz.TransactionsRead)
+	out := f.svc.RecordBatch(reader, []transaction.RecordInput{
+		{WalletID: f.walletIDR, Kind: transaction.KindExpense, Amount: idr(1_000), OccurredAt: augustDay(1)},
+		{WalletID: f.walletIDR, Kind: transaction.KindExpense, Amount: idr(2_000), OccurredAt: augustDay(2)},
+	})
+	if len(out) != 2 {
+		t.Fatalf("one result per row, got %d", len(out))
+	}
+	for _, r := range out {
+		if !authz.IsDeniedError(r.Err) {
+			t.Fatalf("row %d: want DeniedError, got %v", r.Index, r.Err)
 		}
 	}
 }

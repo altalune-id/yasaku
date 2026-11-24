@@ -15,6 +15,7 @@ import (
 	"altalune.id/yasaku/internal/apperror"
 	"altalune.id/yasaku/internal/platform/session"
 	"altalune.id/yasaku/internal/platform/tenant"
+	"altalune.id/yasaku/internal/testutil/fakes"
 	"altalune.id/yasaku/internal/transaction"
 	"altalune.id/yasaku/money"
 )
@@ -38,12 +39,12 @@ func newAuthorService(store transaction.Store, periodID uuid.UUID, uow transacti
 
 func keyPrincipalCtx(ctx context.Context, tc tenant.Context, keyID uuid.UUID) context.Context {
 	ctx = session.PrincipalInto(ctx, session.Principal{KeyID: keyID, Source: session.SourceAPIKey})
-	return tenant.Into(ctx, tenant.Context{OrgID: tc.OrgID, ProjectID: tc.ProjectID})
+	return fakes.Owner(ctx, tenant.Context{OrgID: tc.OrgID, ProjectID: tc.ProjectID})
 }
 
 func personCtx(ctx context.Context, tc tenant.Context) context.Context {
 	ctx = session.PrincipalInto(ctx, session.Principal{UserID: tc.UserID, Source: session.SourceLocal})
-	return tenant.Into(ctx, tc)
+	return fakes.Owner(ctx, tc)
 }
 
 type authorRow struct {
@@ -121,7 +122,7 @@ func checkLegacyNilAuthorRevises(t *testing.T, sqlDB *sql.DB, svc *transaction.S
 
 func checkAuthorlessRecordRefused(t *testing.T, svc *transaction.Service, tc tenant.Context, walletID uuid.UUID) {
 	t.Helper()
-	ctx := tenant.Into(t.Context(), tenant.Context{OrgID: tc.OrgID, ProjectID: tc.ProjectID})
+	ctx := fakes.Owner(t.Context(), tenant.Context{OrgID: tc.OrgID, ProjectID: tc.ProjectID})
 	_, err := svc.Record(ctx, transaction.RecordInput{
 		WalletID: walletID, Kind: transaction.KindIncome, Amount: money.New(1, money.IDR),
 		OccurredAt: time.Date(2026, 8, 5, 12, 0, 0, 0, time.UTC),

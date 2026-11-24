@@ -26,12 +26,12 @@ type targetResult struct {
 }
 
 // SECURITY: the one place a yasaku Target becomes a tenant scope; a key is pinned to its active org and to the projects it reaches, a person to their memberships.
-func scopeToTarget(ctx context.Context, orgs *org.Service, projects *project.Service, t *yasakuv1.Target) (targetResult, *yasakuv1.Needs, error) {
+func scopeToTarget(ctx context.Context, sc Scope, projects *project.Service, t *yasakuv1.Target) (targetResult, *yasakuv1.Needs, error) {
 	p, err := principal(ctx)
 	if err != nil {
 		return targetResult{}, nil, err
 	}
-	candidates, err := targetOrgs(ctx, orgs, p)
+	candidates, err := targetOrgs(ctx, sc.Orgs, p)
 	if err != nil {
 		return targetResult{}, nil, err
 	}
@@ -51,7 +51,11 @@ func scopeToTarget(ctx context.Context, orgs *org.Service, projects *project.Ser
 	if err != nil || nd != nil {
 		return targetResult{}, nd, err
 	}
-	return targetResult{ctx: bindTo(ctx, p, o.ID, proj.ID), org: o, project: proj, principal: p}, nil, nil
+	bound, err := bindTo(ctx, sc, p, o.ID, proj.ID)
+	if err != nil {
+		return targetResult{}, nil, err
+	}
+	return targetResult{ctx: bound, org: o, project: proj, principal: p}, nil, nil
 }
 
 // SECURITY: a key sees only its active org, whatever orgs its owner belongs to.

@@ -7,7 +7,6 @@ import (
 
 	"altalune.id/yasaku/internal/cli/render"
 	"altalune.id/yasaku/internal/org"
-	"altalune.id/yasaku/internal/platform/tenant"
 )
 
 // TODO(future-proto): switch to bootClient.Conn once api/org/v1 lands.
@@ -80,8 +79,10 @@ func newOrgCreateCmd(bootServer ServerBootFn) *cobra.Command {
 			}
 			defer func() { _ = s.Close() }()
 
-			tc := tenant.Context{OrgID: p.OrgID, ProjectID: p.ProjectID, UserID: p.UserID}
-			ctx := tenant.Into(cmd.Context(), tc)
+			ctx, err := bindLocal(cmd.Context(), s, p)
+			if err != nil {
+				return err
+			}
 			o, err := s.Orgs.Create(ctx, org.CreateRequest{Slug: slug, Name: name, OwnerID: p.UserID})
 			if err != nil {
 				return err

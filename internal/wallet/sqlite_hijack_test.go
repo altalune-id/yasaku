@@ -11,6 +11,7 @@ import (
 	"altalune.id/yasaku/internal/platform/config"
 	"altalune.id/yasaku/internal/platform/db"
 	"altalune.id/yasaku/internal/platform/tenant"
+	"altalune.id/yasaku/internal/testutil/fakes"
 	"altalune.id/yasaku/internal/wallet"
 	"altalune.id/yasaku/money"
 	"altalune.id/yasaku/schema"
@@ -55,13 +56,13 @@ func (f hijackFixture) seedVictim(t *testing.T) *wallet.Wallet {
 		Name: "org A's wallet", Kind: wallet.KindBank, Currency: money.IDR,
 	})
 	require.NoError(t, err)
-	require.NoError(t, f.store.Save(tenant.Into(t.Context(), f.orgA), victim))
+	require.NoError(t, f.store.Save(fakes.Owner(t.Context(), f.orgA), victim))
 	return victim
 }
 
 func (f hijackFixture) requireName(t *testing.T, id uuid.UUID, want string) {
 	t.Helper()
-	got, err := f.store.ByID(tenant.Into(t.Context(), f.orgA), id)
+	got, err := f.store.ByID(fakes.Owner(t.Context(), f.orgA), id)
 	require.NoError(t, err)
 	require.Equal(t, want, got.Name,
 		"org A's row reads %q, want %q: another org rewrote it across the tenant boundary", got.Name, want)
@@ -84,7 +85,7 @@ func TestSQLiteStore_Save_RejectsReskinnedHijack(t *testing.T) {
 	require.NoError(t, err)
 	attack.ID = victim.ID
 
-	requireBlocked(t, f.store.Save(tenant.Into(t.Context(), f.orgB), attack), "reskinned Save")
+	requireBlocked(t, f.store.Save(fakes.Owner(t.Context(), f.orgB), attack), "reskinned Save")
 	f.requireName(t, victim.ID, "org A's wallet")
 }
 
@@ -96,7 +97,7 @@ func TestSQLiteStore_Save_RejectsVerbatimHijack(t *testing.T) {
 	attack := *victim
 	attack.Name = "Hijacked"
 
-	requireBlocked(t, f.store.Save(tenant.Into(t.Context(), f.orgB), &attack), "verbatim Save")
+	requireBlocked(t, f.store.Save(fakes.Owner(t.Context(), f.orgB), &attack), "verbatim Save")
 	f.requireName(t, victim.ID, "org A's wallet")
 }
 
@@ -106,7 +107,7 @@ func TestSQLiteStore_Save_UpdatesOwnRow(t *testing.T) {
 	victim := f.seedVictim(t)
 
 	require.NoError(t, victim.Rename("renamed by its owner"))
-	require.NoError(t, f.store.Save(tenant.Into(t.Context(), f.orgA), victim))
+	require.NoError(t, f.store.Save(fakes.Owner(t.Context(), f.orgA), victim))
 	f.requireName(t, victim.ID, "renamed by its owner")
 }
 
@@ -115,7 +116,7 @@ func TestSQLiteStore_Delete_RejectsCrossTenant(t *testing.T) {
 	f := newHijackFixture(t)
 	victim := f.seedVictim(t)
 
-	requireBlocked(t, f.store.Delete(tenant.Into(t.Context(), f.orgB), victim.ID), "cross-tenant Delete")
+	requireBlocked(t, f.store.Delete(fakes.Owner(t.Context(), f.orgB), victim.ID), "cross-tenant Delete")
 	f.requireName(t, victim.ID, "org A's wallet")
 }
 
@@ -124,6 +125,6 @@ func TestSQLiteStore_ByID_RejectsCrossTenant(t *testing.T) {
 	f := newHijackFixture(t)
 	victim := f.seedVictim(t)
 
-	_, err := f.store.ByID(tenant.Into(t.Context(), f.orgB), victim.ID)
+	_, err := f.store.ByID(fakes.Owner(t.Context(), f.orgB), victim.ID)
 	assert.True(t, wallet.IsNotFoundError(err), "got %T: %v", err, err)
 }

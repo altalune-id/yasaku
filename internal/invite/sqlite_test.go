@@ -14,6 +14,7 @@ import (
 	"altalune.id/yasaku/internal/platform/db"
 	sqliteent "altalune.id/yasaku/internal/platform/db/entity/sqlite"
 	"altalune.id/yasaku/internal/platform/tenant"
+	"altalune.id/yasaku/internal/testutil/fakes"
 	"altalune.id/yasaku/schema"
 )
 
@@ -75,7 +76,7 @@ func newInviteForTest(t *testing.T, orgID uuid.UUID, email string, ttl time.Dura
 
 func TestSQLiteStore_SaveAndByID(t *testing.T) {
 	store, _, tc := newSQLiteStoreForTest(t)
-	ctx := tenant.Into(context.Background(), tc)
+	ctx := fakes.Owner(context.Background(), tc)
 	inv := newInviteForTest(t, tc.OrgID, "alice@example.com", time.Hour)
 	if err := store.Save(ctx, inv); err != nil {
 		t.Fatalf("Save: %v", err)
@@ -91,7 +92,7 @@ func TestSQLiteStore_SaveAndByID(t *testing.T) {
 
 func TestSQLiteStore_ByID_NotFound(t *testing.T) {
 	store, _, tc := newSQLiteStoreForTest(t)
-	ctx := tenant.Into(context.Background(), tc)
+	ctx := fakes.Owner(context.Background(), tc)
 	if _, err := store.ByID(ctx, uuid.New()); !invite.IsNotFoundError(err) {
 		t.Errorf("want IsNotFoundError, got %v", err)
 	}
@@ -109,11 +110,11 @@ func TestSQLiteStore_ByID_CrossTenantHidden(t *testing.T) {
 	}
 
 	inv := newInviteForTest(t, foreignOrg, "eve@example.com", time.Hour)
-	ctxForeign := tenant.Into(context.Background(), tenant.Context{OrgID: foreignOrg, UserID: tcA.UserID})
+	ctxForeign := fakes.Owner(context.Background(), tenant.Context{OrgID: foreignOrg, UserID: tcA.UserID})
 	if err := store.Save(ctxForeign, inv); err != nil {
 		t.Fatalf("foreign Save: %v", err)
 	}
-	ctxA := tenant.Into(context.Background(), tcA)
+	ctxA := fakes.Owner(context.Background(), tcA)
 	if _, err := store.ByID(ctxA, inv.ID); !invite.IsNotFoundError(err) {
 		t.Errorf("want IsNotFoundError, got %v", err)
 	}
@@ -121,7 +122,7 @@ func TestSQLiteStore_ByID_CrossTenantHidden(t *testing.T) {
 
 func TestSQLiteStore_ByTokenHash(t *testing.T) {
 	store, _, tc := newSQLiteStoreForTest(t)
-	ctx := tenant.Into(context.Background(), tc)
+	ctx := fakes.Owner(context.Background(), tc)
 	inv := newInviteForTest(t, tc.OrgID, "alice@example.com", time.Hour)
 	if err := store.Save(ctx, inv); err != nil {
 		t.Fatal(err)
@@ -141,7 +142,7 @@ func TestSQLiteStore_ByTokenHash(t *testing.T) {
 
 func TestSQLiteStore_ListPending_ExcludesAccepted(t *testing.T) {
 	store, _, tc := newSQLiteStoreForTest(t)
-	ctx := tenant.Into(context.Background(), tc)
+	ctx := fakes.Owner(context.Background(), tc)
 
 	pending := newInviteForTest(t, tc.OrgID, "pending@example.com", time.Hour)
 	accepted := newInviteForTest(t, tc.OrgID, "accepted@example.com", time.Hour)
@@ -165,7 +166,7 @@ func TestSQLiteStore_ListPending_ExcludesAccepted(t *testing.T) {
 
 func TestSQLiteStore_FindPendingForEmail(t *testing.T) {
 	store, _, tc := newSQLiteStoreForTest(t)
-	ctx := tenant.Into(context.Background(), tc)
+	ctx := fakes.Owner(context.Background(), tc)
 
 	target := newInviteForTest(t, tc.OrgID, "target@example.com", time.Hour)
 	other := newInviteForTest(t, tc.OrgID, "other@example.com", time.Hour)
@@ -195,7 +196,7 @@ func TestSQLiteStore_FindPendingForEmail(t *testing.T) {
 
 func TestSQLiteStore_SaveIsUpsert_MarksUsed(t *testing.T) {
 	store, _, tc := newSQLiteStoreForTest(t)
-	ctx := tenant.Into(context.Background(), tc)
+	ctx := fakes.Owner(context.Background(), tc)
 	inv := newInviteForTest(t, tc.OrgID, "alice@example.com", time.Hour)
 	if err := store.Save(ctx, inv); err != nil {
 		t.Fatal(err)
@@ -217,7 +218,7 @@ func TestSQLiteStore_SaveIsUpsert_MarksUsed(t *testing.T) {
 
 func TestSQLiteStore_Delete(t *testing.T) {
 	store, _, tc := newSQLiteStoreForTest(t)
-	ctx := tenant.Into(context.Background(), tc)
+	ctx := fakes.Owner(context.Background(), tc)
 	inv := newInviteForTest(t, tc.OrgID, "alice@example.com", time.Hour)
 	if err := store.Save(ctx, inv); err != nil {
 		t.Fatal(err)

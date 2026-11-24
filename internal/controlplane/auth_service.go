@@ -10,18 +10,17 @@ import (
 	apperrorv1 "altalune.id/yasaku/gen/go/apperror/v1"
 	authv1 "altalune.id/yasaku/gen/go/auth/v1"
 	"altalune.id/yasaku/internal/apperror"
-	"altalune.id/yasaku/internal/org"
 	"altalune.id/yasaku/internal/platform/session"
 )
 
 // AuthService implements auth.v1.AuthService by reflecting the caller's Principal back to the client.
 type AuthService struct {
-	orgs *org.Service
+	sc Scope
 }
 
 // NewAuthService wires the handler with the org service used to resolve the active-org slug.
-func NewAuthService(orgs *org.Service) *AuthService {
-	return &AuthService{orgs: orgs}
+func NewAuthService(sc Scope) *AuthService {
+	return &AuthService{sc: sc}
 }
 
 // Whoami returns identity + active-org info for the caller's Principal.
@@ -48,8 +47,8 @@ func (s *AuthService) Whoami(ctx context.Context, _ *connect.Request[authv1.Whoa
 	}
 	if p.ActiveOrgID != uuid.Nil {
 		resp.ActiveOrgId = p.ActiveOrgID.String()
-		if s.orgs != nil {
-			if o, err := s.orgs.ByID(ctx, p.ActiveOrgID); err == nil {
+		if s.sc.Orgs != nil {
+			if o, err := s.sc.Orgs.ByID(ctx, p.ActiveOrgID); err == nil {
 				resp.ActiveOrgSlug = o.Slug
 			}
 		}

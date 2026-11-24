@@ -271,11 +271,11 @@ func TestPersonalTokens_UnknownOrgFallsBackToTheFirst(t *testing.T) {
 	assert.Contains(t, page.Body.String(), x.alpha.ID.String(), "the picker must show the selected org's projects")
 }
 
-// SECURITY: an org-level scope makes a personal token act org-wide, so a member hand-posting one is refused with a 403 and nothing is minted.
-func TestPersonalTokens_AMemberIsRefusedAnOrgLevelScope(t *testing.T) {
+// SECURITY: a key holds at most what its minter holds, so a member hand-posting a key-management scope is refused with a 403 and nothing is minted.
+func TestPersonalTokens_AMemberIsRefusedAScopeTheyDoNotHold(t *testing.T) {
 	x := newAPIKeyWebFixture(t)
 	rec := x.as(t, x.member, http.MethodPost, "/settings/tokens", url.Values{
-		"org": {"acme"}, "name": {"laptop"}, "scopes": {authn.ScopeMembersRead}, "grant": {"all"}, "expires_in": {"7"},
+		"org": {"acme"}, "name": {"laptop"}, "scopes": {authn.ScopeAPIKeysRead}, "grant": {"all"}, "expires_in": {"7"},
 	})
 	assert.Equal(t, http.StatusForbidden, rec.Code)
 	assert.Contains(t, rec.Body.String(), "apikey.error_not_manager")

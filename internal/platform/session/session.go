@@ -35,7 +35,7 @@ type Principal struct {
 	KeyID uuid.UUID
 	// KeyKind is the kind of key this principal is. SECURITY: used only for role checks, rebuilt from the key on every request.
 	KeyKind KeyKind `json:"-"`
-	// KeyOwnerID is the person a personal key acts for. SECURITY: used only for role checks, never as an identity.
+	// KeyOwnerID is the person a key acts for: a personal key's owner or an org or project key's creator. SECURITY: used only for role checks, never as an identity.
 	KeyOwnerID uuid.UUID `json:"-"`
 	Email      string
 	Name       string
@@ -63,6 +63,14 @@ type Principal struct {
 	IssuedAt        time.Time
 	// Notice is a message shown once after sign-in, then cleared.
 	Notice string `json:",omitempty"`
+	// Held is the permission set resolved when the request's tenant scope was bound. SECURITY: never persisted; every request resolves it again.
+	Held []string `json:"-"`
+	// HeldOrg is the display name of the org Held was resolved in, for refusal messages.
+	HeldOrg string `json:"-"`
+	// HeldOrgID is the org Held was resolved in. SECURITY: Held answers for this org only.
+	HeldOrgID uuid.UUID `json:"-"`
+	// HeldRole is the role Held came from, for display only.
+	HeldRole string `json:"-"`
 }
 
 type principalKey struct{}

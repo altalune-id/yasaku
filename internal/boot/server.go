@@ -28,6 +28,7 @@ import (
 	"altalune.id/yasaku/internal/onboard"
 	"altalune.id/yasaku/internal/org"
 	"altalune.id/yasaku/internal/platform"
+	"altalune.id/yasaku/internal/platform/authz"
 	"altalune.id/yasaku/internal/platform/capabilities"
 	"altalune.id/yasaku/internal/platform/config"
 	"altalune.id/yasaku/internal/platform/db"
@@ -81,6 +82,8 @@ type Server struct {
 	Tags       *tag.Service
 	APIKeys    *apikey.Service
 	Webhooks   *webhook.Service
+	// Authz binds a CLI command's tenant scope with the caller's held set.
+	Authz *authz.Resolver
 
 	Onboard *user.OnboardWorkflow
 
@@ -397,6 +400,7 @@ func BootServer(ctx context.Context, cfg *config.Config, opts ...Option) (*Serve
 		Tags:               svcs.Tags,
 		APIKeys:            svcs.APIKeys,
 		Webhooks:           svcs.Webhooks,
+		Authz:              svcs.Authz,
 		Onboarded:          onboarded,
 		Routes:             webRoutes,
 		SetupToken:         setup,

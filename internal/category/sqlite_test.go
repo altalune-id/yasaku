@@ -17,6 +17,7 @@ import (
 	"altalune.id/yasaku/internal/platform/db"
 	sqliteent "altalune.id/yasaku/internal/platform/db/entity/sqlite"
 	"altalune.id/yasaku/internal/platform/tenant"
+	"altalune.id/yasaku/internal/testutil/fakes"
 	"altalune.id/yasaku/schema"
 )
 
@@ -108,7 +109,7 @@ func mustNew(t *testing.T, tc tenant.Context, name string, kind category.Kind) *
 
 func TestSQLite_SaveAndByID(t *testing.T) {
 	store, _, _, tc := newSQLiteFixture(t)
-	ctx := tenant.Into(t.Context(), tc)
+	ctx := fakes.Owner(t.Context(), tc)
 
 	c, err := category.New(tc.OrgID, tc.ProjectID, "Food & Drinks", category.KindExpense, "utensils", "chart-1", 4)
 	require.NoError(t, err)
@@ -130,7 +131,7 @@ func TestSQLite_SaveAndByID(t *testing.T) {
 
 func TestSQLite_ByID_NotFound(t *testing.T) {
 	store, _, _, tc := newSQLiteFixture(t)
-	ctx := tenant.Into(t.Context(), tc)
+	ctx := fakes.Owner(t.Context(), tc)
 
 	_, err := store.ByID(ctx, uuid.New())
 	assert.True(t, category.IsNotFoundError(err), "want NotFoundError, got %T: %v", err, err)
@@ -138,7 +139,7 @@ func TestSQLite_ByID_NotFound(t *testing.T) {
 
 func TestSQLite_ArchiveRoundTrip(t *testing.T) {
 	store, _, _, tc := newSQLiteFixture(t)
-	ctx := tenant.Into(t.Context(), tc)
+	ctx := fakes.Owner(t.Context(), tc)
 
 	c := mustNew(t, tc, "Food", category.KindExpense)
 	require.NoError(t, store.Save(ctx, c))
@@ -168,7 +169,7 @@ func TestSQLite_ArchiveRoundTrip(t *testing.T) {
 
 func TestSQLite_List_OrderAndFilters(t *testing.T) {
 	store, _, _, tc := newSQLiteFixture(t)
-	ctx := tenant.Into(t.Context(), tc)
+	ctx := fakes.Owner(t.Context(), tc)
 
 	seed := []struct {
 		name string
@@ -212,7 +213,7 @@ func names(rows []*category.Category) []string {
 
 func TestSQLite_Save_DuplicateActiveNameInSameKind(t *testing.T) {
 	store, _, _, tc := newSQLiteFixture(t)
-	ctx := tenant.Into(t.Context(), tc)
+	ctx := fakes.Owner(t.Context(), tc)
 
 	require.NoError(t, store.Save(ctx, mustNew(t, tc, "Food", category.KindExpense)))
 
@@ -223,7 +224,7 @@ func TestSQLite_Save_DuplicateActiveNameInSameKind(t *testing.T) {
 
 func TestSQLite_Save_SameNameUnderTheOtherKind(t *testing.T) {
 	store, _, _, tc := newSQLiteFixture(t)
-	ctx := tenant.Into(t.Context(), tc)
+	ctx := fakes.Owner(t.Context(), tc)
 
 	require.NoError(t, store.Save(ctx, mustNew(t, tc, "Other", category.KindExpense)))
 	require.NoError(t, store.Save(ctx, mustNew(t, tc, "Other", category.KindIncome)),
@@ -232,7 +233,7 @@ func TestSQLite_Save_SameNameUnderTheOtherKind(t *testing.T) {
 
 func TestSQLite_Save_SameNameOnceTheFirstIsArchived(t *testing.T) {
 	store, _, _, tc := newSQLiteFixture(t)
-	ctx := tenant.Into(t.Context(), tc)
+	ctx := fakes.Owner(t.Context(), tc)
 
 	first := mustNew(t, tc, "Food", category.KindExpense)
 	require.NoError(t, store.Save(ctx, first))
@@ -245,7 +246,7 @@ func TestSQLite_Save_SameNameOnceTheFirstIsArchived(t *testing.T) {
 
 func TestSQLite_Save_SameNameInAnotherProject(t *testing.T) {
 	store, sqlDB, prefix, tc := newSQLiteFixture(t)
-	ctx := tenant.Into(t.Context(), tc)
+	ctx := fakes.Owner(t.Context(), tc)
 
 	require.NoError(t, store.Save(ctx, mustNew(t, tc, "Food", category.KindExpense)))
 
@@ -257,7 +258,7 @@ func TestSQLite_Save_SameNameInAnotherProject(t *testing.T) {
 
 func TestSQLite_ByIDs(t *testing.T) {
 	store, sqlDB, prefix, tc := newSQLiteFixture(t)
-	ctx := tenant.Into(t.Context(), tc)
+	ctx := fakes.Owner(t.Context(), tc)
 
 	a := mustNew(t, tc, "Alpha", category.KindExpense)
 	require.NoError(t, store.Save(ctx, a))
@@ -297,7 +298,7 @@ func TestSQLite_ByIDs(t *testing.T) {
 
 func TestSQLite_Delete(t *testing.T) {
 	store, _, _, tc := newSQLiteFixture(t)
-	ctx := tenant.Into(t.Context(), tc)
+	ctx := fakes.Owner(t.Context(), tc)
 
 	c := mustNew(t, tc, "Gone", category.KindExpense)
 	require.NoError(t, store.Save(ctx, c))
@@ -311,7 +312,7 @@ func TestSQLite_Delete(t *testing.T) {
 
 func TestSQLite_Delete_InUse(t *testing.T) {
 	store, sqlDB, prefix, tc := newSQLiteFixture(t)
-	ctx := tenant.Into(t.Context(), tc)
+	ctx := fakes.Owner(t.Context(), tc)
 
 	c := mustNew(t, tc, "Has Transactions", category.KindExpense)
 	require.NoError(t, store.Save(ctx, c))
@@ -369,7 +370,7 @@ func TestSQLite_SeedDefaults_EnrollsInTheCallersUnitOfWork(t *testing.T) {
 		boom := errors.New("boom")
 		failing := &failAfterStore{Store: store, remaining: 5, err: boom}
 		svc, _ := newSvc(t, failing, &stubNamer{})
-		ctx := tenant.Into(t.Context(), tc)
+		ctx := fakes.Owner(t.Context(), tc)
 
 		err := db.RunInTx(ctx, db.Pool{W: sqlDB, R: sqlDB}, func(txCtx context.Context) error {
 			_, sErr := svc.SeedDefaults(txCtx)
@@ -387,7 +388,7 @@ func TestSQLite_SeedDefaults_EnrollsInTheCallersUnitOfWork(t *testing.T) {
 	t.Run("a successful seed inside a unit of work commits every default", func(t *testing.T) {
 		store, sqlDB, prefix, tc := newSQLiteFixture(t)
 		svc, _ := newSvc(t, store, &stubNamer{})
-		ctx := tenant.Into(t.Context(), tc)
+		ctx := fakes.Owner(t.Context(), tc)
 
 		var seeded int
 		err := db.RunInTx(ctx, db.Pool{W: sqlDB, R: sqlDB}, func(txCtx context.Context) error {
@@ -402,7 +403,7 @@ func TestSQLite_SeedDefaults_EnrollsInTheCallersUnitOfWork(t *testing.T) {
 
 	t.Run("reads inside the unit of work see its uncommitted writes", func(t *testing.T) {
 		store, sqlDB, _, tc := newSQLiteFixture(t)
-		ctx := tenant.Into(t.Context(), tc)
+		ctx := fakes.Owner(t.Context(), tc)
 
 		err := db.RunInTx(ctx, db.Pool{W: sqlDB, R: sqlDB}, func(txCtx context.Context) error {
 			c := mustNew(t, tc, "Food", category.KindExpense)

@@ -13,7 +13,6 @@ import (
 	"altalune.id/yasaku/internal/apperror"
 	"altalune.id/yasaku/internal/category"
 	"altalune.id/yasaku/internal/ledger"
-	"altalune.id/yasaku/internal/org"
 	"altalune.id/yasaku/internal/period"
 	"altalune.id/yasaku/internal/project"
 	"altalune.id/yasaku/internal/transaction"
@@ -22,7 +21,7 @@ import (
 
 // TransactionService implements yasaku.v1.TransactionService.
 type TransactionService struct {
-	orgs     *org.Service
+	sc       Scope
 	projects *project.Service
 	txs      *transaction.Service
 	wallets  *wallet.Service
@@ -33,9 +32,9 @@ type TransactionService struct {
 }
 
 // NewTransactionService binds the handler to its collaborators.
-func NewTransactionService(orgs *org.Service, projects *project.Service, txs *transaction.Service, wallets *wallet.Service, cats *category.Service, periods *period.Service, ledgers *ledger.Service) *TransactionService {
+func NewTransactionService(sc Scope, projects *project.Service, txs *transaction.Service, wallets *wallet.Service, cats *category.Service, periods *period.Service, ledgers *ledger.Service) *TransactionService {
 	return &TransactionService{
-		orgs:     orgs,
+		sc:       sc,
 		projects: projects,
 		txs:      txs,
 		wallets:  wallets,
@@ -146,7 +145,7 @@ func (s *TransactionService) RecordTransfer(ctx context.Context, req *connect.Re
 
 // RecordBatch previews every item, then on confirm records each one independently.
 func (s *TransactionService) RecordBatch(ctx context.Context, req *connect.Request[yasakuv1.RecordBatchRequest]) (*connect.Response[yasakuv1.RecordBatchResponse], error) {
-	sc, nd, err := scopeToTarget(ctx, s.orgs, s.projects, req.Msg.GetTarget())
+	sc, nd, err := scopeToTarget(ctx, s.sc, s.projects, req.Msg.GetTarget())
 	if err != nil {
 		return nil, err
 	}
@@ -229,7 +228,7 @@ func (s *TransactionService) RecordBatch(ctx context.Context, req *connect.Reque
 
 // ReviseTransaction previews the stored transaction with the requested changes, then on confirm saves them.
 func (s *TransactionService) ReviseTransaction(ctx context.Context, req *connect.Request[yasakuv1.ReviseTransactionRequest]) (*connect.Response[yasakuv1.ReviseTransactionResponse], error) {
-	sc, nd, err := scopeToTarget(ctx, s.orgs, s.projects, req.Msg.GetTarget())
+	sc, nd, err := scopeToTarget(ctx, s.sc, s.projects, req.Msg.GetTarget())
 	if err != nil {
 		return nil, err
 	}
@@ -342,7 +341,7 @@ func (s *TransactionService) ReviseTransaction(ctx context.Context, req *connect
 
 // DeleteTransaction previews the stored transaction, then on confirm removes it.
 func (s *TransactionService) DeleteTransaction(ctx context.Context, req *connect.Request[yasakuv1.DeleteTransactionRequest]) (*connect.Response[yasakuv1.DeleteTransactionResponse], error) {
-	sc, nd, err := scopeToTarget(ctx, s.orgs, s.projects, req.Msg.GetTarget())
+	sc, nd, err := scopeToTarget(ctx, s.sc, s.projects, req.Msg.GetTarget())
 	if err != nil {
 		return nil, err
 	}
@@ -373,7 +372,7 @@ func (s *TransactionService) DeleteTransaction(ctx context.Context, req *connect
 
 // ListTransactions returns one filtered page, newest first.
 func (s *TransactionService) ListTransactions(ctx context.Context, req *connect.Request[yasakuv1.ListTransactionsRequest]) (*connect.Response[yasakuv1.ListTransactionsResponse], error) {
-	sc, nd, err := scopeToTarget(ctx, s.orgs, s.projects, req.Msg.GetTarget())
+	sc, nd, err := scopeToTarget(ctx, s.sc, s.projects, req.Msg.GetTarget())
 	if err != nil {
 		return nil, err
 	}
@@ -441,7 +440,7 @@ func (s *TransactionService) ListTransactions(ctx context.Context, req *connect.
 
 // SearchTransactions matches a note case-insensitively inside an optional inclusive date range.
 func (s *TransactionService) SearchTransactions(ctx context.Context, req *connect.Request[yasakuv1.SearchTransactionsRequest]) (*connect.Response[yasakuv1.SearchTransactionsResponse], error) {
-	sc, nd, err := scopeToTarget(ctx, s.orgs, s.projects, req.Msg.GetTarget())
+	sc, nd, err := scopeToTarget(ctx, s.sc, s.projects, req.Msg.GetTarget())
 	if err != nil {
 		return nil, err
 	}
@@ -491,7 +490,7 @@ func (s *TransactionService) SearchTransactions(ctx context.Context, req *connec
 
 // SuggestCategory reports the category last used for a note like this one.
 func (s *TransactionService) SuggestCategory(ctx context.Context, req *connect.Request[yasakuv1.SuggestCategoryRequest]) (*connect.Response[yasakuv1.SuggestCategoryResponse], error) {
-	sc, nd, err := scopeToTarget(ctx, s.orgs, s.projects, req.Msg.GetTarget())
+	sc, nd, err := scopeToTarget(ctx, s.sc, s.projects, req.Msg.GetTarget())
 	if err != nil {
 		return nil, err
 	}
@@ -517,7 +516,7 @@ func (s *TransactionService) SuggestCategory(ctx context.Context, req *connect.R
 }
 
 func (s *TransactionService) plan(ctx context.Context, t *yasakuv1.Target, spec recordSpec) (targetResult, *recordPlan, *yasakuv1.Needs, error) {
-	sc, nd, err := scopeToTarget(ctx, s.orgs, s.projects, t)
+	sc, nd, err := scopeToTarget(ctx, s.sc, s.projects, t)
 	if err != nil || nd != nil {
 		return targetResult{}, nil, nd, err
 	}

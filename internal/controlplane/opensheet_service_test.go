@@ -5,7 +5,6 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"strings"
 	"testing"
 	"time"
 
@@ -20,6 +19,7 @@ import (
 	"altalune.id/yasaku/internal/apperror"
 	"altalune.id/yasaku/internal/controlplane"
 	"altalune.id/yasaku/internal/opensheetsync"
+	"altalune.id/yasaku/internal/org"
 	"altalune.id/yasaku/internal/platform/authn"
 	"altalune.id/yasaku/internal/platform/sealer"
 	"altalune.id/yasaku/internal/platform/session"
@@ -56,7 +56,7 @@ func newOpensheetFixture(t *testing.T) *opensheetFixture {
 		unexpected := apperror.NewReporter(log, false).Unexpected
 		mirror := opensheetsync.NewMirror(f.store, &fakes.Queue{}, false, log, unexpected, nil)
 		d.Opensheet = opensheetsync.NewService(f.store, log, unexpected, opensheetsync.ServiceDeps{
-			Mirror: mirror, Members: d.Orgs, Sealer: sl, UnitOfWork: fakes.UnitOfWork,
+			Mirror: mirror, Sealer: sl, UnitOfWork: fakes.UnitOfWork,
 			Endpoint: opensheetsync.Endpoint{BaseURL: f.sheets.URL(), AllowPrivateHosts: true, Timeout: 2 * time.Second},
 		})
 	})
@@ -224,10 +224,10 @@ func TestOpensheetService_AKeyReadsTheLinkButNeverChangesIt(t *testing.T) {
 
 	_, err := c.SaveOpensheetLink(ctx, asOwner(&yasakuv1.SaveOpensheetLinkRequest{Target: tgt, Settings: opensheetSettings(opensheetKey)}))
 	require.NoError(t, err)
-	stored, err := f.store.LinkByProject(tenant.Into(ctx, tenant.Context{OrgID: f.orgID, ProjectID: f.project.ID}), f.orgID, f.project.ID)
+	stored, err := f.store.LinkByProject(fakes.Owner(ctx, tenant.Context{OrgID: f.orgID, ProjectID: f.project.ID}), f.orgID, f.project.ID)
 	require.NoError(t, err)
 
-	writeKey := f.h.mintKey(f.orgID, f.project.ID, []string{authn.ScopeYasakuRead, authn.ScopeYasakuWrite}, nil)
+	writeKey := f.h.mintKeyBy(f.orgID, f.project.ID, []string{authn.ScopeYasakuRead, authn.ScopeYasakuWrite}, uuid.New(), org.RoleMember)
 	got, err := c.GetOpensheetLink(ctx, asKey(writeKey, &yasakuv1.GetOpensheetLinkRequest{Target: tgt}))
 	require.NoError(t, err)
 	require.Equal(t, "acme-os", got.Msg.GetLink().GetOsOrg())
@@ -262,7 +262,7 @@ func TestOpensheetService_AKeyReadsTheLinkButNeverChangesIt(t *testing.T) {
 		t.Run(name+" with yasaku:write", func(t *testing.T) {
 			err := call(t.Context(), writeKey)
 			require.Equal(t, connect.CodePermissionDenied, connectCode(err), "err=%v", err)
-			require.True(t, strings.HasPrefix(appErrorDetail(t, err).GetCode(), "ORG"), "the manager gate refused it, not the scope check: %v", err)
+			require.Equal(t, apperror.CodePermissionDenied, appErrorDetail(t, err).GetCode(), "the creator's role refused it, not the scope check: %v", err)
 		})
 		t.Run(name+" with yasaku:read", func(t *testing.T) {
 			require.Equal(t, connect.CodePermissionDenied, connectCode(call(t.Context(), readKey)))

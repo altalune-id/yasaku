@@ -14,6 +14,7 @@ import (
 
 	apperrorv1 "altalune.id/yasaku/gen/go/apperror/v1"
 	"altalune.id/yasaku/internal/apperror"
+	"altalune.id/yasaku/internal/platform/authz"
 	"altalune.id/yasaku/internal/platform/tenant"
 	"altalune.id/yasaku/internal/testutil/fakes"
 	"altalune.id/yasaku/internal/wallet"
@@ -41,7 +42,7 @@ func newSvc(t *testing.T, store wallet.Store) (*wallet.Service, *counter) {
 func svcCtx(t *testing.T) (context.Context, tenant.Context) {
 	t.Helper()
 	tc := tenant.Context{OrgID: uuid.New(), ProjectID: uuid.New(), UserID: uuid.New()}
-	return tenant.Into(t.Context(), tc), tc
+	return fakes.Owner(t.Context(), tc), tc
 }
 
 func mustCreate(ctx context.Context, t *testing.T, svc *wallet.Service, name string) *wallet.Wallet {
@@ -116,7 +117,7 @@ func TestService_ByID_RefusesSiblingProject(t *testing.T) {
 	ctxA, tcA := svcCtx(t)
 
 	tcB := tenant.Context{OrgID: tcA.OrgID, ProjectID: uuid.New(), UserID: tcA.UserID}
-	ctxB := tenant.Into(t.Context(), tcB)
+	ctxB := fakes.Owner(t.Context(), tcB)
 
 	seeded := mustCreate(ctxB, t, svc, "Project B wallet")
 
@@ -200,7 +201,7 @@ func TestService_RenameAndUpdate(t *testing.T) {
 		store := fakes.NewWallet()
 		svc, _ := newSvc(t, store)
 		ctxA, tcA := svcCtx(t)
-		ctxB := tenant.Into(t.Context(), tenant.Context{OrgID: tcA.OrgID, ProjectID: uuid.New(), UserID: tcA.UserID})
+		ctxB := fakes.Owner(t.Context(), tenant.Context{OrgID: tcA.OrgID, ProjectID: uuid.New(), UserID: tcA.UserID})
 		w := mustCreate(ctxB, t, svc, "Project B wallet")
 
 		_, err := svc.Rename(ctxA, w.ID, "Hijacked")
@@ -303,7 +304,7 @@ func TestService_Delete(t *testing.T) {
 		store := fakes.NewWallet()
 		svc, _ := newSvc(t, store)
 		ctxA, tcA := svcCtx(t)
-		ctxB := tenant.Into(t.Context(), tenant.Context{OrgID: tcA.OrgID, ProjectID: uuid.New(), UserID: tcA.UserID})
+		ctxB := fakes.Owner(t.Context(), tenant.Context{OrgID: tcA.OrgID, ProjectID: uuid.New(), UserID: tcA.UserID})
 		w := mustCreate(ctxB, t, svc, "Project B wallet")
 
 		assert.True(t, wallet.IsNotFoundError(svc.Delete(ctxA, w.ID)))
@@ -429,4 +430,22 @@ func TestService_Edit(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "BCA", stored.Name)
 	})
+}
+
+// SECURITY: a principal holding only wallets:read reads wallets and is refused every write, whatever surface it came through.
+func TestService_WritesNeedWalletsWrite(t *testing.T) {
+	store := fakes.NewWallet()
+	svc, _ := newSvc(t, store)
+	owner, tc := svcCtx(t)
+	w := mustCreate(owner, t, svc, "BCA")
+	reader := fakes.Allow(context.Background(), tc, authz.WalletsRead)
+
+	_, err := svc.Create(reader, wallet.Params{Name: "Sneaky", Kind: wallet.KindBank, Currency: money.IDR})
+	require.True(t, authz.IsDeniedError(err), "Create: got %T: %v", err, err)
+	_, err = svc.Rename(reader, w.ID, "Mine")
+	require.True(t, authz.IsDeniedError(err), "Rename: got %T: %v", err, err)
+	_, err = svc.Archive(reader, w.ID)
+	require.True(t, authz.IsDeniedError(err), "Archive: got %T: %v", err, err)
+	_, err = svc.ByID(reader, w.ID)
+	require.NoError(t, err, "a reader still reads")
 }

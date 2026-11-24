@@ -16,6 +16,7 @@ import (
 	"altalune.id/yasaku/internal/apperror"
 	"altalune.id/yasaku/internal/platform/audit"
 	"altalune.id/yasaku/internal/platform/authn"
+	"altalune.id/yasaku/internal/platform/authz"
 	"altalune.id/yasaku/internal/platform/session"
 	"altalune.id/yasaku/internal/platform/tenant"
 )
@@ -23,9 +24,8 @@ import (
 //nolint:gochecknoglobals // OTel tracer is a package-level fixture, not runtime state.
 var tracer = otel.Tracer("altalune.id/yasaku/internal/apikey")
 
-// Members is the org membership gate: RequireManager guards org and project keys, RequireMember guards a personal token and its use.
+// Members is the org membership gate: a key works only while its creator or owner is still a member.
 type Members interface {
-	RequireManager(ctx context.Context, orgID, userID uuid.UUID) error
 	RequireMember(ctx context.Context, orgID, userID uuid.UUID) error
 }
 
@@ -294,20 +294,26 @@ func (s *Service) mintGate(ctx context.Context, kind Kind, scopes []string, expi
 	if err != nil {
 		return tenant.Context{}, err
 	}
-	if err := s.requireMinter(ctx, kind, tc, scopes); err != nil {
+	if err := s.requireMinter(ctx, kind, tc); err != nil {
 		return tenant.Context{}, err
 	}
 	if err := requireMintable(scopes); err != nil {
 		return tenant.Context{}, err
 	}
+	held := authz.Held(ctx)
+	for _, sc := range scopes {
+		if !authz.ScopeHeld(held, sc) {
+			return tenant.Context{}, &ScopeNotHeldError{Scope: sc}
+		}
+	}
 	return tc, validateLifetime(expiresAt, s.now())
 }
 
-func (s *Service) requireMinter(ctx context.Context, kind Kind, tc tenant.Context, scopes []string) error {
+func (s *Service) requireMinter(ctx context.Context, kind Kind, tc tenant.Context) error {
 	if kind == KindPersonal {
-		return requireOwner(ctx, s.members, tc.OrgID, tc.UserID, scopes)
+		return requireOwner(ctx, s.members, tc.OrgID, tc.UserID)
 	}
-	return s.members.RequireManager(ctx, tc.OrgID, tc.UserID)
+	return authz.Can(ctx, authz.APIKeysWrite)
 }
 
 // SECURITY: a personal token belongs to its owner alone — to anyone else it reads as absent — and every other kind needs an owner or admin.
@@ -321,7 +327,7 @@ func (s *Service) loadForChange(ctx context.Context, id uuid.UUID) (tenant.Conte
 		return tenant.Context{}, nil, err
 	}
 	if k.Kind != KindPersonal {
-		return tc, k, s.members.RequireManager(ctx, tc.OrgID, tc.UserID)
+		return tc, k, authz.Can(ctx, authz.APIKeysWrite)
 	}
 	if tc.UserID == uuid.Nil || k.CreatedBy != tc.UserID {
 		return tenant.Context{}, nil, &NotFoundError{}
@@ -339,18 +345,8 @@ func requireMintable(scopes []string) error {
 }
 
 // SECURITY: the one owner rule, asked at mint and on every use — a member, or an owner or admin when the token holds an org-level scope.
-func requireOwner(ctx context.Context, m Members, orgID, userID uuid.UUID, scopes []string) error {
-	if hasOrgLevelScope(scopes) {
-		return m.RequireManager(ctx, orgID, userID)
-	}
+func requireOwner(ctx context.Context, m Members, orgID, userID uuid.UUID) error {
 	return m.RequireMember(ctx, orgID, userID)
-}
-
-func hasOrgLevelScope(scopes []string) bool {
-	return slices.ContainsFunc(scopes, func(sc string) bool {
-		level, ok := authn.LevelOf(sc)
-		return ok && level == authn.LevelOrg
-	})
 }
 
 // SECURITY: a key outside the caller's own project, or a granted key seen from a project, reports the same *NotFoundError as a missing id.
@@ -465,15 +461,15 @@ func (a *Authenticator) resolve(ctx context.Context, raw string) (*APIKey, error
 	return k, nil
 }
 
-// SECURITY: a personal token acts for its owner, so it stops the moment the owner leaves the org or loses the role an org-level scope needs.
+// SECURITY: a key acts for whoever minted it, so it stops the moment that person leaves the org or loses the role an org-level scope needs. A personal token always has an owner; an org or project key with no recorded creator predates creators and is bounded by the resolver instead.
 func (a *Authenticator) requireLiveOwner(ctx context.Context, k *APIKey) error {
-	if k.Kind != KindPersonal {
+	if k.CreatedBy == uuid.Nil && k.Kind != KindPersonal {
 		return nil
 	}
 	if a.members == nil || k.CreatedBy == uuid.Nil {
 		return &authn.UnauthorizedError{}
 	}
-	return requireOwner(tenant.WithOrg(ctx, k.OrgID), a.members, k.OrgID, k.CreatedBy, k.Scopes)
+	return requireOwner(tenant.WithOrg(ctx, k.OrgID), a.members, k.OrgID, k.CreatedBy)
 }
 
 // NOTE: a typed refusal (no membership, not a manager) is a 401; an untyped error is a store failure.
@@ -505,7 +501,8 @@ func principalFor(k *APIKey) session.Principal {
 	case KindOrg:
 		p.KeyKind = session.KeyKindOrg
 	case KindPersonal:
-		p.KeyKind, p.KeyOwnerID = session.KeyKindPersonal, k.CreatedBy
+		p.KeyKind = session.KeyKindPersonal
 	}
+	p.KeyOwnerID = k.CreatedBy
 	return p
 }

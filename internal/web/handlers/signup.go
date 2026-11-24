@@ -110,8 +110,11 @@ func (h *SignupHandler) PostSignup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tctx := tenant.Into(ctx, tenant.Context{OrgID: o.ID, UserID: p.UserID})
-	proj, err := h.Projects.Create(tctx, o.ID, "", view.Name)
+	tctx, err := h.Authz.Bind(ctx, p, tenant.Context{OrgID: o.ID, UserID: p.UserID})
+	var proj *project.Project
+	if err == nil {
+		proj, err = h.Projects.Create(tctx, o.ID, "", view.Name)
+	}
 	if err != nil {
 		h.LogErr("signup: create project", err)
 		view.Error = "signup.error.create_project"

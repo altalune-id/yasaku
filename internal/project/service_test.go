@@ -11,7 +11,7 @@ import (
 
 	"altalune.id/yasaku/internal/apperror"
 	"altalune.id/yasaku/internal/limits"
-	"altalune.id/yasaku/internal/org"
+	"altalune.id/yasaku/internal/platform/authz"
 	"altalune.id/yasaku/internal/platform/config"
 	"altalune.id/yasaku/internal/platform/db"
 	"altalune.id/yasaku/internal/platform/tenant"
@@ -22,7 +22,7 @@ import (
 func newTestService(t *testing.T) (*project.Service, *fakes.Project) {
 	t.Helper()
 	store := fakes.NewProject()
-	return project.NewService(store, discardLog(), failOnUnexpected(t), fakes.PermissiveMembers(), fakes.UnitOfWork), store
+	return project.NewService(store, discardLog(), failOnUnexpected(t), fakes.UnitOfWork), store
 }
 
 func discardLog() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }
@@ -37,7 +37,7 @@ func failOnUnexpected(t *testing.T) apperror.UnexpectedFunc {
 }
 
 func tenantCtx(orgID, userID uuid.UUID) context.Context {
-	return tenant.Into(context.Background(), tenant.Context{OrgID: orgID, UserID: userID})
+	return fakes.Owner(context.Background(), tenant.Context{OrgID: orgID, UserID: userID})
 }
 
 func TestService_Create_OK(t *testing.T) {
@@ -273,7 +273,7 @@ func TestService_Unexpected_Wraps(t *testing.T) {
 		}
 		return apperror.New(apperror.CodeUnexpectedError, "unexpected", 0)
 	}
-	svc := project.NewService(store, log, unexpected, fakes.PermissiveMembers(), fakes.UnitOfWork)
+	svc := project.NewService(store, log, unexpected, fakes.UnitOfWork)
 	ctx := tenantCtx(orgID, userID)
 	if _, err := svc.List(ctx, orgID); err == nil {
 		t.Fatal("expected error")
@@ -297,17 +297,15 @@ func (s *erroringStore) List(context.Context, uuid.UUID) ([]*project.Project, er
 }
 
 // SECURITY: membership is org-wide, so this gate is what keeps a plain member from creating or renaming projects on every surface.
-func TestService_CreateAndRename_OnlyAManager(t *testing.T) {
+func TestService_CreateAndRename_NeedProjectsWrite(t *testing.T) {
 	store := fakes.NewProject()
-	members := fakes.NewMembers()
-	svc := project.NewService(store, discardLog(), failOnUnexpected(t), members, fakes.UnitOfWork)
+	svc := project.NewService(store, discardLog(), failOnUnexpected(t), fakes.UnitOfWork)
 	orgID, member, manager := uuid.New(), uuid.New(), uuid.New()
-	members.SeatMember(orgID, member)
-	members.SeatManager(orgID, manager)
+	memberCtx := fakes.Allow(context.Background(), tenant.Context{OrgID: orgID, UserID: member}, authz.Builtin("member")...)
 
-	_, err := svc.Create(tenantCtx(orgID, member), orgID, "side", "Side")
-	if !org.IsNotManagerError(err) {
-		t.Fatalf("member Create err = %v, want NotManagerError", err)
+	_, err := svc.Create(memberCtx, orgID, "side", "Side")
+	if !authz.IsDeniedError(err) {
+		t.Fatalf("member Create err = %v, want DeniedError", err)
 	}
 	items, err := svc.List(tenantCtx(orgID, manager), orgID)
 	if err != nil {
@@ -321,8 +319,8 @@ func TestService_CreateAndRename_OnlyAManager(t *testing.T) {
 	if err != nil {
 		t.Fatalf("manager Create: %v", err)
 	}
-	if _, err := svc.Rename(tenantCtx(orgID, member), p.ID, "Mine"); !org.IsNotManagerError(err) {
-		t.Fatalf("member Rename err = %v, want NotManagerError", err)
+	if _, err := svc.Rename(memberCtx, p.ID, "Mine"); !authz.IsDeniedError(err) {
+		t.Fatalf("member Rename err = %v, want DeniedError", err)
 	}
 	got, err := svc.Rename(tenantCtx(orgID, manager), p.ID, "Ours")
 	if err != nil {
@@ -336,14 +334,12 @@ func TestService_CreateAndRename_OnlyAManager(t *testing.T) {
 // SECURITY: the gate authorizes the tenant org, so a create naming another org is refused before it is written there.
 func TestService_Create_RefusesAnOrgOtherThanTheTenants(t *testing.T) {
 	store := fakes.NewProject()
-	members := fakes.NewMembers()
-	svc := project.NewService(store, discardLog(), failOnUnexpected(t), members, fakes.UnitOfWork)
+	svc := project.NewService(store, discardLog(), failOnUnexpected(t), fakes.UnitOfWork)
 	orgA, orgB, manager := uuid.New(), uuid.New(), uuid.New()
-	members.SeatManager(orgA, manager)
 
 	_, err := svc.Create(tenantCtx(orgA, manager), orgB, "side", "Side")
-	if !org.IsOrgMismatchError(err) {
-		t.Fatalf("cross-org Create err = %v, want OrgMismatchError", err)
+	if !authz.IsDeniedError(err) {
+		t.Fatalf("cross-org Create err = %v, want DeniedError: the held set belongs to the bound org", err)
 	}
 	items, err := svc.List(tenantCtx(orgB, manager), orgB)
 	if err != nil {
@@ -371,7 +367,7 @@ func (s *txRecordingStore) Save(ctx context.Context, p *project.Project) error {
 
 func TestProjectCreate_RunsInUnitOfWork(t *testing.T) {
 	store := &txRecordingStore{Project: fakes.NewProject()}
-	svc := project.NewService(store, discardLog(), failOnUnexpected(t), fakes.PermissiveMembers(), fakes.UnitOfWork)
+	svc := project.NewService(store, discardLog(), failOnUnexpected(t), fakes.UnitOfWork)
 	orgID := uuid.New()
 
 	if _, err := svc.Create(tenantCtx(orgID, uuid.New()), orgID, "home", "Home"); err != nil {
@@ -386,7 +382,7 @@ func TestProjectCreate_FourthRefused(t *testing.T) {
 	orgID := uuid.New()
 	ctx := tenantCtx(orgID, uuid.New())
 	lstore := fakes.NewLimits()
-	svc := project.NewService(fakes.NewProject(), discardLog(), failOnUnexpected(t), fakes.PermissiveMembers(), fakes.UnitOfWork,
+	svc := project.NewService(fakes.NewProject(), discardLog(), failOnUnexpected(t), fakes.UnitOfWork,
 		project.WithLimits(limits.NewService(lstore, config.ModeCloud), orgNames{orgID: "Acme"}))
 	for _, slug := range []string{"one", "two", "three"} {
 		if _, err := svc.Create(ctx, orgID, slug, slug); err != nil {

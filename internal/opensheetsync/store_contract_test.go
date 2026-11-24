@@ -12,6 +12,7 @@ import (
 
 	"altalune.id/yasaku/internal/opensheetsync"
 	"altalune.id/yasaku/internal/platform/tenant"
+	"altalune.id/yasaku/internal/testutil/fakes"
 )
 
 // NOTE: storeFixture is one Store under test plus the seeders standing in for the wallets, categories and transactions tables.
@@ -27,7 +28,7 @@ type storeFixture struct {
 }
 
 func (f storeFixture) ctx(tc tenant.Context) context.Context {
-	return tenant.Into(context.Background(), tc)
+	return fakes.Owner(context.Background(), tc)
 }
 
 func linkFor(tc tenant.Context, at time.Time) *opensheetsync.Link {

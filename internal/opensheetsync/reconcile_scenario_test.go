@@ -50,7 +50,7 @@ func (q *handlerQueue) Runs() []error {
 // NOTE: runReconcileScenario proves, on a real store, that rows an opensheet outage or a lost kick left dirty are picked up by the reconciler after its grace, and that a duplicate job writes once.
 func runReconcileScenario(t *testing.T, f storeFixture) {
 	t.Helper()
-	ctx := tenant.Into(context.Background(), f.tc)
+	ctx := fakes.Owner(context.Background(), f.tc)
 	now := time.Date(2026, 10, 3, 9, 0, 0, 0, time.UTC)
 	clock := func() time.Time { return now }
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -97,7 +97,7 @@ func runReconcileScenario(t *testing.T, f storeFixture) {
 	require.EqualValues(t, 2, b.Pending)
 	require.Zero(t, b.Failing, "neither row was refused")
 
-	orgCtx := tenant.Into(context.Background(), tenant.Context{OrgID: f.tc.OrgID})
+	orgCtx := fakes.Owner(context.Background(), tenant.Context{OrgID: f.tc.OrgID})
 	n, err := mirror.Reconcile(orgCtx)
 	require.NoError(t, err)
 	require.Zero(t, n, "rows marked under a minute ago are left to their own kick")

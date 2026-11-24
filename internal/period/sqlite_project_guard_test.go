@@ -12,6 +12,7 @@ import (
 	"altalune.id/yasaku/internal/platform/db"
 	sqliteent "altalune.id/yasaku/internal/platform/db/entity/sqlite"
 	"altalune.id/yasaku/internal/platform/tenant"
+	"altalune.id/yasaku/internal/testutil/fakes"
 )
 
 func TestSQLiteStore_Save_RejectsSiblingProject(t *testing.T) {
@@ -22,7 +23,7 @@ func TestSQLiteStore_Save_RejectsSiblingProject(t *testing.T) {
 
 	victim, err := period.New(tc.OrgID, tc.ProjectID, civil.Date{Year: 2026, Month: 8, Day: 25}, "project A's period")
 	require.NoError(t, err)
-	require.NoError(t, store.Save(tenant.Into(t.Context(), tc), victim))
+	require.NoError(t, store.Save(fakes.Owner(t.Context(), tc), victim))
 
 	projID := uuid.New()
 	now := sqliteent.SQLiteTime(time.Now())
@@ -34,9 +35,9 @@ func TestSQLiteStore_Save_RejectsSiblingProject(t *testing.T) {
 
 	attack := *victim
 	attack.Name = "Hijacked"
-	requireBlocked(t, store.Save(tenant.Into(t.Context(), sibling), &attack), "sibling-project Save")
+	requireBlocked(t, store.Save(fakes.Owner(t.Context(), sibling), &attack), "sibling-project Save")
 
-	got, err := store.ByID(tenant.Into(t.Context(), tc), victim.ID)
+	got, err := store.ByID(fakes.Owner(t.Context(), tc), victim.ID)
 	require.NoError(t, err)
 	require.Equal(t, "project A's period", got.Name)
 }

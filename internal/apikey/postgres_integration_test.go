@@ -19,6 +19,7 @@ import (
 	"altalune.id/yasaku/internal/platform/config"
 	"altalune.id/yasaku/internal/platform/db"
 	"altalune.id/yasaku/internal/platform/tenant"
+	"altalune.id/yasaku/internal/testutil/fakes"
 	"altalune.id/yasaku/internal/testutil/pgtest"
 	"altalune.id/yasaku/nanoid"
 	"altalune.id/yasaku/schema"
@@ -90,7 +91,7 @@ func seedPgProject(t *testing.T, sqlDB *sql.DB, prefix string, tc tenant.Context
 
 func TestPostgres_APIKey_SaveAndByID(t *testing.T) {
 	f := newPgFixture(t)
-	ctx := tenant.Into(t.Context(), f.tc)
+	ctx := fakes.Owner(t.Context(), f.tc)
 
 	resourceIDs := []uuid.UUID{uuid.New(), uuid.New()}
 	expiresAt := time.Now().Add(24 * time.Hour).UTC().Truncate(time.Microsecond)
@@ -120,7 +121,7 @@ func TestPostgres_APIKey_SaveAndByID(t *testing.T) {
 
 func TestPostgres_APIKey_NotFound(t *testing.T) {
 	f := newPgFixture(t)
-	ctx := tenant.Into(t.Context(), f.tc)
+	ctx := fakes.Owner(t.Context(), f.tc)
 
 	_, err := f.store.ByID(ctx, uuid.New())
 	assert.True(t, apikey.IsNotFoundError(err), "got %T: %v", err, err)
@@ -128,7 +129,7 @@ func TestPostgres_APIKey_NotFound(t *testing.T) {
 
 func TestPostgres_APIKey_SaveRoundTripsEmptyScopesAndResourceIDs(t *testing.T) {
 	f := newPgFixture(t)
-	ctx := tenant.Into(t.Context(), f.tc)
+	ctx := fakes.Owner(t.Context(), f.tc)
 
 	k, _, err := apikey.Scheme{}.Mint(f.tc.OrgID, f.tc.ProjectID, "Bare", nil, nil, nil, time.Now())
 	require.NoError(t, err)
@@ -142,7 +143,7 @@ func TestPostgres_APIKey_SaveRoundTripsEmptyScopesAndResourceIDs(t *testing.T) {
 
 func TestPostgres_APIKey_BySecretHash(t *testing.T) {
 	f := newPgFixture(t)
-	ctx := tenant.Into(t.Context(), f.tc)
+	ctx := fakes.Owner(t.Context(), f.tc)
 
 	k, plaintext, err := apikey.Scheme{}.Mint(f.tc.OrgID, f.tc.ProjectID, "Hash lookup", []string{authn.ScopeYasakuRead}, nil, nil, time.Now())
 	require.NoError(t, err)
@@ -156,7 +157,7 @@ func TestPostgres_APIKey_BySecretHash(t *testing.T) {
 
 func TestPostgres_APIKey_BySecretHash_Miss(t *testing.T) {
 	f := newPgFixture(t)
-	ctx := tenant.Into(t.Context(), f.tc)
+	ctx := fakes.Owner(t.Context(), f.tc)
 
 	var missing [32]byte
 	_, err := f.store.BySecretHash(ctx, missing)
@@ -165,7 +166,7 @@ func TestPostgres_APIKey_BySecretHash_Miss(t *testing.T) {
 
 func TestPostgres_APIKey_List_ScopesToTheProject(t *testing.T) {
 	f := newPgFixture(t)
-	ctx := tenant.Into(t.Context(), f.tc)
+	ctx := fakes.Owner(t.Context(), f.tc)
 	otherProj := seedPgProject(t, f.sqlDB, f.prefix, f.tc)
 
 	mine, _, err := apikey.Scheme{}.Mint(f.tc.OrgID, f.tc.ProjectID, "Mine", []string{authn.ScopeYasakuRead}, nil, nil, time.Now())
@@ -184,7 +185,7 @@ func TestPostgres_APIKey_List_ScopesToTheProject(t *testing.T) {
 
 func TestPostgres_APIKey_TouchLastUsed(t *testing.T) {
 	f := newPgFixture(t)
-	ctx := tenant.Into(t.Context(), f.tc)
+	ctx := fakes.Owner(t.Context(), f.tc)
 
 	k, _, err := apikey.Scheme{}.Mint(f.tc.OrgID, f.tc.ProjectID, "Touched", []string{authn.ScopeYasakuRead}, nil, nil, time.Now())
 	require.NoError(t, err)
@@ -201,7 +202,7 @@ func TestPostgres_APIKey_TouchLastUsed(t *testing.T) {
 
 func TestPostgres_APIKey_TouchLastUsed_NotFound(t *testing.T) {
 	f := newPgFixture(t)
-	ctx := tenant.Into(t.Context(), f.tc)
+	ctx := fakes.Owner(t.Context(), f.tc)
 
 	err := f.store.TouchLastUsed(ctx, uuid.New(), time.Now())
 	assert.True(t, apikey.IsNotFoundError(err), "got %T: %v", err, err)
@@ -318,8 +319,8 @@ func TestPostgres_APIKey_OtherOrgIsInvisible(t *testing.T) {
 	a := seedRLSTenant(t, migDB, prefix)
 	b := seedRLSTenant(t, migDB, prefix)
 
-	ownerCtx := tenant.Into(t.Context(), a)
-	otherCtx := tenant.Into(t.Context(), b)
+	ownerCtx := fakes.Owner(t.Context(), a)
+	otherCtx := fakes.Owner(t.Context(), b)
 
 	k, plaintext, err := apikey.Scheme{}.Mint(a.OrgID, a.ProjectID, "Org A Only", []string{authn.ScopeYasakuRead}, nil, nil, time.Now())
 	require.NoError(t, err)
@@ -354,4 +355,27 @@ func TestPostgres_APIKey_OtherOrgIsInvisible(t *testing.T) {
 	stillThere, err := store.ByID(ownerCtx, k.ID)
 	require.NoError(t, err)
 	assert.Equal(t, k.ID, stillThere.ID)
+}
+
+func TestDeletingAUserRevokesTheirOrgAndProjectKeysPostgres(t *testing.T) {
+	f := newPgFixture(t)
+	creator := uuid.New()
+	_, err := f.sqlDB.ExecContext(t.Context(),
+		"INSERT INTO "+f.prefix+"users (id, email, name, avatar_url, is_admin, created_at, updated_at) VALUES ($1, $2, '', '', false, now(), now())",
+		creator, creator.String()+"@example.com")
+	require.NoError(t, err)
+	ctx := fakes.Owner(t.Context(), f.tc)
+	exp := time.Now().Add(time.Hour)
+	orgKey, plain, err := apikey.Scheme{}.MintOrg(f.tc.OrgID, "ops", []string{authn.ScopeYasakuRead}, apikey.ProjectGrant{All: true}, &exp, time.Now().UTC())
+	require.NoError(t, err)
+	orgKey.CreatedBy = creator
+	require.NoError(t, f.store.Save(ctx, orgKey))
+
+	_, err = f.sqlDB.ExecContext(t.Context(), "DELETE FROM "+f.prefix+"users WHERE id = $1", creator)
+	require.NoError(t, err)
+	got, err := f.store.ByID(ctx, orgKey.ID)
+	require.NoError(t, err, "the key row survives, so rows it authored keep their reference")
+	require.NotNil(t, got.RevokedAt)
+	_, err = apikey.NewAuthenticator(f.store, nil, apikey.Scheme{}, fakes.NewMembers()).Authenticate(t.Context(), plain)
+	require.True(t, authn.IsUnauthorizedError(err), "got %v", err)
 }

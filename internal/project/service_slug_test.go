@@ -214,7 +214,7 @@ func TestService_BootstrapSystem_RaceLoserReturnsTheWinner(t *testing.T) {
 			if err != nil {
 				t.Fatalf("winner: %v", err)
 			}
-			loser := project.NewService(&staleListStore{Project: store, stale: 1}, discardLog(), failOnUnexpected(t), fakes.PermissiveMembers(), fakes.UnitOfWork)
+			loser := project.NewService(&staleListStore{Project: store, stale: 1}, discardLog(), failOnUnexpected(t), fakes.UnitOfWork)
 			got, err := loser.BootstrapSystem(ctx, orgID, slug, "Other")
 			if err != nil {
 				t.Fatalf("the unique index refusal must resolve to the winner: %v", err)
@@ -251,7 +251,7 @@ func TestService_BootstrapSystem_SameSlugRaceLoserReturnsTheWinner(t *testing.T)
 	if err != nil {
 		t.Fatalf("winner: %v", err)
 	}
-	loser := project.NewService(&racingProjectStore{Project: store, staleList: 1}, discardLog(), failOnUnexpected(t), fakes.PermissiveMembers(), fakes.UnitOfWork)
+	loser := project.NewService(&racingProjectStore{Project: store, staleList: 1}, discardLog(), failOnUnexpected(t), fakes.UnitOfWork)
 	got, err := loser.BootstrapSystem(ctx, orgID, "web-app", "Web")
 	if err != nil {
 		t.Fatalf("a same-slug race must return the winner: %v", err)
@@ -268,7 +268,7 @@ func TestService_BootstrapSystem_SlugTakenByAPlainProjectIsAlreadyExists(t *test
 	if _, err := svc.Create(ctx, orgID, "web-app", "Web"); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	racing := project.NewService(&racingProjectStore{Project: store}, discardLog(), failOnUnexpected(t), fakes.PermissiveMembers(), fakes.UnitOfWork)
+	racing := project.NewService(&racingProjectStore{Project: store}, discardLog(), failOnUnexpected(t), fakes.UnitOfWork)
 	_, err := racing.BootstrapSystem(ctx, orgID, "web-app", "Web")
 	if !project.IsAlreadyExistsError(err) {
 		t.Fatalf("want AlreadyExistsError, not an unexpected error, got %T: %v", err, err)

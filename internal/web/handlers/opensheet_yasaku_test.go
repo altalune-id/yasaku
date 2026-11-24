@@ -111,7 +111,7 @@ func newOpensheetFixtureWith(t *testing.T, endpoint func(*opensheetsync.Endpoint
 	})
 	jobs.handlers = opensheetsync.NewConsumer(syncer).ConsumerHandlers()
 	svc := opensheetsync.NewService(store, discardLogger(), passthroughUnexpected(), opensheetsync.ServiceDeps{
-		Mirror: mirror, Members: f.Orgs, Sealer: sl,
+		Mirror: mirror, Sealer: sl,
 		Endpoint:   ep,
 		UnitOfWork: func(ctx context.Context, fn func(context.Context) error) error { return db.RunInTx(ctx, pool, fn) },
 	})
@@ -127,7 +127,7 @@ func (f *opensheetFixture) publishAll(writable bool) {
 }
 
 func (f *opensheetFixture) tenantCtx() context.Context {
-	return tenant.Into(context.Background(), tenant.Context{OrgID: f.OrgID, ProjectID: f.ProjectID, UserID: f.Principal.UserID})
+	return fakes.Owner(context.Background(), tenant.Context{OrgID: f.OrgID, ProjectID: f.ProjectID, UserID: f.Principal.UserID})
 }
 
 func (f *opensheetFixture) seedLink(t *testing.T, sealed []byte) *opensheetsync.Link {
@@ -361,7 +361,7 @@ func TestOpensheet_AMemberSeesTheModuleReadOnly(t *testing.T) {
 	users := user.NewService(user.NewStore(db.DBConfig{Driver: db.DriverSQLite, TablePrefix: f.Cfg.DB.TablePrefix}, pool), user.GenesisConfig{}, discardLogger(), passthroughUnexpected())
 	u, err := users.Create(t.Context(), user.CreateRequest{Email: "member@yasaku.test", Name: "Member", Source: user.SourceLocal})
 	require.NoError(t, err)
-	_, err = f.Orgs.AddMember(tenant.Into(t.Context(), tenant.Context{OrgID: f.OrgID, UserID: f.Principal.UserID}), f.OrgID, u.ID, org.RoleMember)
+	_, err = f.Orgs.AddMember(fakes.Owner(t.Context(), tenant.Context{OrgID: f.OrgID, UserID: f.Principal.UserID}), f.OrgID, u.ID, org.RoleMember)
 	require.NoError(t, err)
 	f.Principal.UserID = u.ID
 
@@ -399,7 +399,7 @@ func TestOpensheet_AMemberSeesThePlainReasonButNoRawErrorText(t *testing.T) {
 	users := user.NewService(user.NewStore(db.DBConfig{Driver: db.DriverSQLite, TablePrefix: f.Cfg.DB.TablePrefix}, pool), user.GenesisConfig{}, discardLogger(), passthroughUnexpected())
 	u, err := users.Create(t.Context(), user.CreateRequest{Email: "member2@yasaku.test", Name: "Member", Source: user.SourceLocal})
 	require.NoError(t, err)
-	_, err = f.Orgs.AddMember(tenant.Into(t.Context(), tenant.Context{OrgID: f.OrgID, UserID: f.Principal.UserID}), f.OrgID, u.ID, org.RoleMember)
+	_, err = f.Orgs.AddMember(fakes.Owner(t.Context(), tenant.Context{OrgID: f.OrgID, UserID: f.Principal.UserID}), f.OrgID, u.ID, org.RoleMember)
 	require.NoError(t, err)
 	f.Principal.UserID = u.ID
 

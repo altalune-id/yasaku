@@ -13,12 +13,13 @@ import (
 	"altalune.id/yasaku/internal/apikey"
 	"altalune.id/yasaku/internal/platform/authn"
 	"altalune.id/yasaku/internal/platform/tenant"
+	"altalune.id/yasaku/internal/testutil/fakes"
 )
 
 func TestPostgres_OrgKeyRoundTrip(t *testing.T) {
 	f := newPgFixture(t)
 	second := seedPgProject(t, f.sqlDB, f.prefix, f.tc)
-	ctx := tenant.Into(t.Context(), tenant.Context{OrgID: f.tc.OrgID, UserID: f.tc.UserID})
+	ctx := fakes.Owner(t.Context(), tenant.Context{OrgID: f.tc.OrgID, UserID: f.tc.UserID})
 
 	k, plaintext, err := apikey.Scheme{}.MintOrg(f.tc.OrgID, "ci", []string{authn.ScopeYasakuRead}, apikey.ProjectGrant{ProjectIDs: []uuid.UUID{f.tc.ProjectID}}, nil, time.Now().UTC())
 	require.NoError(t, err)
@@ -58,7 +59,7 @@ func TestPostgres_OrgKeyRoundTrip(t *testing.T) {
 func TestPostgres_GrantCannotNameAnotherOrgsProject(t *testing.T) {
 	f := newPgFixture(t)
 	foreign := seedPgTenant(t, f.sqlDB, f.prefix)
-	ctx := tenant.Into(t.Context(), tenant.Context{OrgID: f.tc.OrgID, UserID: f.tc.UserID})
+	ctx := fakes.Owner(t.Context(), tenant.Context{OrgID: f.tc.OrgID, UserID: f.tc.UserID})
 
 	k, _, err := apikey.Scheme{}.MintOrg(f.tc.OrgID, "ci", nil, apikey.ProjectGrant{ProjectIDs: []uuid.UUID{foreign.ProjectID}}, nil, time.Now().UTC())
 	require.NoError(t, err)
@@ -74,8 +75,8 @@ func TestPostgres_OrgKeyGrantsAreInvisibleAcrossOrgs(t *testing.T) {
 	store, migDB, appConn, prefix := newPgRLSFixture(t)
 	a := seedRLSTenant(t, migDB, prefix)
 	b := seedRLSTenant(t, migDB, prefix)
-	aCtx := tenant.Into(t.Context(), tenant.Context{OrgID: a.OrgID, UserID: a.UserID})
-	bCtx := tenant.Into(t.Context(), tenant.Context{OrgID: b.OrgID, UserID: b.UserID})
+	aCtx := fakes.Owner(t.Context(), tenant.Context{OrgID: a.OrgID, UserID: a.UserID})
+	bCtx := fakes.Owner(t.Context(), tenant.Context{OrgID: b.OrgID, UserID: b.UserID})
 
 	k, plaintext, err := apikey.Scheme{}.MintOrg(a.OrgID, "A only", []string{authn.ScopeYasakuRead}, apikey.ProjectGrant{ProjectIDs: []uuid.UUID{a.ProjectID}}, nil, time.Now().UTC())
 	require.NoError(t, err)
@@ -100,7 +101,7 @@ func TestPostgres_OrgKeyGrantsAreInvisibleAcrossOrgs(t *testing.T) {
 
 func TestPostgres_PersonalTokenRoundTrip(t *testing.T) {
 	f := newPgFixture(t)
-	ctx := tenant.Into(t.Context(), tenant.Context{OrgID: f.tc.OrgID, UserID: f.tc.UserID})
+	ctx := fakes.Owner(t.Context(), tenant.Context{OrgID: f.tc.OrgID, UserID: f.tc.UserID})
 
 	k, plaintext, err := apikey.Scheme{}.MintPersonal(f.tc.OrgID, f.tc.UserID, "laptop", []string{authn.ScopeYasakuRead}, apikey.ProjectGrant{ProjectIDs: []uuid.UUID{f.tc.ProjectID}}, nil, time.Now().UTC())
 	require.NoError(t, err)

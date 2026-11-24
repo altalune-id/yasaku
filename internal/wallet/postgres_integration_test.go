@@ -14,6 +14,7 @@ import (
 	"altalune.id/yasaku/internal/platform/config"
 	"altalune.id/yasaku/internal/platform/db"
 	"altalune.id/yasaku/internal/platform/tenant"
+	"altalune.id/yasaku/internal/testutil/fakes"
 	"altalune.id/yasaku/internal/testutil/pgtest"
 	"altalune.id/yasaku/internal/wallet"
 	"altalune.id/yasaku/money"
@@ -93,13 +94,13 @@ func newPgWallet(t *testing.T, f pgFixture, name string) *wallet.Wallet {
 		Name: name, Kind: wallet.KindBank, Provider: "Bank Central Asia", Currency: money.IDR,
 	})
 	require.NoError(t, err)
-	require.NoError(t, f.store.Save(tenant.Into(t.Context(), f.tc), w))
+	require.NoError(t, f.store.Save(fakes.Owner(t.Context(), f.tc), w))
 	return w
 }
 
 func TestPostgres_Wallet_RoundTrip(t *testing.T) {
 	f := newPgFixture(t)
-	ctx := tenant.Into(t.Context(), f.tc)
+	ctx := fakes.Owner(t.Context(), f.tc)
 
 	w, err := wallet.New(f.tc.OrgID, f.tc.ProjectID, wallet.Params{
 		Name: "BCA", Kind: wallet.KindSavings, Provider: "Bank Central Asia",
@@ -135,13 +136,13 @@ func TestPostgres_Wallet_RoundTrip(t *testing.T) {
 
 func TestPostgres_Wallet_NotFound(t *testing.T) {
 	f := newPgFixture(t)
-	_, err := f.store.ByID(tenant.Into(t.Context(), f.tc), uuid.New())
+	_, err := f.store.ByID(fakes.Owner(t.Context(), f.tc), uuid.New())
 	assert.True(t, wallet.IsNotFoundError(err), "got %T: %v", err, err)
 }
 
 func TestPostgres_Wallet_UniqueNamePerProjectIgnoringCase(t *testing.T) {
 	f := newPgFixture(t)
-	ctx := tenant.Into(t.Context(), f.tc)
+	ctx := fakes.Owner(t.Context(), f.tc)
 	newPgWallet(t, f, "BCA")
 
 	dup, err := wallet.New(f.tc.OrgID, f.tc.ProjectID, wallet.Params{
@@ -157,7 +158,7 @@ func TestPostgres_Wallet_UniqueNamePerProjectIgnoringCase(t *testing.T) {
 
 func TestPostgres_Wallet_ArchivingFreesTheName(t *testing.T) {
 	f := newPgFixture(t)
-	ctx := tenant.Into(t.Context(), f.tc)
+	ctx := fakes.Owner(t.Context(), f.tc)
 
 	first := newPgWallet(t, f, "BCA")
 	first.Archive()
@@ -173,7 +174,7 @@ func TestPostgres_Wallet_ArchivingFreesTheName(t *testing.T) {
 
 func TestPostgres_Wallet_ListOrderAndArchivedFilter(t *testing.T) {
 	f := newPgFixture(t)
-	ctx := tenant.Into(t.Context(), f.tc)
+	ctx := fakes.Owner(t.Context(), f.tc)
 
 	newPgWallet(t, f, "Mandiri")
 	newPgWallet(t, f, "BCA")
@@ -196,7 +197,7 @@ func TestPostgres_Wallet_ListOrderAndArchivedFilter(t *testing.T) {
 
 func TestPostgres_Wallet_DeleteRestrictBecomesInUse(t *testing.T) {
 	f := newPgFixture(t)
-	ctx := tenant.Into(t.Context(), f.tc)
+	ctx := fakes.Owner(t.Context(), f.tc)
 	w := newPgWallet(t, f, "BCA")
 	seedPgTransaction(t, f, w.ID)
 
@@ -212,7 +213,7 @@ func TestPostgres_Wallet_DeleteRestrictBecomesInUse(t *testing.T) {
 
 func TestPostgres_Wallet_DeleteUnreferenced(t *testing.T) {
 	f := newPgFixture(t)
-	ctx := tenant.Into(t.Context(), f.tc)
+	ctx := fakes.Owner(t.Context(), f.tc)
 	w := newPgWallet(t, f, "BCA")
 
 	require.NoError(t, f.store.Delete(ctx, w.ID))

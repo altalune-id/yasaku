@@ -12,7 +12,6 @@ import (
 	yasakuv1 "altalune.id/yasaku/gen/go/yasaku/v1"
 	"altalune.id/yasaku/internal/category"
 	"altalune.id/yasaku/internal/ledger"
-	"altalune.id/yasaku/internal/org"
 	"altalune.id/yasaku/internal/period"
 	"altalune.id/yasaku/internal/project"
 	"altalune.id/yasaku/internal/report"
@@ -31,7 +30,7 @@ var walletKinds = []string{
 
 // WalletService implements yasaku.v1.WalletService.
 type WalletService struct {
-	orgs     *org.Service
+	sc       Scope
 	projects *project.Service
 	wallets  *wallet.Service
 	open     *wallet.OpenWorkflow
@@ -44,9 +43,9 @@ type WalletService struct {
 }
 
 // NewWalletService binds the handler to its collaborators.
-func NewWalletService(orgs *org.Service, projects *project.Service, wallets *wallet.Service, open *wallet.OpenWorkflow, txs *transaction.Service, cats *category.Service, periods *period.Service, reports *report.Service, ledgers *ledger.Service) *WalletService {
+func NewWalletService(sc Scope, projects *project.Service, wallets *wallet.Service, open *wallet.OpenWorkflow, txs *transaction.Service, cats *category.Service, periods *period.Service, reports *report.Service, ledgers *ledger.Service) *WalletService {
 	return &WalletService{
-		orgs:     orgs,
+		sc:       sc,
 		projects: projects,
 		wallets:  wallets,
 		open:     open,
@@ -61,7 +60,7 @@ func NewWalletService(orgs *org.Service, projects *project.Service, wallets *wal
 
 // ListWallets returns the project's wallets with their derived balances.
 func (s *WalletService) ListWallets(ctx context.Context, req *connect.Request[yasakuv1.ListWalletsRequest]) (*connect.Response[yasakuv1.ListWalletsResponse], error) {
-	sc, nd, err := scopeToTarget(ctx, s.orgs, s.projects, req.Msg.GetTarget())
+	sc, nd, err := scopeToTarget(ctx, s.sc, s.projects, req.Msg.GetTarget())
 	if err != nil {
 		return nil, err
 	}
@@ -113,7 +112,7 @@ func (s *WalletService) GetWallet(ctx context.Context, req *connect.Request[yasa
 
 // CreateWallet previews the resolved wallet, then on confirm opens it with its opening balance.
 func (s *WalletService) CreateWallet(ctx context.Context, req *connect.Request[yasakuv1.CreateWalletRequest]) (*connect.Response[yasakuv1.CreateWalletResponse], error) {
-	sc, nd, err := scopeToTarget(ctx, s.orgs, s.projects, req.Msg.GetTarget())
+	sc, nd, err := scopeToTarget(ctx, s.sc, s.projects, req.Msg.GetTarget())
 	if err != nil {
 		return nil, err
 	}
@@ -381,7 +380,7 @@ func (s *WalletService) AdjustBalance(ctx context.Context, req *connect.Request[
 
 // WalletTotals reports the spendable and overall totals alongside the current period's flows.
 func (s *WalletService) WalletTotals(ctx context.Context, req *connect.Request[yasakuv1.WalletTotalsRequest]) (*connect.Response[yasakuv1.WalletTotalsResponse], error) {
-	sc, nd, err := scopeToTarget(ctx, s.orgs, s.projects, req.Msg.GetTarget())
+	sc, nd, err := scopeToTarget(ctx, s.sc, s.projects, req.Msg.GetTarget())
 	if err != nil {
 		return nil, err
 	}
@@ -432,7 +431,7 @@ func (s *WalletService) totalsWithoutPeriod(ctx context.Context) (*connect.Respo
 }
 
 func (s *WalletService) lookup(ctx context.Context, t *yasakuv1.Target, q string) (targetResult, *wallet.Wallet, *yasakuv1.Needs, error) {
-	sc, nd, err := scopeToTarget(ctx, s.orgs, s.projects, t)
+	sc, nd, err := scopeToTarget(ctx, s.sc, s.projects, t)
 	if err != nil || nd != nil {
 		return targetResult{}, nil, nd, err
 	}
@@ -441,7 +440,7 @@ func (s *WalletService) lookup(ctx context.Context, t *yasakuv1.Target, q string
 }
 
 func (s *WalletService) lookupArchived(ctx context.Context, t *yasakuv1.Target, q string) (targetResult, *wallet.Wallet, *yasakuv1.Needs, error) {
-	sc, nd, err := scopeToTarget(ctx, s.orgs, s.projects, t)
+	sc, nd, err := scopeToTarget(ctx, s.sc, s.projects, t)
 	if err != nil || nd != nil {
 		return targetResult{}, nil, nd, err
 	}

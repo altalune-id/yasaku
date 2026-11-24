@@ -35,7 +35,7 @@ func TestInviteSend_SeatsCountPending(t *testing.T) {
 	unex := 0
 	wf := invite.NewSendWorkflow(store, &recordingMailer{}, "https://yasaku.example.test", newTestLogger(), noopUnexpected(&unex),
 		invite.WithSendUnitOfWork(fakes.UnitOfWork), invite.WithSendLimits(cloudLimits(), fakeCounter{members: 3, name: "Acme"}))
-	ctx := tenant.Into(context.Background(), tenant.Context{OrgID: uuid.New(), UserID: uuid.New()})
+	ctx := fakes.Owner(context.Background(), tenant.Context{OrgID: uuid.New(), UserID: uuid.New()})
 
 	if _, err := wf.Execute(ctx, invite.SendRequest{Email: "a@example.com", Role: invite.RoleMember}); err != nil {
 		t.Fatalf("fourth seat: %v", err)
@@ -65,7 +65,7 @@ func TestInviteSend_ExpiredInvitesFreeSeats(t *testing.T) {
 	wf := invite.NewSendWorkflow(store, &recordingMailer{}, "https://yasaku.example.test", newTestLogger(), noopUnexpected(&unex),
 		invite.WithClock(func() time.Time { return clock }),
 		invite.WithSendUnitOfWork(fakes.UnitOfWork), invite.WithSendLimits(cloudLimits(), fakeCounter{members: 4}))
-	ctx := tenant.Into(context.Background(), tenant.Context{OrgID: uuid.New(), UserID: uuid.New()})
+	ctx := fakes.Owner(context.Background(), tenant.Context{OrgID: uuid.New(), UserID: uuid.New()})
 	if _, err := wf.Execute(ctx, invite.SendRequest{Email: "a@example.com", Role: invite.RoleMember, TTL: time.Hour}); err != nil {
 		t.Fatal(err)
 	}
@@ -124,7 +124,7 @@ func TestSeats_CountsMembersAndPending(t *testing.T) {
 	send := invite.NewSendWorkflow(store, &recordingMailer{}, "https://yasaku.example.test", newTestLogger(), noopUnexpected(&unex),
 		invite.WithSendUnitOfWork(fakes.UnitOfWork), invite.WithSendLimits(cloudLimits(), fakeCounter{members: 2}))
 	svc := invite.NewService(store, send, nil, true, newTestLogger(), noopUnexpected(&unex))
-	ctx := tenant.Into(context.Background(), tenant.Context{OrgID: uuid.New(), UserID: uuid.New()})
+	ctx := fakes.Owner(context.Background(), tenant.Context{OrgID: uuid.New(), UserID: uuid.New()})
 	if _, err := svc.Send(ctx, invite.SendRequest{Email: "a@example.com", Role: invite.RoleMember}); err != nil {
 		t.Fatal(err)
 	}
@@ -150,7 +150,7 @@ func TestInviteSent_AuditedInSameTx(t *testing.T) {
 	wf := invite.NewSendWorkflow(store, &recordingMailer{}, "https://yasaku.example.test", newTestLogger(), noopUnexpected(&unex),
 		invite.WithSendUnitOfWork(fakes.UnitOfWork), invite.WithSendAudit(a))
 	orgID := uuid.New()
-	inv, err := wf.Execute(tenant.Into(context.Background(), tenant.Context{OrgID: orgID, UserID: uuid.New()}),
+	inv, err := wf.Execute(fakes.Owner(context.Background(), tenant.Context{OrgID: orgID, UserID: uuid.New()}),
 		invite.SendRequest{Email: "a@example.com", Role: invite.RoleMember})
 	if err != nil {
 		t.Fatal(err)
@@ -168,7 +168,7 @@ func TestInviteRevoked_AuditedInSameTx(t *testing.T) {
 	unex := 0
 	send := invite.NewSendWorkflow(store, &recordingMailer{}, "", newTestLogger(), noopUnexpected(&unex))
 	svc := invite.NewService(store, send, nil, true, newTestLogger(), noopUnexpected(&unex), invite.WithRevokeAudit(fakes.UnitOfWork, a))
-	ctx := tenant.Into(context.Background(), tenant.Context{OrgID: uuid.New(), UserID: uuid.New()})
+	ctx := fakes.Owner(context.Background(), tenant.Context{OrgID: uuid.New(), UserID: uuid.New()})
 	inv, err := svc.Send(ctx, invite.SendRequest{Email: "a@example.com", Role: invite.RoleMember})
 	if err != nil {
 		t.Fatal(err)

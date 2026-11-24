@@ -12,6 +12,7 @@ import (
 	"altalune.id/yasaku/internal/period"
 	"altalune.id/yasaku/internal/platform/db"
 	"altalune.id/yasaku/internal/platform/tenant"
+	"altalune.id/yasaku/internal/testutil/fakes"
 )
 
 type hijackFixture struct {
@@ -36,13 +37,13 @@ func (f hijackFixture) seedVictim(t *testing.T) *period.Period {
 	t.Helper()
 	victim, err := period.New(f.orgA.OrgID, f.orgA.ProjectID, civil.Date{Year: 2026, Month: 8, Day: 25}, "org A's period")
 	require.NoError(t, err)
-	require.NoError(t, f.store.Save(tenant.Into(t.Context(), f.orgA), victim))
+	require.NoError(t, f.store.Save(fakes.Owner(t.Context(), f.orgA), victim))
 	return victim
 }
 
 func (f hijackFixture) requireName(t *testing.T, id uuid.UUID, want string) {
 	t.Helper()
-	got, err := f.store.ByID(tenant.Into(t.Context(), f.orgA), id)
+	got, err := f.store.ByID(fakes.Owner(t.Context(), f.orgA), id)
 	require.NoError(t, err)
 	assert.Equal(t, want, got.Name, "org A's row was rewritten across the tenant boundary")
 }
@@ -62,7 +63,7 @@ func TestSQLiteStore_Save_RejectsReskinnedHijack(t *testing.T) {
 	require.NoError(t, err)
 	attack.ID = victim.ID
 
-	requireBlocked(t, f.store.Save(tenant.Into(t.Context(), f.orgB), attack), "reskinned Save")
+	requireBlocked(t, f.store.Save(fakes.Owner(t.Context(), f.orgB), attack), "reskinned Save")
 	f.requireName(t, victim.ID, "org A's period")
 }
 
@@ -79,10 +80,10 @@ func TestSQLiteStore_Save_RejectsVerbatimHijack(t *testing.T) {
 	closedAt := time.Now().UTC()
 	attack.ClosedAt = &closedAt
 
-	requireBlocked(t, f.store.Save(tenant.Into(t.Context(), f.orgB), &attack), "verbatim Save")
+	requireBlocked(t, f.store.Save(fakes.Owner(t.Context(), f.orgB), &attack), "verbatim Save")
 	f.requireName(t, victim.ID, "org A's period")
 
-	got, err := f.store.ByID(tenant.Into(t.Context(), f.orgA), victim.ID)
+	got, err := f.store.ByID(fakes.Owner(t.Context(), f.orgA), victim.ID)
 	require.NoError(t, err)
 	assert.True(t, got.IsCurrent(), "the victim's period must not be closed by another org")
 }
@@ -93,7 +94,7 @@ func TestSQLiteStore_Save_UpdatesOwnRow(t *testing.T) {
 	victim := f.seedVictim(t)
 
 	require.NoError(t, victim.Rename("renamed by its owner"))
-	require.NoError(t, f.store.Save(tenant.Into(t.Context(), f.orgA), victim))
+	require.NoError(t, f.store.Save(fakes.Owner(t.Context(), f.orgA), victim))
 	f.requireName(t, victim.ID, "renamed by its owner")
 }
 
@@ -102,7 +103,7 @@ func TestSQLiteStore_ByID_RejectsCrossTenant(t *testing.T) {
 	f := newHijackFixture(t)
 	victim := f.seedVictim(t)
 
-	_, err := f.store.ByID(tenant.Into(t.Context(), f.orgB), victim.ID)
+	_, err := f.store.ByID(fakes.Owner(t.Context(), f.orgB), victim.ID)
 	assert.True(t, period.IsNotFoundError(err), "got %T: %v", err, err)
 }
 
@@ -110,7 +111,7 @@ func TestSQLiteStore_ByID_RejectsCrossTenant(t *testing.T) {
 func TestSQLiteStore_Reads_RejectMismatchedOrgArgument(t *testing.T) {
 	f := newHijackFixture(t)
 	f.seedVictim(t)
-	ctxB := tenant.Into(t.Context(), f.orgB)
+	ctxB := fakes.Owner(t.Context(), f.orgB)
 
 	_, err := f.store.Current(ctxB, f.orgA.OrgID, f.orgA.ProjectID)
 	assert.True(t, period.IsNotFoundError(err), "Current: got %T: %v", err, err)
@@ -137,9 +138,9 @@ func TestSQLiteStore_SaveClosing_RejectsCrossTenant(t *testing.T) {
 		ClosedBy:  f.orgB.UserID,
 		Snapshot:  sampleSnapshot(),
 	}
-	requireBlocked(t, f.store.SaveClosing(tenant.Into(t.Context(), f.orgB), closing), "cross-tenant SaveClosing")
+	requireBlocked(t, f.store.SaveClosing(fakes.Owner(t.Context(), f.orgB), closing), "cross-tenant SaveClosing")
 
-	got, err := f.store.ListClosings(tenant.Into(t.Context(), f.orgA), f.orgA.OrgID, f.orgA.ProjectID, victim.ID)
+	got, err := f.store.ListClosings(fakes.Owner(t.Context(), f.orgA), f.orgA.OrgID, f.orgA.ProjectID, victim.ID)
 	require.NoError(t, err)
 	assert.Empty(t, got)
 }

@@ -58,31 +58,6 @@ func (m *Members) role(orgID, userID uuid.UUID) (org.Role, bool) {
 	return r, ok
 }
 
-// RequireManager refuses with *org.NotManagerError unless userID is a seated manager of orgID.
-func (m *Members) RequireManager(_ context.Context, orgID, userID uuid.UUID) error {
-	if r, ok := m.role(orgID, userID); !ok || !r.CanManage() {
-		return &org.NotManagerError{OrgID: orgID.String(), UserID: userID.String()}
-	}
-	return nil
-}
-
-// RequireCallerManager applies org.ManagerCaller to the seated roles.
-func (m *Members) RequireCallerManager(ctx context.Context) error {
-	orgID, userID, managerKey, err := org.ManagerCaller(ctx)
-	if err != nil || managerKey {
-		return err
-	}
-	return m.RequireManager(ctx, orgID, userID)
-}
-
-// RequireCallerManagerOf mirrors org.Service.RequireCallerManagerOf.
-func (m *Members) RequireCallerManagerOf(ctx context.Context, orgID uuid.UUID) error {
-	if err := org.RequireTenantOrg(ctx, orgID); err != nil {
-		return err
-	}
-	return m.RequireCallerManager(ctx)
-}
-
 // RequireMember refuses with *org.MembershipMissingError unless userID is seated in orgID.
 func (m *Members) RequireMember(_ context.Context, orgID, userID uuid.UUID) error {
 	if _, ok := m.role(orgID, userID); !ok {

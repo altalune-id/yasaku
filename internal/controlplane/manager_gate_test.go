@@ -18,6 +18,7 @@ import (
 	"altalune.id/yasaku/internal/platform/session"
 	"altalune.id/yasaku/internal/platform/tenant"
 	"altalune.id/yasaku/internal/platform/tokens"
+	"altalune.id/yasaku/internal/testutil/fakes"
 	"altalune.id/yasaku/internal/user"
 )
 
@@ -33,7 +34,7 @@ func bearer(token string) connect.UnaryInterceptorFunc {
 func requireNotManager(t *testing.T, err error) {
 	t.Helper()
 	require.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err), "err=%v", err)
-	require.Contains(t, err.Error(), "Only an owner or admin")
+	require.Contains(t, err.Error(), "Ask an owner or admin.", "the refusal names the role side")
 }
 
 // SECURITY: membership is org-wide, so a plain member's token and a member's personal key must both hit the one service gate on RPC (and MCP, which calls the same handlers).
@@ -48,11 +49,11 @@ func TestManagerGate_RPCRefusesAMemberAndAdmitsManagersAndOrgKeys(t *testing.T) 
 
 	member, err := h.boot.Users.EnsureFromOIDC(ctx, user.Claims{Issuer: testIssuer, Subject: "sub-member", Email: "member@example.com", EmailVerified: true, Name: "Member"})
 	require.NoError(t, err)
-	orgCtx := tenant.Into(ctx, tenant.Context{OrgID: h.org.ID, UserID: h.user.ID})
+	orgCtx := fakes.Owner(ctx, tenant.Context{OrgID: h.org.ID, UserID: h.user.ID})
 	_, err = h.boot.Orgs.AddMember(orgCtx, h.org.ID, member.ID, org.RoleMember)
 	require.NoError(t, err)
 
-	memberCtx := tenant.Into(ctx, tenant.Context{OrgID: h.org.ID, UserID: member.ID})
+	memberCtx := fakes.Owner(ctx, tenant.Context{OrgID: h.org.ID, UserID: member.ID})
 	soon := time.Now().Add(24 * time.Hour)
 	_, personal, err := h.boot.APIKeys.MintPersonal(memberCtx, "laptop", []string{authn.ScopeYasakuRead, authn.ScopeYasakuWrite}, apikey.ProjectGrant{All: true}, &soon)
 	require.NoError(t, err)

@@ -17,6 +17,7 @@ import (
 	"altalune.id/yasaku/internal/platform/session"
 	"altalune.id/yasaku/internal/platform/tenant"
 	"altalune.id/yasaku/internal/project"
+	"altalune.id/yasaku/internal/testutil/fakes"
 )
 
 type discoveryFixture struct {
@@ -112,7 +113,7 @@ func appErrorDetail(t *testing.T, err error) *apperrorv1.ErrorDetail {
 func TestProject_ListProjects_HidesOtherOrgs(t *testing.T) {
 	f := newDiscoveryFixture(t, true)
 
-	stored, err := f.h.projs.ByID(tenant.Into(context.Background(), tenant.Context{OrgID: f.foreignOrgID}), f.foreign.ID)
+	stored, err := f.h.projs.ByID(fakes.Owner(context.Background(), tenant.Context{OrgID: f.foreignOrgID}), f.foreign.ID)
 	require.NoError(t, err, "the foreign project must be in the store, or this guard hides nothing")
 	require.Equal(t, f.foreignOrgID, stored.OrgID)
 

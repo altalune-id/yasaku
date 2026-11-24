@@ -39,7 +39,7 @@ func TestSQLite_TheResyncMigrationDirtiesEveryRowAndTheNextPassClearsIt(t *testi
 	tenants := []tenant.Context{f.tc, f.other}
 	refs := map[uuid.UUID][]opensheetsync.Ref{}
 	for _, tc := range tenants {
-		ctx := tenant.Into(t.Context(), tc)
+		ctx := fakes.Owner(t.Context(), tc)
 		sealed, err := opensheetsync.SealKey(sl, tc.OrgID, tc.ProjectID, goodKey)
 		require.NoError(t, err)
 		l := opensheetsync.NewLink(tc.OrgID, tc.ProjectID, tc.UserID, uuid.Nil, now)
@@ -57,7 +57,7 @@ func TestSQLite_TheResyncMigrationDirtiesEveryRowAndTheNextPassClearsIt(t *testi
 	}
 	pending := func(tc tenant.Context) int64 {
 		t.Helper()
-		b, err := f.store.Backlog(tenant.Into(t.Context(), tc), tc.OrgID, tc.ProjectID)
+		b, err := f.store.Backlog(fakes.Owner(t.Context(), tc), tc.OrgID, tc.ProjectID)
 		require.NoError(t, err)
 		return b.Pending
 	}
@@ -71,7 +71,7 @@ func TestSQLite_TheResyncMigrationDirtiesEveryRowAndTheNextPassClearsIt(t *testi
 	_, err := pool.W.ExecContext(t.Context(), "UPDATE "+cfg.DB.TablePrefix+"opensheet_sync_state SET version = version + 1, attempts = ?, retry_after = ? WHERE entity_id = ?",
 		opensheetsync.MaxRowAttempts, sqliteent.SQLiteTime(now.Add(time.Hour)), givenUp.ID.String())
 	require.NoError(t, err)
-	b, err := f.store.Backlog(tenant.Into(t.Context(), f.tc), f.tc.OrgID, f.tc.ProjectID)
+	b, err := f.store.Backlog(fakes.Owner(t.Context(), f.tc), f.tc.OrgID, f.tc.ProjectID)
 	require.NoError(t, err)
 	require.EqualValues(t, 1, b.GivenUp, "one row had given up before the migration")
 	require.NoError(t, schema.MigrateDownTo(t.Context(), pool.W, cfg, 14))
@@ -82,7 +82,7 @@ func TestSQLite_TheResyncMigrationDirtiesEveryRowAndTheNextPassClearsIt(t *testi
 
 	patches := sheets.CountRequests(http.MethodPatch, "yasaku-wallets")
 	for _, tc := range tenants {
-		require.NoError(t, syncer.Sync(tenant.Into(t.Context(), tc), tc.ProjectID, refs[tc.ProjectID]))
+		require.NoError(t, syncer.Sync(fakes.Owner(t.Context(), tc), tc.ProjectID, refs[tc.ProjectID]))
 		require.Zero(t, pending(tc), "the next pass rewrites and settles every row")
 	}
 	require.Equal(t, patches+4, sheets.CountRequests(http.MethodPatch, "yasaku-wallets"), "each existing row is patched once, not created again")

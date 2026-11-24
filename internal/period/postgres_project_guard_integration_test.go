@@ -15,6 +15,7 @@ import (
 	"altalune.id/yasaku/internal/platform/config"
 	"altalune.id/yasaku/internal/platform/db"
 	"altalune.id/yasaku/internal/platform/tenant"
+	"altalune.id/yasaku/internal/testutil/fakes"
 	"altalune.id/yasaku/internal/testutil/pgtest"
 	"altalune.id/yasaku/schema"
 )
@@ -34,7 +35,7 @@ func TestPostgres_Period_SaveRejectsSiblingProject(t *testing.T) {
 		db.DBConfig{Driver: db.DriverPostgres, Schema: h.Schema, TablePrefix: prefix},
 		db.Pool{W: sqlDB, R: sqlDB}, tenant.NewPgConn(sqlDB))
 
-	ownerCtx := tenant.Into(t.Context(), tc)
+	ownerCtx := fakes.Owner(t.Context(), tc)
 	victim, err := period.New(tc.OrgID, tc.ProjectID, civil.Date{Year: 2026, Month: 8, Day: 25}, "project A's period")
 	require.NoError(t, err)
 	require.NoError(t, store.Save(ownerCtx, victim))
@@ -44,7 +45,7 @@ func TestPostgres_Period_SaveRejectsSiblingProject(t *testing.T) {
 		"INSERT INTO "+prefix+"projects (id, org_id, slug, name, created_by, created_at, updated_at) VALUES ($1, $2, $3, 'Sibling', $4, $5, $5)",
 		siblingProj, tc.OrgID, siblingProj.String()[:8], tc.UserID, time.Now().UTC())
 	require.NoError(t, err)
-	siblingCtx := tenant.Into(t.Context(), tenant.Context{OrgID: tc.OrgID, ProjectID: siblingProj, UserID: tc.UserID})
+	siblingCtx := fakes.Owner(t.Context(), tenant.Context{OrgID: tc.OrgID, ProjectID: siblingProj, UserID: tc.UserID})
 
 	attack := *victim
 	attack.Name = "Hijacked"

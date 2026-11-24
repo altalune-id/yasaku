@@ -34,6 +34,7 @@ const (
 	CodeOrgOwnerRemoval      = "ORG010"
 	CodeOrgManagerRequired   = "ORG011"
 	CodeOrgMismatch          = "ORG012"
+	CodeOrgLastOwner         = "ORG013"
 	CodeOrgChoiceRequired    = "ORG014"
 
 	CodeProjectNotFound        = "PRJ001"
@@ -154,6 +155,7 @@ const (
 	CodeAPIKeyExpiryRequired     = "APK010"
 	CodeAPIKeyExpiryInPast       = "APK011"
 	CodeAPIKeyExpiryTooLong      = "APK012"
+	CodeAPIKeyScopeNotHeld       = "APK013"
 
 	CodeWebhookEndpointNotFound     = "WHK001"
 	CodeWebhookInvalidURL           = "WHK002"
@@ -165,4 +167,7 @@ const (
 	CodeWebhookSecretConflict       = "WHK008"
 
 	CodeLimitReached = "LIM001"
+
+	CodePermissionDenied = "ROL001"
+	CodeRoleEscalation   = "ROL004"
 )

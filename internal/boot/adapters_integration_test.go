@@ -16,6 +16,7 @@ import (
 	"altalune.id/yasaku/internal/platform/config"
 	"altalune.id/yasaku/internal/platform/db"
 	"altalune.id/yasaku/internal/platform/tenant"
+	"altalune.id/yasaku/internal/testutil/fakes"
 	"altalune.id/yasaku/internal/testutil/pgtest"
 	"altalune.id/yasaku/schema"
 )
@@ -28,7 +29,7 @@ type pgUowFixture struct {
 }
 
 func (f pgUowFixture) ctx() context.Context {
-	return tenant.Into(context.Background(), f.tc)
+	return fakes.Owner(context.Background(), f.tc)
 }
 
 func newPgUowFixture(t *testing.T) pgUowFixture {

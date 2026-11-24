@@ -74,6 +74,51 @@ func (s *postgresStore) IsStaff(ctx context.Context, userID uuid.UUID) (bool, er
 	return row.Staff, nil
 }
 
+func (s *postgresStore) LockOrg(ctx context.Context, orgID uuid.UUID) error {
+	tx, ok := pdb.CurrentTx(ctx)
+	if !ok {
+		return errors.New("org.postgres: LockOrg needs a unit of work")
+	}
+	stmt := postgres.SELECT(s.orgs.ID).FROM(s.orgs).WHERE(s.orgs.ID.EQ(postgres.UUID(orgID))).FOR(postgres.NO_KEY_UPDATE())
+	var row struct {
+		ID uuid.UUID `alias:"orgs.id"`
+	}
+	if err := stmt.QueryContext(ctx, tx, &row); err != nil {
+		if errors.Is(err, qrm.ErrNoRows) || errors.Is(err, sql.ErrNoRows) {
+			return &NotFoundError{ID: orgID.String()}
+		}
+		return fmt.Errorf("org.postgres: LockOrg: %w", err)
+	}
+	return nil
+}
+
+func (s *postgresStore) MemberRole(ctx context.Context, orgID, userID uuid.UUID) (Role, string, error) {
+	tx, owned, err := s.txAcquire(ctx)
+	if err != nil {
+		return "", "", err
+	}
+	if owned {
+		defer func() { _ = tx.Rollback() }()
+	}
+	stmt := postgres.SELECT(s.orgs.Name.AS("name"), s.members.Role.AS("role")).
+		FROM(s.orgs.LEFT_JOIN(s.members, s.members.OrgID.EQ(s.orgs.ID).AND(s.members.UserID.EQ(postgres.UUID(userID))))).
+		WHERE(s.orgs.ID.EQ(postgres.UUID(orgID)))
+	var row struct {
+		Name string  `alias:"name"`
+		Role *string `alias:"role"`
+	}
+	if err := stmt.QueryContext(ctx, tx, &row); err != nil {
+		if errors.Is(err, qrm.ErrNoRows) || errors.Is(err, sql.ErrNoRows) {
+			return "", "", nil
+		}
+		return "", "", fmt.Errorf("org.postgres: MemberRole: %w", err)
+	}
+	if row.Role == nil {
+		return "", row.Name, nil
+	}
+	return Role(*row.Role), row.Name, nil
+}
+
 func (s *postgresStore) MembershipOf(ctx context.Context, orgID, userID uuid.UUID) (*Membership, error) {
 	tx, owned, err := s.txAcquire(ctx)
 	if err != nil {

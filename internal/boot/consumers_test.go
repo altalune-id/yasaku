@@ -16,6 +16,7 @@ import (
 	"altalune.id/yasaku/internal/platform/outbox"
 	"altalune.id/yasaku/internal/platform/queue"
 	"altalune.id/yasaku/internal/platform/tenant"
+	"altalune.id/yasaku/internal/testutil/fakes"
 	"altalune.id/yasaku/internal/user"
 )
 
@@ -155,7 +156,7 @@ func TestBootServer_ProducerOnlyStillDeclaresJobs(t *testing.T) {
 	require.NoError(t, err)
 	o, err := srv.Orgs.BootstrapSingleton(ctx, "q-org", "Q Org", owner.ID)
 	require.NoError(t, err)
-	orgCtx := tenant.Into(ctx, tenant.Context{OrgID: o.ID, UserID: owner.ID})
+	orgCtx := fakes.Owner(ctx, tenant.Context{OrgID: o.ID, UserID: owner.ID})
 	p, err := srv.Projects.Create(orgCtx, o.ID, "q-project", "Q Project")
 	require.NoError(t, err)
 	projCtx := tenant.WithProject(orgCtx, p.ID)

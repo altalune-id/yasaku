@@ -52,7 +52,7 @@ func TestSendWorkflow_Execute_HappyPath(t *testing.T) {
 	)
 
 	tc := tenant.Context{OrgID: uuid.New(), UserID: uuid.New()}
-	ctx := tenant.Into(context.Background(), tc)
+	ctx := fakes.Owner(context.Background(), tc)
 	inv, err := wf.Execute(ctx, invite.SendRequest{Email: "alice@example.com", Role: invite.RoleMember, TTL: time.Hour})
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
@@ -87,7 +87,7 @@ func TestSendWorkflow_Execute_DefaultsTTL(t *testing.T) {
 	wf := invite.NewSendWorkflow(store, &recordingMailer{}, "", newTestLogger(), noopUnexpected(&unex),
 		invite.WithTokenGen(fixedTokenGen("t")))
 	tc := tenant.Context{OrgID: uuid.New(), UserID: uuid.New()}
-	ctx := tenant.Into(context.Background(), tc)
+	ctx := fakes.Owner(context.Background(), tc)
 	inv, err := wf.Execute(ctx, invite.SendRequest{Email: "a@b.co", Role: invite.RoleAdmin})
 	if err != nil {
 		t.Fatal(err)
@@ -102,7 +102,7 @@ func TestSendWorkflow_Execute_InvalidRole(t *testing.T) {
 	wf := invite.NewSendWorkflow(fakes.NewInvite(), &recordingMailer{}, "", newTestLogger(), noopUnexpected(nil),
 		invite.WithTokenGen(fixedTokenGen("t")))
 	tc := tenant.Context{OrgID: uuid.New(), UserID: uuid.New()}
-	ctx := tenant.Into(context.Background(), tc)
+	ctx := fakes.Owner(context.Background(), tc)
 	_, err := wf.Execute(ctx, invite.SendRequest{Email: "a@b.co", Role: "guest"})
 	if !invite.IsInvalidRoleError(err) {
 		t.Errorf("want IsInvalidRoleError, got %v", err)
@@ -114,7 +114,7 @@ func TestSendWorkflow_Execute_InvalidEmail(t *testing.T) {
 	wf := invite.NewSendWorkflow(fakes.NewInvite(), &recordingMailer{}, "", newTestLogger(), noopUnexpected(nil),
 		invite.WithTokenGen(fixedTokenGen("t")))
 	tc := tenant.Context{OrgID: uuid.New(), UserID: uuid.New()}
-	ctx := tenant.Into(context.Background(), tc)
+	ctx := fakes.Owner(context.Background(), tc)
 	_, err := wf.Execute(ctx, invite.SendRequest{Email: "not-an-email", Role: invite.RoleMember})
 	if !invite.IsInvalidEmailError(err) {
 		t.Errorf("want IsInvalidEmailError, got %v", err)
@@ -139,7 +139,7 @@ func TestSendWorkflow_Execute_MailerFailure(t *testing.T) {
 	wf := invite.NewSendWorkflow(store, mail, "", newTestLogger(), noopUnexpected(&unex),
 		invite.WithTokenGen(fixedTokenGen("t")))
 	tc := tenant.Context{OrgID: uuid.New(), UserID: uuid.New()}
-	ctx := tenant.Into(context.Background(), tc)
+	ctx := fakes.Owner(context.Background(), tc)
 	_, err := wf.Execute(ctx, invite.SendRequest{Email: "a@b.co", Role: invite.RoleMember, TTL: time.Hour})
 	if err == nil {
 		t.Fatal("want err")
@@ -161,7 +161,7 @@ func TestSendWorkflow_Execute_StoreFailure(t *testing.T) {
 	wf := invite.NewSendWorkflow(store, &recordingMailer{}, "", newTestLogger(), noopUnexpected(&unex),
 		invite.WithTokenGen(fixedTokenGen("t")))
 	tc := tenant.Context{OrgID: uuid.New(), UserID: uuid.New()}
-	ctx := tenant.Into(context.Background(), tc)
+	ctx := fakes.Owner(context.Background(), tc)
 	_, err := wf.Execute(ctx, invite.SendRequest{Email: "a@b.co", Role: invite.RoleMember, TTL: time.Hour})
 	if err == nil {
 		t.Fatal("want err")
@@ -177,7 +177,7 @@ func TestSendWorkflow_Execute_TokenGenFailure(t *testing.T) {
 	wf := invite.NewSendWorkflow(fakes.NewInvite(), &recordingMailer{}, "", newTestLogger(), noopUnexpected(&unex),
 		invite.WithTokenGen(func() (string, string, error) { return "", "", errors.New("rand down") }))
 	tc := tenant.Context{OrgID: uuid.New(), UserID: uuid.New()}
-	ctx := tenant.Into(context.Background(), tc)
+	ctx := fakes.Owner(context.Background(), tc)
 	_, err := wf.Execute(ctx, invite.SendRequest{Email: "a@b.co", Role: invite.RoleMember, TTL: time.Hour})
 	if err == nil {
 		t.Fatal("want err")

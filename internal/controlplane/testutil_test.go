@@ -80,7 +80,7 @@ func newHarnessOpts(t *testing.T, p session.Principal, verr error, mods ...func(
 	ledgers := fakes.NewLedger()
 
 	orgSvc := org.NewService(orgs, capabilities.Capabilities{OrgCreation: true}, log, reporter.Unexpected, fakes.UnitOfWork)
-	projectSvc := project.NewService(projs, log, reporter.Unexpected, orgSvc, fakes.UnitOfWork)
+	projectSvc := project.NewService(projs, log, reporter.Unexpected, fakes.UnitOfWork)
 	todoSvc := todo.NewService(tds, log, reporter.Unexpected, &fakes.Queue{})
 	postSvc := blog.NewService(posts, log, reporter.Unexpected, fakes.UnitOfWork, &fakes.Webhooks{})
 	catSvc := category.NewService(cats, log, reporter.Unexpected)
@@ -92,23 +92,25 @@ func newHarnessOpts(t *testing.T, p session.Principal, verr error, mods ...func(
 		Verifier: stubVerifier{principal: fullTokenGrant(p), err: verr},
 	}
 
+	resolver := fakes.Resolver(orgs)
 	deps := controlplane.Deps{
 		Orgs:     orgSvc,
+		Authz:    resolver,
 		Projects: projectSvc,
-		Ledgers:  ledger.NewService(ledgers, log, reporter.Unexpected, orgSvc),
+		Ledgers:  ledger.NewService(ledgers, log, reporter.Unexpected),
 	}
 	for _, mod := range mods {
 		mod(&deps)
 	}
 	srv := controlplane.New(nil, kernel, deps)
-	srv.Authn = authn.Chain{apikey.NewAuthenticator(keys, nil, apikey.Scheme{}, fakes.NewMembers()), tokens.NewAuthenticator(kernel.Verifier, authn.Scheme{Prefix: apikey.DefaultPrefix})}
+	srv.Authn = authn.Chain{apikey.NewAuthenticator(keys, nil, apikey.Scheme{}, orgSvc), tokens.NewAuthenticator(kernel.Verifier, authn.Scheme{Prefix: apikey.DefaultPrefix})}
 	srv.APIKeys = apikey.NewService(keys, apikey.Scheme{}, fakes.PermissiveMembers(), fakes.NewOrgProjects(), log, reporter.Unexpected)
 
 	mux := http.NewServeMux()
 	mux.Handle("/", srv.Handler(""))
 	ref := srv.ReferenceHandler(
-		controlplane.NewTodoService(todoSvc, tds, orgSvc, projectSvc),
-		controlplane.NewBlogService(postSvc, catSvc, tagSvc, orgSvc, projectSvc),
+		controlplane.NewTodoService(todoSvc, tds, controlplane.Scope{Orgs: orgSvc, Authz: resolver}, projectSvc),
+		controlplane.NewBlogService(postSvc, catSvc, tagSvc, controlplane.Scope{Orgs: orgSvc, Authz: resolver}, projectSvc),
 	)
 	mux.Handle("/api/"+todov1connect.TodoServiceName+"/", ref)
 	mux.Handle("/api/"+blogv1connect.BlogServiceName+"/", ref)
@@ -133,6 +135,20 @@ func (h *harness) mintKey(orgID, projectID uuid.UUID, scopes []string, resourceI
 	k, plaintext, err := apikey.Scheme{}.Mint(orgID, projectID, "test-key", scopes, resourceIDs, nil, time.Now().UTC())
 	if err != nil {
 		h.t.Fatalf("mint key: %v", err)
+	}
+	h.keys.Seed(k)
+	return plaintext
+}
+
+func (h *harness) mintKeyBy(orgID, projectID uuid.UUID, scopes []string, creator uuid.UUID, role org.Role) string {
+	h.t.Helper()
+	k, plaintext, err := apikey.Scheme{}.Mint(orgID, projectID, "test-key", scopes, nil, nil, time.Now().UTC())
+	if err != nil {
+		h.t.Fatalf("mint key: %v", err)
+	}
+	k.CreatedBy = creator
+	if err := h.orgs.SaveMembership(context.Background(), &org.Membership{OrgID: orgID, UserID: creator, Role: role}); err != nil {
+		h.t.Fatalf("seat creator: %v", err)
 	}
 	h.keys.Seed(k)
 	return plaintext

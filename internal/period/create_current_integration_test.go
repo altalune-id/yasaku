@@ -58,7 +58,7 @@ func newPgRaceFixture(t *testing.T) pgRaceFixture {
 
 func TestPostgres_Period_CreateCurrentKeepsTheUnitOfWorkUsableAfterALostRace(t *testing.T) {
 	f := newPgRaceFixture(t)
-	ctx := tenant.Into(t.Context(), f.tc)
+	ctx := fakes.Owner(t.Context(), f.tc)
 	first := seedPeriod(ctx, t, f.store, f.tc, civil.Date{Year: 2026, Month: 8, Day: 25}, nil)
 
 	second, err := period.New(f.tc.OrgID, f.tc.ProjectID, civil.Date{Year: 2026, Month: 9, Day: 25}, "")
@@ -83,8 +83,8 @@ func TestPostgres_Period_TwoConcurrentEnsureCurrentInUnitsOfWorkShareTheFirstPer
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	svc := period.NewService(f.store, log, apperror.NewReporter(log, false).Unexpected,
 		&fakeSettings{loc: time.UTC, startDay: 1}, &fakeSnapshotter{}, &fakeSnapshotter{}, period.UnitOfWork(f.uow),
-		func() time.Time { return time.Date(2026, 8, 10, 12, 0, 0, 0, time.UTC) }, fakes.PermissiveMembers())
-	ctx, cancel := context.WithTimeout(tenant.Into(t.Context(), f.tc), 30*time.Second)
+		func() time.Time { return time.Date(2026, 8, 10, 12, 0, 0, 0, time.UTC) })
+	ctx, cancel := context.WithTimeout(fakes.Owner(t.Context(), f.tc), 30*time.Second)
 	defer cancel()
 
 	var first, second period.Period
@@ -141,7 +141,7 @@ func TestPostgres_Period_TwoConcurrentEnsureCurrentInUnitsOfWorkShareTheFirstPer
 	require.NoError(t, secondErr, "the loser must re-read the winner's period in its still-usable transaction")
 	assert.Equal(t, first.ID, second.ID)
 
-	all, err := f.store.List(tenant.Into(t.Context(), f.tc), f.tc.OrgID, f.tc.ProjectID, period.ListOpts{})
+	all, err := f.store.List(fakes.Owner(t.Context(), f.tc), f.tc.OrgID, f.tc.ProjectID, period.ListOpts{})
 	require.NoError(t, err)
 	assert.Len(t, all, 1)
 }

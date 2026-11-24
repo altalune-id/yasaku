@@ -10,6 +10,7 @@ import (
 
 	"altalune.id/yasaku/internal/org"
 	"altalune.id/yasaku/internal/platform/tenant"
+	"altalune.id/yasaku/internal/testutil/fakes"
 )
 
 func TestBootstrapSingleton_CreatesWhenMissing(t *testing.T) {
@@ -112,7 +113,7 @@ func TestRename_ProtectedSystem(t *testing.T) {
 	require.NoError(t, err)
 	_ = store
 
-	_, err = svc.Rename(context.Background(), o.ID, "Renamed")
+	_, err = svc.Rename(fakes.Owner(context.Background(), tenant.Context{OrgID: o.ID}), o.ID, "Renamed")
 	require.Error(t, err)
 	assert.True(t, org.IsSystemProtectedError(err))
 }
@@ -125,7 +126,7 @@ func TestRemoveMember_ProtectedSystem(t *testing.T) {
 	require.NoError(t, err)
 
 	// NOTE: the actor comes from the tenant scope, the way every transport supplies it.
-	ctx := tenant.Into(context.Background(), tenant.Context{OrgID: o.ID, UserID: owner})
+	ctx := fakes.Owner(context.Background(), tenant.Context{OrgID: o.ID, UserID: owner})
 	err = svc.RemoveMember(ctx, o.ID, owner)
 	require.Error(t, err)
 	assert.True(t, org.IsSystemProtectedError(err))
@@ -142,7 +143,7 @@ func TestRemoveMember_HappyPath(t *testing.T) {
 	_, err = svc.AddMember(context.Background(), o.ID, newbie, org.RoleMember)
 	require.NoError(t, err)
 
-	ctx := tenant.Into(context.Background(), tenant.Context{OrgID: o.ID, UserID: owner})
+	ctx := fakes.Owner(context.Background(), tenant.Context{OrgID: o.ID, UserID: owner})
 	require.NoError(t, svc.RemoveMember(ctx, o.ID, newbie))
 
 	_, err = svc.MembershipOf(context.Background(), o.ID, newbie)
@@ -152,8 +153,9 @@ func TestRemoveMember_HappyPath(t *testing.T) {
 func TestRemoveMember_NotFound(t *testing.T) {
 	t.Parallel()
 	svc, _ := newTestService(t, true)
-	ctx := tenant.Into(context.Background(), tenant.Context{OrgID: uuid.New(), UserID: uuid.New()})
-	err := svc.RemoveMember(ctx, uuid.New(), uuid.New())
+	orgID := uuid.New()
+	ctx := fakes.Owner(context.Background(), tenant.Context{OrgID: orgID, UserID: uuid.New()})
+	err := svc.RemoveMember(ctx, orgID, uuid.New())
 	require.Error(t, err)
 	assert.True(t, org.IsMembershipMissingError(err))
 }

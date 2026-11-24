@@ -20,6 +20,7 @@ import (
 	"altalune.id/yasaku/internal/platform/config"
 	"altalune.id/yasaku/internal/platform/db"
 	"altalune.id/yasaku/internal/platform/tenant"
+	"altalune.id/yasaku/internal/testutil/fakes"
 	"altalune.id/yasaku/internal/testutil/pgtest"
 	"altalune.id/yasaku/schema"
 )
@@ -66,7 +67,7 @@ func TestPostgres_BootstrapSingleton_WithoutTenantContext_UnderRLS(t *testing.T)
 		"SELECT count(*) FROM "+prefix+"orgs WHERE slug = $1", "acme").Scan(&count))
 	require.Equal(t, 1, count, "the org row must actually be committed")
 
-	m, err := store.MembershipOf(tenant.Into(t.Context(), tenant.Context{OrgID: o.ID, UserID: ownerID}), o.ID, ownerID)
+	m, err := store.MembershipOf(fakes.Owner(t.Context(), tenant.Context{OrgID: o.ID, UserID: ownerID}), o.ID, ownerID)
 	require.NoError(t, err, "owner membership must be written under the same scope")
 	require.True(t, m.System)
 }

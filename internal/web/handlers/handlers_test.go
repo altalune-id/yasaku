@@ -81,7 +81,7 @@ func newFixture(t *testing.T) *handlerFixture {
 	orgs := org.NewService(orgStore, caps, discardLogger(), passthroughUnexpected(), fakes.UnitOfWork)
 
 	projStore := fakes.NewProject()
-	projects := project.NewService(projStore, discardLogger(), passthroughUnexpected(), orgs, fakes.UnitOfWork)
+	projects := project.NewService(projStore, discardLogger(), passthroughUnexpected(), fakes.UnitOfWork)
 
 	todoStore := fakes.NewTodo()
 	todos := todo.NewService(todoStore, discardLogger(), passthroughUnexpected(), &fakes.Queue{})
@@ -99,6 +99,7 @@ func newFixture(t *testing.T) *handlerFixture {
 		Logger:   discardStdLogger(),
 		Orgs:     orgs,
 		Projects: projects,
+		Authz:    fakes.Resolver(orgStore),
 		Secret:   []byte("0123456789abcdef0123456789abcdef"),
 	}
 	return &handlerFixture{
@@ -1195,11 +1196,11 @@ func (f *handlerFixture) seedOrg(t *testing.T, slug string, owner uuid.UUID) *or
 }
 
 func setTenant(ctx context.Context, orgID, userID uuid.UUID) context.Context {
-	return tenant.Into(ctx, tenant.Context{OrgID: orgID, UserID: userID})
+	return fakes.Owner(ctx, tenant.Context{OrgID: orgID, UserID: userID})
 }
 
 func setTenantProject(ctx context.Context, orgID, projectID, userID uuid.UUID) context.Context {
-	return tenant.Into(ctx, tenant.Context{OrgID: orgID, ProjectID: projectID, UserID: userID})
+	return fakes.Owner(ctx, tenant.Context{OrgID: orgID, ProjectID: projectID, UserID: userID})
 }
 
 // SECURITY: a cookie set over TLS is Secure even when http.cookieSecure is off.

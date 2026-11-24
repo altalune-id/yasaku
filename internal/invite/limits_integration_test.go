@@ -18,6 +18,7 @@ import (
 	"altalune.id/yasaku/internal/platform/config"
 	"altalune.id/yasaku/internal/platform/db"
 	"altalune.id/yasaku/internal/platform/tenant"
+	"altalune.id/yasaku/internal/testutil/fakes"
 	"altalune.id/yasaku/internal/testutil/pgtest"
 	"altalune.id/yasaku/schema"
 )
@@ -56,7 +57,7 @@ func TestConcurrentCreates_AtLimitMinusOne(t *testing.T) {
 	wf := invite.NewSendWorkflow(store, &recordingMailer{}, "https://yasaku.example.test", newTestLogger(), noopUnexpected(&unex),
 		invite.WithSendUnitOfWork(tenant.NewUnitOfWork(dbCfg, pool, pc)),
 		invite.WithSendLimits(limits.NewService(limits.NewStore(dbCfg, pool), config.ModeCloud), oneMember{}))
-	ctx := tenant.Into(t.Context(), tenant.Context{OrgID: orgID, UserID: userID})
+	ctx := fakes.Owner(t.Context(), tenant.Context{OrgID: orgID, UserID: userID})
 	for i := range 3 {
 		_, err := wf.Execute(ctx, invite.SendRequest{Email: fmt.Sprintf("seed-%d@example.com", i), Role: invite.RoleMember})
 		require.NoError(t, err)

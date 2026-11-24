@@ -9,6 +9,7 @@ import (
 
 	sqliteent "altalune.id/yasaku/internal/platform/db/entity/sqlite"
 	"altalune.id/yasaku/internal/platform/tenant"
+	"altalune.id/yasaku/internal/testutil/fakes"
 )
 
 func (f txnHijackFixture) siblingProject(t *testing.T) tenant.Context {
@@ -30,7 +31,7 @@ func TestSQLiteStore_Save_RejectsSiblingProject(t *testing.T) {
 
 	attack := *victim
 	attack.Note = "Hijacked"
-	requireTxnBlocked(t, f.store.Save(tenant.Into(context.Background(), sibling), &attack), "sibling-project Save")
+	requireTxnBlocked(t, f.store.Save(fakes.Owner(context.Background(), sibling), &attack), "sibling-project Save")
 	f.requireNote(t, victim.ID, "org A's transaction")
 }
 
@@ -39,6 +40,6 @@ func TestSQLiteStore_Delete_RejectsSiblingProject(t *testing.T) {
 	victim := f.seedVictim(t)
 	sibling := f.siblingProject(t)
 
-	requireTxnBlocked(t, f.store.Delete(tenant.Into(context.Background(), sibling), victim.ID), "sibling-project Delete")
+	requireTxnBlocked(t, f.store.Delete(fakes.Owner(context.Background(), sibling), victim.ID), "sibling-project Delete")
 	f.requireNote(t, victim.ID, "org A's transaction")
 }

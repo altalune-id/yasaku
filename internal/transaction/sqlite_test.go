@@ -14,6 +14,7 @@ import (
 	"altalune.id/yasaku/internal/platform/db"
 	sqliteent "altalune.id/yasaku/internal/platform/db/entity/sqlite"
 	"altalune.id/yasaku/internal/platform/tenant"
+	"altalune.id/yasaku/internal/testutil/fakes"
 	"altalune.id/yasaku/internal/transaction"
 	"altalune.id/yasaku/money"
 	"altalune.id/yasaku/schema"
@@ -32,7 +33,7 @@ type sqliteFixture struct {
 }
 
 func (f sqliteFixture) ctx() context.Context {
-	return tenant.Into(context.Background(), f.tc)
+	return fakes.Owner(context.Background(), f.tc)
 }
 
 func newSQLiteFixture(t *testing.T) sqliteFixture {

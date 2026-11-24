@@ -10,6 +10,7 @@ import (
 	"altalune.id/yasaku/internal/apikey"
 	"altalune.id/yasaku/internal/platform/authn"
 	"altalune.id/yasaku/internal/platform/tenant"
+	"altalune.id/yasaku/internal/testutil/fakes"
 	"altalune.id/yasaku/internal/user"
 )
 
@@ -23,7 +24,7 @@ func TestControlPlane_ListMembersIsAnOrgLevelRead(t *testing.T) {
 	require.NoError(t, err)
 	o, err := f.srv.Orgs.BySlug(ctx, "mcp-org")
 	require.NoError(t, err)
-	orgCtx := tenant.Into(ctx, tenant.Context{OrgID: o.ID, UserID: owner.ID})
+	orgCtx := fakes.Owner(ctx, tenant.Context{OrgID: o.ID, UserID: owner.ID})
 
 	_, reader, err := f.srv.APIKeys.MintOrg(orgCtx, "members", []string{authn.ScopeMembersRead}, apikey.ProjectGrant{All: true}, soon())
 	require.NoError(t, err)

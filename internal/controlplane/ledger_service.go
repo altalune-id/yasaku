@@ -8,26 +8,25 @@ import (
 
 	yasakuv1 "altalune.id/yasaku/gen/go/yasaku/v1"
 	"altalune.id/yasaku/internal/ledger"
-	"altalune.id/yasaku/internal/org"
 	"altalune.id/yasaku/internal/project"
 	"altalune.id/yasaku/money"
 )
 
 // LedgerService implements yasaku.v1.LedgerService.
 type LedgerService struct {
-	orgs     *org.Service
+	sc       Scope
 	projects *project.Service
 	ledgers  *ledger.Service
 }
 
 // NewLedgerService binds the handler to its collaborators.
-func NewLedgerService(orgs *org.Service, projects *project.Service, ledgers *ledger.Service) *LedgerService {
-	return &LedgerService{orgs: orgs, projects: projects, ledgers: ledgers}
+func NewLedgerService(sc Scope, projects *project.Service, ledgers *ledger.Service) *LedgerService {
+	return &LedgerService{sc: sc, projects: projects, ledgers: ledgers}
 }
 
 // GetSettings returns the project's ledger settings, or the defaults when none were saved.
 func (s *LedgerService) GetSettings(ctx context.Context, req *connect.Request[yasakuv1.GetSettingsRequest]) (*connect.Response[yasakuv1.GetSettingsResponse], error) {
-	sc, nd, err := scopeToTarget(ctx, s.orgs, s.projects, req.Msg.GetTarget())
+	sc, nd, err := scopeToTarget(ctx, s.sc, s.projects, req.Msg.GetTarget())
 	if err != nil {
 		return nil, err
 	}
@@ -43,7 +42,7 @@ func (s *LedgerService) GetSettings(ctx context.Context, req *connect.Request[ya
 
 // UpdateSettings applies the named fields; an absent field is left alone.
 func (s *LedgerService) UpdateSettings(ctx context.Context, req *connect.Request[yasakuv1.UpdateSettingsRequest]) (*connect.Response[yasakuv1.UpdateSettingsResponse], error) {
-	sc, nd, err := scopeToTarget(ctx, s.orgs, s.projects, req.Msg.GetTarget())
+	sc, nd, err := scopeToTarget(ctx, s.sc, s.projects, req.Msg.GetTarget())
 	if err != nil {
 		return nil, err
 	}

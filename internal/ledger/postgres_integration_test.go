@@ -17,6 +17,7 @@ import (
 	"altalune.id/yasaku/internal/platform/config"
 	"altalune.id/yasaku/internal/platform/db"
 	"altalune.id/yasaku/internal/platform/tenant"
+	"altalune.id/yasaku/internal/testutil/fakes"
 	"altalune.id/yasaku/internal/testutil/pgtest"
 	"altalune.id/yasaku/money"
 	"altalune.id/yasaku/schema"
@@ -102,7 +103,7 @@ func pgConfigured(t *testing.T, tc tenant.Context, tz string, day int) *ledger.S
 
 func TestPostgres_Ledger_SaveAndByProject(t *testing.T) {
 	f := newPgFixture(t)
-	ctx := tenant.Into(t.Context(), f.tc)
+	ctx := fakes.Owner(t.Context(), f.tc)
 
 	want := ledger.Defaults(f.tc.OrgID, f.tc.ProjectID)
 	require.NoError(t, want.Apply(ledger.Patch{
@@ -126,7 +127,7 @@ func TestPostgres_Ledger_SaveAndByProject(t *testing.T) {
 
 func TestPostgres_Ledger_SaveIsUpsert(t *testing.T) {
 	f := newPgFixture(t)
-	ctx := tenant.Into(t.Context(), f.tc)
+	ctx := fakes.Owner(t.Context(), f.tc)
 
 	st := pgConfigured(t, f.tc, "Asia/Jakarta", 1)
 	require.NoError(t, f.store.Save(ctx, st))
@@ -141,7 +142,7 @@ func TestPostgres_Ledger_SaveIsUpsert(t *testing.T) {
 
 func TestPostgres_Ledger_NotFound(t *testing.T) {
 	f := newPgFixture(t)
-	ctx := tenant.Into(t.Context(), f.tc)
+	ctx := fakes.Owner(t.Context(), f.tc)
 
 	_, err := f.store.ByProject(ctx, f.tc.OrgID, uuid.New())
 	assert.True(t, ledger.IsNotFoundError(err), "want NotFoundError, got %T: %v", err, err)
@@ -149,7 +150,7 @@ func TestPostgres_Ledger_NotFound(t *testing.T) {
 
 func TestPostgres_Ledger_ForeignOrgIsInvisible(t *testing.T) {
 	f := newPgFixture(t)
-	ctx := tenant.Into(t.Context(), f.tc)
+	ctx := fakes.Owner(t.Context(), f.tc)
 	require.NoError(t, f.store.Save(ctx, pgConfigured(t, f.tc, "Asia/Jakarta", 1)))
 
 	_, err := f.store.ByProject(ctx, uuid.New(), f.tc.ProjectID)
@@ -159,14 +160,14 @@ func TestPostgres_Ledger_ForeignOrgIsInvisible(t *testing.T) {
 // TestPostgres_Ledger_Save_CannotUpsertOntoAnotherOrgsRow runs without RLS so only Save's org guard stops the hijack.
 func TestPostgres_Ledger_Save_CannotUpsertOntoAnotherOrgsRow(t *testing.T) {
 	f := newPgFixture(t)
-	ownerCtx := tenant.Into(t.Context(), f.tc)
+	ownerCtx := fakes.Owner(t.Context(), f.tc)
 
 	victim := pgConfigured(t, f.tc, "Asia/Jakarta", 3)
 	require.NoError(t, f.store.Save(ownerCtx, victim))
 
 	otherUser, otherOrg, otherProj := seedProjectTree(t, f.sqlDB, f.prefix)
 	otherTC := tenant.Context{OrgID: otherOrg, ProjectID: otherProj, UserID: otherUser}
-	otherCtx := tenant.Into(t.Context(), otherTC)
+	otherCtx := fakes.Owner(t.Context(), otherTC)
 
 	verbatim := *victim
 	verbatim.Timezone = "Europe/Berlin"
@@ -199,7 +200,7 @@ func TestPostgres_Ledger_Save_CannotUpsertOntoAnotherOrgsRow(t *testing.T) {
 // TestPostgres_Ledger_Save_UpdatesOwnRow is the positive control for the hijack tests.
 func TestPostgres_Ledger_Save_UpdatesOwnRow(t *testing.T) {
 	f := newPgFixture(t)
-	ctx := tenant.Into(t.Context(), f.tc)
+	ctx := fakes.Owner(t.Context(), f.tc)
 
 	st := pgConfigured(t, f.tc, "Asia/Jakarta", 3)
 	require.NoError(t, f.store.Save(ctx, st))
@@ -224,7 +225,7 @@ func pgRowCount(t *testing.T, f pgFixture, projectID uuid.UUID) int {
 // TestPostgres_Ledger_Save_EnrollsInTheCallersUnitOfWork checks a later failure in the unit rolls the row back.
 func TestPostgres_Ledger_Save_EnrollsInTheCallersUnitOfWork(t *testing.T) {
 	f := newPgFixture(t)
-	ctx := tenant.Into(t.Context(), f.tc)
+	ctx := fakes.Owner(t.Context(), f.tc)
 	pool := db.Pool{W: f.sqlDB, R: f.sqlDB}
 
 	st := pgConfigured(t, f.tc, "Asia/Tokyo", 25)

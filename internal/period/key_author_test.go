@@ -18,6 +18,7 @@ import (
 	"altalune.id/yasaku/internal/platform/db"
 	"altalune.id/yasaku/internal/platform/session"
 	"altalune.id/yasaku/internal/platform/tenant"
+	"altalune.id/yasaku/internal/testutil/fakes"
 )
 
 func newAuthorCloseService(t *testing.T, store period.Store, uow period.UnitOfWork) *period.Service {
@@ -30,23 +31,17 @@ func newAuthorCloseService(t *testing.T, store period.Store, uow period.UnitOfWo
 		&fakeSnapshotter{snap: sampleSnapshot()},
 		&fakeSnapshotter{},
 		uow,
-		func() time.Time { return time.Date(2026, 9, 25, 10, 0, 0, 0, loc) },
-		anyCaller{},
-	)
+		func() time.Time { return time.Date(2026, 9, 25, 10, 0, 0, 0, loc) })
 }
-
-type anyCaller struct{}
-
-func (anyCaller) RequireCallerManager(context.Context) error { return nil }
 
 func keyPrincipalCtx(ctx context.Context, tc tenant.Context, keyID uuid.UUID) context.Context {
 	ctx = session.PrincipalInto(ctx, session.Principal{KeyID: keyID, Source: session.SourceAPIKey})
-	return tenant.Into(ctx, tenant.Context{OrgID: tc.OrgID, ProjectID: tc.ProjectID})
+	return fakes.Owner(ctx, tenant.Context{OrgID: tc.OrgID, ProjectID: tc.ProjectID})
 }
 
 func personCtx(ctx context.Context, tc tenant.Context) context.Context {
 	ctx = session.PrincipalInto(ctx, session.Principal{UserID: tc.UserID, Source: session.SourceLocal})
-	return tenant.Into(ctx, tc)
+	return fakes.Owner(ctx, tc)
 }
 
 type closingAuthor struct {
@@ -131,7 +126,7 @@ func checkLegacyNilAuthorClosing(t *testing.T, sqlDB *sql.DB, store period.Store
 	assert.Equal(t, uuid.Nil, closings[0].ClosedByKeyID)
 
 	open := seedPeriod(pCtx, t, store, tc, civil.Date{Year: 2026, Month: 7, Day: 25}, nil)
-	noAuthor := tenant.Into(t.Context(), tenant.Context{OrgID: tc.OrgID, ProjectID: tc.ProjectID})
+	noAuthor := fakes.Owner(t.Context(), tenant.Context{OrgID: tc.OrgID, ProjectID: tc.ProjectID})
 	_, err = svc.Close(noAuthor, open.ID, civil.Date{Year: 2026, Month: 8, Day: 24}, uuid.Nil)
 	require.Error(t, err)
 	assert.True(t, period.IsAuthorMissingError(err), "want AuthorMissingError, got %v", err)

@@ -18,6 +18,7 @@ import (
 	"altalune.id/yasaku/internal/platform/db"
 	sqliteent "altalune.id/yasaku/internal/platform/db/entity/sqlite"
 	"altalune.id/yasaku/internal/platform/tenant"
+	"altalune.id/yasaku/internal/testutil/fakes"
 	"altalune.id/yasaku/schema"
 )
 
@@ -82,7 +83,7 @@ func seedProject(t *testing.T, sqlDB *sql.DB, tc tenant.Context) uuid.UUID {
 
 func TestSQLiteStore_SaveAndByID(t *testing.T) {
 	store, _, tc := newAPIKeyStoreForTest(t)
-	ctx := tenant.Into(t.Context(), tc)
+	ctx := fakes.Owner(t.Context(), tc)
 
 	k, plaintext, err := apikey.Scheme{}.Mint(tc.OrgID, tc.ProjectID, "CI key", []string{authn.ScopeYasakuRead}, nil, nil, time.Now())
 	require.NoError(t, err)
@@ -107,7 +108,7 @@ func TestSQLiteStore_SaveAndByID(t *testing.T) {
 
 func TestSQLiteStore_SaveRoundTripsResourceIDsAndExpiry(t *testing.T) {
 	store, _, tc := newAPIKeyStoreForTest(t)
-	ctx := tenant.Into(t.Context(), tc)
+	ctx := fakes.Owner(t.Context(), tc)
 
 	resourceIDs := []uuid.UUID{uuid.New(), uuid.New()}
 	expiresAt := time.Now().Add(24 * time.Hour).UTC().Truncate(time.Second)
@@ -125,7 +126,7 @@ func TestSQLiteStore_SaveRoundTripsResourceIDsAndExpiry(t *testing.T) {
 
 func TestSQLiteStore_ByID_NotFound(t *testing.T) {
 	store, _, tc := newAPIKeyStoreForTest(t)
-	ctx := tenant.Into(t.Context(), tc)
+	ctx := fakes.Owner(t.Context(), tc)
 
 	_, err := store.ByID(ctx, uuid.New())
 	assert.True(t, apikey.IsNotFoundError(err), "got %T: %v", err, err)
@@ -133,7 +134,7 @@ func TestSQLiteStore_ByID_NotFound(t *testing.T) {
 
 func TestSQLiteStore_BySecretHash(t *testing.T) {
 	store, _, tc := newAPIKeyStoreForTest(t)
-	ctx := tenant.Into(t.Context(), tc)
+	ctx := fakes.Owner(t.Context(), tc)
 
 	k, plaintext, err := apikey.Scheme{}.Mint(tc.OrgID, tc.ProjectID, "Hash lookup", []string{authn.ScopeYasakuRead}, nil, nil, time.Now())
 	require.NoError(t, err)
@@ -147,7 +148,7 @@ func TestSQLiteStore_BySecretHash(t *testing.T) {
 
 func TestSQLiteStore_BySecretHash_Miss(t *testing.T) {
 	store, _, tc := newAPIKeyStoreForTest(t)
-	ctx := tenant.Into(t.Context(), tc)
+	ctx := fakes.Owner(t.Context(), tc)
 
 	var missing [32]byte
 	_, err := store.BySecretHash(ctx, missing)
@@ -156,7 +157,7 @@ func TestSQLiteStore_BySecretHash_Miss(t *testing.T) {
 
 func TestSQLiteStore_List_ScopesToTheProject(t *testing.T) {
 	store, sqlDB, tc := newAPIKeyStoreForTest(t)
-	ctx := tenant.Into(t.Context(), tc)
+	ctx := fakes.Owner(t.Context(), tc)
 	otherProj := seedProject(t, sqlDB, tc)
 
 	mine, _, err := apikey.Scheme{}.Mint(tc.OrgID, tc.ProjectID, "Mine", []string{authn.ScopeYasakuRead}, nil, nil, time.Now())
@@ -180,7 +181,7 @@ func TestSQLiteStore_List_ScopesToTheProject(t *testing.T) {
 
 func TestSQLiteStore_TouchLastUsed(t *testing.T) {
 	store, _, tc := newAPIKeyStoreForTest(t)
-	ctx := tenant.Into(t.Context(), tc)
+	ctx := fakes.Owner(t.Context(), tc)
 
 	k, _, err := apikey.Scheme{}.Mint(tc.OrgID, tc.ProjectID, "Touched", []string{authn.ScopeYasakuRead}, nil, nil, time.Now())
 	require.NoError(t, err)
@@ -201,7 +202,7 @@ func TestSQLiteStore_TouchLastUsed(t *testing.T) {
 
 func TestSQLiteStore_TouchLastUsed_NotFound(t *testing.T) {
 	store, _, tc := newAPIKeyStoreForTest(t)
-	ctx := tenant.Into(t.Context(), tc)
+	ctx := fakes.Owner(t.Context(), tc)
 
 	err := store.TouchLastUsed(ctx, uuid.New(), time.Now())
 	assert.True(t, apikey.IsNotFoundError(err), "got %T: %v", err, err)

@@ -10,7 +10,6 @@ import (
 
 	"altalune.id/yasaku/internal/apikey"
 	"altalune.id/yasaku/internal/platform/authn"
-	"altalune.id/yasaku/internal/platform/tenant"
 	"altalune.id/yasaku/internal/testutil/fakes"
 )
 
@@ -20,7 +19,7 @@ func benchCredentials(b *testing.B) (*apikey.Authenticator, map[string]string) {
 	b.Helper()
 
 	store, _, tc := newAPIKeyStoreForTest(b)
-	ctx := tenant.Into(b.Context(), tc)
+	ctx := fakes.Owner(b.Context(), tc)
 
 	var valid string
 	for i := range benchKeyRows {

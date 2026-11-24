@@ -13,6 +13,7 @@ import (
 	"altalune.id/yasaku/internal/apikey"
 	"altalune.id/yasaku/internal/org"
 	"altalune.id/yasaku/internal/platform/authn"
+	"altalune.id/yasaku/internal/platform/authz"
 	"altalune.id/yasaku/internal/project"
 	"altalune.id/yasaku/internal/web"
 	"altalune.id/yasaku/internal/web/templates"
@@ -205,7 +206,7 @@ func (h *APIKeyHandler) projectView(sc ProjectScope, minted *templates.APIKeyMin
 	}
 	v := baseView(h.ProjectURL(sc, "/apikeys"), minted, errKind, code)
 	v.Scopes = projectScopes(v.Scopes)
-	v.CanManage = h.CanManage(sc)
+	v.CanManage = holds(sc.req, authz.APIKeysWrite)
 	for _, k := range items {
 		v.Items = append(v.Items, apiKeyRow(k, v.Base, nil))
 	}
@@ -223,7 +224,7 @@ func (h *APIKeyHandler) orgView(sc OrgScope, minted *templates.APIKeyMinted, err
 	}
 	v := baseView(web.Path(h.Cfg.HTTP.BasePath, "/orgs/"+sc.org.Slug+"/apikeys"), minted, errKind, code)
 	v.OrgLevel, v.HasGrant, v.Projects = true, true, options
-	v.CanManage = h.CanManageOrg(sc)
+	v.CanManage = holds(sc.req, authz.APIKeysWrite)
 	for _, k := range items {
 		v.Items = append(v.Items, apiKeyRow(k, v.Base, options))
 	}
@@ -342,7 +343,7 @@ func expiryOptions() []templates.APIKeyExpiryOption {
 
 func apiKeyErrorKind(err error) string {
 	switch {
-	case org.IsNotManagerError(err):
+	case authz.IsDeniedError(err), apikey.IsScopeNotHeldError(err):
 		return templates.APIKeyErrorNotManager
 	case apikey.IsUnknownScopeError(err), apikey.IsRetiredScopeError(err), apikey.IsScopeLevelError(err):
 		return templates.APIKeyErrorScope

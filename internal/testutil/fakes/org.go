@@ -183,6 +183,29 @@ func (r *Org) SaveMembership(ctx context.Context, m *org.Membership) error {
 	return nil
 }
 
+// LockOrg is a no-op; fakes.UnitOfWork runs one call at a time.
+func (r *Org) LockOrg(context.Context, uuid.UUID) error { return nil }
+
+// MemberRole returns userID's role in orgID and the org's name, as the real stores join them; it shares MembershipOf's call count and injected failure.
+func (r *Org) MemberRole(_ context.Context, orgID, userID uuid.UUID) (org.Role, string, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.membershipOfCalls++
+	if r.MembershipOfErr != nil && r.membershipOfCalls > r.MembershipOfFailAfter {
+		return "", "", r.MembershipOfErr
+	}
+	name := ""
+	if o, ok := r.orgs[orgID]; ok {
+		name = o.Name
+	}
+	for _, x := range r.memberships {
+		if x.OrgID == orgID && x.UserID == userID {
+			return x.Role, name, nil
+		}
+	}
+	return "", name, nil
+}
+
 func (r *Org) MembershipOf(_ context.Context, orgID, userID uuid.UUID) (*org.Membership, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

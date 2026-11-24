@@ -38,7 +38,7 @@ func newAPIKeyService(t *testing.T, store apikey.Store) (*apikey.Service, *int) 
 func tenantCtx(t *testing.T) (context.Context, tenant.Context) {
 	t.Helper()
 	tc := tenant.Context{OrgID: uuid.New(), ProjectID: uuid.New(), UserID: uuid.New()}
-	return tenant.Into(t.Context(), tc), tc
+	return fakes.Owner(t.Context(), tc), tc
 }
 
 func mintSeeded(t *testing.T, store *fakes.APIKey, orgID, projectID uuid.UUID, scopes []string, resourceIDs []uuid.UUID) (*apikey.APIKey, string) {
@@ -288,7 +288,7 @@ func TestService_RevokeRefusesKeyFromAnotherProjectInSameOrg(t *testing.T) {
 
 	k, _ := mintSeeded(t, store, orgID, projB, []string{authn.ScopeYasakuRead}, nil)
 
-	ctx := tenant.Into(t.Context(), tenant.Context{OrgID: orgID, ProjectID: projA, UserID: uuid.New()})
+	ctx := fakes.Owner(t.Context(), tenant.Context{OrgID: orgID, ProjectID: projA, UserID: uuid.New()})
 	err := svc.Revoke(ctx, k.ID)
 	assert.True(t, apikey.IsNotFoundError(err), "got %T: %v", err, err)
 	assert.Zero(t, *unex)
@@ -306,7 +306,7 @@ func TestService_RevokeRefusesKeyFromAnotherOrg(t *testing.T) {
 
 	k, _ := mintSeeded(t, store, uuid.New(), projectID, []string{authn.ScopeYasakuRead}, nil)
 
-	ctx := tenant.Into(t.Context(), tenant.Context{OrgID: uuid.New(), ProjectID: projectID, UserID: uuid.New()})
+	ctx := fakes.Owner(t.Context(), tenant.Context{OrgID: uuid.New(), ProjectID: projectID, UserID: uuid.New()})
 	err := svc.Revoke(ctx, k.ID)
 	assert.True(t, apikey.IsNotFoundError(err), "got %T: %v", err, err)
 	assert.Zero(t, *unex)
@@ -378,7 +378,7 @@ func TestUsageWorker_FlushesPendingOnShutdown(t *testing.T) {
 		synctest.Wait()
 		<-done
 
-		got, err := store.ByID(tenant.Into(t.Context(), tenant.Context{OrgID: orgID, ProjectID: projectID}), k.ID)
+		got, err := store.ByID(fakes.Owner(t.Context(), tenant.Context{OrgID: orgID, ProjectID: projectID}), k.ID)
 		require.NoError(t, err)
 		assert.NotNil(t, got.LastUsedAt, "a timestamp recorded before shutdown was dropped")
 	})

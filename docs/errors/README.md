@@ -47,21 +47,22 @@ In the Status column, `—` means registered but not yet constructed.
 
 ## ORG — Organizations
 
-| Code     | Constant                            | Status               | Meaning                |
-| -------- | ----------------------------------- | -------------------- | ---------------------- |
-| `ORG001` | `apperror.CodeOrgNotFound`          | `NotFound`           | Org Not Found          |
-| `ORG002` | `apperror.CodeOrgAlreadyExists`     | `AlreadyExists`      | Org Already Exists     |
-| `ORG003` | `apperror.CodeOrgInvalidSlug`       | `InvalidArgument`    | Org Invalid Slug       |
-| `ORG004` | `apperror.CodeOrgInvalidName`       | `InvalidArgument`    | Org Invalid Name       |
-| `ORG005` | `apperror.CodeOrgMembershipExists`  | `AlreadyExists`      | Org Membership Exists  |
-| `ORG006` | `apperror.CodeOrgMembershipMissing` | `NotFound`           | Org Membership Missing |
-| `ORG007` | `apperror.CodeOrgCreationDisabled`  | `FailedPrecondition` | Org Creation Disabled  |
-| `ORG008` | `apperror.CodeOrgSystemProtected`   | `FailedPrecondition` | Org System Protected   |
-| `ORG009` | `apperror.CodeOrgSelfRemoval`       | `FailedPrecondition` | Org Self Removal       |
-| `ORG010` | `apperror.CodeOrgOwnerRemoval`      | `FailedPrecondition` | Org Owner Removal      |
-| `ORG011` | `apperror.CodeOrgManagerRequired`   | `PermissionDenied`   | Org Manager Required   |
-| `ORG012` | `apperror.CodeOrgMismatch`          | `PermissionDenied`   | Org Mismatch           |
-| `ORG014` | `apperror.CodeOrgChoiceRequired`    | `FailedPrecondition` | Org Choice Required    |
+| Code     | Constant                            | Status               | Meaning                                                                     |
+| -------- | ----------------------------------- | -------------------- | --------------------------------------------------------------------------- |
+| `ORG001` | `apperror.CodeOrgNotFound`          | `NotFound`           | Org Not Found                                                               |
+| `ORG002` | `apperror.CodeOrgAlreadyExists`     | `AlreadyExists`      | Org Already Exists                                                          |
+| `ORG003` | `apperror.CodeOrgInvalidSlug`       | `InvalidArgument`    | Org Invalid Slug                                                            |
+| `ORG004` | `apperror.CodeOrgInvalidName`       | `InvalidArgument`    | Org Invalid Name                                                            |
+| `ORG005` | `apperror.CodeOrgMembershipExists`  | `AlreadyExists`      | Org Membership Exists                                                       |
+| `ORG006` | `apperror.CodeOrgMembershipMissing` | `NotFound`           | Org Membership Missing                                                      |
+| `ORG007` | `apperror.CodeOrgCreationDisabled`  | `FailedPrecondition` | Org Creation Disabled                                                       |
+| `ORG008` | `apperror.CodeOrgSystemProtected`   | `FailedPrecondition` | Org System Protected                                                        |
+| `ORG009` | `apperror.CodeOrgSelfRemoval`       | `FailedPrecondition` | Org Self Removal                                                            |
+| `ORG010` | `apperror.CodeOrgOwnerRemoval`      | `FailedPrecondition` | Org Owner Removal                                                           |
+| `ORG011` | `apperror.CodeOrgManagerRequired`   | `PermissionDenied`   | Org Manager Required (registered, never constructed; refusals use `ROL001`) |
+| `ORG012` | `apperror.CodeOrgMismatch`          | `PermissionDenied`   | Org Mismatch                                                                |
+| `ORG013` | `apperror.CodeOrgLastOwner`         | `FailedPrecondition` | Org Last Owner                                                              |
+| `ORG014` | `apperror.CodeOrgChoiceRequired`    | `FailedPrecondition` | Org Choice Required                                                         |
 
 ## PRJ — Projects
 
@@ -191,6 +192,7 @@ unmapped `GEN900` incident.
 | `APK010` | `apperror.CodeAPIKeyExpiryRequired`     | `InvalidArgument`    | API Key Expiry Required      |
 | `APK011` | `apperror.CodeAPIKeyExpiryInPast`       | `InvalidArgument`    | API Key Expiry In Past       |
 | `APK012` | `apperror.CodeAPIKeyExpiryTooLong`      | `InvalidArgument`    | API Key Expiry Too Long      |
+| `APK013` | `apperror.CodeAPIKeyScopeNotHeld`       | `PermissionDenied`   | API Key Scope Not Held       |
 
 ## WHK — Webhooks
 
@@ -210,3 +212,10 @@ unmapped `GEN900` incident.
 | Code     | Constant                    | Status               | Meaning       |
 | -------- | --------------------------- | -------------------- | ------------- |
 | `LIM001` | `apperror.CodeLimitReached` | `FailedPrecondition` | Limit Reached |
+
+## ROL — Roles and permissions
+
+| Code     | Constant                        | Status             | Meaning           |
+| -------- | ------------------------------- | ------------------ | ----------------- |
+| `ROL001` | `apperror.CodePermissionDenied` | `PermissionDenied` | Permission Denied |
+| `ROL004` | `apperror.CodeRoleEscalation`   | `PermissionDenied` | Role Escalation   |

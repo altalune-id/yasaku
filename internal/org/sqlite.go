@@ -234,6 +234,23 @@ func (s *sqliteStore) SaveMembership(ctx context.Context, m *Membership) error {
 	return nil
 }
 
+// NOTE: a SQLite unit of work holds BEGIN IMMEDIATE's write lock already.
+func (s *sqliteStore) LockOrg(context.Context, uuid.UUID) error { return nil }
+
+func (s *sqliteStore) MemberRole(ctx context.Context, orgID, userID uuid.UUID) (Role, string, error) {
+	q := "SELECT o.name, m.role FROM " + s.prefix + "orgs o LEFT JOIN " + s.prefix + "memberships m ON m.org_id = o.id AND m.user_id = ? WHERE o.id = ?"
+	var name string
+	var role sql.NullString
+	err := s.conn(ctx).QueryRowContext(ctx, q, userID.String(), orgID.String()).Scan(&name, &role)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", "", nil
+	}
+	if err != nil {
+		return "", "", fmt.Errorf("org.sqlite: MemberRole: %w", err)
+	}
+	return Role(role.String), name, nil
+}
+
 func (s *sqliteStore) MembershipOf(ctx context.Context, orgID, userID uuid.UUID) (*Membership, error) {
 	stmt := sqlite.SELECT(s.members.OrgID, s.members.UserID, s.members.Role, s.members.CreatedAt, s.members.System).
 		FROM(s.members).

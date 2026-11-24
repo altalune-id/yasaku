@@ -33,6 +33,7 @@ import (
 	"altalune.id/yasaku/internal/platform/config"
 	"altalune.id/yasaku/internal/platform/tenant"
 	"altalune.id/yasaku/internal/platform/tokens"
+	"altalune.id/yasaku/internal/testutil/fakes"
 	"altalune.id/yasaku/internal/user"
 	rootmcp "altalune.id/yasaku/mcp"
 	"altalune.id/yasaku/reqid"
@@ -127,7 +128,7 @@ func newMCPFixture(t *testing.T, opts mcpOpts) *mcpFixture {
 	o, err := srv.Orgs.Create(ctx, org.CreateRequest{Slug: "mcp-org", Name: "MCP Org", OwnerID: owner.ID})
 	require.NoError(t, err)
 
-	orgCtx := tenant.Into(ctx, tenant.Context{OrgID: o.ID, UserID: owner.ID})
+	orgCtx := fakes.Owner(ctx, tenant.Context{OrgID: o.ID, UserID: owner.ID})
 	p, err := srv.Projects.Create(orgCtx, o.ID, "mcp-project", "MCP Project")
 	require.NoError(t, err)
 

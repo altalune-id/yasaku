@@ -17,6 +17,7 @@ import (
 	"altalune.id/yasaku/internal/platform/db"
 	sqliteent "altalune.id/yasaku/internal/platform/db/entity/sqlite"
 	"altalune.id/yasaku/internal/platform/tenant"
+	"altalune.id/yasaku/internal/testutil/fakes"
 	"altalune.id/yasaku/money"
 	"altalune.id/yasaku/schema"
 )
@@ -86,7 +87,7 @@ func seedTenant(t *testing.T, sqlDB *sql.DB, prefix string) (userID, orgID, proj
 
 func TestSQLiteStore_SaveAndByProject(t *testing.T) {
 	store, tc := newSQLiteStoreForTest(t)
-	ctx := tenant.Into(context.Background(), tc)
+	ctx := fakes.Owner(context.Background(), tc)
 
 	want := ledger.Defaults(tc.OrgID, tc.ProjectID)
 	if err := want.Apply(ledger.Patch{
@@ -117,7 +118,7 @@ func TestSQLiteStore_SaveAndByProject(t *testing.T) {
 
 func TestSQLiteStore_SaveIsUpsert(t *testing.T) {
 	store, tc := newSQLiteStoreForTest(t)
-	ctx := tenant.Into(context.Background(), tc)
+	ctx := fakes.Owner(context.Background(), tc)
 
 	st := ledger.Defaults(tc.OrgID, tc.ProjectID)
 	if err := st.Apply(ledger.Patch{Timezone: ptr("Asia/Jakarta")}); err != nil {
@@ -152,7 +153,7 @@ func TestSQLiteStore_SaveIsUpsert(t *testing.T) {
 
 func TestSQLiteStore_ByProject_NotFound(t *testing.T) {
 	store, tc := newSQLiteStoreForTest(t)
-	ctx := tenant.Into(context.Background(), tc)
+	ctx := fakes.Owner(context.Background(), tc)
 
 	_, err := store.ByProject(ctx, tc.OrgID, uuid.New())
 	if !ledger.IsNotFoundError(err) {
@@ -162,7 +163,7 @@ func TestSQLiteStore_ByProject_NotFound(t *testing.T) {
 
 func TestSQLiteStore_ByProject_ForeignOrgIsInvisible(t *testing.T) {
 	store, tc := newSQLiteStoreForTest(t)
-	ctx := tenant.Into(context.Background(), tc)
+	ctx := fakes.Owner(context.Background(), tc)
 	seeded := ledger.Defaults(tc.OrgID, tc.ProjectID)
 	if err := seeded.Apply(ledger.Patch{Timezone: ptr("Asia/Jakarta")}); err != nil {
 		t.Fatal(err)
@@ -191,7 +192,7 @@ func TestSQLiteStore_TenantMissing(t *testing.T) {
 // TestSQLiteStore_Save_EnrollsInTheCallersUnitOfWork checks a later failure in the unit rolls the row back.
 func TestSQLiteStore_Save_EnrollsInTheCallersUnitOfWork(t *testing.T) {
 	store, sqlDB, prefix, tc := newSQLiteFixture(t)
-	ctx := tenant.Into(context.Background(), tc)
+	ctx := fakes.Owner(context.Background(), tc)
 
 	st := ledger.Defaults(tc.OrgID, tc.ProjectID)
 	if err := st.Apply(ledger.Patch{Timezone: ptr("Asia/Tokyo"), PeriodStartDay: ptr(25)}); err != nil {
@@ -229,7 +230,7 @@ func TestSQLiteStore_Save_EnrollsInTheCallersUnitOfWork(t *testing.T) {
 // TestSQLiteStore_Save_CommitsWithTheCallersUnitOfWork checks a successful unit of work persists the row.
 func TestSQLiteStore_Save_CommitsWithTheCallersUnitOfWork(t *testing.T) {
 	store, sqlDB, _, tc := newSQLiteFixture(t)
-	ctx := tenant.Into(context.Background(), tc)
+	ctx := fakes.Owner(context.Background(), tc)
 
 	st := ledger.Defaults(tc.OrgID, tc.ProjectID)
 	if err := st.Apply(ledger.Patch{Timezone: ptr("Asia/Tokyo"), PeriodStartDay: ptr(25)}); err != nil {
@@ -254,7 +255,7 @@ func TestSQLiteStore_Save_CommitsWithTheCallersUnitOfWork(t *testing.T) {
 // TestSQLiteStore_ByProject_ReadsTheCallersUncommittedWrite checks a read inside the unit sees its uncommitted write.
 func TestSQLiteStore_ByProject_ReadsTheCallersUncommittedWrite(t *testing.T) {
 	store, sqlDB, _, tc := newSQLiteFixture(t)
-	ctx := tenant.Into(context.Background(), tc)
+	ctx := fakes.Owner(context.Background(), tc)
 
 	st := ledger.Defaults(tc.OrgID, tc.ProjectID)
 	if err := st.Apply(ledger.Patch{Timezone: ptr("Asia/Tokyo")}); err != nil {

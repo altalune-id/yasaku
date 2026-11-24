@@ -17,6 +17,7 @@ import (
 	"altalune.id/yasaku/internal/platform/config"
 	"altalune.id/yasaku/internal/platform/db"
 	"altalune.id/yasaku/internal/platform/tenant"
+	"altalune.id/yasaku/internal/testutil/fakes"
 	"altalune.id/yasaku/internal/wallet"
 	"altalune.id/yasaku/money"
 )
@@ -34,7 +35,7 @@ func TestConcurrentCreates_AtLimitMinusOne(t *testing.T) {
 	dbCfg := db.DBConfig{Driver: db.DriverPostgres, Schema: f.schema, TablePrefix: f.prefix}
 	pool := db.Pool{W: f.db, R: f.db}
 	lstore := limits.NewStore(dbCfg, pool)
-	ctx := tenant.Into(t.Context(), f.tc)
+	ctx := fakes.Owner(t.Context(), f.tc)
 	require.NoError(t, lstore.SetOverride(ctx, limits.Subject{Kind: limits.SubjectProject, ID: f.tc.ProjectID}, limits.ProjectWallets, 3, f.tc.UserID))
 	svc := wallet.NewService(slowList{f.store}, testLogger(), countingUnexpected(&counter{}),
 		wallet.WithMirror(nil, wallet.UnitOfWork(tenant.NewUnitOfWork(dbCfg, pool, tenant.NewPgConn(f.db)))),

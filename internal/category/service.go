@@ -11,6 +11,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"altalune.id/yasaku/internal/apperror"
+	"altalune.id/yasaku/internal/platform/authz"
 	"altalune.id/yasaku/internal/platform/tenant"
 )
 
@@ -45,6 +46,9 @@ func NewService(store Store, log *slog.Logger, unexpected apperror.UnexpectedFun
 
 // Create constructs a Category in the caller's tenant scope and persists it.
 func (s *Service) Create(ctx context.Context, name string, kind Kind, icon, color string) (*Category, error) {
+	if err := authz.Can(ctx, authz.CategoriesWrite); err != nil {
+		return nil, err
+	}
 	ctx, span := tracer.Start(ctx, "category.Create")
 	defer span.End()
 
@@ -91,6 +95,9 @@ func (s *Service) Create(ctx context.Context, name string, kind Kind, icon, colo
 
 // Rename changes the display name of a category in the caller's tenant scope.
 func (s *Service) Rename(ctx context.Context, id uuid.UUID, name string) (*Category, error) {
+	if err := authz.Can(ctx, authz.CategoriesWrite); err != nil {
+		return nil, err
+	}
 	ctx, span := tracer.Start(ctx, "category.Rename",
 		trace.WithAttributes(attribute.String("category.id", id.String())))
 	defer span.End()
@@ -109,6 +116,9 @@ func (s *Service) Rename(ctx context.Context, id uuid.UUID, name string) (*Categ
 
 // Update replaces the icon and colour of a category in the caller's tenant scope.
 func (s *Service) Update(ctx context.Context, id uuid.UUID, icon, color string) (*Category, error) {
+	if err := authz.Can(ctx, authz.CategoriesWrite); err != nil {
+		return nil, err
+	}
 	ctx, span := tracer.Start(ctx, "category.Update",
 		trace.WithAttributes(attribute.String("category.id", id.String())))
 	defer span.End()
@@ -126,6 +136,9 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, icon, color string) 
 
 // Archive hides the category from pickers, leaving its transactions intact.
 func (s *Service) Archive(ctx context.Context, id uuid.UUID) (*Category, error) {
+	if err := authz.Can(ctx, authz.CategoriesWrite); err != nil {
+		return nil, err
+	}
 	ctx, span := tracer.Start(ctx, "category.Archive",
 		trace.WithAttributes(attribute.String("category.id", id.String())))
 	defer span.End()
@@ -140,6 +153,9 @@ func (s *Service) Archive(ctx context.Context, id uuid.UUID) (*Category, error) 
 
 // Unarchive returns the category to the pickers.
 func (s *Service) Unarchive(ctx context.Context, id uuid.UUID) (*Category, error) {
+	if err := authz.Can(ctx, authz.CategoriesWrite); err != nil {
+		return nil, err
+	}
 	ctx, span := tracer.Start(ctx, "category.Unarchive",
 		trace.WithAttributes(attribute.String("category.id", id.String())))
 	defer span.End()
@@ -154,6 +170,9 @@ func (s *Service) Unarchive(ctx context.Context, id uuid.UUID) (*Category, error
 
 // Delete removes a category that no transaction references.
 func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
+	if err := authz.Can(ctx, authz.CategoriesWrite); err != nil {
+		return err
+	}
 	ctx, span := tracer.Start(ctx, "category.Delete",
 		trace.WithAttributes(attribute.String("category.id", id.String())))
 	defer span.End()
@@ -180,6 +199,9 @@ func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
 
 // ByID returns the identified category when it belongs to the caller's org and project.
 func (s *Service) ByID(ctx context.Context, id uuid.UUID) (*Category, error) {
+	if err := authz.Can(ctx, authz.CategoriesRead); err != nil {
+		return nil, err
+	}
 	ctx, span := tracer.Start(ctx, "category.ByID",
 		trace.WithAttributes(attribute.String("category.id", id.String())))
 	defer span.End()
@@ -205,6 +227,9 @@ func (s *Service) ByID(ctx context.Context, id uuid.UUID) (*Category, error) {
 
 // List returns categories in the caller's tenant scope, ordered by sort order then name.
 func (s *Service) List(ctx context.Context, opts ListOpts) ([]*Category, error) {
+	if err := authz.Can(ctx, authz.CategoriesRead); err != nil {
+		return nil, err
+	}
 	ctx, span := tracer.Start(ctx, "category.List")
 	defer span.End()
 
@@ -227,6 +252,9 @@ func (s *Service) List(ctx context.Context, opts ListOpts) ([]*Category, error) 
 
 // ResolveByName resolves a typed-in name to one active category of the given kind: exact case-insensitive match first, then a unique substring match.
 func (s *Service) ResolveByName(ctx context.Context, kind Kind, q string) (*Category, error) {
+	if err := authz.Can(ctx, authz.CategoriesRead); err != nil {
+		return nil, err
+	}
 	ctx, span := tracer.Start(ctx, "category.ResolveByName")
 	defer span.End()
 
@@ -265,6 +293,9 @@ func (s *Service) ResolveByName(ctx context.Context, kind Kind, q string) (*Cate
 
 // SeedDefaults inserts every missing default category and reports how many it added.
 func (s *Service) SeedDefaults(ctx context.Context) (int, error) {
+	if err := authz.Can(ctx, authz.CategoriesWrite); err != nil {
+		return 0, err
+	}
 	ctx, span := tracer.Start(ctx, "category.SeedDefaults")
 	defer span.End()
 

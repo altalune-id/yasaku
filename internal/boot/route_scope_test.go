@@ -24,6 +24,7 @@ import (
 	"altalune.id/yasaku/internal/platform/config"
 	"altalune.id/yasaku/internal/platform/session"
 	"altalune.id/yasaku/internal/platform/tenant"
+	"altalune.id/yasaku/internal/testutil/fakes"
 	"altalune.id/yasaku/internal/user"
 	"altalune.id/yasaku/internal/web"
 )
@@ -105,6 +106,7 @@ func probeRoutes() []probeRoute {
 		{http.MethodPost, "/settings/tokens/" + org + "/" + id + "/all-projects", url.Values{}},
 		{http.MethodPost, "/settings/tokens/" + org + "/" + id + "/revoke", url.Values{}},
 		{http.MethodPost, base + "/members/" + id + "/remove", url.Values{}},
+		{http.MethodPost, base + "/members/" + id + "/role", url.Values{"role": {"admin"}}},
 		{http.MethodPost, base + "/projects", url.Values{"slug": {"probe-new-project"}, "name": {"Probe New Project"}}},
 		{http.MethodPost, pbase + "/rename", url.Values{"name": {"Renamed"}}},
 		{http.MethodPost, pbase + "/categories", url.Values{"name": {"Probe Category"}, "kind": {"expense"}}},
@@ -273,7 +275,7 @@ func TestRoutes_UserWithAnActiveOrgNeverHitsATenantScopeError(t *testing.T) {
 	require.NoError(t, err, "org.Create must work with no ambient tenant scope — the signup case")
 
 	// NOTE: without the project, every project-scoped probe short-circuits on the handler's own 404 and reaches no handler code.
-	orgCtx := tenant.Into(context.Background(), tenant.Context{OrgID: o.ID, UserID: owner.ID})
+	orgCtx := fakes.Owner(context.Background(), tenant.Context{OrgID: o.ID, UserID: owner.ID})
 	_, err = srv.Projects.Create(orgCtx, o.ID, "probe-project", "Probe Project")
 	require.NoError(t, err)
 
@@ -499,14 +501,11 @@ func TestMembersPage_RemoveButtonMatchesTheServiceGate(t *testing.T) {
 	require.NotContains(t, body, removeForm(viewer.ID), "the signed-in member must not offer to remove themselves")
 	require.Contains(t, body, removeForm(coOwner.ID), "an owner viewing the page may remove a co-owner")
 
-	for _, u := range []uuid.UUID{viewer.ID, coOwner.ID, plain.ID} {
-		m, mErr := srv.Orgs.MembershipOf(scoped, o.ID, u)
-		require.NoError(t, mErr)
-		viewerM, vErr := srv.Orgs.MembershipOf(scoped, o.ID, viewer.ID)
-		require.NoError(t, vErr)
-		allowed := org.RemovalRefusal(o.ID, viewer.ID, u, viewerM.Role, m.Role, m.System) == nil
-		require.Equal(t, allowed, strings.Contains(body, removeForm(u)),
-			"button visibility for %s disagrees with org.RemovalRefusal", u)
+	controls, _, err := srv.Orgs.MemberControls(fakes.Owner(ctx, tenant.Context{OrgID: o.ID, UserID: viewer.ID}), o.ID)
+	require.NoError(t, err)
+	for _, c := range controls {
+		require.Equal(t, c.Removable, strings.Contains(body, removeForm(c.Member.UserID)),
+			"button visibility for %s disagrees with org.Service.MemberControls", c.Member.UserID)
 	}
 }
 

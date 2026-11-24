@@ -14,15 +14,20 @@ type MemberRow struct {
 	// IsSelf marks the row belonging to the signed-in user, who cannot remove their own membership.
 	IsSelf bool
 	// Removable comes from org.RemovalRefusal, so the button only shows where the post would succeed.
-	Removable bool
+	Removable    bool
+	RoleEditable bool
+	LastOwner    bool
+	CanMakeOwner bool
 }
 
 type MembersView struct {
-	OrgSlug   string
-	Members   []MemberRow
-	CanManage bool
-	Error     string
-	ErrorCode string
+	OrgSlug        string
+	Members        []MemberRow
+	OrgName        string
+	CanManage      bool
+	GrantableRoles []string
+	Error          string
+	ErrorCode      string
 }
 
 templ MembersPage(d web.LayoutData, v MembersView) {
@@ -43,7 +48,7 @@ templ MembersPage(d web.LayoutData, v MembersView) {
 				<li class="px-4 py-6 text-center text-sm text-base-content/70">{ d.Tr("members.empty") }</li>
 			}
 			for _, m := range v.Members {
-				<li class="flex items-center justify-between px-4 py-3">
+				<li class="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
 					<div class="min-w-0">
 						<p class="flex items-center gap-2 truncate text-sm font-medium text-base-content">
 							<span class="truncate">
@@ -64,12 +69,27 @@ templ MembersPage(d web.LayoutData, v MembersView) {
 							}
 						</p>
 					</div>
-					if v.CanManage && m.Removable {
-						<form method="post" action={ templ.SafeURL(d.Href("/orgs/" + v.OrgSlug + "/members/" + m.UserID + "/remove")) } class="ms-4 inline">
-							<button type="submit" aria-label={ "Remove " + m.Email } class="rounded p-1.5 text-base-content/70 hover:bg-error/10 hover:text-error">
-								@icons.Icon("trash-2", "h-4 w-4")
-							</button>
-						</form>
+					if v.CanManage && (m.RoleEditable || m.Removable) {
+						<div class="flex shrink-0 flex-wrap items-center justify-end gap-2 max-sm:w-full max-sm:justify-start">
+							if m.LastOwner {
+								<select disabled aria-label={ d.Tr("members.role_for", "Name", memberLabel(m)) } aria-describedby={ "last-owner-" + m.UserID } class="select select-sm w-28">
+									<option>{ d.Tr("members.role_owner") }</option>
+								</select>
+								<p id={ "last-owner-" + m.UserID } class="w-full text-end text-xs text-base-content/70 max-sm:text-start">{ d.Tr("org.last_owner", "Org", v.OrgName) }</p>
+							} else if m.RoleEditable {
+								@memberRoleForm(d, v, m)
+							}
+							if m.CanMakeOwner {
+								<button type="button" data-dialog-open={ memberOwnerDialogID(m) } aria-haspopup="dialog" class="btn btn-ghost btn-sm">{ d.Tr("members.make_owner") }</button>
+							}
+							if m.Removable {
+								<form method="post" action={ templ.SafeURL(d.Href("/orgs/" + v.OrgSlug + "/members/" + m.UserID + "/remove")) } class="inline">
+									<button type="submit" aria-label={ "Remove " + m.Email } class="rounded p-1.5 text-base-content/70 hover:bg-error/10 hover:text-error">
+										@icons.Icon("trash-2", "h-4 w-4")
+									</button>
+								</form>
+							}
+						</div>
 					}
 				</li>
 			}
@@ -77,6 +97,59 @@ templ MembersPage(d web.LayoutData, v MembersView) {
 	</section>
 }
 
+func memberOwnerDialogID(m MemberRow) string {
+	return "member-owner-" + m.UserID
+}
+
+func roleLabel(d web.LayoutData, role string) string {
+	switch role {
+	case "admin":
+		return d.Tr("invites.role_admin")
+	default:
+		return d.Tr("invites.role_member")
+	}
+}
+
+func memberLabel(m MemberRow) string {
+	if m.Name != "" {
+		return m.Name
+	}
+	return m.Email
+}
+
+templ memberRoleForm(d web.LayoutData, v MembersView, m MemberRow) {
+	<form method="post" action={ templ.SafeURL(d.Href("/orgs/" + v.OrgSlug + "/members/" + m.UserID + "/role")) } class="join">
+		<select name="role" required aria-label={ d.Tr("members.role_for", "Name", memberLabel(m)) } class="select select-sm join-item w-28">
+			if m.Role == "owner" {
+				<option value="" selected disabled>{ d.Tr("members.role_owner") }</option>
+			}
+			for _, role := range v.GrantableRoles {
+				<option value={ role } selected?={ m.Role == role }>{ roleLabel(d, role) }</option>
+			}
+		</select>
+		<button type="submit" class="btn btn-sm join-item">{ d.Tr("members.save_role") }</button>
+	</form>
+}
+
+templ memberDialogs(d web.LayoutData, v MembersView) {
+	if v.CanManage {
+		for _, m := range v.Members {
+			if m.CanMakeOwner {
+				@ConfirmModal(d, ConfirmModalProps{
+					ID:           memberOwnerDialogID(m),
+					Title:        d.Tr("members.make_owner_title", "Name", memberLabel(m)),
+					Body:         d.Tr("members.make_owner_confirm", "Name", memberLabel(m)),
+					Action:       d.Href("/orgs/" + v.OrgSlug + "/members/" + m.UserID + "/role"),
+					ConfirmLabel: d.Tr("members.make_owner"),
+				}) {
+					<p class="text-sm text-base-content/70 text-pretty">{ d.Tr("members.make_owner_transfer") }</p>
+					<input type="hidden" name="role" value="owner"/>
+				}
+			}
+		}
+	}
+}
+
 templ MembersLayout(d web.LayoutData, v MembersView) {
-	@Layout(web.WithContent(d, MembersPage(d, v)))
+	@Layout(web.WithDialogs(web.WithContent(d, MembersPage(d, v)), memberDialogs(d, v)))
 }

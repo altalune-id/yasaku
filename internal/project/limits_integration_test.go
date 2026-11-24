@@ -51,10 +51,9 @@ func TestConcurrentCreates_AtLimitMinusOne(t *testing.T) {
 	unexpected := func(_ context.Context, msg string, cause error, _ ...any) *apperror.AppError {
 		return apperror.New("yasaku.unexpected", msg, 0).WithCause(cause)
 	}
-	svc := project.NewService(slowList{project.NewStore(dbCfg, pool, pc)}, slog.New(slog.NewTextHandler(io.Discard, nil)), unexpected,
-		fakes.PermissiveMembers(), tenant.NewUnitOfWork(dbCfg, pool, pc),
+	svc := project.NewService(slowList{project.NewStore(dbCfg, pool, pc)}, slog.New(slog.NewTextHandler(io.Discard, nil)), unexpected, tenant.NewUnitOfWork(dbCfg, pool, pc),
 		project.WithLimits(limits.NewService(limits.NewStore(dbCfg, pool), config.ModeCloud), noOrgNames{}))
-	ctx := tenant.Into(t.Context(), tenant.Context{OrgID: orgID, UserID: userID})
+	ctx := fakes.Owner(t.Context(), tenant.Context{OrgID: orgID, UserID: userID})
 	for i := range 2 {
 		_, err := svc.Create(ctx, orgID, fmt.Sprintf("seed-%d", i), "Seed")
 		require.NoError(t, err)

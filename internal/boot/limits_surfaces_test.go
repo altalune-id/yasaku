@@ -13,6 +13,7 @@ import (
 	"altalune.id/yasaku/internal/limits"
 	"altalune.id/yasaku/internal/platform/config"
 	"altalune.id/yasaku/internal/platform/tenant"
+	"altalune.id/yasaku/internal/testutil/fakes"
 	"altalune.id/yasaku/internal/user"
 )
 
@@ -53,7 +54,7 @@ func TestReachedError_SameMessageOnConsoleRPCMCPCLI(t *testing.T) {
 	require.NoError(t, err)
 	owner, err := f.srv.Users.EnsureFromOIDC(t.Context(), user.Claims{Issuer: f.issuer.url, Subject: tokenSubject, Email: tokenEmail, EmailVerified: true, Name: "MCP Agent"})
 	require.NoError(t, err)
-	_, err = f.srv.Projects.Create(tenant.Into(t.Context(), tenant.Context{OrgID: o.ID, UserID: owner.ID}), o.ID, "second", "Second")
+	_, err = f.srv.Projects.Create(fakes.Owner(t.Context(), tenant.Context{OrgID: o.ID, UserID: owner.ID}), o.ID, "second", "Second")
 	wantCLI := limits.Message("en-US", config.ModeCloud, &limits.ReachedError{Key: limits.OrgProjects, Max: 1, Name: "MCP Org"}, "")
 	require.Equal(t, "LIM001: "+wantCLI, cli.ErrorLine(err), "CLI")
 }

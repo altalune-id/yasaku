@@ -61,10 +61,11 @@ func TestMintAndResolveAgreeUnderEveryPrefix(t *testing.T) {
 			sc := apikey.NewScheme(configured)
 			store := fakes.NewAPIKey()
 			svc := apikey.NewService(store, sc, fakes.PermissiveMembers(), fakes.NewOrgProjects(), slog.New(slog.NewTextHandler(io.Discard, nil)), failingUnexpected(t))
-			auth := apikey.NewAuthenticator(store, nil, sc, fakes.NewMembers())
-
 			tc := tenant.Context{OrgID: uuid.New(), ProjectID: uuid.New(), UserID: uuid.New()}
-			k, plaintext, err := svc.Mint(tenant.Into(t.Context(), tc), "round trip", []string{authn.ScopeYasakuRead}, nil, in(time.Hour))
+			members := fakes.NewMembers()
+			members.SeatMember(tc.OrgID, tc.UserID)
+			auth := apikey.NewAuthenticator(store, nil, sc, members)
+			k, plaintext, err := svc.Mint(fakes.Owner(t.Context(), tc), "round trip", []string{authn.ScopeYasakuRead}, nil, in(time.Hour))
 			require.NoError(t, err)
 
 			require.True(t, strings.HasPrefix(plaintext, sc.Prefix()),
