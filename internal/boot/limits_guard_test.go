@@ -11,7 +11,10 @@ import (
 )
 
 var limitReadOnlyChecks = map[string]string{ //nolint:gochecknoglobals // Immutable manifest; not runtime state.
-	"org/service.go:CreateAllowed": "a read for the console's disabled reason; it saves nothing, so it needs no lock",
+	"project/service.go:CreateAllowed": "a read for the console's disabled reason; it saves nothing, so it needs no lock",
+	"invite/send.go:allowed":           "a read for the console's disabled reason; it saves nothing, so it needs no lock",
+	"org/service.go:CreateAllowed":     "a read for the console's disabled reason; it saves nothing, so it needs no lock",
+	"role/service.go:CreateAllowed":    "a read for the console's disabled reason; it saves nothing, so it needs no lock",
 }
 
 // TestEveryLimitedSaveRunsInAUnitOfWork scans every limit check outside internal/limits. SECURITY: a check must follow a Lock in the same function, and Lock refuses to run outside a unit of work, so two concurrent creates cannot both pass.

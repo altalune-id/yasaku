@@ -34,7 +34,15 @@ func Allow(ctx context.Context, tc tenant.Context, perms ...authz.Permission) co
 	return session.PrincipalInto(tenant.Into(ctx, tc), p)
 }
 
-// Owner returns ctx scoped to tc with a principal holding every permission of the built-in owner.
+// Owner returns ctx scoped to tc with a principal holding the built-in owner role and its permissions.
 func Owner(ctx context.Context, tc tenant.Context) context.Context {
-	return Allow(ctx, tc, authz.Builtin("owner")...)
+	return AsRole(ctx, tc, "owner", authz.Builtin("owner")...)
+}
+
+// AsRole is Allow with the role the held set came from, as the resolver records it.
+func AsRole(ctx context.Context, tc tenant.Context, role string, perms ...authz.Permission) context.Context {
+	ctx = Allow(ctx, tc, perms...)
+	p := session.PrincipalFrom(ctx)
+	p.HeldRole = role
+	return session.PrincipalInto(ctx, p)
 }

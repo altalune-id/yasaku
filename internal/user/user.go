@@ -30,6 +30,8 @@ type User struct {
 	ColorMode       string
 	TipsSeen        []string
 	TermsAcceptedAt *time.Time
+	LastSignInAt    *time.Time
+	SuspendedAt     *time.Time
 	CreatedAt       time.Time
 }
 

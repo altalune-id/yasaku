@@ -33,6 +33,21 @@ func runStoreContract(
 		assert.Equal(t, session.SourceOIDC, p.Source)
 	})
 
+	t.Run("support visit persists with the session", func(t *testing.T) {
+		s := newStore(t)
+		want := newPrincipal(t)
+		want.Support = &session.Support{OrgID: uuid.New(), Reason: "ticket 42", Until: time.Now().Add(time.Hour).UTC().Truncate(time.Second), EventID: uuid.New()}
+		require.NoError(t, s.Save(t.Context(), "a", want, time.Now().Add(time.Hour)))
+		p, ok, err := s.Load(t.Context(), "a")
+		require.NoError(t, err)
+		require.True(t, ok)
+		require.NotNil(t, p.Support)
+		assert.Equal(t, want.Support.OrgID, p.Support.OrgID)
+		assert.Equal(t, want.Support.Reason, p.Support.Reason)
+		assert.Equal(t, want.Support.EventID, p.Support.EventID)
+		assert.True(t, want.Support.Until.Equal(p.Support.Until))
+	})
+
 	t.Run("load absent sid", func(t *testing.T) {
 		s := newStore(t)
 		_, ok, err := s.Load(t.Context(), "nope")

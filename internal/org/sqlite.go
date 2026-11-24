@@ -67,11 +67,12 @@ func (r *sqliteOrgRow) toOrg() (*Org, error) {
 }
 
 type sqliteMembershipRow struct {
-	OrgID     string `alias:"memberships.org_id"`
-	UserID    string `alias:"memberships.user_id"`
-	Role      string `alias:"memberships.role"`
-	CreatedAt string `alias:"memberships.created_at"`
-	System    int64  `alias:"memberships.system"`
+	OrgID     string  `alias:"memberships.org_id"`
+	UserID    string  `alias:"memberships.user_id"`
+	Role      string  `alias:"memberships.role"`
+	RoleID    *string `alias:"memberships.role_id"`
+	CreatedAt string  `alias:"memberships.created_at"`
+	System    int64   `alias:"memberships.system"`
 }
 
 func (r *sqliteMembershipRow) toMembership() (*Membership, error) {
@@ -87,22 +88,28 @@ func (r *sqliteMembershipRow) toMembership() (*Membership, error) {
 	if err != nil {
 		return nil, fmt.Errorf("org.sqlite: parse created_at: %w", err)
 	}
+	roleID, err := parseRoleID(r.RoleID)
+	if err != nil {
+		return nil, err
+	}
 	return &Membership{
 		OrgID:     orgID,
 		UserID:    userID,
 		Role:      Role(r.Role),
+		RoleID:    roleID,
 		CreatedAt: ca,
 		System:    r.System != 0,
 	}, nil
 }
 
 type sqliteMemberProfileRow struct {
-	UserID    string `alias:"memberships.user_id"`
-	Role      string `alias:"memberships.role"`
-	CreatedAt string `alias:"memberships.created_at"`
-	System    int64  `alias:"memberships.system"`
-	Email     string `alias:"users.email"`
-	Name      string `alias:"users.name"`
+	UserID    string  `alias:"memberships.user_id"`
+	Role      string  `alias:"memberships.role"`
+	RoleID    *string `alias:"memberships.role_id"`
+	CreatedAt string  `alias:"memberships.created_at"`
+	System    int64   `alias:"memberships.system"`
+	Email     string  `alias:"users.email"`
+	Name      string  `alias:"users.name"`
 }
 
 func (r *sqliteMemberProfileRow) toProfile() (*MemberProfile, error) {
@@ -114,11 +121,16 @@ func (r *sqliteMemberProfileRow) toProfile() (*MemberProfile, error) {
 	if err != nil {
 		return nil, fmt.Errorf("org.sqlite: parse created_at: %w", err)
 	}
+	roleID, err := parseRoleID(r.RoleID)
+	if err != nil {
+		return nil, err
+	}
 	return &MemberProfile{
 		UserID:    userID,
 		Email:     r.Email,
 		Name:      r.Name,
 		Role:      Role(r.Role),
+		RoleID:    roleID,
 		CreatedAt: ca,
 		System:    r.System != 0,
 	}, nil
@@ -222,10 +234,12 @@ func (s *sqliteStore) SaveMembership(ctx context.Context, m *Membership) error {
 			string(m.Role),
 			sqliteent.SQLiteTime(m.CreatedAt),
 			boolToInt(m.System),
+			sqliteNullableRoleID(m.RoleID),
 		).
 		ON_CONFLICT(s.members.OrgID, s.members.UserID).
 		DO_UPDATE(sqlite.SET(
 			s.members.Role.SET(sqlite.String(string(m.Role))),
+			s.members.RoleID.SET(sqliteRoleIDExpr(m.RoleID)),
 			s.members.System.SET(sqlite.Int64(boolToInt(m.System))),
 		))
 	if _, err := stmt.ExecContext(ctx, s.conn(ctx)); err != nil {
@@ -237,22 +251,28 @@ func (s *sqliteStore) SaveMembership(ctx context.Context, m *Membership) error {
 // NOTE: a SQLite unit of work holds BEGIN IMMEDIATE's write lock already.
 func (s *sqliteStore) LockOrg(context.Context, uuid.UUID) error { return nil }
 
-func (s *sqliteStore) MemberRole(ctx context.Context, orgID, userID uuid.UUID) (Role, string, error) {
-	q := "SELECT o.name, m.role FROM " + s.prefix + "orgs o LEFT JOIN " + s.prefix + "memberships m ON m.org_id = o.id AND m.user_id = ? WHERE o.id = ?"
+func (s *sqliteStore) MemberRole(ctx context.Context, orgID, userID uuid.UUID) (Role, uuid.UUID, string, error) {
+	q := "SELECT o.name, m.role, m.role_id FROM " + s.prefix + "orgs o LEFT JOIN " + s.prefix + "memberships m ON m.org_id = o.id AND m.user_id = ? WHERE o.id = ?"
 	var name string
-	var role sql.NullString
-	err := s.conn(ctx).QueryRowContext(ctx, q, userID.String(), orgID.String()).Scan(&name, &role)
+	var role, rawID sql.NullString
+	err := s.conn(ctx).QueryRowContext(ctx, q, userID.String(), orgID.String()).Scan(&name, &role, &rawID)
 	if errors.Is(err, sql.ErrNoRows) {
-		return "", "", nil
+		return "", uuid.Nil, "", nil
 	}
 	if err != nil {
-		return "", "", fmt.Errorf("org.sqlite: MemberRole: %w", err)
+		return "", uuid.Nil, "", fmt.Errorf("org.sqlite: MemberRole: %w", err)
 	}
-	return Role(role.String), name, nil
+	var roleID uuid.UUID
+	if rawID.Valid {
+		if roleID, err = uuid.Parse(rawID.String); err != nil {
+			return "", uuid.Nil, "", fmt.Errorf("org.sqlite: parse role_id: %w", err)
+		}
+	}
+	return Role(role.String), roleID, name, nil
 }
 
 func (s *sqliteStore) MembershipOf(ctx context.Context, orgID, userID uuid.UUID) (*Membership, error) {
-	stmt := sqlite.SELECT(s.members.OrgID, s.members.UserID, s.members.Role, s.members.CreatedAt, s.members.System).
+	stmt := sqlite.SELECT(s.members.OrgID, s.members.UserID, s.members.Role, s.members.RoleID, s.members.CreatedAt, s.members.System).
 		FROM(s.members).
 		WHERE(s.members.OrgID.EQ(sqlite.String(orgID.String())).
 			AND(s.members.UserID.EQ(sqlite.String(userID.String())))).
@@ -268,7 +288,7 @@ func (s *sqliteStore) MembershipOf(ctx context.Context, orgID, userID uuid.UUID)
 }
 
 func (s *sqliteStore) ListMembers(ctx context.Context, orgID uuid.UUID) ([]*Membership, error) {
-	stmt := sqlite.SELECT(s.members.OrgID, s.members.UserID, s.members.Role, s.members.CreatedAt, s.members.System).
+	stmt := sqlite.SELECT(s.members.OrgID, s.members.UserID, s.members.Role, s.members.RoleID, s.members.CreatedAt, s.members.System).
 		FROM(s.members).
 		WHERE(s.members.OrgID.EQ(sqlite.String(orgID.String()))).
 		ORDER_BY(s.members.CreatedAt.ASC())
@@ -291,6 +311,7 @@ func (s *sqliteStore) ListMemberProfiles(ctx context.Context, orgID uuid.UUID) (
 	stmt := sqlite.SELECT(
 		s.members.UserID,
 		s.members.Role,
+		s.members.RoleID,
 		s.members.CreatedAt,
 		s.members.System,
 		s.users.Email,
@@ -372,4 +393,29 @@ func (s *sqliteStore) conn(ctx context.Context) sqliteConn {
 type sqliteConn interface {
 	qrm.DB
 	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
+func parseRoleID(raw *string) (uuid.UUID, error) {
+	if raw == nil || *raw == "" {
+		return uuid.Nil, nil
+	}
+	id, err := uuid.Parse(*raw)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("org.sqlite: parse role_id: %w", err)
+	}
+	return id, nil
+}
+
+func sqliteNullableRoleID(id uuid.UUID) any {
+	if id == uuid.Nil {
+		return nil
+	}
+	return id.String()
+}
+
+func sqliteRoleIDExpr(id uuid.UUID) sqlite.StringExpression {
+	if id == uuid.Nil {
+		return sqliteent.NullText()
+	}
+	return sqlite.String(id.String())
 }

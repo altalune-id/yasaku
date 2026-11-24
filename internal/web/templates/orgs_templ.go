@@ -58,7 +58,7 @@ func OrgsPage(d web.LayoutData, v OrgsView) templ.Component {
 			}
 			ctx = templ.InitializeContext(ctx)
 			if d.Caps.OrgCreation && v.CreateBlocked != "" {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<button type=\"button\" class=\"btn btn-primary\" disabled aria-describedby=\"org-create-blocked\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<button type=\"button\" class=\"btn btn-primary\" disabled aria-describedby=\"org-create-blocked\" data-limit-blocked>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}

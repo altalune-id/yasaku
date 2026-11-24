@@ -29,6 +29,8 @@ type InvitesView struct {
 	Invites   []InviteRow
 	CanManage bool
 	Disabled  bool
+	SendBlocked string
+	CustomRoles []RoleOption
 	Error     string
 	ErrorCode string
 }
@@ -63,12 +65,29 @@ templ InvitesPage(d web.LayoutData, v InvitesView) {
 					<select { inviteRoleField.Attrs()... } name="role" required class="select w-full">
 						<option value="member">{ d.Tr("invites.role_member") }</option>
 						<option value="admin">{ d.Tr("invites.role_admin") }</option>
+						if len(v.CustomRoles) > 0 {
+							<optgroup label={ d.Tr("roles.custom_heading") }>
+								for _, c := range v.CustomRoles {
+									<option value={ c.Value }>{ c.Label }</option>
+								}
+							</optgroup>
+						}
 					</select>
 				}
-				<button type="submit" class="btn btn-primary justify-self-start">
-					@icons.Icon("send", "size-4")
-					<span>{ d.Tr("invites.submit") }</span>
-				</button>
+				if v.SendBlocked != "" {
+					<div class="flex flex-wrap items-center gap-3">
+						<button type="submit" class="btn btn-primary" disabled aria-describedby="invite-send-blocked" data-limit-blocked>
+							@icons.Icon("send", "size-4")
+							<span>{ d.Tr("invites.submit") }</span>
+						</button>
+						<p id="invite-send-blocked" role="status" class="text-sm text-base-content/70">{ v.SendBlocked }</p>
+					</div>
+				} else {
+					<button type="submit" class="btn btn-primary justify-self-start">
+						@icons.Icon("send", "size-4")
+						<span>{ d.Tr("invites.submit") }</span>
+					</button>
+				}
 			</form>
 		}
 		<ul class="list rounded-box border border-base-300 bg-base-100">

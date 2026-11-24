@@ -4,6 +4,7 @@ package org_test
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"io"
 	"log/slog"
@@ -30,8 +31,14 @@ import (
 
 func newPostgresStoreForTest(t *testing.T) (store org.Store, tc tenant.Context, prefix string) { //nolint:nonamedreturns // three heterogeneous returns read cleaner named
 	t.Helper()
+	store, tc, prefix, _ = newPostgresStoreWithDB(t)
+	return store, tc, prefix
+}
+
+func newPostgresStoreWithDB(t *testing.T) (store org.Store, tc tenant.Context, prefix string, sqlDB *sql.DB) { //nolint:nonamedreturns // four heterogeneous returns read cleaner named
+	t.Helper()
 	h := pgtest.New(t)
-	sqlDB := h.OpenDB(t)
+	sqlDB = h.OpenDB(t)
 
 	cfg := config.Defaults()
 	cfg.DB.Driver = "postgres"
@@ -56,7 +63,7 @@ func newPostgresStoreForTest(t *testing.T) (store org.Store, tc tenant.Context, 
 	// NOTE: OrgID is left for each test to fill in with the org it operates on — the store derives its
 	// RLS scope from the context, so a placeholder here would only prove that the superuser bypasses RLS.
 	tc = tenant.Context{UserID: ownerID}
-	return store, tc, prefix
+	return store, tc, prefix, sqlDB
 }
 
 func scopedTo(t *testing.T, tc tenant.Context, orgID uuid.UUID) context.Context {
@@ -384,4 +391,38 @@ func TestSetRole_ConcurrentDemotionsKeepAnOwner(t *testing.T) {
 	m, err := store.MembershipOf(orgCtx, o.ID, b)
 	require.NoError(t, err)
 	require.Equal(t, org.RoleOwner, m.Role, "one owner is left")
+}
+
+func TestPostgres_IsStaff_IgnoresCustomRole(t *testing.T) {
+	store, tc, prefix, sqlDB := newPostgresStoreWithDB(t)
+	sys, err := org.NewOrg("system", "System", tc.UserID)
+	require.NoError(t, err)
+	sys.System = true
+	sysCtx := scopedTo(t, tc, sys.ID)
+	require.NoError(t, store.Save(sysCtx, sys))
+	roleID := uuid.New()
+	_, err = sqlDB.ExecContext(t.Context(), "INSERT INTO "+prefix+"roles (id, org_id, name, permissions, created_at, updated_at) VALUES ($1, $2, 'Ops', '{members:write}', now(), now())",
+		roleID, sys.ID)
+	require.NoError(t, err)
+	require.NoError(t, store.SaveMembership(sysCtx, &org.Membership{OrgID: sys.ID, UserID: tc.UserID, Role: org.RoleCustom, RoleID: roleID, CreatedAt: time.Now()}))
+
+	staff, err := store.IsStaff(sysCtx, tc.UserID)
+	require.NoError(t, err)
+	assert.False(t, staff, "a custom role in the system org is not staff")
+	m, err := store.MembershipOf(sysCtx, sys.ID, tc.UserID)
+	require.NoError(t, err)
+	assert.Equal(t, roleID, m.RoleID)
+	r, id, _, err := store.MemberRole(sysCtx, sys.ID, tc.UserID)
+	require.NoError(t, err)
+	assert.Equal(t, org.RoleCustom, r)
+	assert.Equal(t, roleID, id)
+	profiles, err := store.ListMemberProfiles(sysCtx, sys.ID)
+	require.NoError(t, err)
+	require.Len(t, profiles, 1)
+	assert.Equal(t, roleID, profiles[0].RoleID)
+
+	require.NoError(t, store.SaveMembership(sysCtx, &org.Membership{OrgID: sys.ID, UserID: tc.UserID, Role: org.RoleAdmin, CreatedAt: time.Now()}))
+	m, err = store.MembershipOf(sysCtx, sys.ID, tc.UserID)
+	require.NoError(t, err)
+	assert.Equal(t, uuid.Nil, m.RoleID, "a built-in role clears role_id")
 }

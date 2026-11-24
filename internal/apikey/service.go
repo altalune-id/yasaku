@@ -382,15 +382,33 @@ func (s *Service) requireOrgProjects(ctx context.Context, orgID uuid.UUID, proje
 
 // Authenticator turns a raw API key credential into a session.Principal.
 type Authenticator struct {
-	store   Store
-	usage   *UsageWorker
-	scheme  Scheme
-	members Members
+	store     Store
+	usage     *UsageWorker
+	scheme    Scheme
+	members   Members
+	suspended SuspendedCreators
+}
+
+// SuspendedCreators reports whether the person a key acts for is suspended.
+type SuspendedCreators interface {
+	IsSuspended(ctx context.Context, userID uuid.UUID) (bool, error)
+}
+
+// AuthenticatorOption configures an Authenticator.
+type AuthenticatorOption func(*Authenticator)
+
+// WithSuspendedCreators stops every key whose creator or owner is suspended.
+func WithSuspendedCreators(s SuspendedCreators) AuthenticatorOption {
+	return func(a *Authenticator) { a.suspended = s }
 }
 
 // NewAuthenticator binds an Authenticator to its store, usage recorder, key scheme and the membership gate a personal token's owner is checked against on every use. usage may be nil.
-func NewAuthenticator(s Store, u *UsageWorker, scheme Scheme, members Members) *Authenticator {
-	return &Authenticator{store: s, usage: u, scheme: scheme, members: members}
+func NewAuthenticator(s Store, u *UsageWorker, scheme Scheme, members Members, opts ...AuthenticatorOption) *Authenticator {
+	a := &Authenticator{store: s, usage: u, scheme: scheme, members: members}
+	for _, opt := range opts {
+		opt(a)
+	}
+	return a
 }
 
 // Scheme returns the key scheme this Authenticator resolves, so a surface gate never restates it.
@@ -468,6 +486,15 @@ func (a *Authenticator) requireLiveOwner(ctx context.Context, k *APIKey) error {
 	}
 	if a.members == nil || k.CreatedBy == uuid.Nil {
 		return &authn.UnauthorizedError{}
+	}
+	if a.suspended != nil {
+		suspended, err := a.suspended.IsSuspended(ctx, k.CreatedBy)
+		if err != nil {
+			return err
+		}
+		if suspended {
+			return &authn.UnauthorizedError{}
+		}
 	}
 	return requireOwner(tenant.WithOrg(ctx, k.OrgID), a.members, k.OrgID, k.CreatedBy)
 }

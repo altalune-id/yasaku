@@ -21,6 +21,8 @@ const (
 	CodeUserInvalidName      = "USR005"
 	CodeUserEmailUnverified  = "USR006"
 	CodeUserIdentityConflict = "USR007"
+	CodeUserSuspended        = "USR008"
+	CodeUserStaffProtected   = "USR009"
 
 	CodeOrgNotFound          = "ORG001"
 	CodeOrgAlreadyExists     = "ORG002"
@@ -168,6 +170,16 @@ const (
 
 	CodeLimitReached = "LIM001"
 
-	CodePermissionDenied = "ROL001"
-	CodeRoleEscalation   = "ROL004"
+	CodePermissionDenied      = "ROL001"
+	CodeRoleNotFound          = "ROL002"
+	CodeRoleInUse             = "ROL003"
+	CodeRoleEscalation        = "ROL004"
+	CodeRoleInvalidPermission = "ROL005"
+	CodeRoleSystemOrg         = "ROL006"
+	CodeRoleInvalidName       = "ROL007"
+	CodeRoleAlreadyExists     = "ROL008"
+	CodeRoleStaleVersion      = "ROL009"
+
+	CodeSupportReasonRequired = "SUP001"
+	CodeSupportReadOnly       = "SUP004"
 )

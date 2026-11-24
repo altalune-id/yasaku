@@ -16,7 +16,7 @@ templ OrgsPage(d web.LayoutData, v OrgsView) {
 	<section>
 		@PageHeader(d.Tr("orgs.title"), d.Tr("orgs.subtitle")) {
 			if d.Caps.OrgCreation && v.CreateBlocked != "" {
-				<button type="button" class="btn btn-primary" disabled aria-describedby="org-create-blocked">
+				<button type="button" class="btn btn-primary" disabled aria-describedby="org-create-blocked" data-limit-blocked>
 					@icons.Icon("plus", "size-4")
 					{ d.Tr("nav.new_organization") }
 				</button>

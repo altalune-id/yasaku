@@ -1,0 +1,34 @@
+package templates
+
+import (
+	"strconv"
+	"time"
+
+	"altalune.id/yasaku/internal/web"
+)
+
+templ SupportBanner(d web.LayoutData) {
+	if s := d.Support; s != nil {
+		<div role="alert" class={ flashClass("warn"), "mb-4 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm" } data-support-banner>
+			<p class="min-w-0 flex-[1_1_16rem] text-pretty">
+				<span class="font-semibold">{ d.Tr("support.banner", "Org", s.OrgName) }</span>
+				· { d.Tr("support.read_only") }
+				· { d.Tr("support.reason", "Reason", s.Reason) }
+				· { d.Tr("support.time_left", "Minutes", supportMinutesLeft(s.Until)) }
+			</p>
+			<div class="flex shrink-0 items-center gap-2">
+				<form method="post" action={ templ.SafeURL(d.Href("/admin/support/renew")) }>
+					<input type="hidden" name="return_to" value={ d.CurrentPath }/>
+					<button type="submit" class="btn btn-sm btn-ghost whitespace-nowrap max-lg:btn-md">{ d.Tr("support.renew") }</button>
+				</form>
+				<form method="post" action={ templ.SafeURL(d.Href("/admin/support/exit")) }>
+					<button type="submit" class="btn btn-sm btn-warning whitespace-nowrap max-lg:btn-md">{ d.Tr("support.exit") }</button>
+				</form>
+			</div>
+		</div>
+	}
+}
+
+func supportMinutesLeft(until time.Time) string {
+	return strconv.Itoa(max(0, int(time.Until(until).Round(time.Minute).Minutes())))
+}

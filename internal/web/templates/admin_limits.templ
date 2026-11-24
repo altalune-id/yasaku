@@ -1,0 +1,122 @@
+package templates
+
+import "altalune.id/yasaku/internal/web"
+
+type AdminLimitRow struct {
+	Key     string
+	Subject string
+	Default string
+	Value   string
+}
+
+type AdminOverrideRow struct {
+	Key     string
+	Kind    string
+	ID      string
+	Subject string
+	Value   string
+}
+
+type AdminLimitsView struct {
+	Plan      string
+	Rows      []AdminLimitRow
+	Overrides []AdminOverrideRow
+}
+
+templ AdminLimitsPage(d web.LayoutData, v AdminLimitsView) {
+	@adminShell(d, AdminTabLimits) {
+		<h2 class="text-lg font-semibold">{ d.Tr("admin_limits.plan_title") }</h2>
+		<p class="mb-3 text-sm text-base-content/70">{ d.Tr("admin_limits.plan_hint", "Plan", v.Plan) }</p>
+		@adminTable() {
+			<thead>
+				<tr>
+					<th>{ d.Tr("admin_limits.col_key") }</th>
+					<th>{ d.Tr("admin_limits.col_default") }</th>
+					<th>{ d.Tr("admin_limits.col_value") }</th>
+				</tr>
+			</thead>
+			<tbody>
+				for _, row := range v.Rows {
+					<tr>
+						<td>
+							<div class="font-mono text-xs">{ row.Key }</div>
+							<div class="text-xs text-base-content/70">{ row.Subject }</div>
+						</td>
+						<td class="tabular-nums">{ row.Default }</td>
+						<td>
+							<form method="post" action={ templ.SafeURL(d.Href("/admin/limits")) } class="join">
+								<input type="hidden" name="key" value={ row.Key }/>
+								<input
+									name="value"
+									value={ row.Value }
+									placeholder={ row.Default }
+									aria-label={ d.Tr("admin_limits.value_for", "Key", row.Key) }
+									class="input input-sm join-item w-28 max-lg:input-md"
+								/>
+								<button type="submit" class="btn btn-sm join-item max-lg:btn-md">{ d.Tr("admin_limits.save") }</button>
+							</form>
+						</td>
+					</tr>
+				}
+			</tbody>
+		}
+		<h2 class="mt-8 text-lg font-semibold">{ d.Tr("admin_limits.overrides_title") }</h2>
+		<p class="mb-3 text-sm text-base-content/70">{ d.Tr("admin_limits.overrides_hint") }</p>
+		<form method="post" action={ templ.SafeURL(d.Href("/admin/limits/overrides")) } class="mb-4 flex flex-wrap items-end gap-3">
+			{{ keyField := FieldProps{ID: "override-key", Label: d.Tr("admin_limits.col_key")} }}
+			@FormField(keyField) {
+				<select { keyField.Attrs()... } name="key" class="select select-sm max-lg:select-md">
+					for _, row := range v.Rows {
+						<option value={ row.Key }>{ row.Key }</option>
+					}
+				</select>
+			}
+			{{ subjectField := FieldProps{ID: "override-subject", Label: d.Tr("admin_limits.subject")} }}
+			@FormField(subjectField) {
+				<input { subjectField.Attrs()... } name="subject" required class="input input-sm max-lg:input-md"/>
+			}
+			{{ valueField := FieldProps{ID: "override-value", Label: d.Tr("admin_limits.col_value")} }}
+			@FormField(valueField) {
+				<input { valueField.Attrs()... } name="value" required class="input input-sm w-28 max-lg:input-md"/>
+			}
+			<button type="submit" class="btn btn-sm btn-primary whitespace-nowrap max-lg:btn-md">{ d.Tr("admin_limits.add") }</button>
+		</form>
+		@adminTable() {
+			<thead>
+				<tr>
+					<th>{ d.Tr("admin_limits.col_key") }</th>
+					<th>{ d.Tr("admin_limits.subject") }</th>
+					<th>{ d.Tr("admin_limits.col_value") }</th>
+					<th><span class="sr-only">{ d.Tr("admin.col_actions") }</span></th>
+				</tr>
+			</thead>
+			<tbody>
+				if len(v.Overrides) == 0 {
+					<tr><td colspan="4" class="py-6 text-center text-base-content/70">{ d.Tr("admin_limits.no_overrides") }</td></tr>
+				}
+				for _, o := range v.Overrides {
+					<tr>
+						<td class="font-mono text-xs">{ o.Key }</td>
+						<td>
+							<div>{ o.Subject }</div>
+							<div class="text-xs text-base-content/70">{ o.Kind }</div>
+						</td>
+						<td class="tabular-nums">{ o.Value }</td>
+						<td class="text-end">
+							<form method="post" action={ templ.SafeURL(d.Href("/admin/limits/overrides/delete")) }>
+								<input type="hidden" name="key" value={ o.Key }/>
+								<input type="hidden" name="kind" value={ o.Kind }/>
+								<input type="hidden" name="id" value={ o.ID }/>
+								<button type="submit" class="btn btn-ghost btn-sm whitespace-nowrap max-lg:btn-md">{ d.Tr("admin_limits.delete") }</button>
+							</form>
+						</td>
+					</tr>
+				}
+			</tbody>
+		}
+	}
+}
+
+templ AdminLimitsLayout(d web.LayoutData, v AdminLimitsView) {
+	@Layout(web.WithContent(d, AdminLimitsPage(d, v)))
+}

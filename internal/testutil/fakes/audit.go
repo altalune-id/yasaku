@@ -2,7 +2,9 @@ package fakes
 
 import (
 	"context"
+	"slices"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -56,4 +58,26 @@ func (a *Audit) Actions() []string {
 		out = append(out, r.Action)
 	}
 	return out
+}
+
+// List returns the events recorded for the org on ctx, newest first.
+func (a *Audit) List(ctx context.Context, f audit.Filter) ([]audit.Entry, error) {
+	tc, err := tenant.From(ctx)
+	if err != nil {
+		return nil, err
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	var out []audit.Entry
+	for i, r := range slices.Backward(a.records) {
+		if r.OrgID != tc.OrgID {
+			continue
+		}
+		out = append(out, audit.Entry{OrgID: r.OrgID, Action: r.Action, TargetKind: r.TargetKind, TargetID: r.TargetID,
+			Reason: r.Reason, Detail: r.Detail, OccurredAt: time.Unix(int64(i), 0).UTC()})
+		if f.Limit > 0 && len(out) == f.Limit {
+			break
+		}
+	}
+	return out, nil
 }

@@ -48,6 +48,7 @@ type Service struct {
 	log        *slog.Logger
 	unexpected apperror.UnexpectedFunc
 	now        func() time.Time
+	suspension *suspension
 }
 
 // ServiceOption tunes Service construction.

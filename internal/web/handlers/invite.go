@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"cmp"
 	"net/http"
 	"net/url"
 	"strings"
@@ -13,6 +14,7 @@ import (
 	"altalune.id/yasaku/internal/org"
 	"altalune.id/yasaku/internal/platform/authz"
 	"altalune.id/yasaku/internal/platform/tenant"
+	"altalune.id/yasaku/internal/role"
 	"altalune.id/yasaku/internal/web"
 	"altalune.id/yasaku/internal/web/templates"
 )
@@ -48,9 +50,15 @@ func (h *InviteHandler) renderList(w http.ResponseWriter, sc OrgScope, errMsg, e
 		return
 	}
 	canManage := holds(r, authz.MembersWrite)
+	var blocked string
+	if canManage && h.Caps.InvitesEnabled {
+		blocked, _ = h.limitBlocked(r, h.Invites.SendAllowed(r.Context()), "web invite: send allowed")
+	}
+	custom := h.customRoles(r)
 	Render(w, r, templates.InvitesLayout(h.LayoutForOrg(r, pageTitle(r, "invites.title"), slug, "invites"), templates.InvitesView{
-		OrgSlug: slug, Seats: h.seats(r), Invites: inviteRows(items), CanManage: canManage, Disabled: !h.Caps.InvitesEnabled,
-		Error: errMsg, ErrorCode: errCode,
+		OrgSlug: slug, Seats: h.seats(r), Invites: inviteRows(items, custom), CanManage: canManage, Disabled: !h.Caps.InvitesEnabled,
+		CustomRoles: grantableCustomRoles(r, custom),
+		SendBlocked: blocked, Error: errMsg, ErrorCode: errCode,
 	}))
 }
 
@@ -87,19 +95,19 @@ func (h *InviteHandler) PostSend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	email := strings.TrimSpace(r.PostForm.Get("email"))
-	roleStr := strings.TrimSpace(r.PostForm.Get("role"))
-	role := invite.Role(roleStr)
-	if !role.IsValid() {
+	roleStr, roleID := parseRoleValue(strings.TrimSpace(r.PostForm.Get("role")))
+	inviteRole := invite.Role(roleStr)
+	if !inviteRole.IsValid() && inviteRole != invite.RoleCustom {
 		h.ErrorPage(w, r, http.StatusBadRequest, pageTitle(r, "error_title.bad_role"), "Role must be admin or member.")
 		return
 	}
-	if _, err := h.Invites.Send(r.Context(), invite.SendRequest{Email: email, Role: role}); err != nil {
+	if _, err := h.Invites.Send(r.Context(), invite.SendRequest{Email: email, Role: inviteRole, RoleID: roleID}); err != nil {
 		h.LogErr("web invite: send", err)
 		if invite.IsInvitesDisabledError(err) {
 			h.ErrorPage(w, r, http.StatusConflict, pageTitle(r, "error_title.invites_disabled"), err.Error(), err)
 			return
 		}
-		if m, ok := h.limitMessage(r.Context(), err); ok {
+		if _, m, ok := h.roleRefusal(r, err); ok {
 			h.renderList(w, sc, m, ErrorRef(err))
 			return
 		}
@@ -208,13 +216,13 @@ func (h *InviteHandler) GetAccept(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, ResolveReturnTo(h.Cfg.HTTP.BasePath, dest), http.StatusSeeOther) //nolint:gosec // G710: destination sanitized via ResolveReturnTo → SanitizeReturnTo
 }
 
-func inviteRows(items []*invite.Invite) []templates.InviteRow {
+func inviteRows(items []*invite.Invite, custom []*role.Role) []templates.InviteRow {
 	out := make([]templates.InviteRow, 0, len(items))
 	for _, i := range items {
 		out = append(out, templates.InviteRow{
 			ID:        i.ID.String(),
 			Email:     i.Email,
-			Role:      string(i.Role),
+			Role:      cmp.Or(customRoleName(custom, i.RoleID), string(i.Role)),
 			ExpiresAt: i.ExpiresAt,
 		})
 	}

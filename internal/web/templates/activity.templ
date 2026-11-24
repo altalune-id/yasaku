@@ -23,7 +23,15 @@ type ActivityView struct {
 templ ActivityPage(d web.LayoutData, v ActivityView) {
 	<section>
 		@PageHeader(d.Tr("activity.title"), d.Tr("activity.subtitle"))
-		<ul class="mt-6 divide-y divide-base-300/50 overflow-hidden rounded-lg border border-base-300 bg-base-100 shadow-sm">
+		<div class="mt-6">
+			@ActivityList(d, v)
+		</div>
+	</section>
+}
+
+templ ActivityList(d web.LayoutData, v ActivityView) {
+	<div>
+		<ul class="divide-y divide-base-300/50 overflow-hidden rounded-lg border border-base-300 bg-base-100 shadow-sm">
 			if len(v.Rows) == 0 {
 				<li class="px-4 py-6 text-center text-sm text-base-content/70">{ d.Tr("activity.empty") }</li>
 			}
@@ -65,7 +73,7 @@ templ ActivityPage(d web.LayoutData, v ActivityView) {
 				<a href={ templ.SafeURL(v.NextHref) } class="btn btn-ghost btn-sm">{ d.Tr("activity.older") }</a>
 			</div>
 		}
-	</section>
+	</div>
 }
 
 templ ActivityLayout(d web.LayoutData, v ActivityView) {

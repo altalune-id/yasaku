@@ -22,8 +22,8 @@ type Store interface {
 	MembershipOf(ctx context.Context, orgID, userID uuid.UUID) (*Membership, error)
 	// LockOrg holds orgID's row for the unit of work on ctx, so membership changes to one org run one at a time.
 	LockOrg(ctx context.Context, orgID uuid.UUID) error
-	// MemberRole returns userID's role in orgID, or "" when not a member, with the org's name, in one read.
-	MemberRole(ctx context.Context, orgID, userID uuid.UUID) (Role, string, error)
+	// MemberRole returns userID's role and custom role id in orgID, or "" when not a member, with the org's name, in one read.
+	MemberRole(ctx context.Context, orgID, userID uuid.UUID) (Role, uuid.UUID, string, error)
 	ListMembers(ctx context.Context, orgID uuid.UUID) ([]*Membership, error)
 	ListMemberProfiles(ctx context.Context, orgID uuid.UUID) ([]*MemberProfile, error)
 	RemoveMember(ctx context.Context, orgID, userID uuid.UUID) error

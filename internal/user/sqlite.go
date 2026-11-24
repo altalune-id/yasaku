@@ -16,12 +16,13 @@ import (
 )
 
 type sqliteStore struct {
-	db    *sql.DB
-	table *sqliteent.Users
+	db     *sql.DB
+	table  *sqliteent.Users
+	prefix string
 }
 
 func newSQLiteStore(db *sql.DB, tablePrefix string) *sqliteStore {
-	return &sqliteStore{db: db, table: sqliteent.NewUsers(tablePrefix)}
+	return &sqliteStore{db: db, table: sqliteent.NewUsers(tablePrefix), prefix: tablePrefix}
 }
 
 type sqliteUserRow struct {
@@ -37,6 +38,8 @@ type sqliteUserRow struct {
 	ColorMode       string         `alias:"users.color_mode"`
 	TipsSeen        string         `alias:"users.tips_seen"`
 	TermsAcceptedAt sql.NullString `alias:"users.terms_accepted_at"`
+	LastSignInAt    sql.NullString `alias:"users.last_sign_in_at"`
+	SuspendedAt     sql.NullString `alias:"users.suspended_at"`
 	CreatedAt       string         `alias:"users.created_at"`
 }
 
@@ -71,6 +74,12 @@ func (r *sqliteUserRow) toUser() (*User, error) {
 		}
 		u.TermsAcceptedAt = &t
 	}
+	if u.LastSignInAt, err = parseNullTime(r.LastSignInAt); err != nil {
+		return nil, fmt.Errorf("user.sqlite: parse last_sign_in_at: %w", err)
+	}
+	if u.SuspendedAt, err = parseNullTime(r.SuspendedAt); err != nil {
+		return nil, fmt.Errorf("user.sqlite: parse suspended_at: %w", err)
+	}
 	return u, nil
 }
 
@@ -79,7 +88,7 @@ func (s *sqliteStore) userSelectCols() []sqlite.Projection {
 		s.table.ID, s.table.Email, s.table.Name, s.table.IsAdmin,
 		s.table.IDPIssuer, s.table.IDPSubject, s.table.PasswordHash, s.table.Locale,
 		s.table.Theme, s.table.ColorMode, s.table.TipsSeen,
-		s.table.TermsAcceptedAt, s.table.CreatedAt,
+		s.table.TermsAcceptedAt, s.table.LastSignInAt, s.table.SuspendedAt, s.table.CreatedAt,
 	}
 }
 

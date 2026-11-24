@@ -128,6 +128,26 @@ func (s *Service) createWithSlug(ctx context.Context, span trace.Span, orgID uui
 	return p, nil
 }
 
+// CreateAllowed returns the *limits.ReachedError Create would refuse orgID with, read without a lock, so the console can disable "New project" with its reason.
+func (s *Service) CreateAllowed(ctx context.Context, orgID uuid.UUID) error {
+	if s.limits == nil {
+		return nil
+	}
+	existing, err := s.store.List(ctx, orgID)
+	if err != nil {
+		return s.unexpected(ctx, "project.CreateAllowed: count", err, "org_id", orgID)
+	}
+	err = s.limits.Check(ctx, limits.OrgProjects, limits.Subject{Kind: limits.SubjectOrg, ID: orgID}, int64(len(existing)))
+	re, ok := errors.AsType[*limits.ReachedError](err)
+	if !ok {
+		return err
+	}
+	if re.Name, err = s.orgNames.OrgName(ctx, orgID); err != nil {
+		return s.unexpected(ctx, "project.CreateAllowed: org name", err, "org_id", orgID)
+	}
+	return re
+}
+
 func (s *Service) checkProjectLimit(ctx context.Context, orgID uuid.UUID) error {
 	if s.limits == nil {
 		return nil

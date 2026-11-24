@@ -2,14 +2,19 @@ package handlers
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/google/uuid"
 
+	"altalune.id/yasaku/internal/i18n"
 	"altalune.id/yasaku/internal/org"
 	"altalune.id/yasaku/internal/platform/authz"
 	"altalune.id/yasaku/internal/platform/session"
 	"altalune.id/yasaku/internal/platform/tenant"
 	"altalune.id/yasaku/internal/project"
+	"altalune.id/yasaku/internal/user"
+	"altalune.id/yasaku/internal/web"
+	"altalune.id/yasaku/internal/web/templates"
 )
 
 // OrgScope is the org an org-scoped route acts on, with a request already carrying the tenant scope.
@@ -49,12 +54,92 @@ func (d Deps) RequireOrgFrom(w http.ResponseWriter, r *http.Request, slug func(*
 
 // RequireSignedIn loads the caller's session, redirecting to login when there is none.
 func (d Deps) RequireSignedIn(w http.ResponseWriter, r *http.Request) (session.Principal, string, bool) {
-	p, sid, ok := d.LoadSession(r)
+	p, sid, ok := d.loadSession(r)
 	if !ok || p.UserID == uuid.Nil {
 		http.Redirect(w, r, ResolveReturnTo(d.Cfg.HTTP.BasePath, "/login"), http.StatusSeeOther)
 		return session.Principal{}, "", false
 	}
+	if d.Users != nil {
+		if err := d.Users.RequireActive(r.Context(), p.UserID); err != nil {
+			d.refuseInactive(w, r, err)
+			return session.Principal{}, "", false
+		}
+	}
 	return p, sid, true
+}
+
+//i18n:use user.suspended_title
+
+// SECURITY: a suspended user keeps the session, so an unsuspend restores it, but reaches no page that needs one.
+func (d Deps) refuseInactive(w http.ResponseWriter, r *http.Request, err error) {
+	if user.IsSuspendedError(err) {
+		title, msg := pageTitle(r, "user.suspended_title"), suspendedMessage(r, d.Cfg.Compliance.ContactEmail)
+		if web.IsHTMXRequest(r) {
+			d.ErrorPage(w, r, http.StatusForbidden, title, msg, err)
+			return
+		}
+		RenderStatus(w, r, http.StatusForbidden, templates.SuspendedLayout(d.Base(r, title), msg))
+		return
+	}
+	http.Redirect(w, r, ResolveReturnTo(d.Cfg.HTTP.BasePath, "/login"), http.StatusSeeOther)
+}
+
+//i18n:use user.suspended_message
+
+func suspendedMessage(r *http.Request, contact string) string {
+	if contact == "" {
+		return ""
+	}
+	return i18n.TranslatorFrom(r.Context()).T("user.suspended_message", "Contact", contact)
+}
+
+// RequireStaff loads the caller's session and admits platform staff only. SECURITY: anyone else gets a 404, so /admin reveals nothing to non-staff.
+func (d Deps) RequireStaff(w http.ResponseWriter, r *http.Request) (session.Principal, string, bool) {
+	p, sid, ok := d.RequireSignedIn(w, r)
+	if !ok {
+		return session.Principal{}, "", false
+	}
+	staff, err := d.Orgs.IsStaff(r.Context(), p.UserID)
+	if err != nil || !staff {
+		d.ErrorPage(w, r, http.StatusNotFound, pageTitle(r, "error_title.not_found"), "", err)
+		return session.Principal{}, "", false
+	}
+	return p, sid, true
+}
+
+//i18n:use authz.support_read_only
+
+// SECURITY: a non-member enters an org only on a live support visit to that org, only while still staff, and only to read.
+func (d Deps) admitSupport(w http.ResponseWriter, r *http.Request, p session.Principal, o *org.Org, cause error) bool {
+	if p.Support == nil || p.Support.OrgID != o.ID {
+		d.ErrorPage(w, r, http.StatusNotFound, pageTitle(r, "error_title.organization_not_found"), "", cause)
+		return false
+	}
+	if !p.Support.Live(o.ID, time.Now()) {
+		d.endSupport(w, r)
+		return false
+	}
+	staff, err := d.Orgs.IsStaff(r.Context(), p.UserID)
+	if err != nil || !staff {
+		d.ErrorPage(w, r, http.StatusNotFound, pageTitle(r, "error_title.organization_not_found"), "", cause)
+		return false
+	}
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		d.ErrorPage(w, r, http.StatusForbidden, pageTitle(r, "error_title.not_allowed"),
+			i18n.TranslatorFrom(r.Context()).T("authz.support_read_only", "Org", o.Name), &authz.SupportReadOnlyError{Org: o.Name})
+		return false
+	}
+	return true
+}
+
+func (d Deps) endSupport(w http.ResponseWriter, r *http.Request) {
+	if p, sid, ok := d.LoadSession(r); ok {
+		p.Support = nil
+		if err := d.UpdateSession(r, sid, p); err != nil {
+			d.LogErr("support: clear expired visit", err)
+		}
+	}
+	http.Redirect(w, r, ResolveReturnTo(d.Cfg.HTTP.BasePath, "/admin"), http.StatusSeeOther)
 }
 
 // MemberOrgScopes returns an OrgScope for every org the caller belongs to. SECURITY: org.Service.List joins the caller's memberships, so every org here is one the caller is a member of right now.

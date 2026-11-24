@@ -57,8 +57,8 @@ func (c Counter) OrgName(ctx context.Context, orgID uuid.UUID) (string, error) {
 	return o.Name, nil
 }
 
-// RoleOf returns userID's built-in role in orgID, or "" when userID is not a member, with the org's name. The role id is uuid.Nil until custom roles exist.
+// RoleOf returns userID's role in orgID, or "" when userID is not a member, with its custom role id (uuid.Nil for a built-in) and the org's name.
 func (c Counter) RoleOf(ctx context.Context, orgID, userID uuid.UUID) (role string, roleID uuid.UUID, orgName string, err error) {
-	r, name, err := c.store.MemberRole(ctx, orgID, userID)
-	return string(r), uuid.Nil, name, err
+	r, id, name, err := c.store.MemberRole(ctx, orgID, userID)
+	return string(r), id, name, err
 }

@@ -92,31 +92,32 @@ func (s *postgresStore) LockOrg(ctx context.Context, orgID uuid.UUID) error {
 	return nil
 }
 
-func (s *postgresStore) MemberRole(ctx context.Context, orgID, userID uuid.UUID) (Role, string, error) {
+func (s *postgresStore) MemberRole(ctx context.Context, orgID, userID uuid.UUID) (Role, uuid.UUID, string, error) {
 	tx, owned, err := s.txAcquire(ctx)
 	if err != nil {
-		return "", "", err
+		return "", uuid.Nil, "", err
 	}
 	if owned {
 		defer func() { _ = tx.Rollback() }()
 	}
-	stmt := postgres.SELECT(s.orgs.Name.AS("name"), s.members.Role.AS("role")).
+	stmt := postgres.SELECT(s.orgs.Name.AS("name"), s.members.Role.AS("role"), s.members.RoleID.AS("role_id")).
 		FROM(s.orgs.LEFT_JOIN(s.members, s.members.OrgID.EQ(s.orgs.ID).AND(s.members.UserID.EQ(postgres.UUID(userID))))).
 		WHERE(s.orgs.ID.EQ(postgres.UUID(orgID)))
 	var row struct {
-		Name string  `alias:"name"`
-		Role *string `alias:"role"`
+		Name   string     `alias:"name"`
+		Role   *string    `alias:"role"`
+		RoleID *uuid.UUID `alias:"role_id"`
 	}
 	if err := stmt.QueryContext(ctx, tx, &row); err != nil {
 		if errors.Is(err, qrm.ErrNoRows) || errors.Is(err, sql.ErrNoRows) {
-			return "", "", nil
+			return "", uuid.Nil, "", nil
 		}
-		return "", "", fmt.Errorf("org.postgres: MemberRole: %w", err)
+		return "", uuid.Nil, "", fmt.Errorf("org.postgres: MemberRole: %w", err)
 	}
 	if row.Role == nil {
-		return "", row.Name, nil
+		return "", uuid.Nil, row.Name, nil
 	}
-	return Role(*row.Role), row.Name, nil
+	return Role(*row.Role), derefUUID(row.RoleID), row.Name, nil
 }
 
 func (s *postgresStore) MembershipOf(ctx context.Context, orgID, userID uuid.UUID) (*Membership, error) {
@@ -127,7 +128,7 @@ func (s *postgresStore) MembershipOf(ctx context.Context, orgID, userID uuid.UUI
 	if owned {
 		defer func() { _ = tx.Rollback() }()
 	}
-	stmt := postgres.SELECT(s.members.OrgID, s.members.UserID, s.members.Role, s.members.CreatedAt, s.members.System).
+	stmt := postgres.SELECT(s.members.OrgID, s.members.UserID, s.members.Role, s.members.RoleID, s.members.CreatedAt, s.members.System).
 		FROM(s.members).
 		WHERE(s.members.OrgID.EQ(postgres.UUID(orgID)).
 			AND(s.members.UserID.EQ(postgres.UUID(userID)))).
@@ -150,7 +151,7 @@ func (s *postgresStore) ListMembers(ctx context.Context, orgID uuid.UUID) ([]*Me
 	if owned {
 		defer func() { _ = tx.Rollback() }()
 	}
-	stmt := postgres.SELECT(s.members.OrgID, s.members.UserID, s.members.Role, s.members.CreatedAt, s.members.System).
+	stmt := postgres.SELECT(s.members.OrgID, s.members.UserID, s.members.Role, s.members.RoleID, s.members.CreatedAt, s.members.System).
 		FROM(s.members).
 		WHERE(s.members.OrgID.EQ(postgres.UUID(orgID))).
 		ORDER_BY(s.members.CreatedAt.ASC())
@@ -176,6 +177,7 @@ func (s *postgresStore) ListMemberProfiles(ctx context.Context, orgID uuid.UUID)
 	stmt := postgres.SELECT(
 		s.members.UserID,
 		s.members.Role,
+		s.members.RoleID,
 		s.members.CreatedAt,
 		s.members.System,
 		s.users.Email,

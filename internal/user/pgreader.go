@@ -17,7 +17,7 @@ func (s *postgresStore) userSelectCols() []postgres.Projection {
 		s.table.ID, s.table.Email, s.table.Name, s.table.IsAdmin,
 		s.table.IDPIssuer, s.table.IDPSubject, s.table.PasswordHash, s.table.Locale,
 		s.table.Theme, s.table.ColorMode, s.table.TipsSeen,
-		s.table.TermsAcceptedAt, s.table.CreatedAt,
+		s.table.TermsAcceptedAt, s.table.LastSignInAt, s.table.SuspendedAt, s.table.CreatedAt,
 	}
 }
 

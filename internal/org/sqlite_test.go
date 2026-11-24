@@ -416,3 +416,44 @@ func TestOrgCreate_RollsBackOnMembershipFailureSQLite(t *testing.T) {
 	require.NoError(t, sqlDB.QueryRowContext(t.Context(), "SELECT count(*) FROM "+cfg.DB.TablePrefix+"orgs WHERE slug = 'acme'").Scan(&n))
 	assert.Zero(t, n, "the org row must roll back with its failed membership")
 }
+
+// TestIsStaff_IgnoresCustomRole proves a custom role in the system org never makes staff, whatever it holds, and that role_id round-trips.
+func TestIsStaff_IgnoresCustomRole(t *testing.T) {
+	store, sqlDB, prefix := newSQLiteStoreForTest(t)
+	userID := seedUser(t, sqlDB, prefix)
+	ctx := context.Background()
+	sys, err := org.NewOrg("system", "System", userID)
+	require.NoError(t, err)
+	sys.System = true
+	require.NoError(t, store.Save(ctx, sys))
+	roleID := uuid.New()
+	now := sqliteent.SQLiteTime(time.Now())
+	_, err = sqlDB.Exec("INSERT INTO "+prefix+"roles (id, org_id, name, permissions, created_at, updated_at) VALUES (?, ?, 'Ops', '[\"members:write\"]', ?, ?)",
+		roleID.String(), sys.ID.String(), now, now)
+	require.NoError(t, err)
+	require.NoError(t, store.SaveMembership(ctx, &org.Membership{OrgID: sys.ID, UserID: userID, Role: org.RoleCustom, RoleID: roleID, CreatedAt: time.Now()}))
+
+	staff, err := store.IsStaff(ctx, userID)
+	require.NoError(t, err)
+	assert.False(t, staff, "a custom role in the system org is not staff")
+
+	m, err := store.MembershipOf(ctx, sys.ID, userID)
+	require.NoError(t, err)
+	assert.Equal(t, roleID, m.RoleID)
+	r, id, _, err := store.MemberRole(ctx, sys.ID, userID)
+	require.NoError(t, err)
+	assert.Equal(t, org.RoleCustom, r)
+	assert.Equal(t, roleID, id)
+	profiles, err := store.ListMemberProfiles(ctx, sys.ID)
+	require.NoError(t, err)
+	require.Len(t, profiles, 1)
+	assert.Equal(t, roleID, profiles[0].RoleID)
+
+	require.NoError(t, store.SaveMembership(ctx, &org.Membership{OrgID: sys.ID, UserID: userID, Role: org.RoleAdmin, CreatedAt: time.Now()}))
+	m, err = store.MembershipOf(ctx, sys.ID, userID)
+	require.NoError(t, err)
+	assert.Equal(t, uuid.Nil, m.RoleID, "a built-in role clears role_id")
+	staff, err = store.IsStaff(ctx, userID)
+	require.NoError(t, err)
+	assert.True(t, staff)
+}

@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -65,6 +66,9 @@ func (f *User) Save(_ context.Context, u *user.User) error {
 		delete(f.byIDP, idpKey(prev.IDPIssuer, prev.IDPSubject))
 	}
 	cp := *u
+	if prev, ok := f.byID[u.ID]; ok {
+		cp.LastSignInAt, cp.SuspendedAt = prev.LastSignInAt, prev.SuspendedAt
+	}
 	f.byID[u.ID] = &cp
 	f.byMap[email] = u.ID
 	if idp != "" {
@@ -206,4 +210,49 @@ func (f *User) UpdateLocale(_ context.Context, id uuid.UUID, locale string) erro
 	}
 	u.Locale = locale
 	return nil
+}
+
+// StampSignIn records the sign-in time; Save leaves it alone, as the stores do.
+func (f *User) StampSignIn(_ context.Context, id uuid.UUID, at time.Time) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	u, ok := f.byID[id]
+	if !ok {
+		return &user.NotFoundError{ID: id.String()}
+	}
+	t := at.UTC()
+	u.LastSignInAt = &t
+	return nil
+}
+
+// SetSuspended sets or clears the suspension; Save leaves it alone, as the stores do.
+func (f *User) SetSuspended(_ context.Context, id uuid.UUID, at *time.Time) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	u, ok := f.byID[id]
+	if !ok {
+		return &user.NotFoundError{ID: id.String()}
+	}
+	u.SuspendedAt = nil
+	if at != nil {
+		t := at.UTC()
+		u.SuspendedAt = &t
+	}
+	return nil
+}
+
+// AdminListOrgs returns no orgs: the fake user store knows none.
+func (f *User) AdminListOrgs(context.Context) ([]user.AdminOrg, error) {
+	return nil, nil
+}
+
+// AdminListUsers lists every stored user with no org count.
+func (f *User) AdminListUsers(context.Context) ([]user.AdminUser, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]user.AdminUser, 0, len(f.byID))
+	for _, u := range f.byID {
+		out = append(out, user.AdminUser{ID: u.ID, Email: u.Email, Name: u.Name, CreatedAt: u.CreatedAt, LastSignInAt: u.LastSignInAt, SuspendedAt: u.SuspendedAt})
+	}
+	return out, nil
 }

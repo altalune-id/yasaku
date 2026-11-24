@@ -12,6 +12,9 @@ import (
 )
 
 var rawTenantScopes = map[string]string{ //nolint:gochecknoglobals // Immutable manifest; not runtime state.
+	"web/handlers/admin.go:GetOrg":              "staff list a visited org's projects read-only; project List is not Can-gated",
+	"web/handlers/admin.go:GetActivity":         "staff read the system org's audit read-only; audit is not Can-gated",
+	"web/handlers/admin.go:inOrg":               "support and limit events under the target or system org; audit and limits are not Can-gated",
 	"web/handlers/auth.go:resolveActiveTenant":  "sign-in picks the active project; reads the project list only",
 	"web/handlers/handlers.go:layout":           "the layout's project list; reads only",
 	"web/handlers/invite.go:GetAccept":          "picks a project after accept; reads the project list only",

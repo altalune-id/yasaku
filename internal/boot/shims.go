@@ -45,7 +45,7 @@ func (s orgStoreForInvite) ByID(ctx context.Context, id uuid.UUID) (*invite.OrgR
 }
 
 func (s orgStoreForInvite) SaveMembership(ctx context.Context, m *invite.MembershipRef) error {
-	return s.store.SaveMembership(ctx, &org.Membership{OrgID: m.OrgID, UserID: m.UserID, Role: org.Role(m.Role)})
+	return s.store.SaveMembership(ctx, &org.Membership{OrgID: m.OrgID, UserID: m.UserID, Role: org.Role(m.Role), RoleID: m.RoleID})
 }
 
 func (s orgStoreForInvite) MembershipOf(ctx context.Context, orgID, userID uuid.UUID) (*invite.MembershipRef, error) {
@@ -53,7 +53,7 @@ func (s orgStoreForInvite) MembershipOf(ctx context.Context, orgID, userID uuid.
 	if err != nil {
 		return nil, err
 	}
-	return &invite.MembershipRef{OrgID: m.OrgID, UserID: m.UserID, Role: invite.Role(m.Role)}, nil
+	return &invite.MembershipRef{OrgID: m.OrgID, UserID: m.UserID, Role: invite.Role(m.Role), RoleID: m.RoleID}, nil
 }
 
 type userStoreForAuth struct{ store user.Store }
@@ -127,11 +127,11 @@ func (s orgStoreForOnboard) MembershipOf(ctx context.Context, orgID, userID uuid
 	if err != nil {
 		return nil, err
 	}
-	return &user.MembershipRef{OrgID: m.OrgID, UserID: m.UserID, Role: string(m.Role)}, nil
+	return &user.MembershipRef{OrgID: m.OrgID, UserID: m.UserID, Role: string(m.Role), RoleID: m.RoleID}, nil
 }
 
 func (s orgStoreForOnboard) SaveMembership(ctx context.Context, m *user.MembershipRef) error {
-	return s.store.SaveMembership(ctx, &org.Membership{OrgID: m.OrgID, UserID: m.UserID, Role: org.Role(m.Role)})
+	return s.store.SaveMembership(ctx, &org.Membership{OrgID: m.OrgID, UserID: m.UserID, Role: org.Role(m.Role), RoleID: m.RoleID})
 }
 
 type projectStoreForOnboard struct{ store project.Store }
@@ -195,6 +195,7 @@ func toUserInvites(invs []*invite.Invite) []*user.InviteRef {
 			OrgID:      inv.OrgID,
 			Email:      inv.Email,
 			Role:       string(inv.Role),
+			RoleID:     inv.RoleID,
 			ExpiresAt:  inv.ExpiresAt,
 			AcceptedAt: inv.UsedAt,
 		})
@@ -321,4 +322,30 @@ func postRefOf(p *blog.Post) dataplane.PostRef {
 		Published:  p.Status == blog.StatusPublished,
 		Version:    p.Version,
 	}
+}
+
+type staffDirectory struct {
+	org.Counter
+	store org.Store
+}
+
+func (d staffDirectory) SystemOrgID(ctx context.Context) (uuid.UUID, error) {
+	o, err := d.store.SystemOrg(ctx)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	return o.ID, nil
+}
+
+type suspendedUsers struct{ store user.Store }
+
+func (s suspendedUsers) IsSuspended(ctx context.Context, userID uuid.UUID) (bool, error) {
+	u, err := s.store.ByID(ctx, userID)
+	if user.IsNotFoundError(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return u.SuspendedAt != nil, nil
 }

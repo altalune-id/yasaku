@@ -10,7 +10,10 @@ type MemberRow struct {
 	Email  string
 	Name   string
 	Role   string
-	System bool
+	RoleID string
+	// RoleName is the custom role's name; empty for a built-in role.
+	RoleName string
+	System   bool
 	// IsSelf marks the row belonging to the signed-in user, who cannot remove their own membership.
 	IsSelf bool
 	// Removable comes from org.RemovalRefusal, so the button only shows where the post would succeed.
@@ -26,6 +29,7 @@ type MembersView struct {
 	OrgName        string
 	CanManage      bool
 	GrantableRoles []string
+	CustomRoles    []RoleOption
 	Error          string
 	ErrorCode      string
 }
@@ -63,7 +67,11 @@ templ MembersPage(d web.LayoutData, v MembersView) {
 							}
 						</p>
 						<p class="truncate text-xs text-base-content/70">
-							{ m.Email } · { m.Role }
+							if m.RoleName != "" {
+								{ m.Email } · { m.RoleName }
+							} else {
+								{ m.Email } · { m.Role }
+							}
 							if m.System {
 								<span class="ms-2 inline-flex items-center rounded-full bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning ring-1 ring-inset ring-warning/30">{ d.Tr("common.system") }</span>
 							}
@@ -110,6 +118,15 @@ func roleLabel(d web.LayoutData, role string) string {
 	}
 }
 
+func hasRoleOption(opts []RoleOption, value string) bool {
+	for _, o := range opts {
+		if o.Value == value {
+			return true
+		}
+	}
+	return false
+}
+
 func memberLabel(m MemberRow) string {
 	if m.Name != "" {
 		return m.Name
@@ -123,8 +140,18 @@ templ memberRoleForm(d web.LayoutData, v MembersView, m MemberRow) {
 			if m.Role == "owner" {
 				<option value="" selected disabled>{ d.Tr("members.role_owner") }</option>
 			}
+			if m.RoleID != "" && !hasRoleOption(v.CustomRoles, m.RoleID) {
+				<option value="" selected disabled>{ m.RoleName }</option>
+			}
 			for _, role := range v.GrantableRoles {
 				<option value={ role } selected?={ m.Role == role }>{ roleLabel(d, role) }</option>
+			}
+			if len(v.CustomRoles) > 0 {
+				<optgroup label={ d.Tr("roles.custom_heading") }>
+					for _, c := range v.CustomRoles {
+						<option value={ c.Value } selected?={ m.RoleID == c.Value }>{ c.Label }</option>
+					}
+				</optgroup>
 			}
 		</select>
 		<button type="submit" class="btn btn-sm join-item">{ d.Tr("members.save_role") }</button>

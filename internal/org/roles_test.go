@@ -39,7 +39,7 @@ func (r *roleOrg) seat(t *testing.T, role org.Role) uuid.UUID {
 }
 
 func (r *roleOrg) as(userID uuid.UUID, role org.Role) context.Context {
-	return fakes.Allow(context.Background(), tenant.Context{OrgID: r.org.ID, UserID: userID}, authz.Builtin(string(role))...)
+	return fakes.AsRole(context.Background(), tenant.Context{OrgID: r.org.ID, UserID: userID}, string(role), authz.Builtin(string(role))...)
 }
 
 func (r *roleOrg) roleOf(t *testing.T, userID uuid.UUID) org.Role {
@@ -124,4 +124,31 @@ func TestSetRole_AuditedInSameTx(t *testing.T) {
 	assert.Equal(t, "member.role_changed", recs[0].Action)
 	assert.Equal(t, map[string]string{"name": "bob@example.com", "email": "bob@example.com", "from_role": "member", "to_role": "admin"}, recs[0].Detail)
 	assert.True(t, recs[0].InTx)
+}
+
+// TestOwnerOnly_CustomRoleWithEveryPermission proves only a built-in owner makes, demotes or removes an owner, even against a custom role holding every permission.
+func TestOwnerOnly_CustomRoleWithEveryPermission(t *testing.T) {
+	r := newRoleOrg(t)
+	member, coOwner := r.seat(t, org.RoleMember), r.seat(t, org.RoleOwner)
+	everything := fakes.AsRole(context.Background(), tenant.Context{OrgID: r.org.ID, UserID: uuid.New()}, string(org.RoleCustom), authz.Builtin(string(org.RoleOwner))...)
+
+	err := r.svc.SetRole(everything, r.org.ID, member, string(org.RoleOwner), uuid.Nil)
+	assert.True(t, authz.IsEscalationError(err), "make an owner: got %T: %v", err, err)
+	err = r.svc.SetRole(everything, r.org.ID, coOwner, string(org.RoleMember), uuid.Nil)
+	assert.True(t, authz.IsEscalationError(err), "demote an owner: got %T: %v", err, err)
+	err = r.svc.RemoveMember(everything, r.org.ID, coOwner)
+	assert.True(t, authz.IsEscalationError(err), "remove an owner: got %T: %v", err, err)
+	assert.Equal(t, org.RoleMember, r.roleOf(t, member))
+	assert.Equal(t, org.RoleOwner, r.roleOf(t, coOwner))
+
+	controls, _, err := r.svc.MemberControls(everything, r.org.ID)
+	require.NoError(t, err)
+	for _, c := range controls {
+		assert.False(t, c.CanMakeOwner, "%s: no make-owner control", c.Member.UserID)
+		if c.Member.Role == org.RoleOwner {
+			assert.False(t, c.RoleEditable || c.Removable, "%s: an owner row offers no change", c.Member.UserID)
+		}
+	}
+
+	require.NoError(t, r.svc.SetRole(r.as(r.owner, org.RoleOwner), r.org.ID, member, string(org.RoleOwner), uuid.Nil), "a built-in owner still can")
 }

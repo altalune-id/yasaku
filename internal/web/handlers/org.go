@@ -10,6 +10,7 @@ import (
 	"altalune.id/yasaku/internal/org"
 	"altalune.id/yasaku/internal/platform/authz"
 	"altalune.id/yasaku/internal/platform/session"
+	"altalune.id/yasaku/internal/role"
 	"altalune.id/yasaku/internal/web"
 	"altalune.id/yasaku/internal/web/templates"
 	slugs "altalune.id/yasaku/slug"
@@ -135,12 +136,14 @@ func (h *OrgHandler) GetShow(w http.ResponseWriter, r *http.Request) {
 	for _, g := range grantable {
 		roles = append(roles, string(g))
 	}
+	custom := h.customRoles(r)
 	Render(w, r, templates.MembersLayout(h.LayoutForOrg(r, pageTitle(r, "members.title", o.Name), o.Slug, "members"), templates.MembersView{
 		OrgSlug:        o.Slug,
 		OrgName:        o.Name,
-		Members:        memberRows(controls, p.UserID),
+		Members:        memberRows(controls, p.UserID, custom),
 		CanManage:      holds(r, authz.MembersWrite),
 		GrantableRoles: roles,
+		CustomRoles:    grantableCustomRoles(r, custom),
 	}))
 }
 
@@ -205,7 +208,8 @@ func (h *OrgHandler) PostSetRole(w http.ResponseWriter, r *http.Request) {
 		h.ErrorPage(w, r, http.StatusBadRequest, pageTitle(r, "error_title.bad_request"), "Could not parse form body.")
 		return
 	}
-	err = h.Orgs.SetRole(r.Context(), o.ID, userID, r.PostForm.Get("role"), uuid.Nil)
+	roleName, roleID := parseRoleValue(r.PostForm.Get("role"))
+	err = h.Orgs.SetRole(r.Context(), o.ID, userID, roleName, roleID)
 	switch {
 	case err == nil:
 		http.Redirect(w, r, ResolveReturnTo(h.Cfg.HTTP.BasePath, "/orgs/"+o.Slug+"/members"), http.StatusSeeOther) //nolint:gosec // G710: destination sanitized via ResolveReturnTo → SanitizeReturnTo
@@ -243,16 +247,7 @@ func (h *OrgHandler) createBlocked(r *http.Request, userID uuid.UUID) (msg, code
 	if !h.Caps.OrgCreation {
 		return "", ""
 	}
-	err := h.Orgs.CreateAllowed(r.Context(), userID)
-	if err == nil {
-		return "", ""
-	}
-	m, ok := h.limitMessage(r.Context(), err)
-	if !ok {
-		h.LogErr("web org: create allowed", err)
-		return "", ""
-	}
-	return m, ErrorRef(err)
+	return h.limitBlocked(r, h.Orgs.CreateAllowed(r.Context(), userID), "web org: create allowed")
 }
 
 func (h *OrgHandler) requireAuth(w http.ResponseWriter, r *http.Request) (session.Principal, bool) {
@@ -292,7 +287,7 @@ func orgSummaries(items []*org.Org) []templates.OrgSummary {
 	return out
 }
 
-func memberRows(controls []org.MemberControl, viewer uuid.UUID) []templates.MemberRow {
+func memberRows(controls []org.MemberControl, viewer uuid.UUID, custom []*role.Role) []templates.MemberRow {
 	out := make([]templates.MemberRow, 0, len(controls))
 	for _, c := range controls {
 		m := c.Member
@@ -301,6 +296,8 @@ func memberRows(controls []org.MemberControl, viewer uuid.UUID) []templates.Memb
 			Email:        m.Email,
 			Name:         m.Name,
 			Role:         string(m.Role),
+			RoleID:       roleIDString(m.RoleID),
+			RoleName:     customRoleName(custom, m.RoleID),
 			System:       m.System,
 			IsSelf:       m.UserID == viewer,
 			Removable:    c.Removable,

@@ -1,0 +1,21 @@
+package templates
+
+import "altalune.id/yasaku/internal/web"
+
+const assumeDialogID = "assume"
+
+templ AssumeDialog(d web.LayoutData, slug, name string) {
+	@AppModal(d, assumeDialogID, d.Tr("assume.title", "Org", name)) {
+		<form method="post" action={ templ.SafeURL(d.Href("/admin/orgs/" + slug + "/assume")) } class="flex flex-col gap-4">
+			<p class="text-sm text-pretty">{ d.Tr("assume.body", "Org", name) }</p>
+			{{ reasonField := FieldProps{ID: "assume-reason", Label: d.Tr("assume.reason")} }}
+			@FormField(reasonField) {
+				<textarea { reasonField.Attrs()... } name="reason" required maxlength="500" rows="3" class="textarea w-full"></textarea>
+			}
+			<div class="modal-action mt-0">
+				<button type="button" data-dialog-close class="btn btn-ghost">{ d.Tr("common.cancel") }</button>
+				<button type="submit" class="btn btn-primary">{ d.Tr("assume.submit") }</button>
+			</div>
+		</form>
+	}
+}

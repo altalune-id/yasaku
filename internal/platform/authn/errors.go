@@ -75,3 +75,16 @@ func IsUnavailableError(err error) bool {
 	_, ok := errors.AsType[*UnavailableError](err)
 	return ok
 }
+
+// RefusedError signals a valid credential whose holder may not act, such as a suspended person; Chain passes it through unmasked.
+type RefusedError struct{ Cause error }
+
+func (e *RefusedError) Error() string { return "authn: refused: " + e.Cause.Error() }
+
+func (e *RefusedError) Unwrap() error { return e.Cause }
+
+// IsRefusedError reports whether err's tree contains a *RefusedError.
+func IsRefusedError(err error) bool {
+	_, ok := errors.AsType[*RefusedError](err)
+	return ok
+}

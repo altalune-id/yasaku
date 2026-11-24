@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/google/uuid"
+
 	"altalune.id/yasaku/internal/platform/authz"
 	"altalune.id/yasaku/internal/project"
 	"altalune.id/yasaku/internal/web"
@@ -38,7 +40,7 @@ func (h *ProjectHandler) GetList(w http.ResponseWriter, r *http.Request) {
 	}
 	Render(w, r, templates.ProjectsLayout(
 		h.LayoutForOrg(r, pageTitle(r, "projects.title"), o.Slug, "projects"),
-		templates.ProjectsView{OrgSlug: o.Slug, Projects: projectSummaries(items)},
+		templates.ProjectsView{OrgSlug: o.Slug, Projects: projectSummaries(items), CreateBlocked: h.createBlocked(r, o.ID)},
 	))
 }
 
@@ -52,10 +54,13 @@ func (h *ProjectHandler) GetNew(w http.ResponseWriter, r *http.Request) {
 		h.forbidNonManager(w, sc.req, "project_new.error_not_manager", projectNewNotManager)
 		return
 	}
-	o := sc.org
+	o, r := sc.org, sc.req
+	v := templates.ProjectNewView{OrgSlug: o.Slug, Slug: slugs.Generate()}
+	v.Error, v.ErrorCode = h.limitBlocked(r, h.Projects.CreateAllowed(r.Context(), o.ID), "web project: create allowed")
+	v.Blocked = v.Error != ""
 	Render(w, r, templates.ProjectNewLayout(
 		h.LayoutForOrg(r, pageTitle(r, "nav.create_project"), o.Slug, "projects"),
-		templates.ProjectNewView{OrgSlug: o.Slug, Slug: slugs.Generate()},
+		v,
 	))
 }
 
@@ -120,4 +125,12 @@ func (h *ProjectHandler) Register(mux web.Mux) {
 	mux.HandleFunc("GET /orgs/{org}/projects", h.GetList)
 	mux.HandleFunc("GET /orgs/{org}/projects/new", h.GetNew)
 	mux.HandleFunc("POST /orgs/{org}/projects", h.PostCreate)
+}
+
+func (h *ProjectHandler) createBlocked(r *http.Request, orgID uuid.UUID) string {
+	if !holds(r, authz.ProjectsWrite) {
+		return ""
+	}
+	msg, _ := h.limitBlocked(r, h.Projects.CreateAllowed(r.Context(), orgID), "web project: create allowed")
+	return msg
 }

@@ -19,6 +19,8 @@ type Users struct {
 	ColorMode       sqlite.ColumnString
 	TipsSeen        sqlite.ColumnString
 	TermsAcceptedAt sqlite.ColumnString
+	SuspendedAt     sqlite.ColumnString
+	LastSignInAt    sqlite.ColumnString
 	CreatedAt       sqlite.ColumnString
 	UpdatedAt       sqlite.ColumnString
 
@@ -41,9 +43,11 @@ func NewUsers(tablePrefix string) *Users {
 		colorMode       = sqlite.StringColumn("color_mode")
 		tipsSeen        = sqlite.StringColumn("tips_seen")
 		termsAcceptedAt = sqlite.StringColumn("terms_accepted_at")
+		suspendedAt     = sqlite.StringColumn("suspended_at")
+		lastSignInAt    = sqlite.StringColumn("last_sign_in_at")
 		createdAt       = sqlite.StringColumn("created_at")
 		updatedAt       = sqlite.StringColumn("updated_at")
-		all             = sqlite.ColumnList{id, idpIssuer, idpSubject, email, name, avatarURL, passwordHash, isAdmin, locale, theme, colorMode, tipsSeen, termsAcceptedAt, createdAt, updatedAt}
+		all             = sqlite.ColumnList{id, idpIssuer, idpSubject, email, name, avatarURL, passwordHash, isAdmin, locale, theme, colorMode, tipsSeen, termsAcceptedAt, suspendedAt, lastSignInAt, createdAt, updatedAt}
 	)
 	return &Users{
 		Table:           sqlite.NewTable("", tablePrefix+"users", "users", all...),
@@ -60,6 +64,8 @@ func NewUsers(tablePrefix string) *Users {
 		ColorMode:       colorMode,
 		TipsSeen:        tipsSeen,
 		TermsAcceptedAt: termsAcceptedAt,
+		SuspendedAt:     suspendedAt,
+		LastSignInAt:    lastSignInAt,
 		CreatedAt:       createdAt,
 		UpdatedAt:       updatedAt,
 		AllColumns:      all,
