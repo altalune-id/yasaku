@@ -15,6 +15,7 @@ import (
 	"altalune.id/yasaku/internal/platform/config"
 	"altalune.id/yasaku/internal/platform/db"
 	"altalune.id/yasaku/internal/platform/tenant"
+	"altalune.id/yasaku/internal/testutil/fakes"
 	"altalune.id/yasaku/internal/testutil/pgtest"
 	"altalune.id/yasaku/schema"
 )
@@ -70,7 +71,7 @@ func newInvite(t *testing.T, orgID uuid.UUID, email, token string) *invite.Invit
 
 func TestPostgres_Invite_SaveAndLookup(t *testing.T) {
 	store, orgID, userID := newInviteStoreForTest(t)
-	ctx := tenant.Into(t.Context(), tenant.Context{OrgID: orgID, UserID: userID})
+	ctx := fakes.Owner(t.Context(), tenant.Context{OrgID: orgID, UserID: userID})
 
 	i := newInvite(t, orgID, "guest@example.com", "s3cret")
 	require.NoError(t, store.Save(ctx, i))
@@ -86,7 +87,7 @@ func TestPostgres_Invite_SaveAndLookup(t *testing.T) {
 
 func TestPostgres_Invite_NotFound(t *testing.T) {
 	store, orgID, userID := newInviteStoreForTest(t)
-	ctx := tenant.Into(t.Context(), tenant.Context{OrgID: orgID, UserID: userID})
+	ctx := fakes.Owner(t.Context(), tenant.Context{OrgID: orgID, UserID: userID})
 
 	_, err := store.ByID(ctx, uuid.New())
 	assert.True(t, invite.IsNotFoundError(err), "want NotFoundError, got %T: %v", err, err)
@@ -97,7 +98,7 @@ func TestPostgres_Invite_NotFound(t *testing.T) {
 
 func TestPostgres_Invite_ListPending(t *testing.T) {
 	store, orgID, userID := newInviteStoreForTest(t)
-	ctx := tenant.Into(t.Context(), tenant.Context{OrgID: orgID, UserID: userID})
+	ctx := fakes.Owner(t.Context(), tenant.Context{OrgID: orgID, UserID: userID})
 
 	i1 := newInvite(t, orgID, "a@x.co", "t1")
 	require.NoError(t, store.Save(ctx, i1))
@@ -111,7 +112,7 @@ func TestPostgres_Invite_ListPending(t *testing.T) {
 
 func TestPostgres_Invite_Delete(t *testing.T) {
 	store, orgID, userID := newInviteStoreForTest(t)
-	ctx := tenant.Into(t.Context(), tenant.Context{OrgID: orgID, UserID: userID})
+	ctx := fakes.Owner(t.Context(), tenant.Context{OrgID: orgID, UserID: userID})
 
 	i := newInvite(t, orgID, "revoke@example.com", "t")
 	require.NoError(t, store.Save(ctx, i))

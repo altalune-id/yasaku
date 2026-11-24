@@ -16,6 +16,7 @@ import (
 	"altalune.id/yasaku/internal/org"
 	"altalune.id/yasaku/internal/platform/session"
 	"altalune.id/yasaku/internal/platform/tenant"
+	"altalune.id/yasaku/internal/testutil/fakes"
 	"altalune.id/yasaku/internal/user"
 	"altalune.id/yasaku/internal/web/handlers"
 )
@@ -84,7 +85,7 @@ func onboardedSlugs(t *testing.T, f *handlerFixture) (string, string) {
 	t.Helper()
 	o, err := f.Orgs.SystemOrg(context.Background())
 	require.NoError(t, err, "onboarding must leave a system org behind")
-	ps, err := f.Projects.List(tenant.Into(context.Background(), tenant.Context{OrgID: o.ID, UserID: o.OwnerID}), o.ID)
+	ps, err := f.Projects.List(fakes.Owner(context.Background(), tenant.Context{OrgID: o.ID, UserID: o.OwnerID}), o.ID)
 	require.NoError(t, err)
 	require.Len(t, ps, 1)
 	require.True(t, ps[0].System)

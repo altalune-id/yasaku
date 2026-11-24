@@ -49,7 +49,7 @@ type resolverFixture struct {
 	sept   uuid.UUID
 }
 
-func (f resolverFixture) ctx() context.Context { return tenant.Into(context.Background(), f.tc) }
+func (f resolverFixture) ctx() context.Context { return fakes.Owner(context.Background(), f.tc) }
 
 func newResolverFixture(t *testing.T) resolverFixture {
 	t.Helper()
@@ -59,7 +59,7 @@ func newResolverFixture(t *testing.T) resolverFixture {
 	passthrough := func(ctx context.Context, fn func(context.Context) error) error { return fn(ctx) }
 
 	svc := period.NewService(store, log, reporter.Unexpected,
-		stubSettings{loc: time.UTC}, stubSnapshotter{}, stubSnapshotter{}, period.UnitOfWork(passthrough), time.Now, fakes.PermissiveMembers())
+		stubSettings{loc: time.UTC}, stubSnapshotter{}, stubSnapshotter{}, period.UnitOfWork(passthrough), time.Now)
 
 	f := resolverFixture{
 		adapter: periodResolverAdapter{periods: svc},
@@ -144,7 +144,7 @@ func TestPeriodResolverAdapter_ByID_RefusesAnotherProject(t *testing.T) {
 	f := newResolverFixture(t)
 	other := tenant.Context{OrgID: f.tc.OrgID, ProjectID: uuid.New(), UserID: f.tc.UserID}
 
-	_, err := f.adapter.ByID(tenant.Into(context.Background(), other), other.OrgID, other.ProjectID, f.august)
+	_, err := f.adapter.ByID(fakes.Owner(context.Background(), other), other.OrgID, other.ProjectID, f.august)
 	require.Error(t, err)
 	assert.True(t, period.IsNotFoundError(err), "a sibling project's period is reported absent")
 }
@@ -161,11 +161,11 @@ func TestNamerAdapter_WithoutATranslatorCategoryNamesTheDefaultItself(t *testing
 	svc := category.NewService(store, log, reporter.Unexpected, namerAdapter{})
 
 	tc := tenant.Context{OrgID: uuid.New(), ProjectID: uuid.New(), UserID: uuid.New()}
-	n, err := svc.SeedDefaults(tenant.Into(context.Background(), tc))
+	n, err := svc.SeedDefaults(fakes.Owner(context.Background(), tc))
 	require.NoError(t, err)
 	require.Positive(t, n)
 
-	got, err := svc.List(tenant.Into(context.Background(), tc), category.ListOpts{})
+	got, err := svc.List(fakes.Owner(context.Background(), tc), category.ListOpts{})
 	require.NoError(t, err)
 	for _, c := range got {
 		assert.NotContains(t, c.Name, category.DefaultKeyPrefix,
@@ -198,7 +198,7 @@ func TestSnapshotterAdapter_StampsComputedAt(t *testing.T) {
 
 	tc := tenant.Context{OrgID: uuid.New(), ProjectID: uuid.New(), UserID: uuid.New()}
 	end := civil.Date{Year: 2026, Month: time.September, Day: 14}
-	snap, err := adapter.Snapshot(tenant.Into(context.Background(), tc), tc.OrgID, tc.ProjectID, uuid.New(), end, frozen)
+	snap, err := adapter.Snapshot(fakes.Owner(context.Background(), tc), tc.OrgID, tc.ProjectID, uuid.New(), end, frozen)
 	require.NoError(t, err)
 	call, ok := reader.Last("Summary")
 	require.True(t, ok)
@@ -228,7 +228,7 @@ func TestSnapshotterAdapter_StampsComputedAtWithoutAnInjectedClock(t *testing.T)
 	adapter := snapshotterAdapter{reports: reports}
 
 	tc := tenant.Context{OrgID: uuid.New(), ProjectID: uuid.New(), UserID: uuid.New()}
-	snap, err := adapter.Snapshot(tenant.Into(context.Background(), tc), tc.OrgID, tc.ProjectID, uuid.New(), civil.Date{Year: 2026, Month: time.September, Day: 14}, time.Now())
+	snap, err := adapter.Snapshot(fakes.Owner(context.Background(), tc), tc.OrgID, tc.ProjectID, uuid.New(), civil.Date{Year: 2026, Month: time.September, Day: 14}, time.Now())
 	require.NoError(t, err)
 	assert.False(t, snap.ComputedAt.IsZero(), "the zero clock must not leave ComputedAt unset")
 }

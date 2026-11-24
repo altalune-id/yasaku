@@ -13,18 +13,13 @@ import (
 	apperrorv1 "altalune.id/yasaku/gen/go/apperror/v1"
 	"altalune.id/yasaku/internal/apperror"
 	"altalune.id/yasaku/internal/ledger"
-	"altalune.id/yasaku/internal/org"
+	"altalune.id/yasaku/internal/platform/authz"
 	"altalune.id/yasaku/internal/platform/tenant"
 	"altalune.id/yasaku/internal/testutil/fakes"
 	"altalune.id/yasaku/money"
 )
 
 func newSvc(t *testing.T, store ledger.Store) (*ledger.Service, *int) {
-	t.Helper()
-	return newSvcWith(t, store, fakes.PermissiveMembers())
-}
-
-func newSvcWith(t *testing.T, store ledger.Store, members ledger.Managers) (*ledger.Service, *int) {
 	t.Helper()
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	calls := 0
@@ -33,13 +28,13 @@ func newSvcWith(t *testing.T, store ledger.Store, members ledger.Managers) (*led
 		return apperror.New("yasaku.unexpected", err.Error(), codes.Internal,
 			&apperrorv1.ErrorDetail{Code: "yasaku.unexpected"}).WithCause(err)
 	}
-	return ledger.NewService(store, log, unexpected, members), &calls
+	return ledger.NewService(store, log, unexpected), &calls
 }
 
 func tenantCtx(t *testing.T) (context.Context, tenant.Context) {
 	t.Helper()
 	tc := tenant.Context{OrgID: uuid.New(), ProjectID: uuid.New(), UserID: uuid.New()}
-	return tenant.Into(context.Background(), tc), tc
+	return fakes.Owner(context.Background(), tc), tc
 }
 
 type failingStore struct {
@@ -288,22 +283,21 @@ func TestService_StoreFailuresRouteThroughUnexpected(t *testing.T) {
 }
 
 // SECURITY: the ledger settings are project-wide, so this gate is the one check every surface shares.
-func TestService_Update_OnlyAManagerChangesTheSettings(t *testing.T) {
+func TestService_Update_NeedsLedgerSettings(t *testing.T) {
 	store := fakes.NewLedger()
-	members := fakes.NewMembers()
-	svc, _ := newSvcWith(t, store, members)
-	ctx, tc := tenantCtx(t)
-	members.SeatMember(tc.OrgID, tc.UserID)
+	svc, _ := newSvc(t, store)
+	ownerCtx, tc := tenantCtx(t)
+	ctx := fakes.Allow(context.Background(), tc, authz.Builtin("member")...)
 	day := 25
 	bad := "Not/AZone"
 
 	_, err := svc.Update(ctx, ledger.Patch{PeriodStartDay: &day})
-	if !org.IsNotManagerError(err) {
-		t.Fatalf("member Update err = %v, want NotManagerError", err)
+	if !authz.IsDeniedError(err) {
+		t.Fatalf("member Update err = %v, want DeniedError", err)
 	}
 	_, err = svc.Update(ctx, ledger.Patch{Timezone: &bad})
-	if !org.IsNotManagerError(err) {
-		t.Fatalf("member Update with a bad patch err = %v, want NotManagerError before validation", err)
+	if !authz.IsDeniedError(err) {
+		t.Fatalf("member Update with a bad patch err = %v, want DeniedError before validation", err)
 	}
 	got, err := svc.Get(ctx)
 	if err != nil {
@@ -313,8 +307,7 @@ func TestService_Update_OnlyAManagerChangesTheSettings(t *testing.T) {
 		t.Fatal("a refused Update must not change the settings")
 	}
 
-	members.SeatManager(tc.OrgID, tc.UserID)
-	got, err = svc.Update(ctx, ledger.Patch{PeriodStartDay: &day})
+	got, err = svc.Update(ownerCtx, ledger.Patch{PeriodStartDay: &day})
 	if err != nil {
 		t.Fatalf("manager Update: %v", err)
 	}
@@ -329,7 +322,7 @@ func TestLedgerSettingsChanged_AuditedInSameTx(t *testing.T) {
 		func(_ context.Context, msg string, err error, _ ...any) *apperror.AppError {
 			t.Fatalf("unexpected: %s: %v", msg, err)
 			return nil
-		}, fakes.PermissiveMembers(), ledger.WithAudit(fakes.UnitOfWork, a))
+		}, ledger.WithAudit(fakes.UnitOfWork, a))
 	ctx, tc := tenantCtx(t)
 	tz := "Asia/Jakarta"
 	if _, err := svc.Update(ctx, ledger.Patch{Timezone: &tz}); err != nil {

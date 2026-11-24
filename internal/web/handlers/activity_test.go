@@ -21,6 +21,7 @@ import (
 	"altalune.id/yasaku/internal/platform/db"
 	"altalune.id/yasaku/internal/platform/session"
 	"altalune.id/yasaku/internal/platform/tenant"
+	"altalune.id/yasaku/internal/testutil/fakes"
 	"altalune.id/yasaku/internal/web/handlers"
 	"altalune.id/yasaku/schema"
 )
@@ -57,7 +58,7 @@ func TestActivity_ListsOwnOrgOnly(t *testing.T) {
 	rec := audit.NewRecorder(db.DBConfig{Driver: db.DriverSQLite, TablePrefix: cfg.DB.TablePrefix}, pool, nil)
 
 	record := func(orgID uuid.UUID, action string) {
-		ctx := session.PrincipalInto(tenant.Into(context.Background(), tenant.Context{OrgID: orgID}),
+		ctx := session.PrincipalInto(fakes.Owner(context.Background(), tenant.Context{OrgID: orgID}),
 			session.Principal{UserID: uid, Email: "owner@example.com"})
 		require.NoError(t, db.RunInTx(ctx, pool, func(ctx context.Context) error {
 			return rec.Record(ctx, audit.Event{Action: action, TargetKind: "invite", TargetID: "inv-1"})

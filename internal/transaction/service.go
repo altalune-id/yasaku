@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 
 	"altalune.id/yasaku/internal/apperror"
+	"altalune.id/yasaku/internal/platform/authz"
 	"altalune.id/yasaku/internal/platform/session"
 	"altalune.id/yasaku/internal/platform/tenant"
 	"altalune.id/yasaku/money"
@@ -94,6 +95,9 @@ type BatchResult struct {
 
 // Record validates and persists one transaction in the caller's tenant scope, in one unit of work.
 func (s *Service) Record(ctx context.Context, in RecordInput) (*Transaction, error) {
+	if err := authz.Can(ctx, authz.TransactionsWrite); err != nil {
+		return nil, err
+	}
 	t, refs, err := s.recordOne(ctx, in)
 	if err != nil {
 		return nil, err
@@ -138,6 +142,12 @@ func (s *Service) RecordBatch(ctx context.Context, in []RecordInput) []BatchResu
 	defer span.End()
 
 	out := make([]BatchResult, 0, len(in))
+	if err := authz.Can(ctx, authz.TransactionsWrite); err != nil {
+		for i := range in {
+			out = append(out, BatchResult{Index: i, Err: err})
+		}
+		return out
+	}
 	var kick []MirrorRef
 	for i, row := range in {
 		t, refs, err := s.recordOne(ctx, row)
@@ -196,6 +206,9 @@ func (s *Service) record(ctx context.Context, tc tenant.Context, in RecordInput,
 
 // Revise applies p to the identified transaction when it is in the caller's tenant scope.
 func (s *Service) Revise(ctx context.Context, id uuid.UUID, p RevisePatch) (*Transaction, error) {
+	if err := authz.Can(ctx, authz.TransactionsWrite); err != nil {
+		return nil, err
+	}
 	ctx, span := tracer.Start(ctx, "transaction.Revise",
 		trace.WithAttributes(attribute.String("transaction.id", id.String())))
 	defer span.End()
@@ -303,6 +316,9 @@ func (s *Service) revise(ctx context.Context, tc tenant.Context, id uuid.UUID, p
 
 // Delete removes the identified transaction when it is in the caller's tenant scope and its period is open.
 func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
+	if err := authz.Can(ctx, authz.TransactionsWrite); err != nil {
+		return err
+	}
 	ctx, span := tracer.Start(ctx, "transaction.Delete",
 		trace.WithAttributes(attribute.String("transaction.id", id.String())))
 	defer span.End()
@@ -340,6 +356,9 @@ func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
 
 // ByID returns the identified transaction when it belongs to the caller's tenant scope.
 func (s *Service) ByID(ctx context.Context, id uuid.UUID) (*Transaction, error) {
+	if err := authz.Can(ctx, authz.TransactionsRead); err != nil {
+		return nil, err
+	}
 	ctx, span := tracer.Start(ctx, "transaction.ByID",
 		trace.WithAttributes(attribute.String("transaction.id", id.String())))
 	defer span.End()
@@ -353,6 +372,9 @@ func (s *Service) ByID(ctx context.Context, id uuid.UUID) (*Transaction, error) 
 
 // List returns one page of transactions newest-first, plus the cursor for the next page when the page is full.
 func (s *Service) List(ctx context.Context, opts ListOpts) ([]*Transaction, *Cursor, error) {
+	if err := authz.Can(ctx, authz.TransactionsRead); err != nil {
+		return nil, nil, err
+	}
 	ctx, span := tracer.Start(ctx, "transaction.List")
 	defer span.End()
 
@@ -377,6 +399,9 @@ func (s *Service) List(ctx context.Context, opts ListOpts) ([]*Transaction, *Cur
 
 // Balances returns the derived balance of each wallet in the caller's project that has a transaction. NOTE: an untouched wallet is absent, not zero.
 func (s *Service) Balances(ctx context.Context) (map[uuid.UUID]money.Amount, error) {
+	if err := authz.Can(ctx, authz.TransactionsRead); err != nil {
+		return nil, err
+	}
 	ctx, span := tracer.Start(ctx, "transaction.Balances")
 	defer span.End()
 
@@ -394,6 +419,9 @@ func (s *Service) Balances(ctx context.Context) (map[uuid.UUID]money.Amount, err
 
 // Balance returns one wallet's derived balance.
 func (s *Service) Balance(ctx context.Context, walletID uuid.UUID) (money.Amount, error) {
+	if err := authz.Can(ctx, authz.TransactionsRead); err != nil {
+		return money.Amount{}, err
+	}
 	ctx, span := tracer.Start(ctx, "transaction.Balance",
 		trace.WithAttributes(attribute.String("wallet.id", walletID.String())))
 	defer span.End()
@@ -419,6 +447,9 @@ func (s *Service) Balance(ctx context.Context, walletID uuid.UUID) (money.Amount
 
 // SuggestCategory proposes the category last used for an equivalent note.
 func (s *Service) SuggestCategory(ctx context.Context, note string) (uuid.UUID, bool, error) {
+	if err := authz.Can(ctx, authz.TransactionsRead); err != nil {
+		return uuid.Nil, false, err
+	}
 	ctx, span := tracer.Start(ctx, "transaction.SuggestCategory")
 	defer span.End()
 
@@ -436,6 +467,9 @@ func (s *Service) SuggestCategory(ctx context.Context, note string) (uuid.UUID, 
 
 // TopCategories counts the caller's project's entries per category since since, most used first.
 func (s *Service) TopCategories(ctx context.Context, since time.Time, limit int) ([]CategoryCount, error) {
+	if err := authz.Can(ctx, authz.TransactionsRead); err != nil {
+		return nil, err
+	}
 	ctx, span := tracer.Start(ctx, "transaction.TopCategories")
 	defer span.End()
 
@@ -453,6 +487,9 @@ func (s *Service) TopCategories(ctx context.Context, since time.Time, limit int)
 
 // RecentByCategory returns the newest distinct (note, amount) entries of a category in the caller's project.
 func (s *Service) RecentByCategory(ctx context.Context, categoryID uuid.UUID, limit int) ([]RecentEntry, error) {
+	if err := authz.Can(ctx, authz.TransactionsRead); err != nil {
+		return nil, err
+	}
 	ctx, span := tracer.Start(ctx, "transaction.RecentByCategory",
 		trace.WithAttributes(attribute.String("category.id", categoryID.String())))
 	defer span.End()
@@ -478,6 +515,9 @@ func recentLimit(limit int) int {
 
 // RecordOpening writes a wallet's starting balance on behalf of by, which need not be the ctx user, and returns its id. NOTE: it runs inside the caller's unit of work (wallet.OpenWorkflow) and marks without kicking; the caller kicks after its commit.
 func (s *Service) RecordOpening(ctx context.Context, walletID uuid.UUID, amount money.Amount, at time.Time, by uuid.UUID) (uuid.UUID, error) {
+	if err := authz.Can(ctx, authz.TransactionsWrite); err != nil {
+		return uuid.Nil, err
+	}
 	ctx, span := tracer.Start(ctx, "transaction.RecordOpening",
 		trace.WithAttributes(attribute.String("wallet.id", walletID.String())))
 	defer span.End()
@@ -503,6 +543,9 @@ func (s *Service) RecordOpening(ctx context.Context, walletID uuid.UUID, amount 
 
 // Adjust writes the adjustment that brings walletID's derived balance to target. NOTE: needs a real UnitOfWork and locks only against other Adjust calls, so a concurrent Record, Revise or Delete can still move the final balance off target.
 func (s *Service) Adjust(ctx context.Context, walletID uuid.UUID, target money.Amount, at time.Time, by uuid.UUID) (*Transaction, error) {
+	if err := authz.Can(ctx, authz.TransactionsWrite); err != nil {
+		return nil, err
+	}
 	ctx, span := tracer.Start(ctx, "transaction.Adjust",
 		trace.WithAttributes(attribute.String("wallet.id", walletID.String())))
 	defer span.End()

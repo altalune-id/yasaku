@@ -131,17 +131,18 @@ func newTxFixture(t *testing.T) *txFixture {
 	bundle := i18n.NewEmbeddedBundle(i18n.IdID)
 
 	users := user.NewService(fakes.NewUser(), user.GenesisConfig{}, discardLogger(), passthroughUnexpected())
-	orgs := org.NewService(fakes.NewOrg(), caps, discardLogger(), passthroughUnexpected(), fakes.UnitOfWork)
-	projects := project.NewService(fakes.NewProject(), discardLogger(), passthroughUnexpected(), orgs, fakes.UnitOfWork)
+	orgStore := fakes.NewOrg()
+	orgs := org.NewService(orgStore, caps, discardLogger(), passthroughUnexpected(), fakes.UnitOfWork)
+	projects := project.NewService(fakes.NewProject(), discardLogger(), passthroughUnexpected(), fakes.UnitOfWork)
 
-	ledgers := ledger.NewService(fakes.NewLedger(), discardLogger(), passthroughUnexpected(), orgs)
+	ledgers := ledger.NewService(fakes.NewLedger(), discardLogger(), passthroughUnexpected())
 	wallets := wallet.NewService(fakes.NewWallet(), discardLogger(), passthroughUnexpected())
 	cats := category.NewService(fakes.NewTxCategory(), discardLogger(), passthroughUnexpected(), txNamer{})
 	reader := fakes.NewReportReader()
 	reports := report.NewService(reader, discardLogger(), passthroughUnexpected(), ledgers)
 	snaps := &txSnapshotter{}
 	periods := period.NewService(fakes.NewPeriod(), discardLogger(), passthroughUnexpected(),
-		ledgers, snaps, snaps, period.UnitOfWork(txPassthroughUoW), time.Now, orgs)
+		ledgers, snaps, snaps, period.UnitOfWork(txPassthroughUoW), time.Now)
 	txs := transaction.NewService(fakes.NewTransaction(), discardLogger(), passthroughUnexpected(),
 		txWalletReader(wallets), txCategoryReader(cats),
 		txPeriodResolver{periods: periods}, transaction.UnitOfWork(txPassthroughUoW))
@@ -151,7 +152,7 @@ func newTxFixture(t *testing.T) *txFixture {
 	require.NoError(t, err)
 	o, err := orgs.Create(ctx, org.CreateRequest{Slug: "acme", Name: "Acme", OwnerID: u.ID})
 	require.NoError(t, err)
-	octx := tenant.Into(ctx, tenant.Context{OrgID: o.ID, UserID: u.ID})
+	octx := fakes.Owner(ctx, tenant.Context{OrgID: o.ID, UserID: u.ID})
 	proj, err := projects.Create(octx, o.ID, "main", "Main")
 	require.NoError(t, err)
 
@@ -167,7 +168,7 @@ func newTxFixture(t *testing.T) *txFixture {
 	f.Deps = handlers.Deps{
 		Secret: []byte("0123456789abcdef0123456789abcdef"),
 		Cfg:    cfg, Caps: caps, Sessions: sessions, Logger: discardStdLogger(),
-		Orgs: orgs, Projects: projects, I18n: bundle, ProjectLocation: ledgers.Location,
+		Orgs: orgs, Projects: projects, Authz: fakes.Resolver(orgStore), I18n: bundle, ProjectLocation: ledgers.Location,
 	}
 
 	pctx := f.scoped(o.ID, proj.ID, u.ID)
@@ -216,7 +217,7 @@ func txCategoryReader(cats *category.Service) transaction.CategoryReaderFunc {
 }
 
 func (f *txFixture) scoped(orgID, projectID, userID uuid.UUID) context.Context {
-	return tenant.Into(context.Background(), tenant.Context{OrgID: orgID, ProjectID: projectID, UserID: userID})
+	return fakes.Owner(context.Background(), tenant.Context{OrgID: orgID, ProjectID: projectID, UserID: userID})
 }
 
 func (f *txFixture) projectCtx(t *testing.T) context.Context {
@@ -491,7 +492,7 @@ func assertHXTargetsResolve(t *testing.T, body string) {
 
 func (f *txFixture) siblingProject(t *testing.T) (uuid.UUID, uuid.UUID) {
 	t.Helper()
-	octx := tenant.Into(context.Background(), tenant.Context{OrgID: f.OrgID, UserID: f.Principal.UserID})
+	octx := fakes.Owner(context.Background(), tenant.Context{OrgID: f.OrgID, UserID: f.Principal.UserID})
 	other, err := f.Projects.Create(octx, f.OrgID, "other", "Other")
 	require.NoError(t, err)
 	ctx := f.scoped(f.OrgID, other.ID, f.Principal.UserID)

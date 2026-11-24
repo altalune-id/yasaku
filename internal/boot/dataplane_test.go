@@ -19,6 +19,7 @@ import (
 	"altalune.id/yasaku/internal/platform/config"
 	"altalune.id/yasaku/internal/platform/tenant"
 	"altalune.id/yasaku/internal/published"
+	"altalune.id/yasaku/internal/testutil/fakes"
 	"altalune.id/yasaku/internal/user"
 )
 
@@ -75,7 +76,7 @@ func newDataplaneFixture(t *testing.T, opts dataplaneOpts) *dataplaneFixture {
 	o, err := srv.Orgs.Create(ctx, org.CreateRequest{Slug: "dp-org", Name: "DP Org", OwnerID: owner.ID})
 	require.NoError(t, err)
 
-	orgCtx := tenant.Into(ctx, tenant.Context{OrgID: o.ID, UserID: owner.ID})
+	orgCtx := fakes.Owner(ctx, tenant.Context{OrgID: o.ID, UserID: owner.ID})
 	p, err := srv.Projects.Create(orgCtx, o.ID, "dp-project", "DP Project")
 	require.NoError(t, err)
 

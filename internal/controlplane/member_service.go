@@ -7,26 +7,25 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	orgv1 "altalune.id/yasaku/gen/go/org/v1"
-	"altalune.id/yasaku/internal/org"
 )
 
 // MemberService implements org.v1.MemberService.
 type MemberService struct {
-	orgs *org.Service
+	sc Scope
 }
 
 // NewMemberService binds the handler to its collaborators.
-func NewMemberService(orgs *org.Service) *MemberService {
-	return &MemberService{orgs: orgs}
+func NewMemberService(sc Scope) *MemberService {
+	return &MemberService{sc: sc}
 }
 
 // ListMembers returns the members of the principal's org. SECURITY: a person may name only an org they belong to; a key stays on its own.
 func (s *MemberService) ListMembers(ctx context.Context, req *connect.Request[orgv1.ListMembersRequest]) (*connect.Response[orgv1.ListMembersResponse], error) {
-	tctx, p, err := scopeToOrg(ctx, s.orgs, req.Msg.GetOrg())
+	tctx, p, err := scopeToOrg(ctx, s.sc, req.Msg.GetOrg())
 	if err != nil {
 		return nil, err
 	}
-	items, err := s.orgs.ListMemberProfiles(tctx, p.ActiveOrgID)
+	items, err := s.sc.Orgs.ListMemberProfiles(tctx, p.ActiveOrgID)
 	if err != nil {
 		return nil, err
 	}

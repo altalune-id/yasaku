@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"altalune.id/yasaku/internal/org"
+	"altalune.id/yasaku/internal/platform/authz"
 )
 
 func TestRefuseNotManager_SaysWhichRefusalItIs(t *testing.T) {
@@ -27,7 +28,7 @@ func TestRefuseNotManager_SaysWhichRefusalItIs(t *testing.T) {
 	assert.Contains(t, rec.Body.String(), "different organization")
 	assert.NotContains(t, rec.Body.String(), role, "an org mismatch is not described as a role refusal")
 
-	ok, rec = refuse(&org.NotManagerError{})
+	ok, rec = refuse(&authz.DeniedError{Permission: authz.MembersWrite})
 	require.True(t, ok)
 	assert.Equal(t, http.StatusForbidden, rec.Code)
 	assert.Contains(t, rec.Body.String(), role)

@@ -19,18 +19,18 @@ import (
 type TodoService struct {
 	todos     *todo.Service
 	todoStore todo.Store
-	orgs      orgLister
+	sc        Scope
 	projects  *project.Service
 }
 
 // NewTodoService binds the handler to its collaborators.
-func NewTodoService(todos *todo.Service, todoStore todo.Store, orgs orgLister, projects *project.Service) *TodoService {
-	return &TodoService{todos: todos, todoStore: todoStore, orgs: orgs, projects: projects}
+func NewTodoService(todos *todo.Service, todoStore todo.Store, sc Scope, projects *project.Service) *TodoService {
+	return &TodoService{todos: todos, todoStore: todoStore, sc: sc, projects: projects}
 }
 
 // Create persists a new todo bound to the request's project.
 func (s *TodoService) Create(ctx context.Context, req *connect.Request[todov1.CreateRequest]) (*connect.Response[todov1.CreateResponse], error) {
-	tctx, _, err := scopeToProject(ctx, s.orgs, s.projects, req.Msg.GetProjectId())
+	tctx, _, err := scopeToProject(ctx, s.sc, s.projects, req.Msg.GetProjectId())
 	if err != nil {
 		return nil, err
 	}
@@ -43,7 +43,7 @@ func (s *TodoService) Create(ctx context.Context, req *connect.Request[todov1.Cr
 
 // List returns todos in the request's project.
 func (s *TodoService) List(ctx context.Context, req *connect.Request[todov1.ListRequest]) (*connect.Response[todov1.ListResponse], error) {
-	tctx, _, err := scopeToProject(ctx, s.orgs, s.projects, req.Msg.GetProjectId())
+	tctx, _, err := scopeToProject(ctx, s.sc, s.projects, req.Msg.GetProjectId())
 	if err != nil {
 		return nil, err
 	}
@@ -95,7 +95,7 @@ func (s *TodoService) scopeToTodo(ctx context.Context, todoIDRaw string) (contex
 	if err != nil {
 		return nil, uuid.Nil, err
 	}
-	tctx, err := scopeToResource(ctx, t.OrgID, t.ProjectID, t.ID, func() error {
+	tctx, err := scopeToResource(ctx, s.sc, t.OrgID, t.ProjectID, t.ID, func() error {
 		return forbiddenErr("todo is outside this credential's reach", "todo_id", tid.String())
 	})
 	if err != nil {

@@ -30,6 +30,7 @@ import (
 	"altalune.id/yasaku/internal/platform/tenant"
 	"altalune.id/yasaku/internal/project"
 	"altalune.id/yasaku/internal/report"
+	"altalune.id/yasaku/internal/testutil/fakes"
 	"altalune.id/yasaku/internal/transaction"
 	"altalune.id/yasaku/internal/user"
 	"altalune.id/yasaku/internal/wallet"
@@ -109,9 +110,10 @@ func newWalletFixture(t *testing.T) *walletFixture {
 	unexpected := passthroughUnexpected()
 
 	users := user.NewService(user.NewStore(dbCfg, pool), user.GenesisConfig{}, log, unexpected)
-	orgs := org.NewService(org.NewStore(dbCfg, pool, nil), caps, log, unexpected, tenant.NewUnitOfWork(dbCfg, pool, nil))
-	projects := project.NewService(project.NewStore(dbCfg, pool, nil), log, unexpected, orgs, tenant.NewUnitOfWork(dbCfg, pool, nil))
-	ledgers := ledger.NewService(ledger.NewStore(dbCfg, pool, nil), log, unexpected, orgs)
+	orgStore := org.NewStore(dbCfg, pool, nil)
+	orgs := org.NewService(orgStore, caps, log, unexpected, tenant.NewUnitOfWork(dbCfg, pool, nil))
+	projects := project.NewService(project.NewStore(dbCfg, pool, nil), log, unexpected, tenant.NewUnitOfWork(dbCfg, pool, nil))
+	ledgers := ledger.NewService(ledger.NewStore(dbCfg, pool, nil), log, unexpected)
 	wallets := wallet.NewService(wallet.NewStore(dbCfg, pool, nil), log, unexpected)
 	cats := category.NewService(category.NewStore(dbCfg, pool, nil), log, unexpected, bundleNamer{})
 	txs := transaction.NewService(
@@ -121,7 +123,7 @@ func newWalletFixture(t *testing.T) *walletFixture {
 	)
 	reports := report.NewService(report.NewReader(dbCfg, pool, nil), log, unexpected, ledgers)
 	periods := period.NewService(period.NewStore(dbCfg, pool, nil), log, unexpected,
-		ledgers, reportSnapshotter{}, reportSnapshotter{}, period.UnitOfWork(uow), time.Now, orgs)
+		ledgers, reportSnapshotter{}, reportSnapshotter{}, period.UnitOfWork(uow), time.Now)
 	walletOpen := wallet.NewOpenWorkflow(wallets, txs, openingDater(periods), wallet.UnitOfWork(uow), log, unexpected)
 
 	bundle := i18n.NewEmbeddedBundle(i18n.EnUS)
@@ -132,6 +134,7 @@ func newWalletFixture(t *testing.T) *walletFixture {
 		Sessions: session.NewMemoryStore(),
 		Logger:   discardStdLogger(),
 		Orgs:     orgs,
+		Authz:    fakes.Resolver(orgStore),
 		Projects: projects,
 		I18n:     bundle,
 	}
@@ -147,7 +150,7 @@ func newWalletFixture(t *testing.T) *walletFixture {
 	require.NoError(t, err)
 	o, err := orgs.Create(ctx, org.CreateRequest{Slug: walletFixtureOrgSlug, Name: "Yasaku Org", OwnerID: u.ID})
 	require.NoError(t, err)
-	pctx := tenant.Into(ctx, tenant.Context{OrgID: o.ID, UserID: u.ID})
+	pctx := fakes.Owner(ctx, tenant.Context{OrgID: o.ID, UserID: u.ID})
 	p, err := projects.Create(pctx, o.ID, walletFixtureProjectSlug, "Yasaku Project")
 	require.NoError(t, err)
 
@@ -186,7 +189,7 @@ func categoryReaderForTest(cats *category.Service) transaction.CategoryReaderFun
 
 func (f *walletFixture) scoped(t *testing.T) context.Context {
 	t.Helper()
-	ctx := tenant.Into(t.Context(), tenant.Context{
+	ctx := fakes.Owner(t.Context(), tenant.Context{
 		OrgID: f.OrgID, ProjectID: f.ProjectID, UserID: f.Principal.UserID,
 	})
 	return f.withLocale(ctx)

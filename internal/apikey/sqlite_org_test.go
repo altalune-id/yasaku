@@ -14,12 +14,13 @@ import (
 	"altalune.id/yasaku/internal/platform/authn"
 	sqliteent "altalune.id/yasaku/internal/platform/db/entity/sqlite"
 	"altalune.id/yasaku/internal/platform/tenant"
+	"altalune.id/yasaku/internal/testutil/fakes"
 )
 
 func TestSQLiteOrgKeyRoundTrip(t *testing.T) {
 	store, sqlDB, tc := newAPIKeyStoreForTest(t)
 	second := seedProject(t, sqlDB, tc)
-	ctx := tenant.Into(t.Context(), tenant.Context{OrgID: tc.OrgID, UserID: tc.UserID})
+	ctx := fakes.Owner(t.Context(), tenant.Context{OrgID: tc.OrgID, UserID: tc.UserID})
 
 	k, plaintext, err := apikey.Scheme{}.MintOrg(tc.OrgID, "ci", []string{authn.ScopeYasakuRead}, apikey.ProjectGrant{ProjectIDs: []uuid.UUID{tc.ProjectID}}, nil, time.Now().UTC())
 	require.NoError(t, err)
@@ -59,7 +60,7 @@ func TestSQLiteOrgKeyRoundTrip(t *testing.T) {
 func TestSQLiteGrantCannotNameAnotherOrgsProject(t *testing.T) {
 	store, sqlDB, tc := newAPIKeyStoreForTest(t)
 	foreign := seedTenant(t, sqlDB)
-	ctx := tenant.Into(t.Context(), tenant.Context{OrgID: tc.OrgID, UserID: tc.UserID})
+	ctx := fakes.Owner(t.Context(), tenant.Context{OrgID: tc.OrgID, UserID: tc.UserID})
 
 	k, _, err := apikey.Scheme{}.MintOrg(tc.OrgID, "ci", nil, apikey.ProjectGrant{ProjectIDs: []uuid.UUID{foreign.ProjectID}}, nil, time.Now().UTC())
 	require.NoError(t, err)
@@ -84,7 +85,7 @@ func sha(plaintext string) [32]byte { return sha256.Sum256([]byte(plaintext)) }
 func TestSQLitePersonalTokenRoundTrip(t *testing.T) {
 	store, sqlDB, tc := newAPIKeyStoreForTest(t)
 	other := seedTenant(t, sqlDB)
-	ctx := tenant.Into(t.Context(), tenant.Context{OrgID: tc.OrgID, UserID: tc.UserID})
+	ctx := fakes.Owner(t.Context(), tenant.Context{OrgID: tc.OrgID, UserID: tc.UserID})
 
 	k, plaintext, err := apikey.Scheme{}.MintPersonal(tc.OrgID, tc.UserID, "laptop", []string{authn.ScopeYasakuRead}, apikey.ProjectGrant{All: true}, nil, time.Now().UTC())
 	require.NoError(t, err)
@@ -114,8 +115,8 @@ func TestSQLitePersonalTokensStayInTheirOrg(t *testing.T) {
 	store, sqlDB, a := newAPIKeyStoreForTest(t)
 	b := seedTenant(t, sqlDB)
 	joinOrg(t, sqlDB, b.OrgID, a.UserID)
-	inA := tenant.Into(t.Context(), tenant.Context{OrgID: a.OrgID, UserID: a.UserID})
-	inB := tenant.Into(t.Context(), tenant.Context{OrgID: b.OrgID, UserID: a.UserID})
+	inA := fakes.Owner(t.Context(), tenant.Context{OrgID: a.OrgID, UserID: a.UserID})
+	inB := fakes.Owner(t.Context(), tenant.Context{OrgID: b.OrgID, UserID: a.UserID})
 
 	ka, _, err := apikey.Scheme{}.MintPersonal(a.OrgID, a.UserID, "a", nil, apikey.ProjectGrant{All: true}, nil, time.Now().UTC())
 	require.NoError(t, err)

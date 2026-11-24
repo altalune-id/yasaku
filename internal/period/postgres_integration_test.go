@@ -16,6 +16,7 @@ import (
 	"altalune.id/yasaku/internal/platform/config"
 	"altalune.id/yasaku/internal/platform/db"
 	"altalune.id/yasaku/internal/platform/tenant"
+	"altalune.id/yasaku/internal/testutil/fakes"
 	"altalune.id/yasaku/internal/testutil/pgtest"
 	"altalune.id/yasaku/money"
 	"altalune.id/yasaku/schema"
@@ -62,7 +63,7 @@ func seedPgTenant(t *testing.T, sqlDB *sql.DB, prefix string) tenant.Context {
 
 func TestPostgres_Period_RoundTripsDatesAndSnapshot(t *testing.T) {
 	store, tc := newPostgresStoreForTest(t)
-	ctx := tenant.Into(t.Context(), tc)
+	ctx := fakes.Owner(t.Context(), tc)
 
 	p := seedPeriod(ctx, t, store, tc, civil.Date{Year: 2026, Month: 8, Day: 25}, nil)
 	got, err := store.ByID(ctx, p.ID)
@@ -97,7 +98,7 @@ func TestPostgres_Period_RoundTripsDatesAndSnapshot(t *testing.T) {
 
 func TestPostgres_Period_SnapshotColumnIsRealJSONB(t *testing.T) {
 	store, tc := newPostgresStoreForTest(t)
-	ctx := tenant.Into(t.Context(), tc)
+	ctx := fakes.Owner(t.Context(), tc)
 
 	end := civil.Date{Year: 2026, Month: 9, Day: 24}
 	p := seedPeriod(ctx, t, store, tc, civil.Date{Year: 2026, Month: 8, Day: 25}, &end)
@@ -110,7 +111,7 @@ func TestPostgres_Period_SnapshotColumnIsRealJSONB(t *testing.T) {
 
 func TestPostgres_Period_Current(t *testing.T) {
 	store, tc := newPostgresStoreForTest(t)
-	ctx := tenant.Into(t.Context(), tc)
+	ctx := fakes.Owner(t.Context(), tc)
 
 	_, err := store.Current(ctx, tc.OrgID, tc.ProjectID)
 	assert.True(t, period.IsNotFoundError(err), "got %T: %v", err, err)
@@ -126,7 +127,7 @@ func TestPostgres_Period_Current(t *testing.T) {
 
 func TestPostgres_Period_SaveRejectsASecondCurrentPeriod(t *testing.T) {
 	store, tc := newPostgresStoreForTest(t)
-	ctx := tenant.Into(t.Context(), tc)
+	ctx := fakes.Owner(t.Context(), tc)
 
 	seedPeriod(ctx, t, store, tc, civil.Date{Year: 2026, Month: 8, Day: 25}, nil)
 	second, err := period.New(tc.OrgID, tc.ProjectID, civil.Date{Year: 2026, Month: 9, Day: 25}, "")
@@ -138,7 +139,7 @@ func TestPostgres_Period_SaveRejectsASecondCurrentPeriod(t *testing.T) {
 
 func TestPostgres_Period_ContainingBoundaries(t *testing.T) {
 	store, tc := newPostgresStoreForTest(t)
-	ctx := tenant.Into(t.Context(), tc)
+	ctx := fakes.Owner(t.Context(), tc)
 
 	end := civil.Date{Year: 2026, Month: 9, Day: 24}
 	first := seedPeriod(ctx, t, store, tc, civil.Date{Year: 2026, Month: 8, Day: 25}, &end)
@@ -168,7 +169,7 @@ func TestPostgres_Period_ContainingBoundaries(t *testing.T) {
 
 func TestPostgres_Period_Neighbors(t *testing.T) {
 	store, tc := newPostgresStoreForTest(t)
-	ctx := tenant.Into(t.Context(), tc)
+	ctx := fakes.Owner(t.Context(), tc)
 
 	e1 := civil.Date{Year: 2026, Month: 9, Day: 24}
 	e2 := civil.Date{Year: 2026, Month: 10, Day: 24}
@@ -192,7 +193,7 @@ func TestPostgres_Period_Neighbors(t *testing.T) {
 
 func TestPostgres_Period_ListOrderAndOpts(t *testing.T) {
 	store, tc := newPostgresStoreForTest(t)
-	ctx := tenant.Into(t.Context(), tc)
+	ctx := fakes.Owner(t.Context(), tc)
 
 	e1 := civil.Date{Year: 2026, Month: 9, Day: 24}
 	p1 := seedPeriod(ctx, t, store, tc, civil.Date{Year: 2026, Month: 8, Day: 25}, &e1)
@@ -217,7 +218,7 @@ func TestPostgres_Period_ListOrderAndOpts(t *testing.T) {
 
 func TestPostgres_Period_Closings(t *testing.T) {
 	store, tc := newPostgresStoreForTest(t)
-	ctx := tenant.Into(t.Context(), tc)
+	ctx := fakes.Owner(t.Context(), tc)
 
 	end := civil.Date{Year: 2026, Month: 9, Day: 24}
 	p := seedPeriod(ctx, t, store, tc, civil.Date{Year: 2026, Month: 8, Day: 25}, &end)
@@ -244,7 +245,7 @@ func TestPostgres_Period_Closings(t *testing.T) {
 
 func TestPostgres_Period_NotFound(t *testing.T) {
 	store, tc := newPostgresStoreForTest(t)
-	ctx := tenant.Into(t.Context(), tc)
+	ctx := fakes.Owner(t.Context(), tc)
 
 	_, err := store.ByID(ctx, uuid.New())
 	assert.True(t, period.IsNotFoundError(err), "got %T: %v", err, err)

@@ -12,6 +12,7 @@ import (
 
 	"altalune.id/yasaku/internal/apperror"
 	"altalune.id/yasaku/internal/platform/audit"
+	"altalune.id/yasaku/internal/platform/authz"
 	"altalune.id/yasaku/internal/platform/tenant"
 	"altalune.id/yasaku/money"
 )
@@ -19,17 +20,11 @@ import (
 //nolint:gochecknoglobals // OTel tracer is a package-level fixture, not runtime state.
 var tracer = otel.Tracer("altalune.id/yasaku/internal/ledger")
 
-// Managers is the role gate a settings write asks before anything else.
-type Managers interface {
-	RequireCallerManager(ctx context.Context) error
-}
-
 // Service is the ledger settings driving port.
 type Service struct {
 	store      Store
 	log        *slog.Logger
 	unexpected apperror.UnexpectedFunc
-	managers   Managers
 	uow        tenant.UnitOfWork
 	audit      Auditor
 }
@@ -48,8 +43,8 @@ func WithAudit(uow tenant.UnitOfWork, a Auditor) Option {
 }
 
 // NewService binds the service to its dependencies.
-func NewService(store Store, log *slog.Logger, unexpected apperror.UnexpectedFunc, managers Managers, opts ...Option) *Service {
-	s := &Service{store: store, log: log.With("module", "ledger"), unexpected: unexpected, managers: managers,
+func NewService(store Store, log *slog.Logger, unexpected apperror.UnexpectedFunc, opts ...Option) *Service {
+	s := &Service{store: store, log: log.With("module", "ledger"), unexpected: unexpected,
 		uow: func(ctx context.Context, fn func(ctx context.Context) error) error { return fn(ctx) }}
 	for _, opt := range opts {
 		opt(s)
@@ -86,7 +81,7 @@ func (s *Service) Update(ctx context.Context, p Patch) (*Settings, error) {
 		attribute.String("org_id", tc.OrgID.String()),
 		attribute.String("project_id", tc.ProjectID.String()),
 	)
-	if err := s.managers.RequireCallerManager(ctx); err != nil {
+	if err := authz.Can(ctx, authz.LedgerSettings); err != nil {
 		span.RecordError(err)
 		return nil, err
 	}

@@ -12,6 +12,7 @@ import (
 
 	"altalune.id/yasaku/civil"
 	"altalune.id/yasaku/internal/apperror"
+	"altalune.id/yasaku/internal/platform/authz"
 	"altalune.id/yasaku/internal/platform/tenant"
 	"altalune.id/yasaku/money"
 )
@@ -39,6 +40,9 @@ func NewService(reader Reader, log *slog.Logger, unexpected apperror.UnexpectedF
 
 // Summary totals the identified period in the project's default currency.
 func (s *Service) Summary(ctx context.Context, periodID uuid.UUID) (PeriodSummary, error) {
+	if err := authz.Can(ctx, authz.TransactionsRead); err != nil {
+		return PeriodSummary{}, err
+	}
 	ctx, span := tracer.Start(ctx, "report.Summary",
 		trace.WithAttributes(attribute.String("period.id", periodID.String())))
 	defer span.End()
@@ -56,6 +60,9 @@ func (s *Service) Summary(ctx context.Context, periodID uuid.UUID) (PeriodSummar
 
 // SnapshotFor totals the identified period in an explicit scope as it will stand once closed at at with end as its last day; boot's period.Snapshotter adapter calls it.
 func (s *Service) SnapshotFor(ctx context.Context, orgID, projectID, periodID uuid.UUID, end civil.Date, at time.Time) (PeriodSummary, error) {
+	if err := authz.Can(ctx, authz.TransactionsRead); err != nil {
+		return PeriodSummary{}, err
+	}
 	ctx, span := tracer.Start(ctx, "report.SnapshotFor",
 		trace.WithAttributes(attribute.String("period.id", periodID.String())))
 	defer span.End()
@@ -67,6 +74,9 @@ func (s *Service) SnapshotFor(ctx context.Context, orgID, projectID, periodID uu
 
 // LatestEntryAt reports when the latest transaction recorded against the period occurred, and false when it has none.
 func (s *Service) LatestEntryAt(ctx context.Context, orgID, projectID, periodID uuid.UUID) (time.Time, bool, error) {
+	if err := authz.Can(ctx, authz.TransactionsRead); err != nil {
+		return time.Time{}, false, err
+	}
 	ctx, span := tracer.Start(ctx, "report.LatestEntryAt",
 		trace.WithAttributes(attribute.String("period.id", periodID.String())))
 	defer span.End()
@@ -81,6 +91,9 @@ func (s *Service) LatestEntryAt(ctx context.Context, orgID, projectID, periodID 
 
 // SpendByCategory breaks the identified period's expenses down by category, largest first.
 func (s *Service) SpendByCategory(ctx context.Context, periodID uuid.UUID) ([]CategorySlice, error) {
+	if err := authz.Can(ctx, authz.TransactionsRead); err != nil {
+		return nil, err
+	}
 	ctx, span := tracer.Start(ctx, "report.SpendByCategory",
 		trace.WithAttributes(attribute.String("period.id", periodID.String())))
 	defer span.End()
@@ -99,6 +112,9 @@ func (s *Service) SpendByCategory(ctx context.Context, periodID uuid.UUID) ([]Ca
 
 // SpendByCategories is SpendByCategory for many periods in one read, keyed by period id.
 func (s *Service) SpendByCategories(ctx context.Context, periodIDs []uuid.UUID) (map[uuid.UUID][]CategorySlice, error) {
+	if err := authz.Can(ctx, authz.TransactionsRead); err != nil {
+		return nil, err
+	}
 	ctx, span := tracer.Start(ctx, "report.SpendByCategories",
 		trace.WithAttributes(attribute.Int("report.period_count", len(periodIDs))))
 	defer span.End()
@@ -118,6 +134,9 @@ func (s *Service) SpendByCategories(ctx context.Context, periodIDs []uuid.UUID) 
 
 // IncomeByCategory breaks the identified period's income down by category, largest first.
 func (s *Service) IncomeByCategory(ctx context.Context, periodID uuid.UUID) ([]CategorySlice, error) {
+	if err := authz.Can(ctx, authz.TransactionsRead); err != nil {
+		return nil, err
+	}
 	ctx, span := tracer.Start(ctx, "report.IncomeByCategory",
 		trace.WithAttributes(attribute.String("period.id", periodID.String())))
 	defer span.End()
@@ -136,6 +155,9 @@ func (s *Service) IncomeByCategory(ctx context.Context, periodID uuid.UUID) ([]C
 
 // Cashflow returns one point per requested period, in the order the ids were given.
 func (s *Service) Cashflow(ctx context.Context, periodIDs []uuid.UUID) ([]CashflowPoint, error) {
+	if err := authz.Can(ctx, authz.TransactionsRead); err != nil {
+		return nil, err
+	}
 	ctx, span := tracer.Start(ctx, "report.Cashflow",
 		trace.WithAttributes(attribute.Int("report.period_count", len(periodIDs))))
 	defer span.End()
@@ -155,6 +177,9 @@ func (s *Service) Cashflow(ctx context.Context, periodIDs []uuid.UUID) ([]Cashfl
 
 // Flows returns the identified period's expenses grouped by wallet and category.
 func (s *Service) Flows(ctx context.Context, periodID uuid.UUID) ([]Flow, error) {
+	if err := authz.Can(ctx, authz.TransactionsRead); err != nil {
+		return nil, err
+	}
 	ctx, span := tracer.Start(ctx, "report.Flows",
 		trace.WithAttributes(attribute.String("period.id", periodID.String())))
 	defer span.End()
@@ -173,6 +198,9 @@ func (s *Service) Flows(ctx context.Context, periodID uuid.UUID) ([]Flow, error)
 
 // WalletBalances returns every wallet's live balance in the caller's project.
 func (s *Service) WalletBalances(ctx context.Context) ([]WalletLine, error) {
+	if err := authz.Can(ctx, authz.TransactionsRead); err != nil {
+		return nil, err
+	}
 	ctx, span := tracer.Start(ctx, "report.WalletBalances")
 	defer span.End()
 

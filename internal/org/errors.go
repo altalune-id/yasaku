@@ -240,15 +240,13 @@ func (e *SystemProtectedError) ToAppError() *apperror.AppError {
 	)
 }
 
-// RemovalRefusal reports why actor may not remove the target membership, or nil when removal is allowed. SECURITY: the service gate and the members view both consult this, so a hidden button and a refused post cannot drift apart.
-func RemovalRefusal(orgID, actor, target uuid.UUID, actorRole, targetRole Role, system bool) error {
+// RemovalRefusal reports the structural reason actor may not remove the target membership, a system row or their own, or nil; role cover and the last owner are checked by Service.
+func RemovalRefusal(orgID, actor, target uuid.UUID, system bool) error {
 	switch {
 	case system:
 		return &SystemProtectedError{Op: "remove_member", OrgID: orgID.String(), UserID: target.String(), Resource: "membership"}
 	case actor == target:
 		return &SelfRemovalError{OrgID: orgID.String(), UserID: target.String()}
-	case targetRole == RoleOwner && actorRole != RoleOwner:
-		return &OwnerRemovalError{OrgID: orgID.String(), UserID: target.String()}
 	}
 	return nil
 }
@@ -368,35 +366,6 @@ func IsSystemOrgExistsError(err error) bool {
 	return ok
 }
 
-// NotManagerError signals that the caller is not an owner or admin of the org.
-type NotManagerError struct {
-	OrgID  string
-	UserID string
-}
-
-func (e *NotManagerError) Error() string {
-	if e == nil {
-		return "org: owner or admin required"
-	}
-	return fmt.Sprintf("org: owner or admin required: org=%s user=%s", e.OrgID, e.UserID)
-}
-
-// ToAppError maps NotManagerError to a PermissionDenied envelope.
-func (e *NotManagerError) ToAppError() *apperror.AppError {
-	return apperror.New(
-		apperror.CodeOrgManagerRequired,
-		"Only an owner or admin can do this",
-		codes.PermissionDenied,
-		&apperrorv1.ErrorDetail{Code: apperror.CodeOrgManagerRequired},
-	)
-}
-
-// IsNotManagerError reports whether err's tree contains a *NotManagerError.
-func IsNotManagerError(err error) bool {
-	_, ok := errors.AsType[*NotManagerError](err)
-	return ok
-}
-
 // OrgMismatchError signals a write into an org other than the one the caller's credential belongs to.
 type OrgMismatchError struct {
 	OrgID string
@@ -422,5 +391,29 @@ func (e *OrgMismatchError) ToAppError() *apperror.AppError {
 // IsOrgMismatchError reports whether err's tree contains a *OrgMismatchError.
 func IsOrgMismatchError(err error) bool {
 	_, ok := errors.AsType[*OrgMismatchError](err)
+	return ok
+}
+
+// LastOwnerError refuses removing, demoting or the leaving of an org's last built-in owner.
+type LastOwnerError struct {
+	OrgID string
+	Org   string
+}
+
+func (e *LastOwnerError) Error() string { return "org: last owner of " + e.OrgID }
+
+// ToAppError maps LastOwnerError to ORG013 FailedPrecondition.
+func (e *LastOwnerError) ToAppError() *apperror.AppError {
+	return apperror.New(
+		apperror.CodeOrgLastOwner,
+		e.Org+" needs at least one owner. Make someone else owner first.",
+		codes.FailedPrecondition,
+		&apperrorv1.ErrorDetail{Code: apperror.CodeOrgLastOwner, Meta: map[string]string{"org_id": e.OrgID}},
+	)
+}
+
+// IsLastOwnerError reports whether err's tree contains a *LastOwnerError.
+func IsLastOwnerError(err error) bool {
+	_, ok := errors.AsType[*LastOwnerError](err)
 	return ok
 }

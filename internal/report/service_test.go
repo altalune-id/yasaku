@@ -42,7 +42,7 @@ type fixture struct {
 	tc       tenant.Context
 }
 
-func (f fixture) ctx() context.Context { return tenant.Into(context.Background(), f.tc) }
+func (f fixture) ctx() context.Context { return fakes.Owner(context.Background(), f.tc) }
 
 func newFixture(t *testing.T) fixture {
 	t.Helper()

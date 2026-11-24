@@ -12,6 +12,7 @@ import (
 	"altalune.id/yasaku/internal/platform/config"
 	"altalune.id/yasaku/internal/platform/db"
 	"altalune.id/yasaku/internal/platform/tenant"
+	"altalune.id/yasaku/internal/testutil/fakes"
 	"altalune.id/yasaku/schema"
 )
 
@@ -55,7 +56,7 @@ func newHijackFixture(t *testing.T) hijackFixture {
 func (f hijackFixture) seedVictim(t *testing.T) *invite.Invite {
 	t.Helper()
 	victim := newInviteForTest(t, f.orgA.OrgID, "victim@example.com", time.Hour)
-	if err := f.store.Save(tenant.Into(context.Background(), f.orgA), victim); err != nil {
+	if err := f.store.Save(fakes.Owner(context.Background(), f.orgA), victim); err != nil {
 		t.Fatalf("seed Save: %v", err)
 	}
 	return victim
@@ -63,7 +64,7 @@ func (f hijackFixture) seedVictim(t *testing.T) *invite.Invite {
 
 func (f hijackFixture) requireEmail(t *testing.T, id uuid.UUID, want string) {
 	t.Helper()
-	got, err := f.store.ByID(tenant.Into(context.Background(), f.orgA), id)
+	got, err := f.store.ByID(fakes.Owner(context.Background(), f.orgA), id)
 	if err != nil {
 		t.Fatalf("ByID: %v", err)
 	}
@@ -90,7 +91,7 @@ func TestSQLiteStore_Save_RejectsReskinnedHijack(t *testing.T) {
 	attack := newInviteForTest(t, f.orgB.OrgID, "attacker@example.com", time.Hour)
 	attack.ID = victim.ID
 
-	requireBlocked(t, f.store.Save(tenant.Into(context.Background(), f.orgB), attack), "reskinned Save")
+	requireBlocked(t, f.store.Save(fakes.Owner(context.Background(), f.orgB), attack), "reskinned Save")
 	f.requireEmail(t, victim.ID, "victim@example.com")
 }
 
@@ -102,7 +103,7 @@ func TestSQLiteStore_Save_RejectsVerbatimHijack(t *testing.T) {
 	attack := *victim
 	attack.Email = "attacker@example.com"
 
-	requireBlocked(t, f.store.Save(tenant.Into(context.Background(), f.orgB), &attack), "verbatim Save")
+	requireBlocked(t, f.store.Save(fakes.Owner(context.Background(), f.orgB), &attack), "verbatim Save")
 	f.requireEmail(t, victim.ID, "victim@example.com")
 }
 
@@ -112,7 +113,7 @@ func TestSQLiteStore_Save_UpdatesOwnRow(t *testing.T) {
 	victim := f.seedVictim(t)
 
 	victim.Email = "victim+renamed@example.com"
-	if err := f.store.Save(tenant.Into(context.Background(), f.orgA), victim); err != nil {
+	if err := f.store.Save(fakes.Owner(context.Background(), f.orgA), victim); err != nil {
 		t.Fatalf("owner Save: %v", err)
 	}
 	f.requireEmail(t, victim.ID, "victim+renamed@example.com")
@@ -123,6 +124,6 @@ func TestSQLiteStore_Delete_RejectsCrossTenant(t *testing.T) {
 	f := newHijackFixture(t)
 	victim := f.seedVictim(t)
 
-	requireBlocked(t, f.store.Delete(tenant.Into(context.Background(), f.orgB), victim.ID), "cross-tenant Delete")
+	requireBlocked(t, f.store.Delete(fakes.Owner(context.Background(), f.orgB), victim.ID), "cross-tenant Delete")
 	f.requireEmail(t, victim.ID, "victim@example.com")
 }

@@ -12,6 +12,7 @@ import (
 
 	"altalune.id/yasaku/civil"
 	"altalune.id/yasaku/internal/apperror"
+	"altalune.id/yasaku/internal/platform/authz"
 	"altalune.id/yasaku/internal/platform/tenant"
 	"altalune.id/yasaku/money"
 )
@@ -77,6 +78,9 @@ func NewOpenWorkflow(
 
 // Run creates the wallet and, when opening is a non-zero amount, records it as the wallet's opening balance, dated by the OpeningDater.
 func (w *OpenWorkflow) Run(ctx context.Context, p Params, opening *money.Amount, at time.Time) (*Wallet, OpeningDate, error) {
+	if err := authz.Can(ctx, authz.WalletsWrite); err != nil {
+		return nil, OpeningDate{}, err
+	}
 	ctx, span := tracer.Start(ctx, "wallet.Open")
 	defer span.End()
 
@@ -113,6 +117,9 @@ func (w *OpenWorkflow) Run(ctx context.Context, p Params, opening *money.Amount,
 
 // Preview dates an opening balance exactly as Run would, writing nothing.
 func (w *OpenWorkflow) Preview(ctx context.Context, opening *money.Amount, at time.Time) (OpeningDate, error) {
+	if err := authz.Can(ctx, authz.WalletsWrite); err != nil {
+		return OpeningDate{}, err
+	}
 	ctx, span := tracer.Start(ctx, "wallet.OpenPreview")
 	defer span.End()
 

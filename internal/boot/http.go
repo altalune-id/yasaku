@@ -34,6 +34,7 @@ func buildAPIHandler(cfg *config.Config, k *platform.Kernel, s *Services, resour
 		Orgs:     s.Orgs,
 		Projects: s.Projects,
 		Invites:  s.Invites,
+		Authz:    s.Authz,
 
 		Ledgers:      s.Ledgers,
 		Wallets:      s.Wallets,
@@ -102,6 +103,7 @@ func buildWebHandler(d webHandlerDeps) (handler http.Handler, routes []string) {
 	deps.Secret = kernel.StateSecret
 	deps.Orgs = svcs.Orgs
 	deps.Projects = svcs.Projects
+	deps.Authz = svcs.Authz
 	deps.I18n = d.Bundle
 	deps.ProjectLocation = svcs.Ledgers.Location
 

@@ -47,11 +47,11 @@ func (f *txFixture) record(t *testing.T, kind transaction.Kind, minor int64, cat
 func (f *txFixture) withClock(at time.Time) *period.Service {
 	store := fakes.NewPeriod()
 	uow := period.UnitOfWork(txPassthroughUoW)
-	f.Periods = period.NewService(store, discardLogger(), passthroughUnexpected(), f.Ledgers, f.Snapshots, f.Snapshots, uow, time.Now, f.Orgs)
+	f.Periods = period.NewService(store, discardLogger(), passthroughUnexpected(), f.Ledgers, f.Snapshots, f.Snapshots, uow, time.Now)
 	f.Transactions = transaction.NewService(fakes.NewTransaction(), discardLogger(), passthroughUnexpected(),
 		txWalletReader(f.Wallets), txCategoryReader(f.TxCategories),
 		txPeriodResolver{periods: f.Periods}, transaction.UnitOfWork(txPassthroughUoW))
-	return period.NewService(store, discardLogger(), passthroughUnexpected(), f.Ledgers, f.Snapshots, f.Snapshots, uow, func() time.Time { return at }, f.Orgs)
+	return period.NewService(store, discardLogger(), passthroughUnexpected(), f.Ledgers, f.Snapshots, f.Snapshots, uow, func() time.Time { return at })
 }
 
 var dayTotalRe = regexp.MustCompile(`data-day-total[^>]*>([^<]+)<`)
@@ -196,7 +196,7 @@ func TestHome_NoActiveWalletOffersCreateAWallet(t *testing.T) {
 func TestHome_NewProjectRedirectsAManagerToFirstRun(t *testing.T) {
 	t.Parallel()
 	f := newTxFixture(t)
-	octx := tenant.Into(context.Background(), tenant.Context{OrgID: f.OrgID, UserID: f.Principal.UserID})
+	octx := fakes.Owner(context.Background(), tenant.Context{OrgID: f.OrgID, UserID: f.Principal.UserID})
 	fresh, err := f.Projects.Create(octx, f.OrgID, "fresh", "Fresh")
 	require.NoError(t, err)
 	f.ProjSlug = fresh.Slug
@@ -210,7 +210,7 @@ func TestHome_NewProjectRedirectsAManagerToFirstRun(t *testing.T) {
 func TestHome_ConfiguredProjectWithoutWalletsSendsAManagerToFirstRun(t *testing.T) {
 	t.Parallel()
 	f := newTxFixture(t)
-	octx := tenant.Into(context.Background(), tenant.Context{OrgID: f.OrgID, UserID: f.Principal.UserID})
+	octx := fakes.Owner(context.Background(), tenant.Context{OrgID: f.OrgID, UserID: f.Principal.UserID})
 	fresh, err := f.Projects.Create(octx, f.OrgID, "fresh", "Fresh")
 	require.NoError(t, err)
 	cur := money.IDR
@@ -440,7 +440,7 @@ func TestHome_QuickAddSkipsArchivedCategories(t *testing.T) {
 func TestHome_NewProjectShowsAMemberTheSetupHint(t *testing.T) {
 	t.Parallel()
 	f := newTxFixture(t)
-	octx := tenant.Into(context.Background(), tenant.Context{OrgID: f.OrgID, UserID: f.Principal.UserID})
+	octx := fakes.Owner(context.Background(), tenant.Context{OrgID: f.OrgID, UserID: f.Principal.UserID})
 	fresh, err := f.Projects.Create(octx, f.OrgID, "fresh", "Fresh")
 	require.NoError(t, err)
 	member := uuid.New()

@@ -63,12 +63,12 @@ func newOpensheetWiring(cfg *config.Config, k *platform.Kernel, jobs opensheetsy
 	}, nil
 }
 
-func (w opensheetWiring) services(k *platform.Kernel, log *slog.Logger, src opensheetsync.Source, members opensheetsync.Members, uow tenant.UnitOfWork) (*opensheetsync.Service, *opensheetsync.Syncer) {
+func (w opensheetWiring) services(k *platform.Kernel, log *slog.Logger, src opensheetsync.Source, uow tenant.UnitOfWork) (*opensheetsync.Service, *opensheetsync.Syncer) {
 	if w.mirror == nil {
 		return nil, nil
 	}
 	svc := opensheetsync.NewService(w.store, log, k.Reporter.Unexpected, opensheetsync.ServiceDeps{
-		Mirror: w.mirror, Members: members, Sealer: k.Sealer, Endpoint: w.endpoint, Source: src,
+		Mirror: w.mirror, Sealer: k.Sealer, Endpoint: w.endpoint, Source: src,
 		UnitOfWork: opensheetsync.UnitOfWork(uow), Now: time.Now,
 	})
 	d := opensheetsync.SyncerDeps{Sealer: k.Sealer, Endpoint: w.endpoint, Source: src, Jobs: w.jobs, Queued: w.queued, Now: time.Now}

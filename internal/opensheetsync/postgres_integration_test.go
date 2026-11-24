@@ -20,6 +20,7 @@ import (
 	"altalune.id/yasaku/internal/platform/config"
 	"altalune.id/yasaku/internal/platform/db"
 	"altalune.id/yasaku/internal/platform/tenant"
+	"altalune.id/yasaku/internal/testutil/fakes"
 	"altalune.id/yasaku/internal/testutil/pgtest"
 	"altalune.id/yasaku/schema"
 )
@@ -39,7 +40,7 @@ func TestPostgresStore_ConcurrentClaimSettleAndMark(t *testing.T) {
 // NOTE: deterministic: the write holds its unit of work open between LinkEnabled and Mark while Remove runs; the share lock is what makes Remove wait.
 func TestPostgresStore_LinkEnabledInAUnitOfWorkHoldsOffRemove(t *testing.T) {
 	f, pc := newPgFixtureWithConn(t)
-	ctx := tenant.Into(context.Background(), f.tc)
+	ctx := fakes.Owner(context.Background(), f.tc)
 	l := linkFor(f.tc, time.Now())
 	require.NoError(t, l.Enable(time.Now()))
 	require.NoError(t, f.store.SaveLink(ctx, l))
@@ -51,7 +52,7 @@ func TestPostgresStore_LinkEnabledInAUnitOfWorkHoldsOffRemove(t *testing.T) {
 			return fmt.Errorf("link enabled = %v: %w", on, err)
 		}
 		go func() {
-			removed <- f.store.DeleteLink(tenant.Into(context.Background(), f.tc), f.tc.OrgID, f.tc.ProjectID)
+			removed <- f.store.DeleteLink(fakes.Owner(context.Background(), f.tc), f.tc.OrgID, f.tc.ProjectID)
 		}()
 		select {
 		case err := <-removed:

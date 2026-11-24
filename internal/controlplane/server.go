@@ -32,6 +32,7 @@ import (
 	"altalune.id/yasaku/internal/period"
 	"altalune.id/yasaku/internal/platform"
 	"altalune.id/yasaku/internal/platform/authn"
+	"altalune.id/yasaku/internal/platform/authz"
 	"altalune.id/yasaku/internal/platform/config"
 	"altalune.id/yasaku/internal/platform/tokens"
 	"altalune.id/yasaku/internal/project"
@@ -48,6 +49,8 @@ type Deps struct {
 	Orgs     *org.Service
 	Projects *project.Service
 	Invites  *invite.Service
+	// Authz resolves what a caller holds once a handler binds its tenant scope.
+	Authz *authz.Resolver
 
 	Ledgers      *ledger.Service
 	Wallets      *wallet.Service
@@ -70,6 +73,8 @@ type Server struct {
 	Orgs     *org.Service
 	Projects *project.Service
 	Invites  *invite.Service
+	// Scope binds every handler's tenant scope through the resolver.
+	Scope Scope
 
 	// APIKeys is set by boot after New returns, mirroring Authn below.
 	APIKeys *apikey.Service
@@ -98,7 +103,9 @@ type Server struct {
 
 // New builds a Server from every domain service.
 func New(cfg *config.Config, kernel *platform.Kernel, d Deps) *Server {
+	sc := Scope{Orgs: d.Orgs, Authz: d.Authz}
 	s := &Server{
+		Scope:    sc,
 		Cfg:      cfg,
 		Kernel:   kernel,
 		Auths:    d.Auths,
@@ -107,22 +114,22 @@ func New(cfg *config.Config, kernel *platform.Kernel, d Deps) *Server {
 		Projects: d.Projects,
 		Invites:  d.Invites,
 
-		AuthSvc:    NewAuthService(d.Orgs),
-		ProjectSvc: NewProjectService(d.Orgs, d.Projects),
-		MemberSvc:  NewMemberService(d.Orgs),
+		AuthSvc:    NewAuthService(sc),
+		ProjectSvc: NewProjectService(sc, d.Projects),
+		MemberSvc:  NewMemberService(sc),
 
-		WorkspaceSvc: NewWorkspaceService(d.Orgs, d.Projects, d.Ledgers, d.Periods),
-		LedgerSvc:    NewLedgerService(d.Orgs, d.Projects, d.Ledgers),
-		WalletSvc: NewWalletService(d.Orgs, d.Projects, d.Wallets, d.WalletOpen,
+		WorkspaceSvc: NewWorkspaceService(sc, d.Projects, d.Ledgers, d.Periods),
+		LedgerSvc:    NewLedgerService(sc, d.Projects, d.Ledgers),
+		WalletSvc: NewWalletService(sc, d.Projects, d.Wallets, d.WalletOpen,
 			d.Transactions, d.TxCategories, d.Periods, d.Reports, d.Ledgers),
-		CategorySvc: NewCategoryService(d.Orgs, d.Projects, d.TxCategories),
-		TransactionSvc: NewTransactionService(d.Orgs, d.Projects, d.Transactions,
+		CategorySvc: NewCategoryService(sc, d.Projects, d.TxCategories),
+		TransactionSvc: NewTransactionService(sc, d.Projects, d.Transactions,
 			d.Wallets, d.TxCategories, d.Periods, d.Ledgers),
-		PeriodSvc: NewPeriodService(d.Orgs, d.Projects, d.Periods, d.Reports),
-		ReportSvc: NewReportService(d.Orgs, d.Projects, d.Reports, d.Periods),
+		PeriodSvc: NewPeriodService(sc, d.Projects, d.Periods, d.Reports),
+		ReportSvc: NewReportService(sc, d.Projects, d.Reports, d.Periods),
 	}
 	if d.Opensheet != nil {
-		s.OpensheetSvc = NewOpensheetService(d.Orgs, d.Projects, d.Opensheet)
+		s.OpensheetSvc = NewOpensheetService(sc, d.Projects, d.Opensheet)
 	}
 	if cfg != nil {
 		s.OpenAPIEnabled = cfg.API.OpenAPI.Enabled
@@ -155,7 +162,7 @@ var (
 func (s *Server) Handler(basePath string) http.Handler {
 	opts := s.handlerOptions()
 	// NOTE: built here, not in New, since s.APIKeys isn't set until after New returns.
-	s.APIKeySvc = NewAPIKeyService(s.APIKeys, s.Projects, s.Orgs)
+	s.APIKeySvc = NewAPIKeyService(s.APIKeys, s.Projects, s.Scope)
 
 	inner := http.NewServeMux()
 	for _, m := range []mountedHandler{

@@ -13,6 +13,7 @@ import (
 
 	"altalune.id/yasaku/civil"
 	"altalune.id/yasaku/internal/apperror"
+	"altalune.id/yasaku/internal/platform/authz"
 	"altalune.id/yasaku/internal/platform/sealer"
 	"altalune.id/yasaku/internal/platform/tenant"
 )
@@ -23,18 +24,12 @@ const (
 	StatusRows = 20
 )
 
-// Members is the role gate: only an org owner or admin changes the link.
-type Members interface {
-	RequireManager(ctx context.Context, orgID, userID uuid.UUID) error
-}
-
 // UnitOfWork runs fn so that every write inside it commits or rolls back together.
 type UnitOfWork func(ctx context.Context, fn func(ctx context.Context) error) error
 
 // ServiceDeps is what Service needs beyond its store, logger and reporter.
 type ServiceDeps struct {
 	Mirror     *Mirror
-	Members    Members
 	Sealer     sealer.Sealer
 	Endpoint   Endpoint
 	Source     Source
@@ -48,7 +43,6 @@ type Service struct {
 	log        *slog.Logger
 	unexpected apperror.UnexpectedFunc
 	mirror     *Mirror
-	members    Members
 	sealer     sealer.Sealer
 	endpoint   Endpoint
 	source     Source
@@ -60,7 +54,7 @@ type Service struct {
 func NewService(store Store, log *slog.Logger, unexpected apperror.UnexpectedFunc, d ServiceDeps) *Service {
 	s := &Service{
 		store: store, log: log.With("module", "opensheetsync"), unexpected: unexpected,
-		mirror: d.Mirror, members: d.Members, sealer: d.Sealer, endpoint: d.Endpoint, source: d.Source, uow: d.UnitOfWork, now: d.Now,
+		mirror: d.Mirror, sealer: d.Sealer, endpoint: d.Endpoint, source: d.Source, uow: d.UnitOfWork, now: d.Now,
 	}
 	if s.uow == nil {
 		s.uow = func(ctx context.Context, fn func(ctx context.Context) error) error { return fn(ctx) }
@@ -292,14 +286,14 @@ func (s *Service) Delete(ctx context.Context) error {
 	return nil
 }
 
-// SECURITY: an API key principal has no user, so RequireManager refuses it; a leaked key must not re-point the mirror.
+// SECURITY: only a principal holding ledger:settings re-points the mirror; a key holds it only through a creator who does.
 func (s *Service) manager(ctx context.Context) (tenant.Context, error) {
 	tc, err := tenant.From(ctx)
 	if err != nil {
 		return tenant.Context{}, err
 	}
-	if err := s.members.RequireManager(ctx, tc.OrgID, tc.UserID); err != nil {
-		return tenant.Context{}, s.passOrReport(ctx, "opensheetsync: role", err, tc)
+	if err := authz.Can(ctx, authz.LedgerSettings); err != nil {
+		return tenant.Context{}, err
 	}
 	return tc, nil
 }

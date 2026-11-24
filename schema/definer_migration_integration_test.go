@@ -131,3 +131,27 @@ func TestMigration021_IsStaffDefinerRevokedFromPublic(t *testing.T) {
 		"public."+prefix+"is_staff(uuid)").Scan(&publicExec))
 	require.False(t, publicExec, "PUBLIC must not hold EXECUTE on is_staff")
 }
+
+func TestMigration022_RevokeTriggerDefinerRevokedFromPublic(t *testing.T) {
+	h := pgtest.New(t)
+	suffix := uniqueSuffix(t)
+	role := "yasaku_revoke_" + suffix
+	prefix := "t" + suffix + "_"
+
+	migDB := migrationRoleDB(t, h, role, "BYPASSRLS")
+	require.NoError(t, schema.MigrateUp(t.Context(), migDB, migrationConfig(prefix)))
+
+	var secdef bool
+	var config string
+	require.NoError(t, migDB.QueryRowContext(t.Context(),
+		`SELECT p.prosecdef, coalesce(array_to_string(p.proconfig, ','), '') FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+		  WHERE n.nspname = 'public' AND p.proname = $1`,
+		prefix+"revoke_keys_of_deleted_user").Scan(&secdef, &config))
+	require.True(t, secdef, "the trigger revokes keys in every org, past row level security")
+	require.Contains(t, config, "search_path=")
+	var publicExec bool
+	require.NoError(t, migDB.QueryRowContext(t.Context(),
+		`SELECT has_function_privilege('public', $1, 'EXECUTE')`,
+		"public."+prefix+"revoke_keys_of_deleted_user()").Scan(&publicExec))
+	require.False(t, publicExec)
+}

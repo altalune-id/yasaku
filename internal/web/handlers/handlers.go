@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 	"altalune.id/yasaku/internal/apperror"
 	"altalune.id/yasaku/internal/i18n"
 	"altalune.id/yasaku/internal/org"
+	"altalune.id/yasaku/internal/platform/authz"
 	"altalune.id/yasaku/internal/platform/capabilities"
 	"altalune.id/yasaku/internal/platform/config"
 	"altalune.id/yasaku/internal/platform/session"
@@ -36,7 +38,9 @@ type Deps struct {
 	Logger   *log.Logger
 	Orgs     *org.Service
 	Projects *project.Service
-	I18n     *i18n.Bundle
+	// Authz binds an org-scoped request with the caller's held set.
+	Authz *authz.Resolver
+	I18n  *i18n.Bundle
 	// ProjectLocation resolves the zone a project's dates are kept in; nil shows no project zone.
 	ProjectLocation func(ctx context.Context, orgID, projectID uuid.UUID) (*time.Location, error)
 	Secret          []byte
@@ -118,9 +122,12 @@ func (d Deps) layout(r *http.Request, title string, nav web.ActiveNav, pinnedOrg
 	}
 
 	orgID := uuidFromString(base.ActiveOrg.ID)
-	if m, mErr := d.Orgs.MembershipOf(ctx, orgID, p.UserID); mErr == nil && m != nil {
+	if bound := session.PrincipalFrom(ctx); bound.HeldOrgID == orgID {
+		base.ActiveOrg.Role = capitaliseRole(bound.HeldRole)
+		base.ActiveOrg.CanManage = authz.Can(ctx, authz.MembersWrite) == nil
+	} else if m, mErr := d.Orgs.MembershipOf(ctx, orgID, p.UserID); mErr == nil && m != nil {
 		base.ActiveOrg.Role = capitaliseRole(string(m.Role))
-		base.ActiveOrg.CanManage = m.Role.CanManage()
+		base.ActiveOrg.CanManage = slices.Contains(authz.Builtin(string(m.Role)), authz.MembersWrite)
 	}
 	if d.Projects == nil {
 		return base
@@ -350,7 +357,12 @@ func (d Deps) OrgScopeFor(w http.ResponseWriter, r *http.Request, p session.Prin
 		d.ErrorPage(w, r, http.StatusNotFound, pageTitle(r, "error_title.organization_not_found"), "", err)
 		return nil, nil, false
 	}
-	return o, scoped, true
+	ctx, err := d.Authz.Bind(r.Context(), p, tenant.Context{OrgID: o.ID, UserID: p.UserID})
+	if err != nil {
+		d.ErrorPage(w, r, http.StatusInternalServerError, pageTitle(r, "error_title.lookup_failed"), "", err)
+		return nil, nil, false
+	}
+	return o, r.WithContext(ctx), true
 }
 
 // LoadSession reads the sid cookie, verifies its HMAC, and loads the Principal from the store.

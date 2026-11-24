@@ -6,7 +6,9 @@ import (
 
 	"github.com/google/uuid"
 
+	"altalune.id/yasaku/internal/apperror"
 	"altalune.id/yasaku/internal/org"
+	"altalune.id/yasaku/internal/platform/authz"
 	"altalune.id/yasaku/internal/platform/session"
 	"altalune.id/yasaku/internal/web"
 	"altalune.id/yasaku/internal/web/templates"
@@ -92,15 +94,15 @@ func (h *OrgHandler) PostRename(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	p, o, r := sc.principal, sc.org, sc.req
+	o, r := sc.org, sc.req
 	if err := r.ParseForm(); err != nil {
 		h.ErrorPage(w, r, http.StatusBadRequest, pageTitle(r, "error_title.bad_request"), "Could not parse form body.")
 		return
 	}
 	name := strings.TrimSpace(r.PostForm.Get("name"))
 	// SECURITY: the slug comes from the URL, so membership in that org must be checked here — RLS no longer narrows this to the active org.
-	canManage, mErr := h.Orgs.IsManager(r.Context(), o.ID, p.UserID)
-	if mErr != nil || !canManage {
+	canManage := holds(r, authz.MembersWrite)
+	if !canManage {
 		h.ErrorPage(w, r, http.StatusForbidden, pageTitle(r, "error_title.not_allowed"), "You must be an admin or owner to rename this organization.")
 		return
 	}
@@ -123,17 +125,22 @@ func (h *OrgHandler) GetShow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p, o, r := sc.principal, sc.org, sc.req
-	profiles, err := h.Orgs.ListMemberProfiles(r.Context(), o.ID)
+	controls, grantable, err := h.Orgs.MemberControls(r.Context(), o.ID)
 	if err != nil {
 		h.LogErr("web org: members", err)
 		h.ErrorPage(w, r, http.StatusInternalServerError, pageTitle(r, "error_title.members_failed"), "Could not load members.", err)
 		return
 	}
-	canManage, _ := h.Orgs.IsManager(r.Context(), o.ID, p.UserID)
+	roles := make([]string, 0, len(grantable))
+	for _, g := range grantable {
+		roles = append(roles, string(g))
+	}
 	Render(w, r, templates.MembersLayout(h.LayoutForOrg(r, pageTitle(r, "members.title", o.Name), o.Slug, "members"), templates.MembersView{
-		OrgSlug:   o.Slug,
-		Members:   memberProfileRows(profiles, o.ID, p.UserID),
-		CanManage: canManage,
+		OrgSlug:        o.Slug,
+		OrgName:        o.Name,
+		Members:        memberRows(controls, p.UserID),
+		CanManage:      holds(r, authz.MembersWrite),
+		GrantableRoles: roles,
 	}))
 }
 
@@ -143,9 +150,9 @@ func (h *OrgHandler) PostRemoveMember(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	p, o, r := sc.principal, sc.org, sc.req
-	canManage, mErr := h.Orgs.IsManager(r.Context(), o.ID, p.UserID)
-	if mErr != nil || !canManage {
+	o, r := sc.org, sc.req
+	canManage := holds(r, authz.MembersWrite)
+	if !canManage {
 		h.ErrorPage(w, r, http.StatusForbidden, pageTitle(r, "error_title.not_allowed"), "You must be an admin or owner to manage members.")
 		return
 	}
@@ -172,11 +179,64 @@ func (h *OrgHandler) PostRemoveMember(w http.ResponseWriter, r *http.Request) {
 			h.ErrorPage(w, r, http.StatusConflict, pageTitle(r, "error_title.remove_not_allowed"), "An owner cannot be removed.")
 			return
 		}
+		if h.refuseRoleChange(w, r, err) {
+			return
+		}
 		// SECURITY: err.Error() names internal ids, so it stays in the log and never reaches the page.
 		h.ErrorPage(w, r, http.StatusInternalServerError, pageTitle(r, "error_title.remove_failed"), "Could not remove that member.")
 		return
 	}
 	http.Redirect(w, r, ResolveReturnTo(h.Cfg.HTTP.BasePath, "/orgs/"+o.Slug+"/members"), http.StatusSeeOther) //nolint:gosec // G710: destination sanitized via ResolveReturnTo → SanitizeReturnTo
+}
+
+// PostSetRole handles POST /orgs/{slug}/members/{user}/role.
+func (h *OrgHandler) PostSetRole(w http.ResponseWriter, r *http.Request) {
+	sc, ok := h.RequireOrg(w, r)
+	if !ok {
+		return
+	}
+	o, r := sc.org, sc.req
+	userID, err := uuid.Parse(r.PathValue("user"))
+	if err != nil {
+		h.ErrorPage(w, r, http.StatusBadRequest, pageTitle(r, "error_title.bad_id"), "Malformed user id.")
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		h.ErrorPage(w, r, http.StatusBadRequest, pageTitle(r, "error_title.bad_request"), "Could not parse form body.")
+		return
+	}
+	err = h.Orgs.SetRole(r.Context(), o.ID, userID, r.PostForm.Get("role"), uuid.Nil)
+	switch {
+	case err == nil:
+		http.Redirect(w, r, ResolveReturnTo(h.Cfg.HTTP.BasePath, "/orgs/"+o.Slug+"/members"), http.StatusSeeOther) //nolint:gosec // G710: destination sanitized via ResolveReturnTo → SanitizeReturnTo
+	case authz.IsDeniedError(err):
+		h.ErrorPage(w, r, http.StatusForbidden, pageTitle(r, "error_title.not_allowed"), "You must be an admin or owner to manage members.")
+	case org.IsInvalidRoleError(err):
+		h.ErrorPage(w, r, http.StatusBadRequest, pageTitle(r, "error_title.bad_role"), "That role does not exist.")
+	case org.IsMembershipMissingError(err), org.IsNotFoundError(err):
+		h.ErrorPage(w, r, http.StatusNotFound, pageTitle(r, "error_title.member_not_found"), "That person is not a member of this organization.")
+	case org.IsSystemProtectedError(err):
+		h.ErrorPage(w, r, http.StatusConflict, pageTitle(r, "error_title.not_allowed"), "This membership is system-protected.", err)
+	case h.refuseRoleChange(w, r, err):
+	default:
+		h.LogErr("web org: set role", err)
+		h.ErrorPage(w, r, http.StatusInternalServerError, pageTitle(r, "error_title.save_failed"), "Could not change that role.")
+	}
+}
+
+func (h *OrgHandler) refuseRoleChange(w http.ResponseWriter, r *http.Request, err error) bool {
+	ae, ok := apperror.AsAppError(err)
+	switch {
+	case !ok:
+		return false
+	case authz.IsEscalationError(err):
+		h.ErrorPage(w, r, http.StatusForbidden, pageTitle(r, "error_title.not_allowed"), ae.Message(), err)
+	case org.IsLastOwnerError(err):
+		h.ErrorPage(w, r, http.StatusConflict, pageTitle(r, "error_title.not_allowed"), ae.Message(), err)
+	default:
+		return false
+	}
+	return true
 }
 
 func (h *OrgHandler) createBlocked(r *http.Request, userID uuid.UUID) (msg, code string) { //nolint:nonamedreturns // message and code differ in role
@@ -232,25 +292,21 @@ func orgSummaries(items []*org.Org) []templates.OrgSummary {
 	return out
 }
 
-func memberProfileRows(items []*org.MemberProfile, orgID, viewer uuid.UUID) []templates.MemberRow {
-	// NOTE: the viewer is always a member of the org OrgScopeFor resolved, so their role is in this same list.
-	var viewerRole org.Role
-	for _, m := range items {
-		if m.UserID == viewer {
-			viewerRole = m.Role
-			break
-		}
-	}
-	out := make([]templates.MemberRow, 0, len(items))
-	for _, m := range items {
+func memberRows(controls []org.MemberControl, viewer uuid.UUID) []templates.MemberRow {
+	out := make([]templates.MemberRow, 0, len(controls))
+	for _, c := range controls {
+		m := c.Member
 		out = append(out, templates.MemberRow{
-			UserID:    m.UserID.String(),
-			Email:     m.Email,
-			Name:      m.Name,
-			Role:      string(m.Role),
-			System:    m.System,
-			IsSelf:    m.UserID == viewer,
-			Removable: org.RemovalRefusal(orgID, viewer, m.UserID, viewerRole, m.Role, m.System) == nil,
+			UserID:       m.UserID.String(),
+			Email:        m.Email,
+			Name:         m.Name,
+			Role:         string(m.Role),
+			System:       m.System,
+			IsSelf:       m.UserID == viewer,
+			Removable:    c.Removable,
+			RoleEditable: c.RoleEditable,
+			CanMakeOwner: c.CanMakeOwner,
+			LastOwner:    c.LastOwner,
 		})
 	}
 	return out
@@ -264,6 +320,7 @@ func (h *OrgHandler) Register(mux web.Mux) {
 	mux.HandleFunc("GET /orgs/{org}/members", h.GetShow)
 	mux.HandleFunc("POST /orgs/{org}/rename", h.PostRename)
 	mux.HandleFunc("POST /orgs/{org}/members/{user}/remove", h.PostRemoveMember)
+	mux.HandleFunc("POST /orgs/{org}/members/{user}/role", h.PostSetRole)
 }
 
 //i18n:use org_new.disabled_title

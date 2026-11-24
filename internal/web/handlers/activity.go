@@ -9,6 +9,7 @@ import (
 	"altalune.id/yasaku/internal/i18n"
 	"altalune.id/yasaku/internal/org"
 	"altalune.id/yasaku/internal/platform/audit"
+	"altalune.id/yasaku/internal/platform/authz"
 	"altalune.id/yasaku/internal/web"
 	"altalune.id/yasaku/internal/web/templates"
 )
@@ -41,7 +42,7 @@ func (h *ActivityHandler) GetList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	r = sc.req
-	if err := h.Orgs.RequireCallerManager(r.Context()); err != nil {
+	if err := authz.Can(r.Context(), authz.MembersWrite); err != nil {
 		if h.refuseNotManager(w, r, err, "activity.error_not_manager", activityNotManager) {
 			return
 		}

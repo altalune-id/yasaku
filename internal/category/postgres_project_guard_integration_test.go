@@ -10,16 +10,17 @@ import (
 
 	"altalune.id/yasaku/internal/category"
 	"altalune.id/yasaku/internal/platform/tenant"
+	"altalune.id/yasaku/internal/testutil/fakes"
 )
 
 func TestPostgres_Category_WritesRejectSiblingProject(t *testing.T) {
 	f := newPgFixture(t)
-	ownerCtx := tenant.Into(t.Context(), f.tc)
+	ownerCtx := fakes.Owner(t.Context(), f.tc)
 	victim := pgNew(t, f.tc, "project A's category", category.KindExpense)
 	require.NoError(t, f.store.Save(ownerCtx, victim))
 
 	siblingProj := seedPgProject(t, f.sqlDB, f.prefix, f.tc.UserID, f.tc.OrgID, "sibling")
-	siblingCtx := tenant.Into(t.Context(), tenant.Context{OrgID: f.tc.OrgID, ProjectID: siblingProj, UserID: f.tc.UserID})
+	siblingCtx := fakes.Owner(t.Context(), tenant.Context{OrgID: f.tc.OrgID, ProjectID: siblingProj, UserID: f.tc.UserID})
 
 	attack := *victim
 	attack.Name = "Hijacked"

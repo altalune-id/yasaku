@@ -17,16 +17,23 @@ Defined in `internal/platform/authn/scope.go`, one `catalog` row per scope with 
 | `members:read`  | org     | List the org's members (`member_list`)                                                                 |
 
 - **Levels.** A `project` scope acts on data inside the projects a key reaches. An `org` scope acts
-  on the org itself. A project key refuses an org scope (`APK003`); an org key may hold one; a
-  personal token may hold one only while its owner is an owner or admin, checked on every request.
-- **Who manages keys.** Org and project keys: an owner or admin person (`org.Service.RequireManager`),
-  on every surface. A personal token: its owner, a member of its org. A key never manages keys.
-- **Manager-only writes.** Ledger settings update, project create and rename, and period close,
-  reopen and rename need an owner or admin (`org.Service.RequireCallerManager`) on every surface. A personal
-  token acts as its owner; an org or project key passes, since only a manager mints one.
+  on the org itself. A project key refuses an org scope (`APK003`); an org key or a personal token
+  may hold one.
+- **A key holds at most what its minter holds.** At mint every scope must admit a permission the
+  minter holds; `apikeys:read` needs `apikeys:write`, and `members:read` is open to every member
+  (`APK013` otherwise). A key works while its creator is a member; a demotion narrows it at its next
+  call, and leaving the org stops it.
+- **Who manages keys.** Org and project keys: a person holding `apikeys:write`, a console-only
+  permission. A personal token: its owner, a member of its org. A key never manages keys.
+- **Scopes admit permissions.** Every service method calls `authz.Can` against the held set the
+  scope seam resolved once per request (`internal/platform/authz`). A session holds its role's
+  permissions; a token holds role ∩ the permissions its scopes admit; a key holds its creator's
+  current role ∩ its scopes, and a key with no recorded creator holds admin minus `members:write`,
+  `roles:write` and `apikeys:write`. A token or key never holds a console permission.
 - **Every new key expires** within `apikey.MaxLifetime` (a year).
-- **No implication.** `yasaku:write` does not grant `yasaku:read`. The check is
-  `slices.Contains`. A key that reads and writes holds both strings.
+- **Write admits reads inside the services.** `yasaku:write` admits the read permissions as well as
+  the writes, so a write call that reads (resolving a wallet by name) works with a write-only
+  credential. A read procedure or tool still asks for `yasaku:read` at the surface.
 - **Project discovery rides on `yasaku:read`.** `project_list` and `ListProjects` need no
   `projects:read` of their own: a new scope string obliges every operator to extend the
   authorization server's catalog and re-attach the client before project discovery works at all.

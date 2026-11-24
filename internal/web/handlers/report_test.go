@@ -68,14 +68,15 @@ func newReportFixture(t *testing.T) *reportFixture {
 	sessions := session.NewMemoryStore()
 
 	users := user.NewService(fakes.NewUser(), user.GenesisConfig{}, discardLogger(), passthroughUnexpected())
-	orgs := org.NewService(fakes.NewOrg(), caps, discardLogger(), passthroughUnexpected(), fakes.UnitOfWork)
-	projects := project.NewService(fakes.NewProject(), discardLogger(), passthroughUnexpected(), orgs, fakes.UnitOfWork)
-	ledgers := ledger.NewService(fakes.NewLedger(), discardLogger(), passthroughUnexpected(), orgs)
+	orgStore := fakes.NewOrg()
+	orgs := org.NewService(orgStore, caps, discardLogger(), passthroughUnexpected(), fakes.UnitOfWork)
+	projects := project.NewService(fakes.NewProject(), discardLogger(), passthroughUnexpected(), fakes.UnitOfWork)
+	ledgers := ledger.NewService(fakes.NewLedger(), discardLogger(), passthroughUnexpected())
 
 	perStore := fakes.NewPeriod()
 	uow := func(ctx context.Context, fn func(context.Context) error) error { return fn(ctx) }
 	periods := period.NewService(perStore, discardLogger(), passthroughUnexpected(),
-		ledgers, reportSnapshotter{}, reportSnapshotter{}, period.UnitOfWork(uow), time.Now, orgs)
+		ledgers, reportSnapshotter{}, reportSnapshotter{}, period.UnitOfWork(uow), time.Now)
 
 	reader := fakes.NewReportReader()
 	reports := report.NewService(reader, discardLogger(), passthroughUnexpected(), ledgers)
@@ -84,7 +85,7 @@ func newReportFixture(t *testing.T) *reportFixture {
 		Deps: handlers.Deps{
 			Secret: []byte("0123456789abcdef0123456789abcdef"),
 			Cfg:    cfg, Caps: caps, Sessions: sessions, Logger: discardStdLogger(),
-			Orgs: orgs, Projects: projects, I18n: i18n.NewEmbeddedBundle(i18n.EnUS),
+			Orgs: orgs, Projects: projects, Authz: fakes.Resolver(orgStore), I18n: i18n.NewEmbeddedBundle(i18n.EnUS),
 		},
 		Cfg: cfg, Sessions: sessions, Users: users, Orgs: orgs, Projects: projects,
 		Periods: periods, PerStore: perStore, Reports: reports, Reader: reader,
@@ -106,7 +107,7 @@ func (f *reportFixture) seedScope(t *testing.T) reportScope {
 	require.NoError(t, err)
 	o, err := f.Orgs.Create(ctx, org.CreateRequest{Slug: "acme", Name: "Acme", OwnerID: u.ID})
 	require.NoError(t, err)
-	octx := tenant.Into(ctx, tenant.Context{OrgID: o.ID, UserID: u.ID})
+	octx := fakes.Owner(ctx, tenant.Context{OrgID: o.ID, UserID: u.ID})
 	pr, err := f.Projects.Create(octx, o.ID, "books", "Books")
 	require.NoError(t, err)
 	return reportScope{
@@ -117,7 +118,7 @@ func (f *reportFixture) seedScope(t *testing.T) reportScope {
 
 func (f *reportFixture) seedSibling(t *testing.T, sc reportScope, slug, name string) reportScope {
 	t.Helper()
-	octx := tenant.Into(context.Background(), tenant.Context{OrgID: sc.orgID, UserID: sc.p.UserID})
+	octx := fakes.Owner(context.Background(), tenant.Context{OrgID: sc.orgID, UserID: sc.p.UserID})
 	pr, err := f.Projects.Create(octx, sc.orgID, slug, name)
 	require.NoError(t, err)
 	out := sc

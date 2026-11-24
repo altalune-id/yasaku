@@ -15,6 +15,7 @@ import (
 	"altalune.id/yasaku/internal/apikey"
 	orgpkg "altalune.id/yasaku/internal/org"
 	"altalune.id/yasaku/internal/platform/authn"
+	"altalune.id/yasaku/internal/platform/authz"
 	"altalune.id/yasaku/internal/platform/session"
 	"altalune.id/yasaku/internal/platform/tenant"
 	"altalune.id/yasaku/internal/testutil/fakes"
@@ -47,7 +48,11 @@ func newPersonalFixture(t *testing.T) *personalFixture {
 }
 
 func (f *personalFixture) ctx(t *testing.T, userID uuid.UUID) context.Context {
-	return tenant.Into(t.Context(), tenant.Context{OrgID: f.orgID, UserID: userID})
+	role := "member"
+	if userID == f.admin {
+		role = "admin"
+	}
+	return fakes.Allow(t.Context(), tenant.Context{OrgID: f.orgID, UserID: userID}, authz.Builtin(role)...)
 }
 
 func (f *personalFixture) mint(t *testing.T, owner uuid.UUID, grant apikey.ProjectGrant) (*apikey.APIKey, string) {
@@ -167,10 +172,6 @@ func TestRevokePersonalOfIsPermanentAndScoped(t *testing.T) {
 
 type unreachableMembers struct{}
 
-func (unreachableMembers) RequireManager(context.Context, uuid.UUID, uuid.UUID) error {
-	return errors.New("connection refused")
-}
-
 func (unreachableMembers) RequireMember(context.Context, uuid.UUID, uuid.UUID) error {
 	return errors.New("connection refused")
 }
@@ -193,29 +194,27 @@ func TestAPersonalTokenWhoseOwnerWasDeletedIsRefused(t *testing.T) {
 	assert.True(t, authn.IsUnauthorizedError(err), "a token with no owner must be refused, got %v", err)
 }
 
-// SECURITY: an org-level scope acts on the org itself, so only an owner or admin may hold it on a personal token — at mint and on every use.
-func TestAnOrgLevelScopeNeedsAManagerOwner(t *testing.T) {
+// SECURITY: a key holds at most what its minter holds, so a minter cannot ask for a scope whose permissions they lack; a later demotion narrows the key through the resolver instead of killing it.
+func TestMint_ScopesMustBeCoveredByTheMinter(t *testing.T) {
 	f := newPersonalFixture(t)
-	org := []string{authn.ScopeMembersRead}
 	all := apikey.ProjectGrant{All: true}
 
-	_, _, err := f.svc.MintPersonal(f.ctx(t, f.alice), "x", org, all, in(time.Hour))
-	assert.True(t, orgpkg.IsNotManagerError(err), "a plain member must not mint an org-level scope, got %v", err)
+	_, _, err := f.svc.MintPersonal(f.ctx(t, f.alice), "x", []string{authn.ScopeAPIKeysRead}, all, in(time.Hour))
+	assert.True(t, apikey.IsScopeNotHeldError(err), "a member holds no key management, got %T: %v", err, err)
+	_, _, err = f.svc.MintPersonal(f.ctx(t, f.alice), "x", []string{authn.ScopeYasakuWrite, authn.ScopeMembersRead}, all, in(time.Hour))
+	require.NoError(t, err, "a member holds the ledger writes and reads members")
 
-	_, plaintext, err := f.svc.MintPersonal(f.ctx(t, f.admin), "admin", org, all, in(time.Hour))
+	_, plaintext, err := f.svc.MintPersonal(f.ctx(t, f.admin), "admin", []string{authn.ScopeAPIKeysRead}, all, in(time.Hour))
 	require.NoError(t, err)
 	auth := apikey.NewAuthenticator(f.store, nil, apikey.Scheme{}, f.members)
-	_, err = auth.Authenticate(t.Context(), plaintext)
-	require.NoError(t, err)
-
 	f.members.SeatMember(f.orgID, f.admin)
 	_, err = auth.Authenticate(t.Context(), plaintext)
-	assert.True(t, authn.IsUnauthorizedError(err), "a demoted owner's org-level token must stop working, got %v", err)
+	require.NoError(t, err, "a demoted creator's key still authenticates; the resolver narrows what it holds")
 }
 
 func TestAProjectKeyRefusesAnOrgLevelScope(t *testing.T) {
 	f := newPersonalFixture(t)
-	ctx := tenant.Into(t.Context(), tenant.Context{OrgID: f.orgID, ProjectID: f.a, UserID: f.admin})
+	ctx := fakes.Owner(t.Context(), tenant.Context{OrgID: f.orgID, ProjectID: f.a, UserID: f.admin})
 	_, _, err := f.svc.Mint(ctx, "x", []string{authn.ScopeMembersRead}, nil, in(time.Hour))
 	assert.True(t, apikey.IsScopeLevelError(err), "got %v", err)
 	_, _, err = f.svc.MintOrg(f.ctx(t, f.admin), "org", []string{authn.ScopeMembersRead}, apikey.ProjectGrant{All: true}, in(time.Hour))
@@ -237,6 +236,34 @@ func TestAPersonalTokenPrincipalCarriesItsOwnerForRoleChecks(t *testing.T) {
 	require.NoError(t, err)
 	p, err = auth.Authenticate(t.Context(), orgPlain)
 	require.NoError(t, err)
-	assert.Equal(t, uuid.Nil, p.KeyOwnerID, "an org key acts for nobody")
+	assert.Equal(t, f.admin, p.KeyOwnerID, "an org key is bounded by its creator's role")
 	assert.Equal(t, session.KeyKindOrg, p.KeyKind)
+	assert.Equal(t, uuid.Nil, p.UserID)
+}
+
+// SECURITY: an org or project key acts for whoever minted it, so it stops the moment that person leaves.
+func TestOrgKey_StopsWhenCreatorLeaves(t *testing.T) {
+	f := newPersonalFixture(t)
+	_, plaintext, err := f.svc.MintOrg(f.ctx(t, f.admin), "ci", []string{authn.ScopeYasakuRead}, apikey.ProjectGrant{All: true}, in(time.Hour))
+	require.NoError(t, err)
+	auth := apikey.NewAuthenticator(f.store, nil, apikey.Scheme{}, f.members)
+	_, err = auth.Authenticate(t.Context(), plaintext)
+	require.NoError(t, err)
+
+	f.members.Remove(f.orgID, f.admin)
+	_, err = auth.Authenticate(t.Context(), plaintext)
+	assert.True(t, authn.IsUnauthorizedError(err), "a departed creator's org key must be refused, got %v", err)
+}
+
+// SECURITY: keys minted before creators were recorded keep working; the resolver bounds them to admin minus people and key management.
+func TestNullCreatorKey_KeepsWorking(t *testing.T) {
+	f := newPersonalFixture(t)
+	k, plaintext, err := f.svc.MintOrg(f.ctx(t, f.admin), "legacy", []string{authn.ScopeYasakuRead}, apikey.ProjectGrant{All: true}, in(time.Hour))
+	require.NoError(t, err)
+	k.CreatedBy = uuid.Nil
+	f.store.Seed(k)
+
+	p, err := apikey.NewAuthenticator(f.store, nil, apikey.Scheme{}, f.members).Authenticate(t.Context(), plaintext)
+	require.NoError(t, err, "a NULL-creator org key keeps working")
+	assert.Equal(t, uuid.Nil, p.KeyOwnerID)
 }

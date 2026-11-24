@@ -13,6 +13,7 @@ import (
 	"altalune.id/yasaku/internal/org"
 	"altalune.id/yasaku/internal/platform/session"
 	"altalune.id/yasaku/internal/platform/tenant"
+	"altalune.id/yasaku/internal/testutil/fakes"
 	"altalune.id/yasaku/internal/user"
 )
 
@@ -20,7 +21,7 @@ func (f *periodFixture) addMember(t *testing.T) uuid.UUID {
 	t.Helper()
 	u, err := f.Users.Create(t.Context(), user.CreateRequest{Email: "member@yasaku.test", Name: "Member", Source: user.SourceLocal})
 	require.NoError(t, err)
-	_, err = f.Orgs.AddMember(tenant.Into(t.Context(), tenant.Context{OrgID: f.Org.ID, UserID: f.User.ID}), f.Org.ID, u.ID, org.RoleMember)
+	_, err = f.Orgs.AddMember(fakes.Owner(t.Context(), tenant.Context{OrgID: f.Org.ID, UserID: f.User.ID}), f.Org.ID, u.ID, org.RoleMember)
 	require.NoError(t, err)
 	return u.ID
 }

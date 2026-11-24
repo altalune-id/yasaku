@@ -12,6 +12,7 @@ import (
 	"altalune.id/yasaku/internal/category"
 	sqliteent "altalune.id/yasaku/internal/platform/db/entity/sqlite"
 	"altalune.id/yasaku/internal/platform/tenant"
+	"altalune.id/yasaku/internal/testutil/fakes"
 )
 
 func siblingProject(t *testing.T, sqlDB *sql.DB, prefix string, tc tenant.Context) tenant.Context {
@@ -29,7 +30,7 @@ func seedProjectVictim(t *testing.T, store category.Store, tc tenant.Context) *c
 	t.Helper()
 	victim, err := category.New(tc.OrgID, tc.ProjectID, "project A's category", category.KindExpense, "", "", 0)
 	require.NoError(t, err)
-	require.NoError(t, store.Save(tenant.Into(t.Context(), tc), victim))
+	require.NoError(t, store.Save(fakes.Owner(t.Context(), tc), victim))
 	return victim
 }
 
@@ -40,10 +41,10 @@ func TestSQLite_Save_RejectsSiblingProject(t *testing.T) {
 
 	attack := *victim
 	attack.Name = "Hijacked"
-	err := store.Save(tenant.Into(t.Context(), sibling), &attack)
+	err := store.Save(fakes.Owner(t.Context(), sibling), &attack)
 	assert.True(t, category.IsNotFoundError(err), "want NotFoundError, got %T: %v", err, err)
 
-	got, err := store.ByID(tenant.Into(t.Context(), tc), victim.ID)
+	got, err := store.ByID(fakes.Owner(t.Context(), tc), victim.ID)
 	require.NoError(t, err)
 	require.Equal(t, "project A's category", got.Name)
 }
@@ -53,9 +54,9 @@ func TestSQLite_Delete_RejectsSiblingProject(t *testing.T) {
 	victim := seedProjectVictim(t, store, tc)
 	sibling := siblingProject(t, sqlDB, prefix, tc)
 
-	err := store.Delete(tenant.Into(t.Context(), sibling), victim.ID)
+	err := store.Delete(fakes.Owner(t.Context(), sibling), victim.ID)
 	assert.True(t, category.IsNotFoundError(err), "want NotFoundError, got %T: %v", err, err)
 
-	_, err = store.ByID(tenant.Into(t.Context(), tc), victim.ID)
+	_, err = store.ByID(fakes.Owner(t.Context(), tc), victim.ID)
 	require.NoError(t, err)
 }

@@ -11,6 +11,7 @@ import (
 
 	"altalune.id/yasaku/internal/apperror"
 	"altalune.id/yasaku/internal/invite"
+	"altalune.id/yasaku/internal/platform/authz"
 	"altalune.id/yasaku/internal/platform/tenant"
 	"altalune.id/yasaku/internal/testutil/fakes"
 	"altalune.id/yasaku/mailer"
@@ -40,7 +41,7 @@ func newService(t *testing.T, store invite.Store) (*invite.Service, *int) {
 
 func tenantCtx() (context.Context, tenant.Context) {
 	tc := tenant.Context{OrgID: uuid.New(), ProjectID: uuid.New(), UserID: uuid.New()}
-	return tenant.Into(context.Background(), tc), tc
+	return fakes.Owner(context.Background(), tc), tc
 }
 
 func seedInvite(t *testing.T, store invite.Store, orgID uuid.UUID) *invite.Invite {
@@ -55,7 +56,7 @@ func seedInvite(t *testing.T, store invite.Store, orgID uuid.UUID) *invite.Invit
 	if err != nil {
 		t.Fatalf("seed New: %v", err)
 	}
-	ctx := tenant.Into(context.Background(), tenant.Context{OrgID: orgID, UserID: uuid.New()})
+	ctx := fakes.Owner(context.Background(), tenant.Context{OrgID: orgID, UserID: uuid.New()})
 	if err := store.Save(ctx, inv); err != nil {
 		t.Fatalf("seed Save: %v", err)
 	}
@@ -87,7 +88,7 @@ func TestService_ListPending(t *testing.T) {
 
 	t.Run("missing tenant surfaces MissingError", func(t *testing.T) {
 		svc, _ := newService(t, fakes.NewInvite())
-		_, err := svc.ListPending(context.Background())
+		_, err := svc.ListPending(authz.AsSystem(context.Background()))
 		if !tenant.IsMissingError(err) {
 			t.Errorf("want MissingError, got %v", err)
 		}
@@ -154,7 +155,7 @@ func TestService_Send_DelegatesToWorkflow(t *testing.T) {
 	store := fakes.NewInvite()
 	svc, unex := newService(t, store)
 	tc := tenant.Context{OrgID: uuid.New(), UserID: uuid.New()}
-	ctx := tenant.Into(context.Background(), tc)
+	ctx := fakes.Owner(context.Background(), tc)
 
 	inv, err := svc.Send(ctx, invite.SendRequest{Email: "alice@example.com", Role: invite.RoleMember, TTL: 0})
 	if err != nil {
@@ -243,3 +244,26 @@ func TestService_HasPendingForEmail(t *testing.T) {
 type nopMailer struct{}
 
 func (nopMailer) Send(_ context.Context, _ mailer.Message) error { return nil }
+
+// SECURITY: an invite grants its role on accept, so the sender must already hold everything that role holds.
+func TestInviteSend_EscalationRefused(t *testing.T) {
+	store := fakes.NewInvite()
+	svc, _ := newService(t, store)
+	tc := tenant.Context{OrgID: uuid.New(), UserID: uuid.New()}
+	admin := fakes.Allow(context.Background(), tc, authz.Builtin("admin")...)
+
+	_, err := svc.Send(admin, invite.SendRequest{Email: "boss@example.com", Role: invite.RoleOwner})
+	if !authz.IsEscalationError(err) {
+		t.Fatalf("an admin inviting an owner: want EscalationError, got %T: %v", err, err)
+	}
+	if store.Len() != 0 {
+		t.Fatal("a refused invite must not be saved")
+	}
+	if _, err := svc.Send(admin, invite.SendRequest{Email: "peer@example.com", Role: invite.RoleAdmin}); err != nil {
+		t.Fatalf("an admin may invite an admin: %v", err)
+	}
+	owner := fakes.Owner(context.Background(), tc)
+	if _, err := svc.Send(owner, invite.SendRequest{Email: "co@example.com", Role: invite.RoleOwner}); err != nil {
+		t.Fatalf("an owner may invite an owner: %v", err)
+	}
+}

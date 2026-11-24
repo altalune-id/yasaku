@@ -17,6 +17,7 @@ import (
 	"altalune.id/yasaku/internal/platform/db"
 	sqliteent "altalune.id/yasaku/internal/platform/db/entity/sqlite"
 	"altalune.id/yasaku/internal/platform/tenant"
+	"altalune.id/yasaku/internal/testutil/fakes"
 	"altalune.id/yasaku/internal/wallet"
 	"altalune.id/yasaku/money"
 	"altalune.id/yasaku/schema"
@@ -32,7 +33,7 @@ type sqliteFixture struct {
 
 func (f sqliteFixture) ctx(t *testing.T) context.Context {
 	t.Helper()
-	return tenant.Into(t.Context(), f.tc)
+	return fakes.Owner(t.Context(), f.tc)
 }
 
 // NOTE: opens a file-backed database through db.Open so every connection carries foreign_keys(1).

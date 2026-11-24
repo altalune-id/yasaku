@@ -96,14 +96,15 @@ func TestService_Rename(t *testing.T) {
 		svc, _ := newTestService(t, true)
 		o, err := svc.Create(context.Background(), org.CreateRequest{Slug: "acme", Name: "Acme", OwnerID: uuid.New()})
 		require.NoError(t, err)
-		renamed, err := svc.Rename(context.Background(), o.ID, "Acme Corp")
+		renamed, err := svc.Rename(fakes.Owner(context.Background(), tenant.Context{OrgID: o.ID}), o.ID, "Acme Corp")
 		require.NoError(t, err)
 		assert.Equal(t, "Acme Corp", renamed.Name)
 	})
 
 	t.Run("not found", func(t *testing.T) {
 		svc, _ := newTestService(t, true)
-		_, err := svc.Rename(context.Background(), uuid.New(), "Acme")
+		id := uuid.New()
+		_, err := svc.Rename(fakes.Owner(context.Background(), tenant.Context{OrgID: id}), id, "Acme")
 		assert.True(t, org.IsNotFoundError(err), "want NotFoundError, got %T: %v", err, err)
 	})
 
@@ -111,7 +112,7 @@ func TestService_Rename(t *testing.T) {
 		svc, _ := newTestService(t, true)
 		o, err := svc.Create(context.Background(), org.CreateRequest{Slug: "acme", Name: "Acme", OwnerID: uuid.New()})
 		require.NoError(t, err)
-		_, err = svc.Rename(context.Background(), o.ID, "")
+		_, err = svc.Rename(fakes.Owner(context.Background(), tenant.Context{OrgID: o.ID}), o.ID, "")
 		assert.True(t, org.IsInvalidNameError(err), "want InvalidNameError, got %T: %v", err, err)
 	})
 }
@@ -123,7 +124,7 @@ func TestService_Members(t *testing.T) {
 	o, err := svc.Create(ctx, org.CreateRequest{Slug: "acme", Name: "Acme", OwnerID: owner})
 	require.NoError(t, err)
 	// NOTE: the actor comes from the tenant scope, the way every transport supplies it.
-	ctx = tenant.Into(ctx, tenant.Context{OrgID: o.ID, UserID: owner})
+	ctx = fakes.Owner(ctx, tenant.Context{OrgID: o.ID, UserID: owner})
 
 	t.Run("add ok", func(t *testing.T) {
 		u := uuid.New()
@@ -170,7 +171,7 @@ func TestService_Rename_SystemProtected(t *testing.T) {
 	o.System = true
 	require.NoError(t, store.Save(ctx, o))
 
-	_, err = svc.Rename(ctx, o.ID, "New Name")
+	_, err = svc.Rename(fakes.Owner(ctx, tenant.Context{OrgID: o.ID}), o.ID, "New Name")
 	assert.True(t, org.IsSystemProtectedError(err), "want SystemProtectedError, got %T: %v", err, err)
 }
 
@@ -186,7 +187,7 @@ func TestService_RemoveMember_SystemProtected(t *testing.T) {
 	m.System = true
 	require.NoError(t, store.SaveMembership(ctx, m))
 
-	err = svc.RemoveMember(tenant.Into(ctx, tenant.Context{OrgID: o.ID, UserID: owner}), o.ID, other)
+	err = svc.RemoveMember(fakes.Owner(ctx, tenant.Context{OrgID: o.ID, UserID: owner}), o.ID, other)
 	assert.True(t, org.IsSystemProtectedError(err), "want SystemProtectedError, got %T: %v", err, err)
 }
 
@@ -267,6 +268,17 @@ func (e *erroringStore) SaveMembership(ctx context.Context, m *org.Membership) e
 	}
 	return e.inner.SaveMembership(ctx, m)
 }
+func (e *erroringStore) LockOrg(ctx context.Context, o uuid.UUID) error {
+	return e.inner.LockOrg(ctx, o)
+}
+
+func (e *erroringStore) MemberRole(ctx context.Context, o, u uuid.UUID) (org.Role, string, error) {
+	if e.memberOfErr != nil {
+		return "", "", e.memberOfErr
+	}
+	return e.inner.MemberRole(ctx, o, u)
+}
+
 func (e *erroringStore) MembershipOf(ctx context.Context, o, u uuid.UUID) (*org.Membership, error) {
 	if e.memberOfErr != nil {
 		return nil, e.memberOfErr
@@ -507,7 +519,7 @@ func TestOrgRenamed_AuditedInSameTx(t *testing.T) {
 	owner := uuid.New()
 	o, err := svc.Create(context.Background(), org.CreateRequest{Slug: "acme", Name: "Acme", OwnerID: owner})
 	require.NoError(t, err)
-	_, err = svc.Rename(tenant.Into(context.Background(), tenant.Context{OrgID: o.ID, UserID: owner}), o.ID, "Acme Inc")
+	_, err = svc.Rename(fakes.Owner(context.Background(), tenant.Context{OrgID: o.ID, UserID: owner}), o.ID, "Acme Inc")
 	require.NoError(t, err)
 	recs := a.Records()
 	require.Len(t, recs, 1)
@@ -527,7 +539,7 @@ func TestMemberRemoved_AuditedInSameTx(t *testing.T) {
 	require.NoError(t, store.SaveMembership(context.Background(), m))
 	store.SetUser(member, "bob@example.com", "Bob")
 
-	require.NoError(t, svc.RemoveMember(tenant.Into(context.Background(), tenant.Context{OrgID: o.ID, UserID: owner}), o.ID, member))
+	require.NoError(t, svc.RemoveMember(fakes.Owner(context.Background(), tenant.Context{OrgID: o.ID, UserID: owner}), o.ID, member))
 	recs := a.Records()
 	require.Len(t, recs, 1)
 	assert.Equal(t, "member.removed", recs[0].Action)

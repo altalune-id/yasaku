@@ -28,6 +28,7 @@ import (
 	"altalune.id/yasaku/internal/platform/tenant"
 	"altalune.id/yasaku/internal/project"
 	"altalune.id/yasaku/internal/report"
+	"altalune.id/yasaku/internal/testutil/fakes"
 	"altalune.id/yasaku/internal/transaction"
 	"altalune.id/yasaku/internal/user"
 	"altalune.id/yasaku/internal/wallet"
@@ -152,16 +153,17 @@ func newPeriodFixture(t *testing.T, caps capabilities.Capabilities) *periodFixtu
 	}
 
 	users := user.NewService(user.NewStore(dbCfg, pool), user.GenesisConfig{}, discardLogger(), passthroughUnexpected())
-	orgs := org.NewService(org.NewStore(dbCfg, pool, nil), caps, discardLogger(), passthroughUnexpected(), tenant.NewUnitOfWork(dbCfg, pool, nil))
-	projects := project.NewService(project.NewStore(dbCfg, pool, nil), discardLogger(), passthroughUnexpected(), orgs, tenant.NewUnitOfWork(dbCfg, pool, nil))
-	ledgers := ledger.NewService(ledger.NewStore(dbCfg, pool, nil), discardLogger(), passthroughUnexpected(), orgs)
+	orgStore := org.NewStore(dbCfg, pool, nil)
+	orgs := org.NewService(orgStore, caps, discardLogger(), passthroughUnexpected(), tenant.NewUnitOfWork(dbCfg, pool, nil))
+	projects := project.NewService(project.NewStore(dbCfg, pool, nil), discardLogger(), passthroughUnexpected(), tenant.NewUnitOfWork(dbCfg, pool, nil))
+	ledgers := ledger.NewService(ledger.NewStore(dbCfg, pool, nil), discardLogger(), passthroughUnexpected())
 	wallets := wallet.NewService(wallet.NewStore(dbCfg, pool, nil), discardLogger(), passthroughUnexpected())
 	cats := category.NewService(category.NewStore(dbCfg, pool, nil), discardLogger(), passthroughUnexpected(), nil)
 	reports := report.NewService(report.NewReader(dbCfg, pool, nil), discardLogger(), passthroughUnexpected(), ledgers)
 	perStore := period.NewStore(dbCfg, pool, nil)
 	clock := time.Now
 	periods := period.NewService(perStore, discardLogger(), passthroughUnexpected(),
-		ledgers, periodSnapshotter{reports: reports}, periodSnapshotter{reports: reports}, period.UnitOfWork(uow), func() time.Time { return clock() }, orgs)
+		ledgers, periodSnapshotter{reports: reports}, periodSnapshotter{reports: reports}, period.UnitOfWork(uow), func() time.Time { return clock() })
 	txs := transaction.NewService(transaction.NewStore(dbCfg, pool, nil), discardLogger(), passthroughUnexpected(),
 		transaction.WalletReaderFunc(func(ctx context.Context, orgID, projectID, id uuid.UUID) (transaction.WalletInfo, error) {
 			w, wErr := wallets.ByID(ctx, id)
@@ -184,7 +186,7 @@ func newPeriodFixture(t *testing.T, caps capabilities.Capabilities) *periodFixtu
 	require.NoError(t, err)
 	o, err := orgs.Create(ctx, org.CreateRequest{Slug: "rumah", Name: "Rumah", OwnerID: u.ID})
 	require.NoError(t, err)
-	octx := tenant.Into(ctx, tenant.Context{OrgID: o.ID, UserID: u.ID})
+	octx := fakes.Owner(ctx, tenant.Context{OrgID: o.ID, UserID: u.ID})
 	proj, err := projects.Create(octx, o.ID, "harian", "Harian")
 	require.NoError(t, err)
 	sibling, err := projects.Create(octx, o.ID, "tetangga", "Tetangga")
@@ -217,6 +219,7 @@ func newPeriodFixture(t *testing.T, caps capabilities.Capabilities) *periodFixtu
 		Logger:   discardStdLogger(),
 		Orgs:     orgs,
 		Projects: projects,
+		Authz:    fakes.Resolver(orgStore),
 	}
 	f.Principal = session.Principal{UserID: u.ID, ActiveOrgID: o.ID, ActiveProjectID: proj.ID, IssuedAt: time.Now().UTC()}
 	f.setNow = func(at time.Time) { clock = func() time.Time { return at } }
@@ -225,7 +228,7 @@ func newPeriodFixture(t *testing.T, caps capabilities.Capabilities) *periodFixtu
 
 func (f *periodFixture) scoped(t *testing.T) context.Context {
 	t.Helper()
-	return tenant.Into(t.Context(), tenant.Context{OrgID: f.Org.ID, ProjectID: f.Project.ID, UserID: f.User.ID})
+	return fakes.Owner(t.Context(), tenant.Context{OrgID: f.Org.ID, ProjectID: f.Project.ID, UserID: f.User.ID})
 }
 
 func (f *periodFixture) path(suffix string) string {
@@ -734,7 +737,7 @@ func (brokenReportReader) Period(context.Context, uuid.UUID, uuid.UUID, uuid.UUI
 
 func (f *periodFixture) siblingScope(t *testing.T) context.Context {
 	t.Helper()
-	return tenant.Into(t.Context(), tenant.Context{OrgID: f.Org.ID, ProjectID: f.Sibling.ID, UserID: f.User.ID})
+	return fakes.Owner(t.Context(), tenant.Context{OrgID: f.Org.ID, ProjectID: f.Sibling.ID, UserID: f.User.ID})
 }
 
 func (f *periodFixture) siblingPeriod(t *testing.T) *period.Period {

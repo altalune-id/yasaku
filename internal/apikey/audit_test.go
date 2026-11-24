@@ -20,7 +20,7 @@ func TestAPIKeyCreatedAndRevoked_AuditedInSameTx(t *testing.T) {
 	svc := apikey.NewService(fakes.NewAPIKey(), apikey.Scheme{}, fakes.PermissiveMembers(), fakes.NewOrgProjects(),
 		slog.New(slog.NewTextHandler(io.Discard, nil)), failingUnexpected(t), apikey.WithAudit(fakes.UnitOfWork, a))
 	tc := tenant.Context{OrgID: uuid.New(), ProjectID: uuid.New(), UserID: uuid.New()}
-	ctx := tenant.Into(t.Context(), tc)
+	ctx := fakes.Owner(t.Context(), tc)
 
 	k, _, err := svc.Mint(ctx, "ci", []string{authn.ScopeYasakuRead}, nil, in(time.Hour))
 	require.NoError(t, err)

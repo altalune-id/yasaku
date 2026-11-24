@@ -38,7 +38,7 @@ func newLedgerFixture(t *testing.T) ledgerFixture {
 	member := uuid.New()
 	_, err = f.Orgs.AddMember(setTenant(t.Context(), o.ID, owner), o.ID, member, org.RoleMember)
 	require.NoError(t, err)
-	ledgers := ledger.NewService(fakes.NewLedger(), discardLogger(), passthroughUnexpected(), f.Orgs)
+	ledgers := ledger.NewService(fakes.NewLedger(), discardLogger(), passthroughUnexpected())
 	mux := http.NewServeMux()
 	handlers.NewSettingsHandler(f.Deps, f.Projects, ledgers, nil).Register(mux)
 	return ledgerFixture{f: f, mux: mux, owner: owner, member: member, o: o, ledger: ledgers}

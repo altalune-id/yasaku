@@ -20,6 +20,7 @@ import (
 	"altalune.id/yasaku/internal/platform/config"
 	"altalune.id/yasaku/internal/platform/db"
 	"altalune.id/yasaku/internal/platform/tenant"
+	"altalune.id/yasaku/internal/testutil/fakes"
 	"altalune.id/yasaku/internal/testutil/pgtest"
 	"altalune.id/yasaku/internal/transaction"
 	"altalune.id/yasaku/money"
@@ -40,7 +41,7 @@ type pgFixture struct {
 
 func (f pgFixture) ctx(t *testing.T) context.Context {
 	t.Helper()
-	return tenant.Into(t.Context(), f.tc)
+	return fakes.Owner(t.Context(), f.tc)
 }
 
 func newPgFixture(t *testing.T) pgFixture {
@@ -489,7 +490,7 @@ func TestPostgres_Transaction_RejectsCrossTenantWrites(t *testing.T) {
 	})
 
 	otherUser, otherOrg, otherProj := seedPgTenant(t, f.db, f.prefix)
-	ctxB := tenant.Into(t.Context(), tenant.Context{OrgID: otherOrg, ProjectID: otherProj, UserID: otherUser})
+	ctxB := fakes.Owner(t.Context(), tenant.Context{OrgID: otherOrg, ProjectID: otherProj, UserID: otherUser})
 
 	attack := *victim
 	attack.Note = "Hijacked"
@@ -588,7 +589,7 @@ func TestPostgres_Transaction_LockWalletBlocksAConcurrentHolder(t *testing.T) {
 	done := make(chan error, 1)
 
 	go func() {
-		holder := tenant.Into(context.Background(), f.tc)
+		holder := fakes.Owner(context.Background(), f.tc)
 		done <- tenant.RunInTx(holder, pc, f.tc, func(inner context.Context) error {
 			if err := f.store.LockWallet(inner, f.tc.OrgID, f.tc.ProjectID, f.walletA); err != nil {
 				return err

@@ -7,7 +7,6 @@ import (
 	"github.com/google/uuid"
 
 	yasakuv1 "altalune.id/yasaku/gen/go/yasaku/v1"
-	"altalune.id/yasaku/internal/org"
 	"altalune.id/yasaku/internal/period"
 	"altalune.id/yasaku/internal/project"
 	"altalune.id/yasaku/internal/report"
@@ -20,16 +19,16 @@ const (
 
 // ReportService implements yasaku.v1.ReportService.
 type ReportService struct {
-	orgs     *org.Service
+	sc       Scope
 	projects *project.Service
 	reports  *report.Service
 	periods  *period.Service
 }
 
 // NewReportService binds the handler to its collaborators.
-func NewReportService(orgs *org.Service, projects *project.Service, reports *report.Service, periods *period.Service) *ReportService {
+func NewReportService(sc Scope, projects *project.Service, reports *report.Service, periods *period.Service) *ReportService {
 	return &ReportService{
-		orgs:     orgs,
+		sc:       sc,
 		projects: projects,
 		reports:  reports,
 		periods:  periods,
@@ -38,7 +37,7 @@ func NewReportService(orgs *org.Service, projects *project.Service, reports *rep
 
 // PeriodReport totals one period and breaks it down by category and wallet.
 func (s *ReportService) PeriodReport(ctx context.Context, req *connect.Request[yasakuv1.PeriodReportRequest]) (*connect.Response[yasakuv1.PeriodReportResponse], error) {
-	sc, nd, err := scopeToTarget(ctx, s.orgs, s.projects, req.Msg.GetTarget())
+	sc, nd, err := scopeToTarget(ctx, s.sc, s.projects, req.Msg.GetTarget())
 	if err != nil {
 		return nil, err
 	}
@@ -80,7 +79,7 @@ func (s *ReportService) PeriodReport(ctx context.Context, req *connect.Request[y
 
 // CashflowReport returns income, expense and net for the most recent periods, oldest first.
 func (s *ReportService) CashflowReport(ctx context.Context, req *connect.Request[yasakuv1.CashflowReportRequest]) (*connect.Response[yasakuv1.CashflowReportResponse], error) {
-	sc, nd, err := scopeToTarget(ctx, s.orgs, s.projects, req.Msg.GetTarget())
+	sc, nd, err := scopeToTarget(ctx, s.sc, s.projects, req.Msg.GetTarget())
 	if err != nil {
 		return nil, err
 	}

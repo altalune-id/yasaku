@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"altalune.id/yasaku/internal/platform/tenant"
+	"altalune.id/yasaku/internal/testutil/fakes"
 	"altalune.id/yasaku/internal/wallet"
 )
 
@@ -27,7 +28,7 @@ func (f pgFixture) siblingProject(t *testing.T) tenant.Context {
 func TestPostgres_Wallet_WritesRejectSiblingProject(t *testing.T) {
 	f := newPgFixture(t)
 	victim := newPgWallet(t, f, "project A's wallet")
-	siblingCtx := tenant.Into(t.Context(), f.siblingProject(t))
+	siblingCtx := fakes.Owner(t.Context(), f.siblingProject(t))
 
 	attack := *victim
 	attack.Name = "Hijacked"
@@ -36,7 +37,7 @@ func TestPostgres_Wallet_WritesRejectSiblingProject(t *testing.T) {
 	err = f.store.Delete(siblingCtx, victim.ID)
 	assert.True(t, wallet.IsNotFoundError(err), "sibling-project Delete: got %T: %v", err, err)
 
-	got, err := f.store.ByID(tenant.Into(t.Context(), f.tc), victim.ID)
+	got, err := f.store.ByID(fakes.Owner(t.Context(), f.tc), victim.ID)
 	require.NoError(t, err)
 	assert.Equal(t, "project A's wallet", got.Name)
 }

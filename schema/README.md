@@ -11,8 +11,8 @@ domain interfaces — SQLite is dev/demo, Postgres is production.
 
 ```
 schema/
-├── migrations/postgres/    # 001_init … 021_audit, VERSION
-├── migrations/sqlite/      # 001_init … 018_audit, VERSION
+├── migrations/postgres/    # 001_init … 022_revoke_orphan_keys, VERSION
+├── migrations/sqlite/      # 001_init … 019_revoke_orphan_keys, VERSION
 ├── migrator.go             # goose runner, template rendering, embed FS
 ├── migrator_templatefs.go  # per-boot template-rendered file system
 ├── rls_guard.go            # boot-time BYPASSRLS assertion
@@ -124,7 +124,14 @@ Also tenant-scoped: `blog_categories`, `blog_tags`, `outbox_entries`, `bootstrap
 - **Three kinds, one table.** A `project` key has a `project_id` for life. An
   `org` key and a `personal` token have none and reach either every project
   (`all_projects`) or the rows in `api_key_projects`; a personal token's
-  `created_by` is its owner. `api_keys_kind_shape` refuses any other mix.
+  `created_by` is its owner, and an org or project key's `created_by` is its
+  creator. `api_keys_kind_shape` refuses any other mix.
+- **Deleting a user revokes their org and project keys.** A `BEFORE DELETE`
+  trigger on `users` sets `revoked_at` on them; the row stays, so rows the key
+  authored keep their reference. `created_by` then goes `NULL` (`ON DELETE SET
+NULL`), which already refuses a personal token. Postgres runs the trigger as
+  the SECURITY DEFINER `revoke_keys_of_deleted_user()`, since `api_keys` is under
+  FORCE RLS.
 - **A grant row cannot cross orgs.** Both foreign keys on `api_key_projects`
   are composite, `(org_id, key_id)` and `(org_id, project_id)`. RLS only
   checks the row's own `org_id`, and SQLite has no RLS at all.
@@ -138,19 +145,21 @@ Also tenant-scoped: `blog_categories`, `blog_tags`, `outbox_entries`, `bootstrap
 Each one lifts RLS for a lookup that runs before any tenant scope exists.
 All are owned by the migration role, with `EXECUTE` revoked from `PUBLIC`,
 pinned by `TestMigrateUp_DefinerFunctionsAreOwnedByTheMigrationRole`,
-`TestMigration020_DefinerRevokedFromPublic` and `TestMigration021_IsStaffDefinerRevokedFromPublic`.
+`TestMigration020_DefinerRevokedFromPublic`, `TestMigration021_IsStaffDefinerRevokedFromPublic` and
+`TestMigration022_RevokeTriggerDefinerRevokedFromPublic`.
 
-| Function                                | Resolves                                          |
-| --------------------------------------- | ------------------------------------------------- |
-| `resolve_api_key_by_secret_hash(bytea)` | a key and its project grant, by hash              |
-| `resolve_org_by_slug(text)`             | an org from a path slug                           |
-| `resolve_invite_by_token_hash(text)`    | an invite from its link                           |
-| `list_pending_invites_for_email(text)`  | invites waiting for a signing-up user             |
-| `list_orgs_for_user(uuid)`              | a user's orgs, to resolve their tenant            |
-| `list_org_ids()`                        | every org id, for cross-tenant jobs               |
-| `resolve_system_org()`                  | the singleton org on a selfhosted login           |
-| `count_orgs_created_by(uuid)`           | how many orgs a user created, for limits          |
-| `is_staff(uuid)`                        | whether a user owns or administers the system org |
+| Function                                | Resolves                                               |
+| --------------------------------------- | ------------------------------------------------------ |
+| `resolve_api_key_by_secret_hash(bytea)` | a key and its project grant, by hash                   |
+| `resolve_org_by_slug(text)`             | an org from a path slug                                |
+| `resolve_invite_by_token_hash(text)`    | an invite from its link                                |
+| `list_pending_invites_for_email(text)`  | invites waiting for a signing-up user                  |
+| `list_orgs_for_user(uuid)`              | a user's orgs, to resolve their tenant                 |
+| `list_org_ids()`                        | every org id, for cross-tenant jobs                    |
+| `resolve_system_org()`                  | the singleton org on a selfhosted login                |
+| `count_orgs_created_by(uuid)`           | how many orgs a user created, for limits               |
+| `revoke_keys_of_deleted_user()`         | trigger: revokes a deleted user's org and project keys |
+| `is_staff(uuid)`                        | whether a user owns or administers the system org      |
 
 ## Adding a migration
 
@@ -176,9 +185,10 @@ pinned by `TestMigrateUp_DefinerFunctionsAreOwnedByTheMigrationRole`,
 ### Numbering
 
 yasaku keeps one numbering per dialect. Its own migrations (`007_yasaku`,
-`016_key_authorship`, `017_opensheet`, `018_opensheet_resync`, `019_user_prefs`, `020_limits`, `021_audit` on Postgres;
+`016_key_authorship`, `017_opensheet`, `018_opensheet_resync`, `019_user_prefs`, `020_limits`, `021_audit`,
+`022_revoke_orphan_keys` on Postgres;
 `005_yasaku`, `013_key_authorship`, `014_opensheet`, `015_opensheet_resync`,
-`016_user_prefs`, `017_limits`, `018_audit` on SQLite) interleave with the template's. A template migration lands at yasaku's
+`016_user_prefs`, `017_limits`, `018_audit`, `019_revoke_orphan_keys` on SQLite) interleave with the template's. A template migration lands at yasaku's
 next free number with byte-identical content, so template `007_apikey` is
 yasaku `008_apikey`. Never renumber or edit an applied migration. Production has
 applied everything up to the version it ran.

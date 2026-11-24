@@ -21,6 +21,7 @@ import (
 	"altalune.id/yasaku/internal/platform/queue"
 	"altalune.id/yasaku/internal/platform/sealer"
 	"altalune.id/yasaku/internal/platform/tenant"
+	"altalune.id/yasaku/internal/testutil/fakes"
 	"altalune.id/yasaku/internal/testutil/pgtest"
 	"altalune.id/yasaku/internal/transaction"
 	"altalune.id/yasaku/internal/wallet"
@@ -79,7 +80,7 @@ func newPgServices(t *testing.T, mounted bool) pgServices {
 	require.NoError(t, err)
 	tc := tenant.Context{OrgID: orgID, ProjectID: projID, UserID: userID}
 	return pgServices{
-		svcs: svcs, db: sqlDB, q: q, ctx: tenant.Into(context.Background(), tc), tc: tc,
+		svcs: svcs, db: sqlDB, q: q, ctx: fakes.Owner(context.Background(), tc), tc: tc,
 		store: opensheetsync.NewStore(cfg.DB, k.Pool, k.PgConn),
 	}
 }

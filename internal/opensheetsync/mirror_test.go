@@ -48,7 +48,7 @@ func newMirrorEnv(t *testing.T) *mirrorEnv {
 		return apperror.New("yasaku.unexpected", err.Error(), codes.Internal, &apperrorv1.ErrorDetail{Code: "yasaku.unexpected"}).WithCause(err)
 	}
 	e.mirror = opensheetsync.NewMirror(e.store, e.jobs, false, slog.New(slog.NewTextHandler(io.Discard, nil)), unexpected, func() time.Time { return e.now })
-	e.ctx = tenant.Into(context.Background(), e.tc)
+	e.ctx = fakes.Owner(context.Background(), e.tc)
 	return e
 }
 
@@ -58,7 +58,7 @@ func (e *mirrorEnv) link(t *testing.T, tc tenant.Context, enabled bool) {
 	if enabled {
 		require.NoError(t, l.Enable(e.now))
 	}
-	require.NoError(t, e.store.SaveLink(tenant.Into(context.Background(), tc), l))
+	require.NoError(t, e.store.SaveLink(fakes.Owner(context.Background(), tc), l))
 }
 
 func (e *mirrorEnv) payloads(t *testing.T) []opensheetsync.SyncPayload {
@@ -182,7 +182,7 @@ func TestReconcile_ResubmitsStaleDirtyRowsOfEveryEnabledLink(t *testing.T) {
 	require.NoError(t, e.store.Mark(e.ctx, e.tc.OrgID, sibling.ProjectID, []opensheetsync.Ref{other}, e.now.Add(-time.Hour)))
 	require.NoError(t, e.store.Mark(e.ctx, e.tc.OrgID, off.ProjectID, []opensheetsync.Ref{ref(opensheetsync.EntityWallet, uuid.New())}, e.now.Add(-time.Hour)))
 
-	orgCtx := tenant.Into(context.Background(), tenant.Context{OrgID: e.tc.OrgID})
+	orgCtx := fakes.Owner(context.Background(), tenant.Context{OrgID: e.tc.OrgID})
 	n, err := e.mirror.Reconcile(orgCtx)
 	require.NoError(t, err)
 	require.Equal(t, 2, n)
@@ -199,7 +199,7 @@ func TestReconcile_StopsSubmittingOnceItsContextIsDoneOrNearlyOut(t *testing.T) 
 	e := newMirrorEnv(t)
 	e.link(t, e.tc, true)
 	require.NoError(t, e.store.Mark(e.ctx, e.tc.OrgID, e.tc.ProjectID, []opensheetsync.Ref{ref(opensheetsync.EntityWallet, uuid.New())}, e.now.Add(-time.Hour)))
-	orgCtx := tenant.Into(context.Background(), tenant.Context{OrgID: e.tc.OrgID})
+	orgCtx := fakes.Owner(context.Background(), tenant.Context{OrgID: e.tc.OrgID})
 
 	cancelled, cancel := context.WithCancel(orgCtx)
 	cancel()
@@ -232,7 +232,7 @@ func TestReconcile_SendsOnePagePerProjectWhenQueuedAndUpToTwoInline(t *testing.T
 	for range 120 {
 		require.NoError(t, e.store.Mark(e.ctx, e.tc.OrgID, e.tc.ProjectID, []opensheetsync.Ref{ref(opensheetsync.EntityWallet, uuid.New())}, e.now.Add(-time.Hour)))
 	}
-	orgCtx := tenant.Into(context.Background(), tenant.Context{OrgID: e.tc.OrgID})
+	orgCtx := fakes.Owner(context.Background(), tenant.Context{OrgID: e.tc.OrgID})
 	n, err := e.mirror.Reconcile(orgCtx)
 	require.NoError(t, err)
 	require.Equal(t, 100, n)
@@ -254,7 +254,7 @@ func TestReconcile_StartsOneProjectLaterEachTick(t *testing.T) {
 		e.link(t, tc, true)
 		require.NoError(t, e.store.Mark(e.ctx, e.tc.OrgID, p, []opensheetsync.Ref{ref(opensheetsync.EntityWallet, uuid.New())}, e.now.Add(-time.Hour)))
 	}
-	orgCtx := tenant.Into(context.Background(), tenant.Context{OrgID: e.tc.OrgID})
+	orgCtx := fakes.Owner(context.Background(), tenant.Context{OrgID: e.tc.OrgID})
 	first := map[uuid.UUID]bool{}
 	for range projects {
 		e.jobs.Reset()
@@ -333,7 +333,7 @@ func TestReconcile_SubmitsDetachedFromTheTickDeadline(t *testing.T) {
 	}
 	q := &detachedQueue{}
 	m := opensheetsync.NewMirror(e.store, q, true, discardLog(), nil, func() time.Time { return e.now })
-	tick, cancel := context.WithTimeout(tenant.Into(context.Background(), tenant.Context{OrgID: e.tc.OrgID}), time.Minute)
+	tick, cancel := context.WithTimeout(fakes.Owner(context.Background(), tenant.Context{OrgID: e.tc.OrgID}), time.Minute)
 	defer cancel()
 	n, err := m.Reconcile(tick)
 	require.NoError(t, err)

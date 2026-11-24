@@ -32,7 +32,7 @@ func TestProjectCreate_AtLimitShowsLimitCopy(t *testing.T) {
 
 	store := fakes.NewLimits()
 	require.NoError(t, store.SetOverride(ctx, limits.Subject{Kind: limits.SubjectOrg, ID: o.ID}, limits.OrgProjects, 0, uuid.Nil))
-	f.Deps.Projects = project.NewService(f.ProjStore, discardLogger(), passthroughUnexpected(), f.Orgs, fakes.UnitOfWork,
+	f.Deps.Projects = project.NewService(f.ProjStore, discardLogger(), passthroughUnexpected(), fakes.UnitOfWork,
 		project.WithLimits(limits.NewService(store, config.ModeCloud), storeOrgNames{f.OrgStore}))
 
 	h := handlers.NewProjectHandler(f.Deps, f.Deps.Projects)

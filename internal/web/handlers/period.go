@@ -14,6 +14,7 @@ import (
 	"altalune.id/yasaku/internal/i18n"
 	"altalune.id/yasaku/internal/ledger"
 	"altalune.id/yasaku/internal/period"
+	"altalune.id/yasaku/internal/platform/authz"
 	"altalune.id/yasaku/internal/project"
 	"altalune.id/yasaku/internal/report"
 	"altalune.id/yasaku/internal/web"
@@ -67,7 +68,7 @@ func (h *PeriodHandler) GetClose(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !h.CanManage(sc) {
+	if !holds(sc.req, authz.PeriodsClose) {
 		h.forbidNonManager(w, sc.req, "period.manager_only", periodManagerOnly)
 		return
 	}

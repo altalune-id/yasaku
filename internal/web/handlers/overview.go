@@ -8,10 +8,10 @@ import (
 	"github.com/google/uuid"
 
 	"altalune.id/yasaku/civil"
-
 	"altalune.id/yasaku/internal/category"
 	"altalune.id/yasaku/internal/ledger"
 	"altalune.id/yasaku/internal/period"
+	"altalune.id/yasaku/internal/platform/authz"
 	"altalune.id/yasaku/internal/project"
 	"altalune.id/yasaku/internal/report"
 	"altalune.id/yasaku/internal/transaction"
@@ -96,7 +96,7 @@ func (h *OverviewHandler) GetOverview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	first := needsFirstRun(wallets)
-	if first && h.CanManage(sc) {
+	if first && holds(sc.req, authz.LedgerSettings) {
 		target := web.Path(h.Cfg.HTTP.BasePath, projectPath(sc.org.Slug, sc.project.Slug, "/first-run"))
 		http.Redirect(w, sc.req, target, http.StatusSeeOther) //nolint:gosec // G710: both slugs come from rows already resolved by their own slug patterns
 		return

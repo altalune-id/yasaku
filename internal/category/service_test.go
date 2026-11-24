@@ -55,7 +55,7 @@ func newSvc(t *testing.T, store category.Store, namer category.Namer) (*category
 func svcCtx(t *testing.T) (context.Context, tenant.Context) {
 	t.Helper()
 	tc := tenant.Context{OrgID: uuid.New(), ProjectID: uuid.New(), UserID: uuid.New()}
-	return tenant.Into(t.Context(), tc), tc
+	return fakes.Owner(t.Context(), tc), tc
 }
 
 func TestService_Create(t *testing.T) {

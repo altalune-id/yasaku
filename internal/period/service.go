@@ -13,6 +13,7 @@ import (
 
 	"altalune.id/yasaku/civil"
 	"altalune.id/yasaku/internal/apperror"
+	"altalune.id/yasaku/internal/platform/authz"
 	"altalune.id/yasaku/internal/platform/session"
 	"altalune.id/yasaku/internal/platform/tenant"
 )
@@ -32,12 +33,6 @@ type Service struct {
 	entries    Entries
 	uow        UnitOfWork
 	now        func() time.Time
-	managers   Managers
-}
-
-// Managers is the role gate close, reopen and rename ask before anything else.
-type Managers interface {
-	RequireCallerManager(ctx context.Context) error
 }
 
 // NewService binds the service to its dependencies.
@@ -50,7 +45,6 @@ func NewService(
 	entries Entries,
 	uow UnitOfWork,
 	now func() time.Time,
-	managers Managers,
 ) *Service {
 	if now == nil {
 		now = time.Now
@@ -64,12 +58,14 @@ func NewService(
 		entries:    entries,
 		uow:        uow,
 		now:        now,
-		managers:   managers,
 	}
 }
 
 // EnsureCurrent returns the project's current period, deriving the first one from the cycle start day when none exists.
 func (s *Service) EnsureCurrent(ctx context.Context) (*Period, error) {
+	if err := authz.Can(ctx, authz.TransactionsRead); err != nil {
+		return nil, err
+	}
 	ctx, span := tracer.Start(ctx, "period.EnsureCurrent")
 	defer span.End()
 
@@ -119,6 +115,9 @@ func (s *Service) EnsureCurrent(ctx context.Context) (*Period, error) {
 
 // SuggestedEnd returns the end date a close of the identified period defaults to under the project's cycle settings.
 func (s *Service) SuggestedEnd(ctx context.Context, id uuid.UUID) (civil.Date, error) {
+	if err := authz.Can(ctx, authz.TransactionsRead); err != nil {
+		return civil.Date{}, err
+	}
 	ctx, span := tracer.Start(ctx, "period.SuggestedEnd",
 		trace.WithAttributes(attribute.String("period.id", id.String())))
 	defer span.End()
@@ -150,6 +149,9 @@ func (s *Service) SuggestedEnd(ctx context.Context, id uuid.UUID) (civil.Date, e
 
 // Today returns the current date in the project's time zone, on the service clock.
 func (s *Service) Today(ctx context.Context) (civil.Date, error) {
+	if err := authz.Can(ctx, authz.TransactionsRead); err != nil {
+		return civil.Date{}, err
+	}
 	tc, err := tenant.From(ctx)
 	if err != nil {
 		return civil.Date{}, err
@@ -174,6 +176,9 @@ func (s *Service) latestEntry(ctx context.Context, tc tenant.Context, periodID u
 
 // CycleEnd returns the last day of the identified period's cycle under the project's cycle settings, or its stored end once set.
 func (s *Service) CycleEnd(ctx context.Context, id uuid.UUID) (civil.Date, error) {
+	if err := authz.Can(ctx, authz.TransactionsRead); err != nil {
+		return civil.Date{}, err
+	}
 	ctx, span := tracer.Start(ctx, "period.CycleEnd",
 		trace.WithAttributes(attribute.String("period.id", id.String())))
 	defer span.End()
@@ -201,6 +206,9 @@ func (s *Service) endOf(ctx context.Context, id uuid.UUID, pick func(start, toda
 
 // Reopenable returns the one period Reopen would accept in the caller's scope, or nil when none would.
 func (s *Service) Reopenable(ctx context.Context) (*Period, error) {
+	if err := authz.Can(ctx, authz.TransactionsRead); err != nil {
+		return nil, err
+	}
 	ctx, span := tracer.Start(ctx, "period.Reopenable")
 	defer span.End()
 
@@ -219,6 +227,9 @@ func (s *Service) Reopenable(ctx context.Context) (*Period, error) {
 
 // Current returns the project's current period without creating one.
 func (s *Service) Current(ctx context.Context) (*Period, error) {
+	if err := authz.Can(ctx, authz.TransactionsRead); err != nil {
+		return nil, err
+	}
 	ctx, span := tracer.Start(ctx, "period.Current")
 	defer span.End()
 
@@ -240,6 +251,9 @@ func (s *Service) Current(ctx context.Context) (*Period, error) {
 
 // List returns periods in the caller's scope, newest start first.
 func (s *Service) List(ctx context.Context, opts ListOpts) ([]*Period, error) {
+	if err := authz.Can(ctx, authz.TransactionsRead); err != nil {
+		return nil, err
+	}
 	ctx, span := tracer.Start(ctx, "period.List")
 	defer span.End()
 
@@ -258,6 +272,9 @@ func (s *Service) List(ctx context.Context, opts ListOpts) ([]*Period, error) {
 
 // ByID returns the identified period when it belongs to the caller's scope.
 func (s *Service) ByID(ctx context.Context, id uuid.UUID) (*Period, error) {
+	if err := authz.Can(ctx, authz.TransactionsRead); err != nil {
+		return nil, err
+	}
 	ctx, span := tracer.Start(ctx, "period.ByID",
 		trace.WithAttributes(attribute.String("period.id", id.String())))
 	defer span.End()
@@ -271,16 +288,15 @@ func (s *Service) ByID(ctx context.Context, id uuid.UUID) (*Period, error) {
 
 // Rename replaces the identified period's display name.
 func (s *Service) Rename(ctx context.Context, id uuid.UUID, name string) (*Period, error) {
+	if err := authz.Can(ctx, authz.PeriodsClose); err != nil {
+		return nil, err
+	}
 	ctx, span := tracer.Start(ctx, "period.Rename",
 		trace.WithAttributes(attribute.String("period.id", id.String())))
 	defer span.End()
 
 	tc, err := tenant.From(ctx)
 	if err != nil {
-		return nil, err
-	}
-	if err := s.managers.RequireCallerManager(ctx); err != nil {
-		span.RecordError(err)
 		return nil, err
 	}
 	p, err := s.scoped(ctx, tc, id)
@@ -303,6 +319,9 @@ func (s *Service) Rename(ctx context.Context, id uuid.UUID, name string) (*Perio
 
 // PreviewClose computes what closing the identified period at end would freeze, persisting nothing.
 func (s *Service) PreviewClose(ctx context.Context, id uuid.UUID, end civil.Date) (Snapshot, error) {
+	if err := authz.Can(ctx, authz.TransactionsRead); err != nil {
+		return Snapshot{}, err
+	}
 	ctx, span := tracer.Start(ctx, "period.PreviewClose",
 		trace.WithAttributes(attribute.String("period.id", id.String())))
 	defer span.End()
@@ -325,16 +344,15 @@ func (s *Service) PreviewClose(ctx context.Context, id uuid.UUID, end civil.Date
 
 // Close freezes the identified period's totals and, on a first close, opens the next one the following day.
 func (s *Service) Close(ctx context.Context, id uuid.UUID, end civil.Date, by uuid.UUID) (*Period, error) {
+	if err := authz.Can(ctx, authz.PeriodsClose); err != nil {
+		return nil, err
+	}
 	ctx, span := tracer.Start(ctx, "period.Close",
 		trace.WithAttributes(attribute.String("period.id", id.String())))
 	defer span.End()
 
 	tc, err := tenant.From(ctx)
 	if err != nil {
-		return nil, err
-	}
-	if err := s.managers.RequireCallerManager(ctx); err != nil {
-		span.RecordError(err)
 		return nil, err
 	}
 	if _, err := s.closable(ctx, tc, id, end); err != nil {
@@ -411,16 +429,15 @@ func (s *Service) Close(ctx context.Context, id uuid.UUID, end civil.Date, by uu
 
 // Reopen unlocks the most recently closed period, keeping its end date and now-stale snapshot.
 func (s *Service) Reopen(ctx context.Context, id uuid.UUID) (*Period, error) {
+	if err := authz.Can(ctx, authz.PeriodsClose); err != nil {
+		return nil, err
+	}
 	ctx, span := tracer.Start(ctx, "period.Reopen",
 		trace.WithAttributes(attribute.String("period.id", id.String())))
 	defer span.End()
 
 	tc, err := tenant.From(ctx)
 	if err != nil {
-		return nil, err
-	}
-	if err := s.managers.RequireCallerManager(ctx); err != nil {
-		span.RecordError(err)
 		return nil, err
 	}
 	p, err := s.scoped(ctx, tc, id)
@@ -453,6 +470,9 @@ func (s *Service) Reopen(ctx context.Context, id uuid.UUID) (*Period, error) {
 
 // Containing returns the period holding at in the project timezone, ensuring the first period exists.
 func (s *Service) Containing(ctx context.Context, at time.Time) (*Period, error) {
+	if err := authz.Can(ctx, authz.TransactionsRead); err != nil {
+		return nil, err
+	}
 	ctx, span := tracer.Start(ctx, "period.Containing")
 	defer span.End()
 
@@ -481,6 +501,9 @@ func (s *Service) Containing(ctx context.Context, at time.Time) (*Period, error)
 
 // OpeningDate dates an opening balance recorded at at: at itself, or 00:00 project time on the start of the earliest open period after it when at falls in a closed one.
 func (s *Service) OpeningDate(ctx context.Context, at time.Time) (OpeningDate, error) {
+	if err := authz.Can(ctx, authz.TransactionsRead); err != nil {
+		return OpeningDate{}, err
+	}
 	ctx, span := tracer.Start(ctx, "period.OpeningDate")
 	defer span.End()
 
@@ -519,6 +542,9 @@ func (s *Service) OpeningDate(ctx context.Context, at time.Time) (OpeningDate, e
 
 // Neighbors returns the periods immediately before and after the identified one.
 func (s *Service) Neighbors(ctx context.Context, id uuid.UUID) (prev, next *Period, err error) { //nolint:nonamedreturns // mirrors the Store signature
+	if err := authz.Can(ctx, authz.TransactionsRead); err != nil {
+		return nil, nil, err
+	}
 	ctx, span := tracer.Start(ctx, "period.Neighbors",
 		trace.WithAttributes(attribute.String("period.id", id.String())))
 	defer span.End()
@@ -543,6 +569,9 @@ func (s *Service) Neighbors(ctx context.Context, id uuid.UUID) (prev, next *Peri
 
 // Closings returns the identified period's closing history, newest first.
 func (s *Service) Closings(ctx context.Context, id uuid.UUID) ([]*Closing, error) {
+	if err := authz.Can(ctx, authz.TransactionsRead); err != nil {
+		return nil, err
+	}
 	ctx, span := tracer.Start(ctx, "period.Closings",
 		trace.WithAttributes(attribute.String("period.id", id.String())))
 	defer span.End()

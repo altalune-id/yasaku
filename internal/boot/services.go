@@ -24,6 +24,7 @@ import (
 	"altalune.id/yasaku/internal/platform"
 	"altalune.id/yasaku/internal/platform/audit"
 	"altalune.id/yasaku/internal/platform/authn"
+	"altalune.id/yasaku/internal/platform/authz"
 	"altalune.id/yasaku/internal/platform/capabilities"
 	"altalune.id/yasaku/internal/platform/config"
 	"altalune.id/yasaku/internal/platform/tenant"
@@ -88,6 +89,8 @@ type Services struct {
 	APIKeyUsage *apikey.UsageWorker
 
 	Audit *audit.Recorder
+	// Authz resolves a caller's held set wherever a surface binds a tenant scope.
+	Authz *authz.Resolver
 
 	jobs *jobSubmitter
 }
@@ -109,9 +112,10 @@ func buildServices(cfg *config.Config, k *platform.Kernel, caps capabilities.Cap
 	uow := tenant.NewUnitOfWork(cfg.DB, pool, pgConn)
 	limiter := limits.NewService(limits.NewStore(cfg.DB, pool), cfg.Mode, limits.WithContact(cfg.Compliance.ContactEmail))
 	members := org.NewCounter(orgStore, caps)
+	resolver := authz.NewResolver(roleSourceAdapter{Counter: members})
 	recorder := audit.NewRecorder(cfg.DB, pool, pgConn)
-	orgs := org.NewService(orgStore, caps, log, reporter.Unexpected, uow, org.WithLimits(limiter), org.WithAudit(recorder))
-	projects := project.NewService(projectStore, log, reporter.Unexpected, orgs, uow, project.WithLimits(limiter, members))
+	orgs := org.NewService(orgStore, caps, log, reporter.Unexpected, uow, org.WithLimits(limiter), org.WithAudit(recorder), org.WithPermissions(resolver))
+	projects := project.NewService(projectStore, log, reporter.Unexpected, uow, project.WithLimits(limiter, members))
 	todos := todo.NewService(todoStore, log, reporter.Unexpected, k.Queue)
 	jobs := newJobSubmitter(k.Queue, k.Tracer, log)
 	onboards := onboard.NewService(onboardStore, log, reporter.Unexpected)
@@ -131,20 +135,20 @@ func buildServices(cfg *config.Config, k *platform.Kernel, caps capabilities.Cap
 	periodStore := period.NewStore(cfg.DB, pool, pgConn)
 	transactionStore := transaction.NewStore(cfg.DB, pool, pgConn)
 
-	ledgers := ledger.NewService(ledgerStore, log, reporter.Unexpected, orgs, ledger.WithAudit(uow, recorder))
+	ledgers := ledger.NewService(ledgerStore, log, reporter.Unexpected, ledger.WithAudit(uow, recorder))
 	wallets := wallet.NewService(walletStore, log, reporter.Unexpected, wallet.WithMirror(osw.walletMirror(), wallet.UnitOfWork(uow)), wallet.WithLimits(limiter))
 	txCategories := category.NewService(txCategoryStore, log, reporter.Unexpected, namerAdapter{},
 		category.WithMirror(osw.categoryMirror(), category.UnitOfWork(uow)))
 	reports := report.NewService(report.NewReader(cfg.DB, pool, pgConn), log, reporter.Unexpected, ledgers)
 	periods := period.NewService(periodStore, log, reporter.Unexpected,
-		ledgers, snapshotterAdapter{reports: reports, now: time.Now}, snapshotterAdapter{reports: reports}, period.UnitOfWork(uow), time.Now, orgs)
+		ledgers, snapshotterAdapter{reports: reports, now: time.Now}, snapshotterAdapter{reports: reports}, period.UnitOfWork(uow), time.Now)
 	transactions := transaction.NewService(transactionStore, log, reporter.Unexpected,
 		walletReaderFor(wallets), categoryReaderFor(txCategories),
 		periodResolverAdapter{periods: periods}, transaction.UnitOfWork(uow), transaction.WithMirror(osw.transactionMirror()))
 	walletOpen := wallet.NewOpenWorkflow(wallets, transactions, openingDaterFor(periods), wallet.UnitOfWork(uow), log, reporter.Unexpected)
 	opensheet, opensheetSync := osw.services(k, log, opensheetSource{
 		txs: transactions, wallets: wallets, cats: txCategories, periods: periods, ledgers: ledgers,
-	}, orgs, uow)
+	}, uow)
 
 	invitesEnabled := cfg.Mode == config.ModeCloud || cfg.OIDC.Issuer != ""
 
@@ -306,6 +310,7 @@ func buildServices(cfg *config.Config, k *platform.Kernel, caps capabilities.Cap
 		APIKeyUsage: keyUsage,
 
 		Audit: recorder,
+		Authz: resolver,
 
 		jobs: jobs,
 	}, nil

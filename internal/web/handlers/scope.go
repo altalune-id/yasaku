@@ -6,6 +6,7 @@ import (
 	"github.com/google/uuid"
 
 	"altalune.id/yasaku/internal/org"
+	"altalune.id/yasaku/internal/platform/authz"
 	"altalune.id/yasaku/internal/platform/session"
 	"altalune.id/yasaku/internal/platform/tenant"
 	"altalune.id/yasaku/internal/project"
@@ -86,9 +87,9 @@ func (d Deps) RequireProject(w http.ResponseWriter, r *http.Request) (ProjectSco
 	return ProjectScope{principal: sc.principal, sid: sc.sid, org: sc.org, project: proj, req: req}, true
 }
 
-// CanManage reports whether the principal may manage sc's org, through CanManageOrg.
-func (d Deps) CanManage(sc ProjectScope) bool {
-	return d.CanManageOrg(OrgScope{principal: sc.principal, sid: sc.sid, org: sc.org, req: sc.req})
+// SECURITY: reads the held set the scope seam bound; an unbound request holds nothing.
+func holds(r *http.Request, p authz.Permission) bool {
+	return authz.Can(r.Context(), p) == nil
 }
 
 //i18n:use error.org_mismatch
@@ -96,7 +97,7 @@ func (d Deps) refuseNotManager(w http.ResponseWriter, r *http.Request, err error
 	switch {
 	case org.IsOrgMismatchError(err):
 		d.forbidNonManager(w, r, "error.org_mismatch", "This action belongs to a different organization.")
-	case org.IsNotManagerError(err):
+	case authz.IsDeniedError(err):
 		d.forbidNonManager(w, r, msgKey, fallback)
 	default:
 		return false
@@ -109,14 +110,4 @@ func (d Deps) forbidNonManager(w http.ResponseWriter, r *http.Request, msgKey, f
 	d.ErrorPage(w, r, http.StatusForbidden,
 		localizedDefault(r, "error_title.not_allowed", "Not allowed"),
 		localizedDefault(r, msgKey, fallback))
-}
-
-// CanManageOrg reports whether the principal may manage sc's org. SECURITY: the one role seam; a failed lookup refuses.
-func (d Deps) CanManageOrg(sc OrgScope) bool {
-	ok, err := d.Orgs.IsManager(sc.req.Context(), sc.org.ID, sc.principal.UserID)
-	if err != nil {
-		d.LogErr("web: role lookup", err)
-		return false
-	}
-	return ok
 }

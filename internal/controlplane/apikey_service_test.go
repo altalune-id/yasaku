@@ -20,6 +20,7 @@ import (
 	"altalune.id/yasaku/internal/apikey"
 	"altalune.id/yasaku/internal/apperror"
 	"altalune.id/yasaku/internal/controlplane"
+	"altalune.id/yasaku/internal/org"
 	"altalune.id/yasaku/internal/platform"
 	"altalune.id/yasaku/internal/platform/authn"
 	"altalune.id/yasaku/internal/platform/session"
@@ -63,7 +64,7 @@ func newAPIKeyFixtureFor(t *testing.T, manager bool, src session.Source) *apikey
 	projs := fakes.NewProject()
 	keyStore := fakes.NewAPIKey()
 
-	projectSvc := project.NewService(projs, log, reporter.Unexpected, managers, fakes.UnitOfWork)
+	projectSvc := project.NewService(projs, log, reporter.Unexpected, fakes.UnitOfWork)
 	keySvc := apikey.NewService(keyStore, apikey.Scheme{}, managers, fakes.NewOrgProjects(), log, reporter.Unexpected)
 
 	kernel := &platform.Kernel{
@@ -72,7 +73,13 @@ func newAPIKeyFixtureFor(t *testing.T, manager bool, src session.Source) *apikey
 		Verifier: stubVerifier{principal: fullTokenGrant(principal)},
 	}
 
-	srv := controlplane.New(nil, kernel, controlplane.Deps{Projects: projectSvc})
+	roles := fakes.NewOrg()
+	role := org.RoleMember
+	if manager {
+		role = org.RoleAdmin
+	}
+	require.NoError(t, roles.SaveMembership(context.Background(), &org.Membership{OrgID: orgID, UserID: principal.UserID, Role: role}))
+	srv := controlplane.New(nil, kernel, controlplane.Deps{Projects: projectSvc, Authz: fakes.Resolver(roles)})
 	srv.Authn = authn.Chain{apikey.NewAuthenticator(keyStore, nil, apikey.Scheme{}, fakes.NewMembers()), tokens.NewAuthenticator(kernel.Verifier, authn.Scheme{Prefix: apikey.DefaultPrefix})}
 	srv.APIKeys = keySvc
 	resource, err := tokens.NewResource("https://app.example.com/api")

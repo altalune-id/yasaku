@@ -22,6 +22,7 @@ import (
 type targetHarness struct {
 	t        *testing.T
 	orgs     *org.Service
+	scope    Scope
 	projects *project.Service
 }
 
@@ -29,10 +30,13 @@ func newTargetHarness(t *testing.T) *targetHarness {
 	t.Helper()
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	reporter := apperror.NewReporter(log, false)
+	store := fakes.NewOrg()
+	orgs := org.NewService(store, capabilities.Capabilities{OrgCreation: true}, log, reporter.Unexpected, fakes.UnitOfWork)
 	return &targetHarness{
 		t:        t,
-		orgs:     org.NewService(fakes.NewOrg(), capabilities.Capabilities{OrgCreation: true}, log, reporter.Unexpected, fakes.UnitOfWork),
-		projects: project.NewService(fakes.NewProject(), log, reporter.Unexpected, fakes.PermissiveMembers(), fakes.UnitOfWork),
+		orgs:     orgs,
+		scope:    Scope{Orgs: orgs, Authz: fakes.Resolver(store)},
+		projects: project.NewService(fakes.NewProject(), log, reporter.Unexpected, fakes.UnitOfWork),
 	}
 }
 
@@ -55,7 +59,7 @@ func (h *targetHarness) project(o *org.Org, slug string) *project.Project {
 
 func (h *targetHarness) projectNamed(o *org.Org, slug, name string) *project.Project {
 	h.t.Helper()
-	ctx := tenant.Into(context.Background(), tenant.Context{OrgID: o.ID, UserID: uuid.New()})
+	ctx := fakes.Owner(context.Background(), tenant.Context{OrgID: o.ID, UserID: uuid.New()})
 	p, err := h.projects.Create(ctx, o.ID, slug, name)
 	if err != nil {
 		h.t.Fatalf("create project %s: %v", slug, err)
@@ -83,7 +87,7 @@ func TestScopeToTarget_ProjectKeyNeverReachesASiblingProject(t *testing.T) {
 	h.project(o, "office")
 	ctx := h.keyPrincipal(o, p1)
 
-	_, _, err := scopeToTarget(ctx, h.orgs, h.projects, &yasakuv1.Target{Org: "acme", Project: "office"})
+	_, _, err := scopeToTarget(ctx, h.scope, h.projects, &yasakuv1.Target{Org: "acme", Project: "office"})
 	if !IsScopeNotFoundError(err) {
 		t.Fatalf("sibling project: want ScopeNotFoundError, got %v", err)
 	}
@@ -96,7 +100,7 @@ func TestScopeToTarget_KeyIsPinnedToItsActiveOrg(t *testing.T) {
 	h.project(b, "home")
 	ctx := h.keyPrincipal(a, pa)
 
-	_, _, err := scopeToTarget(ctx, h.orgs, h.projects, &yasakuv1.Target{Org: "beta"})
+	_, _, err := scopeToTarget(ctx, h.scope, h.projects, &yasakuv1.Target{Org: "beta"})
 	if !IsScopeNotFoundError(err) {
 		t.Fatalf("other org: want ScopeNotFoundError, got %v", err)
 	}
@@ -109,7 +113,7 @@ func TestScopeToTarget_ProjectKeyDefaultsToItsOwnProject(t *testing.T) {
 	h.project(o, "office")
 	ctx := h.keyPrincipal(o, p1)
 
-	res, nd, err := scopeToTarget(ctx, h.orgs, h.projects, &yasakuv1.Target{})
+	res, nd, err := scopeToTarget(ctx, h.scope, h.projects, &yasakuv1.Target{})
 	if err != nil || nd != nil {
 		t.Fatalf("err=%v needs=%v", err, nd)
 	}
@@ -134,7 +138,7 @@ func TestScopeToTarget_KeyWithActiveProjectDefaultsToIt(t *testing.T) {
 		KeyID:           uuid.New(),
 	})
 
-	res, nd, err := scopeToTarget(ctx, h.orgs, h.projects, &yasakuv1.Target{})
+	res, nd, err := scopeToTarget(ctx, h.scope, h.projects, &yasakuv1.Target{})
 	if err != nil || nd != nil {
 		t.Fatalf("err=%v needs=%v", err, nd)
 	}
@@ -156,7 +160,7 @@ func TestScopeToTarget_ResourceNarrowedKeyReachesNoWholeProject(t *testing.T) {
 		KeyID:       uuid.New(),
 	})
 
-	_, _, err := scopeToTarget(ctx, h.orgs, h.projects, &yasakuv1.Target{Project: "home"})
+	_, _, err := scopeToTarget(ctx, h.scope, h.projects, &yasakuv1.Target{Project: "home"})
 	if !IsScopeNotFoundError(err) {
 		t.Fatalf("resource-narrowed key: want ScopeNotFoundError, got %v", err)
 	}
@@ -170,7 +174,7 @@ func TestScopeToTarget_PersonStillChoosesAmongTheirOrgs(t *testing.T) {
 	h.project(b, "home")
 	ctx := h.personPrincipal(u)
 
-	_, nd, err := scopeToTarget(ctx, h.orgs, h.projects, &yasakuv1.Target{})
+	_, nd, err := scopeToTarget(ctx, h.scope, h.projects, &yasakuv1.Target{})
 	if err != nil || nd == nil || nd.GetNeeds()[0].GetField() != "org" {
 		t.Fatalf("want needs org, got needs=%v err=%v", nd, err)
 	}
@@ -183,7 +187,7 @@ func TestScopeToTarget_PersonNeverReachesAnOrgTheyDoNotBelongTo(t *testing.T) {
 	h.project(h.org("beta"), "home")
 	ctx := h.personPrincipal(u)
 
-	_, _, err := scopeToTarget(ctx, h.orgs, h.projects, &yasakuv1.Target{Org: "beta"})
+	_, _, err := scopeToTarget(ctx, h.scope, h.projects, &yasakuv1.Target{Org: "beta"})
 	if !IsScopeNotFoundError(err) {
 		t.Fatalf("foreign org: want ScopeNotFoundError, got %v", err)
 	}
@@ -196,7 +200,7 @@ func TestScopeToTarget_MatchesAProjectByName(t *testing.T) {
 	h.projectNamed(o, "wispy-frost-4821", "Household")
 	ctx := h.personPrincipal(u)
 
-	res, nd, err := scopeToTarget(ctx, h.orgs, h.projects, &yasakuv1.Target{Org: "acme", Project: "household"})
+	res, nd, err := scopeToTarget(ctx, h.scope, h.projects, &yasakuv1.Target{Org: "acme", Project: "household"})
 	if err != nil || nd != nil || res.project.Name != "Household" {
 		t.Fatalf("res=%v needs=%v err=%v", res.project, nd, err)
 	}
@@ -210,7 +214,7 @@ func TestScopeToTarget_AmbiguousNameAsksForTheProject(t *testing.T) {
 	h.projectNamed(o, "calm-river-1200", "Household")
 	ctx := h.personPrincipal(u)
 
-	_, nd, err := scopeToTarget(ctx, h.orgs, h.projects, &yasakuv1.Target{Org: "acme", Project: "household"})
+	_, nd, err := scopeToTarget(ctx, h.scope, h.projects, &yasakuv1.Target{Org: "acme", Project: "household"})
 	if err != nil || nd == nil || nd.GetNeeds()[0].GetField() != "project" || len(nd.GetNeeds()[0].GetCandidates()) != 2 {
 		t.Fatalf("want needs project with 2 candidates, got needs=%v err=%v", nd, err)
 	}
@@ -223,7 +227,7 @@ func TestListProjects_ProjectKeySeesOnlyItsProject(t *testing.T) {
 	p1 := h.project(o, "home")
 	h.project(o, "office")
 	h.project(h.orgFor(u, "beta"), "home")
-	svc := NewWorkspaceService(h.orgs, h.projects, nil, nil)
+	svc := NewWorkspaceService(h.scope, h.projects, nil, nil)
 
 	resp, err := svc.ListProjects(h.keyPrincipal(o, p1), connect.NewRequest(&yasakuv1.ListProjectsRequest{}))
 	if err != nil {
@@ -262,12 +266,12 @@ func TestScopeToTarget_AllProjectsOrgKeyIsPinnedToItsActiveOrg(t *testing.T) {
 	})
 
 	for _, q := range []string{"beta", "Beta Holdings"} {
-		_, _, err := scopeToTarget(ctx, h.orgs, h.projects, &yasakuv1.Target{Org: q, Project: "home"})
+		_, _, err := scopeToTarget(ctx, h.scope, h.projects, &yasakuv1.Target{Org: q, Project: "home"})
 		if !IsScopeNotFoundError(err) {
 			t.Errorf("org key targeting %q: want ScopeNotFoundError, got %v", q, err)
 		}
 	}
-	res, nd, err := scopeToTarget(ctx, h.orgs, h.projects, &yasakuv1.Target{Org: "acme", Project: "home"})
+	res, nd, err := scopeToTarget(ctx, h.scope, h.projects, &yasakuv1.Target{Org: "acme", Project: "home"})
 	if err != nil || nd != nil || res.org.ID != acme.ID || res.principal.ActiveOrgID != acme.ID {
 		t.Fatalf("own org: res=%+v needs=%v err=%v", res.org, nd, err)
 	}

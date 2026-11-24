@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"altalune.id/yasaku/internal/platform/tenant"
+	"altalune.id/yasaku/internal/testutil/fakes"
 	"altalune.id/yasaku/internal/transaction"
 	"altalune.id/yasaku/money"
 )
@@ -30,7 +31,7 @@ func TestPostgres_Transaction_WritesRejectSiblingProject(t *testing.T) {
 		"INSERT INTO "+f.prefix+"projects (id, org_id, slug, name, created_by, created_at, updated_at) VALUES ($1, $2, $3, 'Sibling', $4, $5, $5)",
 		siblingProj, f.tc.OrgID, siblingProj.String()[:8], f.tc.UserID, time.Now().UTC())
 	require.NoError(t, err)
-	siblingCtx := tenant.Into(t.Context(), tenant.Context{OrgID: f.tc.OrgID, ProjectID: siblingProj, UserID: f.tc.UserID})
+	siblingCtx := fakes.Owner(t.Context(), tenant.Context{OrgID: f.tc.OrgID, ProjectID: siblingProj, UserID: f.tc.UserID})
 
 	attack := *victim
 	attack.Note = "Hijacked"

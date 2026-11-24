@@ -17,6 +17,7 @@ import (
 	sqliteent "altalune.id/yasaku/internal/platform/db/entity/sqlite"
 	"altalune.id/yasaku/internal/platform/tenant"
 	"altalune.id/yasaku/internal/report"
+	"altalune.id/yasaku/internal/testutil/fakes"
 	"altalune.id/yasaku/money"
 	"altalune.id/yasaku/schema"
 )
@@ -50,7 +51,7 @@ type neighbour struct {
 	periodID  uuid.UUID
 }
 
-func (s seed) ctx() context.Context { return tenant.Into(context.Background(), s.tc) }
+func (s seed) ctx() context.Context { return fakes.Owner(context.Background(), s.tc) }
 
 func (s seed) augStartUTC(t *testing.T) time.Time {
 	t.Helper()

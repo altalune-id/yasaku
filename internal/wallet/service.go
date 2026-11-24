@@ -12,6 +12,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"altalune.id/yasaku/internal/apperror"
+	"altalune.id/yasaku/internal/platform/authz"
 	"altalune.id/yasaku/internal/platform/tenant"
 	"altalune.id/yasaku/money"
 )
@@ -40,6 +41,9 @@ func NewService(store Store, log *slog.Logger, unexpected apperror.UnexpectedFun
 
 // Create constructs a wallet in the caller's tenant scope and persists it.
 func (s *Service) Create(ctx context.Context, p Params) (*Wallet, error) {
+	if err := authz.Can(ctx, authz.WalletsWrite); err != nil {
+		return nil, err
+	}
 	var out *Wallet
 	refs, err := s.commit(ctx, "wallet.Create", func(ctx context.Context) ([]MirrorRef, error) {
 		w, err := s.create(ctx, p)
@@ -96,6 +100,9 @@ func (s *Service) create(ctx context.Context, p Params) (*Wallet, error) {
 
 // Update replaces the kind, provider and exclude-from-total flag of a wallet in scope.
 func (s *Service) Update(ctx context.Context, id uuid.UUID, kind Kind, provider string, exclude bool) (*Wallet, error) {
+	if err := authz.Can(ctx, authz.WalletsWrite); err != nil {
+		return nil, err
+	}
 	ctx, span := tracer.Start(ctx, "wallet.Update",
 		trace.WithAttributes(attribute.String("wallet.id", id.String())))
 	defer span.End()
@@ -117,6 +124,9 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, kind Kind, provider 
 
 // Edit replaces the name, kind, provider and exclude-from-total flag of a wallet in scope in a single save.
 func (s *Service) Edit(ctx context.Context, id uuid.UUID, name string, kind Kind, provider string, exclude bool) (*Wallet, error) {
+	if err := authz.Can(ctx, authz.WalletsWrite); err != nil {
+		return nil, err
+	}
 	ctx, span := tracer.Start(ctx, "wallet.Edit",
 		trace.WithAttributes(attribute.String("wallet.id", id.String())))
 	defer span.End()
@@ -139,6 +149,9 @@ func (s *Service) Edit(ctx context.Context, id uuid.UUID, name string, kind Kind
 
 // Rename changes the display name of a wallet in scope.
 func (s *Service) Rename(ctx context.Context, id uuid.UUID, name string) (*Wallet, error) {
+	if err := authz.Can(ctx, authz.WalletsWrite); err != nil {
+		return nil, err
+	}
 	ctx, span := tracer.Start(ctx, "wallet.Rename",
 		trace.WithAttributes(attribute.String("wallet.id", id.String())))
 	defer span.End()
@@ -161,6 +174,9 @@ func (s *Service) Rename(ctx context.Context, id uuid.UUID, name string) (*Walle
 
 // Archive retires a wallet in scope, freeing its name for reuse.
 func (s *Service) Archive(ctx context.Context, id uuid.UUID) (*Wallet, error) {
+	if err := authz.Can(ctx, authz.WalletsWrite); err != nil {
+		return nil, err
+	}
 	ctx, span := tracer.Start(ctx, "wallet.Archive",
 		trace.WithAttributes(attribute.String("wallet.id", id.String())))
 	defer span.End()
@@ -182,6 +198,9 @@ func (s *Service) Archive(ctx context.Context, id uuid.UUID) (*Wallet, error) {
 
 // Unarchive returns a wallet to active use; the freed name may since have been taken.
 func (s *Service) Unarchive(ctx context.Context, id uuid.UUID) (*Wallet, error) {
+	if err := authz.Can(ctx, authz.WalletsWrite); err != nil {
+		return nil, err
+	}
 	ctx, span := tracer.Start(ctx, "wallet.Unarchive",
 		trace.WithAttributes(attribute.String("wallet.id", id.String())))
 	defer span.End()
@@ -213,6 +232,9 @@ func (s *Service) Unarchive(ctx context.Context, id uuid.UUID) (*Wallet, error) 
 
 // Delete removes a wallet in scope; one still referenced by transactions is refused as InUseError.
 func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
+	if err := authz.Can(ctx, authz.WalletsWrite); err != nil {
+		return err
+	}
 	ctx, span := tracer.Start(ctx, "wallet.Delete",
 		trace.WithAttributes(attribute.String("wallet.id", id.String())))
 	defer span.End()
@@ -240,6 +262,9 @@ func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
 
 // ByID returns the identified wallet when it belongs to the caller's tenant scope.
 func (s *Service) ByID(ctx context.Context, id uuid.UUID) (*Wallet, error) {
+	if err := authz.Can(ctx, authz.WalletsRead); err != nil {
+		return nil, err
+	}
 	ctx, span := tracer.Start(ctx, "wallet.ByID",
 		trace.WithAttributes(attribute.String("wallet.id", id.String())))
 	defer span.End()
@@ -265,6 +290,9 @@ func (s *Service) ByID(ctx context.Context, id uuid.UUID) (*Wallet, error) {
 
 // List returns the wallets in the caller's tenant scope ordered by name.
 func (s *Service) List(ctx context.Context, opts ListOpts) ([]*Wallet, error) {
+	if err := authz.Can(ctx, authz.WalletsRead); err != nil {
+		return nil, err
+	}
 	ctx, span := tracer.Start(ctx, "wallet.List")
 	defer span.End()
 
@@ -287,6 +315,9 @@ func (s *Service) List(ctx context.Context, opts ListOpts) ([]*Wallet, error) {
 
 // ResolveByName finds one active wallet by an exact case-insensitive name, else by a unique case-insensitive substring.
 func (s *Service) ResolveByName(ctx context.Context, q string) (*Wallet, error) {
+	if err := authz.Can(ctx, authz.WalletsRead); err != nil {
+		return nil, err
+	}
 	ctx, span := tracer.Start(ctx, "wallet.ResolveByName")
 	defer span.End()
 

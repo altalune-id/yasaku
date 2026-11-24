@@ -6,8 +6,11 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"altalune.id/yasaku/internal/boot"
 	"altalune.id/yasaku/internal/controlplane"
 	"altalune.id/yasaku/internal/platform/config"
+	"altalune.id/yasaku/internal/platform/session"
+	"altalune.id/yasaku/internal/platform/tenant"
 )
 
 func withCfg(cmd *cobra.Command) (*config.Config, error) {
@@ -23,6 +26,11 @@ func withPrincipal(cmd *cobra.Command) (Principal, error) {
 		return Principal{}, err
 	}
 	return resolveLocal(cmd)
+}
+
+// SECURITY: an in-process command binds through the same resolver as every surface, so it holds what the local user's role holds.
+func bindLocal(ctx context.Context, s *boot.Server, p Principal) (context.Context, error) {
+	return s.Authz.Bind(ctx, session.Principal{UserID: p.UserID, Source: session.SourceLocal}, tenant.Context{OrgID: p.OrgID, ProjectID: p.ProjectID, UserID: p.UserID})
 }
 
 func connFromCmd(cmd *cobra.Command, bootClient ClientBootFn) (*controlplane.Client, error) {

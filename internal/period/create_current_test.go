@@ -11,7 +11,7 @@ import (
 	"altalune.id/yasaku/civil"
 	"altalune.id/yasaku/internal/period"
 	"altalune.id/yasaku/internal/platform/db"
-	"altalune.id/yasaku/internal/platform/tenant"
+	"altalune.id/yasaku/internal/testutil/fakes"
 )
 
 func TestSQLiteStore_CreateCurrentKeepsTheUnitOfWorkUsableAfterALostRace(t *testing.T) {
@@ -19,7 +19,7 @@ func TestSQLiteStore_CreateCurrentKeepsTheUnitOfWorkUsableAfterALostRace(t *test
 	tc := seedTenant(t, sqlDB, cfg.DB.TablePrefix)
 	pool := db.Pool{W: sqlDB, R: sqlDB}
 	store := period.NewStore(db.DBConfig{Driver: db.DriverSQLite, TablePrefix: cfg.DB.TablePrefix}, pool, nil)
-	ctx := tenant.Into(t.Context(), tc)
+	ctx := fakes.Owner(t.Context(), tc)
 
 	first, err := period.New(tc.OrgID, tc.ProjectID, civil.Date{Year: 2026, Month: 8, Day: 25}, "")
 	require.NoError(t, err)
@@ -43,7 +43,7 @@ func TestSQLiteStore_CreateCurrentKeepsTheUnitOfWorkUsableAfterALostRace(t *test
 
 func TestSQLiteStore_CreateCurrentRefusesAPeriodOutsideTheCallerScope(t *testing.T) {
 	store, tc := newSQLiteStoreForTest(t)
-	ctx := tenant.Into(t.Context(), tc)
+	ctx := fakes.Owner(t.Context(), tc)
 
 	foreign, err := period.New(tc.OrgID, uuid.New(), civil.Date{Year: 2026, Month: 8, Day: 25}, "")
 	require.NoError(t, err)

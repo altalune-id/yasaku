@@ -18,6 +18,7 @@ import (
 	"altalune.id/yasaku/internal/platform/config"
 	"altalune.id/yasaku/internal/platform/db"
 	"altalune.id/yasaku/internal/platform/tenant"
+	"altalune.id/yasaku/internal/testutil/fakes"
 	"altalune.id/yasaku/internal/testutil/pgtest"
 	"altalune.id/yasaku/nanoid"
 	"altalune.id/yasaku/schema"
@@ -122,7 +123,7 @@ func pgNew(t *testing.T, tc tenant.Context, name string, kind category.Kind) *ca
 
 func TestPostgres_Category_SaveAndByID(t *testing.T) {
 	f := newPgFixture(t)
-	ctx := tenant.Into(t.Context(), f.tc)
+	ctx := fakes.Owner(t.Context(), f.tc)
 
 	c, err := category.New(f.tc.OrgID, f.tc.ProjectID, "Food & Drinks", category.KindExpense, "utensils", "chart-1", 4)
 	require.NoError(t, err)
@@ -142,13 +143,13 @@ func TestPostgres_Category_SaveAndByID(t *testing.T) {
 
 func TestPostgres_Category_ByID_NotFound(t *testing.T) {
 	f := newPgFixture(t)
-	_, err := f.store.ByID(tenant.Into(t.Context(), f.tc), uuid.New())
+	_, err := f.store.ByID(fakes.Owner(t.Context(), f.tc), uuid.New())
 	assert.True(t, category.IsNotFoundError(err), "want NotFoundError, got %T: %v", err, err)
 }
 
 func TestPostgres_Category_ArchiveRoundTrip(t *testing.T) {
 	f := newPgFixture(t)
-	ctx := tenant.Into(t.Context(), f.tc)
+	ctx := fakes.Owner(t.Context(), f.tc)
 
 	c := pgNew(t, f.tc, "Food", category.KindExpense)
 	require.NoError(t, f.store.Save(ctx, c))
@@ -177,7 +178,7 @@ func TestPostgres_Category_ArchiveRoundTrip(t *testing.T) {
 
 func TestPostgres_Category_List_OrderAndFilters(t *testing.T) {
 	f := newPgFixture(t)
-	ctx := tenant.Into(t.Context(), f.tc)
+	ctx := fakes.Owner(t.Context(), f.tc)
 
 	seed := []struct {
 		name string
@@ -209,7 +210,7 @@ func TestPostgres_Category_List_OrderAndFilters(t *testing.T) {
 
 func TestPostgres_Category_UniqueIndexIsPartialAndScoped(t *testing.T) {
 	f := newPgFixture(t)
-	ctx := tenant.Into(t.Context(), f.tc)
+	ctx := fakes.Owner(t.Context(), f.tc)
 
 	first := pgNew(t, f.tc, "Food", category.KindExpense)
 	require.NoError(t, f.store.Save(ctx, first))
@@ -234,7 +235,7 @@ func TestPostgres_Category_UniqueIndexIsPartialAndScoped(t *testing.T) {
 
 func TestPostgres_Category_ByIDs(t *testing.T) {
 	f := newPgFixture(t)
-	ctx := tenant.Into(t.Context(), f.tc)
+	ctx := fakes.Owner(t.Context(), f.tc)
 
 	a := pgNew(t, f.tc, "Alpha", category.KindExpense)
 	require.NoError(t, f.store.Save(ctx, a))
@@ -258,7 +259,7 @@ func TestPostgres_Category_ByIDs(t *testing.T) {
 
 func TestPostgres_Category_Delete(t *testing.T) {
 	f := newPgFixture(t)
-	ctx := tenant.Into(t.Context(), f.tc)
+	ctx := fakes.Owner(t.Context(), f.tc)
 
 	c := pgNew(t, f.tc, "Gone", category.KindExpense)
 	require.NoError(t, f.store.Save(ctx, c))
@@ -271,7 +272,7 @@ func TestPostgres_Category_Delete(t *testing.T) {
 
 func TestPostgres_Category_Delete_InUse(t *testing.T) {
 	f := newPgFixture(t)
-	ctx := tenant.Into(t.Context(), f.tc)
+	ctx := fakes.Owner(t.Context(), f.tc)
 
 	c := pgNew(t, f.tc, "Has Transactions", category.KindExpense)
 	require.NoError(t, f.store.Save(ctx, c))
@@ -290,14 +291,14 @@ func TestPostgres_Category_Delete_InUse(t *testing.T) {
 // TestPostgres_Category_Save_CannotUpsertOntoAnotherOrgsRow runs on the superuser fixture, so only Save's conflict-clause org guard stops the hijack.
 func TestPostgres_Category_Save_CannotUpsertOntoAnotherOrgsRow(t *testing.T) {
 	f := newPgFixture(t)
-	ownerCtx := tenant.Into(t.Context(), f.tc)
+	ownerCtx := fakes.Owner(t.Context(), f.tc)
 
 	c := pgNew(t, f.tc, "Org A Only", category.KindExpense)
 	require.NoError(t, f.store.Save(ownerCtx, c))
 
 	otherUser, otherOrg := seedPgUserAndOrg(t, f.sqlDB, f.prefix)
 	otherProj := seedPgProject(t, f.sqlDB, f.prefix, otherUser, otherOrg, "cash")
-	otherCtx := tenant.Into(t.Context(), tenant.Context{OrgID: otherOrg, ProjectID: otherProj, UserID: otherUser})
+	otherCtx := fakes.Owner(t.Context(), tenant.Context{OrgID: otherOrg, ProjectID: otherProj, UserID: otherUser})
 
 	verbatim := *c
 	verbatim.Name = "Hijacked"
@@ -322,7 +323,7 @@ func TestPostgres_Category_Save_CannotUpsertOntoAnotherOrgsRow(t *testing.T) {
 // TestPostgres_Category_Save_UpdatesOwnRow checks the org guard still lets the owning tenant upsert.
 func TestPostgres_Category_Save_UpdatesOwnRow(t *testing.T) {
 	f := newPgFixture(t)
-	ctx := tenant.Into(t.Context(), f.tc)
+	ctx := fakes.Owner(t.Context(), f.tc)
 
 	c := pgNew(t, f.tc, "Food", category.KindExpense)
 	require.NoError(t, f.store.Save(ctx, c))
@@ -341,8 +342,8 @@ func TestPostgres_Category_OtherOrgIsInvisible(t *testing.T) {
 	a := seedRLSTenant(t, migDB, prefix)
 	b := seedRLSTenant(t, migDB, prefix)
 
-	ownerCtx := tenant.Into(t.Context(), a)
-	otherCtx := tenant.Into(t.Context(), b)
+	ownerCtx := fakes.Owner(t.Context(), a)
+	otherCtx := fakes.Owner(t.Context(), b)
 
 	c, err := category.New(a.OrgID, a.ProjectID, "Org A Only", category.KindExpense, "", "", 0)
 	require.NoError(t, err)

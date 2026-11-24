@@ -13,6 +13,7 @@ import (
 	"altalune.id/yasaku/internal/apperror"
 	"altalune.id/yasaku/internal/limits"
 	"altalune.id/yasaku/internal/platform/audit"
+	"altalune.id/yasaku/internal/platform/authz"
 	"altalune.id/yasaku/internal/platform/tenant"
 )
 
@@ -53,6 +54,12 @@ func (s *Service) Enabled() bool { return s.enabled }
 
 // Send mints an invite, persists it, and emails the raw token; refused with InvitesDisabledError when disabled.
 func (s *Service) Send(ctx context.Context, req SendRequest) (*Invite, error) {
+	if err := authz.Can(ctx, authz.MembersWrite); err != nil {
+		return nil, err
+	}
+	if !authz.Covers(authz.Held(ctx), authz.Builtin(string(req.Role))...) {
+		return nil, &authz.EscalationError{Role: string(req.Role)}
+	}
 	ctx, span := tracer.Start(ctx, "invite.Send")
 	defer span.End()
 	if !s.enabled {
@@ -115,6 +122,9 @@ func (s *Service) ListPending(ctx context.Context) ([]*Invite, error) {
 
 // Revoke deletes a pending invite in the caller's org.
 func (s *Service) Revoke(ctx context.Context, id uuid.UUID) error {
+	if err := authz.Can(ctx, authz.MembersWrite); err != nil {
+		return err
+	}
 	ctx, span := tracer.Start(ctx, "invite.Revoke",
 		trace.WithAttributes(attribute.String("invite.id", id.String())))
 	defer span.End()

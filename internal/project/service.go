@@ -13,6 +13,7 @@ import (
 
 	"altalune.id/yasaku/internal/apperror"
 	"altalune.id/yasaku/internal/limits"
+	"altalune.id/yasaku/internal/platform/authz"
 	"altalune.id/yasaku/internal/platform/tenant"
 	slugs "altalune.id/yasaku/slug"
 )
@@ -20,17 +21,11 @@ import (
 //nolint:gochecknoglobals // OTel tracer is a package-level fixture, not runtime state.
 var tracer trace.Tracer = otel.Tracer("altalune.id/yasaku/internal/project")
 
-// Managers is the role gate project create and rename ask before anything else, for the org they write into.
-type Managers interface {
-	RequireCallerManagerOf(ctx context.Context, orgID uuid.UUID) error
-}
-
 // Service is the projects driving port.
 type Service struct {
 	store      Store
 	log        *slog.Logger
 	unexpected apperror.UnexpectedFunc
-	managers   Managers
 	uow        tenant.UnitOfWork
 	limits     Limiter
 	orgNames   OrgNamer
@@ -56,8 +51,8 @@ func WithLimits(l Limiter, names OrgNamer) Option {
 }
 
 // NewService binds the service to its dependencies.
-func NewService(store Store, log *slog.Logger, unexpected apperror.UnexpectedFunc, managers Managers, uow tenant.UnitOfWork, opts ...Option) *Service {
-	s := &Service{store: store, log: log.With("module", "project"), unexpected: unexpected, managers: managers, uow: uow}
+func NewService(store Store, log *slog.Logger, unexpected apperror.UnexpectedFunc, uow tenant.UnitOfWork, opts ...Option) *Service {
+	s := &Service{store: store, log: log.With("module", "project"), unexpected: unexpected, uow: uow}
 	for _, opt := range opts {
 		opt(s)
 	}
@@ -73,7 +68,10 @@ func (s *Service) Create(ctx context.Context, orgID uuid.UUID, slug, name string
 		))
 	defer span.End()
 
-	if err := s.managers.RequireCallerManagerOf(ctx, orgID); err != nil {
+	if _, err := tenant.From(ctx); err != nil {
+		return nil, err
+	}
+	if err := authz.Can(tenant.WithOrg(ctx, orgID), authz.ProjectsWrite); err != nil {
 		span.RecordError(err)
 		return nil, err
 	}
@@ -248,11 +246,10 @@ func (s *Service) Rename(ctx context.Context, id uuid.UUID, name string) (*Proje
 		trace.WithAttributes(attribute.String("project.id", id.String())))
 	defer span.End()
 
-	tc, err := tenant.From(ctx)
-	if err != nil {
+	if _, err := tenant.From(ctx); err != nil {
 		return nil, err
 	}
-	if err := s.managers.RequireCallerManagerOf(ctx, tc.OrgID); err != nil {
+	if err := authz.Can(ctx, authz.ProjectsWrite); err != nil {
 		span.RecordError(err)
 		return nil, err
 	}

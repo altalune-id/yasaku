@@ -16,6 +16,7 @@ import (
 	"altalune.id/yasaku/internal/platform/events"
 	"altalune.id/yasaku/internal/platform/session"
 	"altalune.id/yasaku/internal/platform/tenant"
+	"altalune.id/yasaku/internal/testutil/fakes"
 	"altalune.id/yasaku/internal/user"
 )
 
@@ -29,7 +30,7 @@ func TestYasakuSurfaces(t *testing.T) {
 		require.NoError(t, err)
 		o, err := srv.Orgs.Create(context.Background(), org.CreateRequest{Slug: "probe-org", Name: "Probe Org", OwnerID: owner.ID})
 		require.NoError(t, err)
-		orgCtx := tenant.Into(context.Background(), tenant.Context{OrgID: o.ID, UserID: owner.ID})
+		orgCtx := fakes.Owner(context.Background(), tenant.Context{OrgID: o.ID, UserID: owner.ID})
 		_, err = srv.Projects.Create(orgCtx, o.ID, "probe-project", "Probe Project")
 		require.NoError(t, err)
 		cookie := probeCookie(t, srv, session.Principal{UserID: owner.ID, ActiveOrgID: o.ID})

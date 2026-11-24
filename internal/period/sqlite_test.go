@@ -102,7 +102,7 @@ func seedPeriod(ctx context.Context, t *testing.T, store period.Store, tc tenant
 
 func TestSQLiteStore_RoundTripsOpenAndClosedPeriods(t *testing.T) {
 	store, tc := newSQLiteStoreForTest(t)
-	ctx := tenant.Into(t.Context(), tc)
+	ctx := fakes.Owner(t.Context(), tc)
 
 	open := seedPeriod(ctx, t, store, tc, civil.Date{Year: 2026, Month: 8, Day: 25}, nil)
 	got, err := store.ByID(ctx, open.ID)
@@ -144,7 +144,7 @@ func TestSQLiteStore_SnapshotStoredBeforeAdjustmentsReadsZero(t *testing.T) {
 	prefix := cfg.DB.TablePrefix
 	tc := seedTenant(t, sqlDB, prefix)
 	store := period.NewStore(db.DBConfig{Driver: db.DriverSQLite, TablePrefix: prefix}, db.Pool{W: sqlDB, R: sqlDB}, nil)
-	ctx := tenant.Into(t.Context(), tc)
+	ctx := fakes.Owner(t.Context(), tc)
 	p := seedPeriod(ctx, t, store, tc, civil.Date{Year: 2026, Month: 8, Day: 25}, &civil.Date{Year: 2026, Month: 9, Day: 24})
 
 	legacy := `{"currency":"IDR","income":9000000,"expense":2500000,"net":6500000,"tx_count":12,"wallets":null,"computed_at":"2026-09-24T17:00:00Z"}`
@@ -161,7 +161,7 @@ func TestSQLiteStore_SnapshotStoredBeforeAdjustmentsReadsZero(t *testing.T) {
 
 func TestSQLiteStore_Current(t *testing.T) {
 	store, tc := newSQLiteStoreForTest(t)
-	ctx := tenant.Into(t.Context(), tc)
+	ctx := fakes.Owner(t.Context(), tc)
 
 	_, err := store.Current(ctx, tc.OrgID, tc.ProjectID)
 	assert.True(t, period.IsNotFoundError(err), "got %T: %v", err, err)
@@ -177,7 +177,7 @@ func TestSQLiteStore_Current(t *testing.T) {
 
 func TestSQLiteStore_SaveRejectsASecondCurrentPeriod(t *testing.T) {
 	store, tc := newSQLiteStoreForTest(t)
-	ctx := tenant.Into(t.Context(), tc)
+	ctx := fakes.Owner(t.Context(), tc)
 
 	seedPeriod(ctx, t, store, tc, civil.Date{Year: 2026, Month: 8, Day: 25}, nil)
 	second, err := period.New(tc.OrgID, tc.ProjectID, civil.Date{Year: 2026, Month: 9, Day: 25}, "")
@@ -189,7 +189,7 @@ func TestSQLiteStore_SaveRejectsASecondCurrentPeriod(t *testing.T) {
 
 func TestSQLiteStore_ContainingBoundaries(t *testing.T) {
 	store, tc := newSQLiteStoreForTest(t)
-	ctx := tenant.Into(t.Context(), tc)
+	ctx := fakes.Owner(t.Context(), tc)
 
 	end := civil.Date{Year: 2026, Month: 9, Day: 24}
 	first := seedPeriod(ctx, t, store, tc, civil.Date{Year: 2026, Month: 8, Day: 25}, &end)
@@ -221,7 +221,7 @@ func TestSQLiteStore_ContainingBoundaries(t *testing.T) {
 
 func TestSQLiteStore_Neighbors(t *testing.T) {
 	store, tc := newSQLiteStoreForTest(t)
-	ctx := tenant.Into(t.Context(), tc)
+	ctx := fakes.Owner(t.Context(), tc)
 
 	e1 := civil.Date{Year: 2026, Month: 9, Day: 24}
 	e2 := civil.Date{Year: 2026, Month: 10, Day: 24}
@@ -254,7 +254,7 @@ func TestSQLiteStore_Neighbors(t *testing.T) {
 
 func TestSQLiteStore_ListOrderAndOpts(t *testing.T) {
 	store, tc := newSQLiteStoreForTest(t)
-	ctx := tenant.Into(t.Context(), tc)
+	ctx := fakes.Owner(t.Context(), tc)
 
 	e1 := civil.Date{Year: 2026, Month: 9, Day: 24}
 	e2 := civil.Date{Year: 2026, Month: 10, Day: 24}
@@ -280,7 +280,7 @@ func TestSQLiteStore_ListOrderAndOpts(t *testing.T) {
 
 func TestSQLiteStore_Closings(t *testing.T) {
 	store, tc := newSQLiteStoreForTest(t)
-	ctx := tenant.Into(t.Context(), tc)
+	ctx := fakes.Owner(t.Context(), tc)
 
 	end := civil.Date{Year: 2026, Month: 9, Day: 24}
 	p := seedPeriod(ctx, t, store, tc, civil.Date{Year: 2026, Month: 8, Day: 25}, &end)
@@ -335,10 +335,8 @@ func newCloseFixture(t *testing.T, wrap func(period.Store) period.Store) (*perio
 		func(ctx context.Context, fn func(ctx context.Context) error) error {
 			return db.RunInTx(ctx, pool, fn)
 		},
-		func() time.Time { return time.Date(2026, 9, 25, 10, 0, 0, 0, loc) },
-		fakes.PermissiveMembers(),
-	)
-	return svc, store, tc, tenant.Into(t.Context(), tc)
+		func() time.Time { return time.Date(2026, 9, 25, 10, 0, 0, 0, loc) })
+	return svc, store, tc, fakes.Owner(t.Context(), tc)
 }
 
 // NOTE: the control for the rollback test below, which would otherwise pass if Close never reached the store at all.

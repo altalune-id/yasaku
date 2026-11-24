@@ -61,7 +61,7 @@ func newOpensheetJS(t *testing.T) *opensheetJS {
 	require.NoError(t, err)
 	o, err := srv.Orgs.BootstrapSingleton(ctx, "js-org", "JS Org", owner.ID)
 	require.NoError(t, err)
-	orgCtx := tenant.Into(ctx, tenant.Context{OrgID: o.ID, UserID: owner.ID})
+	orgCtx := fakes.Owner(ctx, tenant.Context{OrgID: o.ID, UserID: owner.ID})
 	p, err := srv.Projects.Create(orgCtx, o.ID, "js-project", "JS Project")
 	require.NoError(t, err)
 	pctx := session.PrincipalInto(tenant.WithProject(orgCtx, p.ID), session.Principal{UserID: owner.ID, ActiveOrgID: o.ID, ActiveProjectID: p.ID})

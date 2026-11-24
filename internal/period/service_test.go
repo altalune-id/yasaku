@@ -14,8 +14,8 @@ import (
 
 	"altalune.id/yasaku/civil"
 	"altalune.id/yasaku/internal/apperror"
-	"altalune.id/yasaku/internal/org"
 	"altalune.id/yasaku/internal/period"
+	"altalune.id/yasaku/internal/platform/authz"
 	"altalune.id/yasaku/internal/platform/tenant"
 	"altalune.id/yasaku/internal/testutil/fakes"
 	"altalune.id/yasaku/money"
@@ -122,7 +122,7 @@ func newFixture(t *testing.T) *fixture {
 		tc:  tenant.Context{OrgID: uuid.New(), ProjectID: uuid.New(), UserID: uuid.New()},
 		now: time.Date(2026, 9, 15, 10, 0, 0, 0, loc),
 	}
-	f.ctx = tenant.Into(t.Context(), f.tc)
+	f.ctx = fakes.Owner(t.Context(), f.tc)
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	unexpected := apperror.NewReporter(log, false).Unexpected
 	f.snap.hook = func() { f.snapInsideUOW = f.insideUOW }
@@ -137,7 +137,7 @@ func newFixture(t *testing.T) *fixture {
 	}
 	f.members = fakes.NewMembers()
 	f.members.SeatManager(f.tc.OrgID, f.tc.UserID)
-	f.svc = period.NewService(f.store, log, unexpected, f.settings, f.snap, f.snap, uow, func() time.Time { return f.now }, f.members)
+	f.svc = period.NewService(f.store, log, unexpected, f.settings, f.snap, f.snap, uow, func() time.Time { return f.now })
 	return f
 }
 
@@ -652,13 +652,13 @@ func TestByID_RejectsSiblingProject(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, raw, "the fake store must not filter by scope, or this test proves nothing")
 
-	sibling := tenant.Into(t.Context(), tenant.Context{
+	sibling := fakes.Owner(t.Context(), tenant.Context{
 		OrgID: f.tc.OrgID, ProjectID: uuid.New(), UserID: f.tc.UserID,
 	})
 	_, err = f.svc.ByID(sibling, p1.ID)
 	assert.True(t, period.IsNotFoundError(err), "got %T: %v", err, err)
 
-	otherOrg := tenant.Into(t.Context(), tenant.Context{
+	otherOrg := fakes.Owner(t.Context(), tenant.Context{
 		OrgID: uuid.New(), ProjectID: f.tc.ProjectID, UserID: f.tc.UserID,
 	})
 	_, err = f.svc.ByID(otherOrg, p1.ID)
@@ -788,25 +788,24 @@ func TestClose_RecheckesInsideTheUnitOfWork(t *testing.T) {
 }
 
 // SECURITY: closing freezes the totals for everyone in the project, so a plain member is refused before any read or lock.
-func TestCloseAndReopen_OnlyAManager(t *testing.T) {
+func TestCloseAndReopen_NeedPeriodsClose(t *testing.T) {
 	f := newFixture(t)
 	p1, err := f.svc.EnsureCurrent(f.ctx)
 	require.NoError(t, err)
 	member := uuid.New()
-	f.members.SeatMember(f.tc.OrgID, member)
-	mctx := tenant.Into(t.Context(), tenant.Context{OrgID: f.tc.OrgID, ProjectID: f.tc.ProjectID, UserID: member})
+	mctx := fakes.Allow(t.Context(), tenant.Context{OrgID: f.tc.OrgID, ProjectID: f.tc.ProjectID, UserID: member}, authz.Builtin("member")...)
 
 	_, err = f.svc.Close(mctx, p1.ID, date(2026, 9, 14), member)
-	require.True(t, org.IsNotManagerError(err), "got %T: %v", err, err)
+	require.True(t, authz.IsDeniedError(err), "got %T: %v", err, err)
 	_, err = f.svc.Close(mctx, uuid.New(), date(2026, 9, 14), member)
-	require.True(t, org.IsNotManagerError(err), "the gate runs before the period lookup, got %T: %v", err, err)
+	require.True(t, authz.IsDeniedError(err), "the gate runs before the period lookup, got %T: %v", err, err)
 	require.Zero(t, f.uowCalls, "a refused close never opens the unit of work")
 
 	_, err = f.svc.Close(f.ctx, p1.ID, date(2026, 9, 14), f.tc.UserID)
 	require.NoError(t, err)
 
 	_, err = f.svc.Reopen(mctx, p1.ID)
-	require.True(t, org.IsNotManagerError(err), "got %T: %v", err, err)
+	require.True(t, authz.IsDeniedError(err), "got %T: %v", err, err)
 	got, err := f.svc.ByID(f.ctx, p1.ID)
 	require.NoError(t, err)
 	require.True(t, got.IsLocked(), "a refused reopen leaves the period closed")
@@ -880,16 +879,15 @@ func TestSuggestedEnd_MovesToTheLatestEntry(t *testing.T) {
 }
 
 // SECURITY: a period's name is project-wide, so a plain member is refused before the period is read.
-func TestRename_OnlyAManager(t *testing.T) {
+func TestRename_NeedsPeriodsClose(t *testing.T) {
 	f := newFixture(t)
 	p1, err := f.svc.EnsureCurrent(f.ctx)
 	require.NoError(t, err)
 	member := uuid.New()
-	f.members.SeatMember(f.tc.OrgID, member)
-	mctx := tenant.Into(t.Context(), tenant.Context{OrgID: f.tc.OrgID, ProjectID: f.tc.ProjectID, UserID: member})
+	mctx := fakes.Allow(t.Context(), tenant.Context{OrgID: f.tc.OrgID, ProjectID: f.tc.ProjectID, UserID: member}, authz.Builtin("member")...)
 
 	_, err = f.svc.Rename(mctx, p1.ID, "Mine")
-	require.True(t, org.IsNotManagerError(err), "got %T: %v", err, err)
+	require.True(t, authz.IsDeniedError(err), "got %T: %v", err, err)
 	got, err := f.svc.ByID(f.ctx, p1.ID)
 	require.NoError(t, err)
 	assert.Equal(t, p1.Name, got.Name)

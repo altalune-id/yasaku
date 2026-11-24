@@ -9,14 +9,13 @@ import (
 	"altalune.id/yasaku/civil"
 	yasakuv1 "altalune.id/yasaku/gen/go/yasaku/v1"
 	"altalune.id/yasaku/internal/ledger"
-	"altalune.id/yasaku/internal/org"
 	"altalune.id/yasaku/internal/period"
 	"altalune.id/yasaku/internal/project"
 )
 
 // WorkspaceService implements yasaku.v1.WorkspaceService.
 type WorkspaceService struct {
-	orgs     *org.Service
+	sc       Scope
 	projects *project.Service
 	ledgers  *ledger.Service
 	periods  *period.Service
@@ -24,9 +23,9 @@ type WorkspaceService struct {
 }
 
 // NewWorkspaceService binds the handler to its collaborators.
-func NewWorkspaceService(orgs *org.Service, projects *project.Service, ledgers *ledger.Service, periods *period.Service) *WorkspaceService {
+func NewWorkspaceService(sc Scope, projects *project.Service, ledgers *ledger.Service, periods *period.Service) *WorkspaceService {
 	return &WorkspaceService{
-		orgs:     orgs,
+		sc:       sc,
 		projects: projects,
 		ledgers:  ledgers,
 		periods:  periods,
@@ -40,7 +39,7 @@ func (s *WorkspaceService) ListProjects(ctx context.Context, _ *connect.Request[
 	if err != nil {
 		return nil, err
 	}
-	orgs, err := targetOrgs(ctx, s.orgs, p)
+	orgs, err := targetOrgs(ctx, s.sc.Orgs, p)
 	if err != nil {
 		return nil, err
 	}
@@ -68,7 +67,7 @@ func (s *WorkspaceService) ListProjects(ctx context.Context, _ *connect.Request[
 
 // Now reports the project's clock: its timezone, today's civil date and the open period.
 func (s *WorkspaceService) Now(ctx context.Context, req *connect.Request[yasakuv1.NowRequest]) (*connect.Response[yasakuv1.NowResponse], error) {
-	sc, nd, err := scopeToTarget(ctx, s.orgs, s.projects, req.Msg.GetTarget())
+	sc, nd, err := scopeToTarget(ctx, s.sc, s.projects, req.Msg.GetTarget())
 	if err != nil {
 		return nil, err
 	}

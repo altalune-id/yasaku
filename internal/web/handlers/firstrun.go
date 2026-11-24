@@ -13,6 +13,7 @@ import (
 	"altalune.id/yasaku/internal/category"
 	"altalune.id/yasaku/internal/i18n"
 	"altalune.id/yasaku/internal/ledger"
+	"altalune.id/yasaku/internal/platform/authz"
 	"altalune.id/yasaku/internal/project"
 	"altalune.id/yasaku/internal/wallet"
 	"altalune.id/yasaku/internal/web"
@@ -95,7 +96,7 @@ func (h *FirstRunHandler) Get(w http.ResponseWriter, r *http.Request) {
 	}
 	v := h.view(sc, st.Currency)
 	if st.UpdatedAt.IsZero() {
-		if !h.CanManage(sc) {
+		if !holds(sc.req, authz.LedgerSettings) {
 			h.render(w, sc, http.StatusOK, templates.FirstRunView{ProjectSlug: sc.project.Slug, Step: 1, Waiting: true})
 			return
 		}

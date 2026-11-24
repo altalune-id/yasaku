@@ -10,7 +10,6 @@ import (
 
 	"altalune.id/yasaku/civil"
 	yasakuv1 "altalune.id/yasaku/gen/go/yasaku/v1"
-	"altalune.id/yasaku/internal/org"
 	"altalune.id/yasaku/internal/period"
 	"altalune.id/yasaku/internal/project"
 	"altalune.id/yasaku/internal/report"
@@ -19,7 +18,7 @@ import (
 
 // PeriodService implements yasaku.v1.PeriodService.
 type PeriodService struct {
-	orgs     *org.Service
+	sc       Scope
 	projects *project.Service
 	periods  *period.Service
 	reports  *report.Service
@@ -27,9 +26,9 @@ type PeriodService struct {
 }
 
 // NewPeriodService binds the handler to its collaborators.
-func NewPeriodService(orgs *org.Service, projects *project.Service, periods *period.Service, reports *report.Service) *PeriodService {
+func NewPeriodService(sc Scope, projects *project.Service, periods *period.Service, reports *report.Service) *PeriodService {
 	return &PeriodService{
-		orgs:     orgs,
+		sc:       sc,
 		projects: projects,
 		periods:  periods,
 		reports:  reports,
@@ -39,7 +38,7 @@ func NewPeriodService(orgs *org.Service, projects *project.Service, periods *per
 
 // GetCurrentPeriod returns the open period and its running totals; it never creates one.
 func (s *PeriodService) GetCurrentPeriod(ctx context.Context, req *connect.Request[yasakuv1.GetCurrentPeriodRequest]) (*connect.Response[yasakuv1.GetCurrentPeriodResponse], error) {
-	sc, nd, err := scopeToTarget(ctx, s.orgs, s.projects, req.Msg.GetTarget())
+	sc, nd, err := scopeToTarget(ctx, s.sc, s.projects, req.Msg.GetTarget())
 	if err != nil {
 		return nil, err
 	}
@@ -65,7 +64,7 @@ func (s *PeriodService) GetCurrentPeriod(ctx context.Context, req *connect.Reque
 
 // ListPeriods returns the project's periods, newest start first.
 func (s *PeriodService) ListPeriods(ctx context.Context, req *connect.Request[yasakuv1.ListPeriodsRequest]) (*connect.Response[yasakuv1.ListPeriodsResponse], error) {
-	sc, nd, err := scopeToTarget(ctx, s.orgs, s.projects, req.Msg.GetTarget())
+	sc, nd, err := scopeToTarget(ctx, s.sc, s.projects, req.Msg.GetTarget())
 	if err != nil {
 		return nil, err
 	}
@@ -127,7 +126,7 @@ func (s *PeriodService) ClosePeriod(ctx context.Context, req *connect.Request[ya
 
 // ReopenPeriod previews the reopened period, then on confirm unlocks it.
 func (s *PeriodService) ReopenPeriod(ctx context.Context, req *connect.Request[yasakuv1.ReopenPeriodRequest]) (*connect.Response[yasakuv1.ReopenPeriodResponse], error) {
-	sc, nd, err := scopeToTarget(ctx, s.orgs, s.projects, req.Msg.GetTarget())
+	sc, nd, err := scopeToTarget(ctx, s.sc, s.projects, req.Msg.GetTarget())
 	if err != nil {
 		return nil, err
 	}
@@ -156,7 +155,7 @@ func (s *PeriodService) ReopenPeriod(ctx context.Context, req *connect.Request[y
 
 // RenamePeriod replaces the identified period's display name.
 func (s *PeriodService) RenamePeriod(ctx context.Context, req *connect.Request[yasakuv1.RenamePeriodRequest]) (*connect.Response[yasakuv1.RenamePeriodResponse], error) {
-	sc, nd, err := scopeToTarget(ctx, s.orgs, s.projects, req.Msg.GetTarget())
+	sc, nd, err := scopeToTarget(ctx, s.sc, s.projects, req.Msg.GetTarget())
 	if err != nil {
 		return nil, err
 	}
@@ -195,7 +194,7 @@ func (s *PeriodService) reopenTarget(ctx context.Context, q string) (*period.Per
 }
 
 func (s *PeriodService) target(ctx context.Context, t *yasakuv1.Target, periodQ, endRaw string) (targetResult, *period.Period, civil.Date, *yasakuv1.Needs, error) {
-	sc, nd, err := scopeToTarget(ctx, s.orgs, s.projects, t)
+	sc, nd, err := scopeToTarget(ctx, s.sc, s.projects, t)
 	if err != nil || nd != nil {
 		return targetResult{}, nil, civil.Date{}, nd, err
 	}

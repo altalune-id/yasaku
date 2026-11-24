@@ -12,6 +12,7 @@ import (
 
 	"altalune.id/yasaku/internal/apperror"
 	"altalune.id/yasaku/internal/opensheetsync"
+	"altalune.id/yasaku/internal/platform/authz"
 	"altalune.id/yasaku/internal/web"
 	"altalune.id/yasaku/internal/web/templates"
 )
@@ -222,7 +223,7 @@ func (h *OpensheetHandler) opensheetLayout(sc ProjectScope) web.LayoutData {
 //i18n:use opensheet.tab.*
 //i18n:use opensheet.check.*
 func (h *OpensheetHandler) view(sc ProjectScope, form *templates.OpensheetForm) (templates.OpensheetView, error) {
-	v := templates.OpensheetView{ProjectSlug: sc.project.Slug, CanManage: h.CanManage(sc)}
+	v := templates.OpensheetView{ProjectSlug: sc.project.Slug, CanManage: holds(sc.req, authz.LedgerSettings)}
 	for _, tab := range opensheetsync.Contract() {
 		v.Tabs = append(v.Tabs, templates.OpensheetTab{
 			LabelKey: "opensheet.tab." + string(tab.Entity), Slug: tab.DefaultSlug, Columns: tab.Columns, HeaderTSV: tab.HeaderTSV(),

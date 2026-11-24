@@ -13,8 +13,8 @@ import (
 	"altalune.id/yasaku/internal/apperror"
 	"altalune.id/yasaku/internal/limits"
 	"altalune.id/yasaku/internal/platform/audit"
+	"altalune.id/yasaku/internal/platform/authz"
 	"altalune.id/yasaku/internal/platform/capabilities"
-	"altalune.id/yasaku/internal/platform/session"
 	"altalune.id/yasaku/internal/platform/tenant"
 	slugs "altalune.id/yasaku/slug"
 )
@@ -27,6 +27,7 @@ type Service struct {
 	store      Store
 	caps       capabilities.Capabilities
 	counter    Counter
+	perms      Permissions
 	log        *slog.Logger
 	unexpected apperror.UnexpectedFunc
 	uow        tenant.UnitOfWork
@@ -63,6 +64,16 @@ type Limiter interface {
 
 // Option configures a Service.
 type Option func(*Service)
+
+// Permissions resolves what a role holds, for the escalation guard.
+type Permissions interface {
+	PermissionsOf(ctx context.Context, role string, roleID uuid.UUID) ([]authz.Permission, error)
+}
+
+// WithPermissions resolves role permissions through p, custom roles included; without it only built-in roles resolve.
+func WithPermissions(p Permissions) Option {
+	return func(s *Service) { s.perms = p }
+}
 
 // WithLimits holds Create to the creator's org-creation and org-membership limits.
 func WithLimits(l Limiter) Option {
@@ -356,6 +367,9 @@ func (s *Service) List(ctx context.Context, userID uuid.UUID) ([]*Org, error) {
 func (s *Service) Rename(ctx context.Context, id uuid.UUID, name string) (*Org, error) {
 	ctx, span := tracer.Start(ctx, "org.Rename")
 	defer span.End()
+	if err := authz.Can(tenant.WithOrg(ctx, id), authz.MembersWrite); err != nil {
+		return nil, err
+	}
 
 	// SECURITY: the scope must name the org being renamed, not whichever org the caller is active in.
 	// Membership in id is the caller's authorization and is checked before this call.
@@ -416,28 +430,14 @@ func (s *Service) AddMember(ctx context.Context, orgID, userID uuid.UUID, role R
 func (s *Service) RemoveMember(ctx context.Context, orgID, userID uuid.UUID) error {
 	ctx, span := tracer.Start(ctx, "org.RemoveMember")
 	defer span.End()
-
 	// SECURITY: the scope must name orgID, not whichever org the caller is active in.
-	// Membership in orgID is the caller's authorization and is checked before this call.
 	ctx = tenant.WithOrg(ctx, orgID)
-	m, err := s.store.MembershipOf(ctx, orgID, userID)
+	if err := authz.Can(ctx, authz.MembersWrite); err != nil {
+		return err
+	}
+	m, err := s.removable(ctx, orgID, userID)
 	if err != nil {
-		if IsMembershipMissingError(err) || IsNotFoundError(err) {
-			return err
-		}
-		return s.unexpected(ctx, "org.RemoveMember: MembershipOf", fmt.Errorf("org.RemoveMember: MembershipOf: %w", err), "org_id", orgID.String(), "user_id", userID.String())
-	}
-	// SECURITY: refused here rather than in the handler so every transport — web, API, CLI — is gated.
-	tc, tErr := tenant.From(ctx)
-	if tErr != nil {
-		return tErr
-	}
-	actor, aErr := s.store.MembershipOf(ctx, orgID, tc.UserID)
-	if aErr != nil {
-		return aErr
-	}
-	if refusal := RemovalRefusal(orgID, tc.UserID, userID, actor.Role, m.Role, m.System); refusal != nil {
-		return refusal
+		return err
 	}
 	// SECURITY: hooks run before the delete, so a failed revoke leaves the member in place and a retry can finish it.
 	for _, fn := range s.onRemoved {
@@ -450,6 +450,12 @@ func (s *Service) RemoveMember(ctx context.Context, orgID, userID uuid.UUID) err
 		return s.unexpected(ctx, "org.RemoveMember: profile", err, "org_id", orgID.String(), "user_id", userID.String())
 	}
 	return s.uow(ctx, func(ctx context.Context) error {
+		if err := s.store.LockOrg(ctx, orgID); err != nil {
+			return s.unexpected(ctx, "org.RemoveMember: lock", err, "org_id", orgID.String())
+		}
+		if _, err := s.removable(ctx, orgID, userID); err != nil {
+			return err
+		}
 		if err := s.store.RemoveMember(ctx, orgID, userID); err != nil {
 			if IsMembershipMissingError(err) {
 				return err
@@ -459,6 +465,202 @@ func (s *Service) RemoveMember(ctx context.Context, orgID, userID uuid.UUID) err
 		return s.record(ctx, audit.Event{Action: "member.removed", TargetKind: "user", TargetID: userID.String(),
 			Detail: map[string]string{"name": email, "email": email, "role": string(m.Role)}})
 	})
+}
+
+// SECURITY: refused here rather than in the handler so every transport is gated; it runs again under the org lock, so two removals cannot leave the org ownerless.
+func (s *Service) removable(ctx context.Context, orgID, userID uuid.UUID) (*Membership, error) {
+	m, err := s.store.MembershipOf(ctx, orgID, userID)
+	if err != nil {
+		if IsMembershipMissingError(err) || IsNotFoundError(err) {
+			return nil, err
+		}
+		return nil, s.unexpected(ctx, "org.RemoveMember: MembershipOf", err, "org_id", orgID.String(), "user_id", userID.String())
+	}
+	tc, err := tenant.From(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if refusal := RemovalRefusal(orgID, tc.UserID, userID, m.System); refusal != nil {
+		return nil, refusal
+	}
+	covers, err := s.covers(ctx, m.Role)
+	if err != nil {
+		return nil, err
+	}
+	if !covers {
+		return nil, &authz.EscalationError{Role: string(m.Role), Op: authz.EscalationRemove}
+	}
+	if m.Role == RoleOwner {
+		if err := s.requireAnotherOwner(ctx, orgID, userID); err != nil {
+			return nil, err
+		}
+	}
+	return m, nil
+}
+
+func (s *Service) covers(ctx context.Context, roles ...Role) (bool, error) {
+	held := authz.Held(ctx)
+	for _, r := range roles {
+		perms, err := s.permissionsOf(ctx, r)
+		if err != nil {
+			return false, err
+		}
+		if !authz.Covers(held, perms...) {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
+func (s *Service) permissionsOf(ctx context.Context, r Role) ([]authz.Permission, error) {
+	if s.perms == nil {
+		return authz.Builtin(string(r)), nil
+	}
+	perms, err := s.perms.PermissionsOf(ctx, string(r), uuid.Nil)
+	if err != nil {
+		return nil, s.unexpected(ctx, "org: role permissions", err, "role", string(r))
+	}
+	return perms, nil
+}
+
+// SetRole gives userID a built-in role in orgID. SECURITY: the caller's held set must cover the target's current permissions and the new role's, so nobody grants or strips more than they hold, and only an owner makes an owner.
+func (s *Service) SetRole(ctx context.Context, orgID, userID uuid.UUID, role string, roleID uuid.UUID) error {
+	ctx, span := tracer.Start(ctx, "org.SetRole")
+	defer span.End()
+	ctx = tenant.WithOrg(ctx, orgID)
+	if err := authz.Can(ctx, authz.MembersWrite); err != nil {
+		return err
+	}
+	next := Role(role)
+	if !next.IsValid() || roleID != uuid.Nil {
+		return &InvalidRoleError{Role: role}
+	}
+	m, err := s.settable(ctx, orgID, userID, next)
+	if err != nil || m.Role == next {
+		return err
+	}
+	email, err := s.memberEmail(ctx, orgID, userID)
+	if err != nil {
+		return s.unexpected(ctx, "org.SetRole: profile", err, "org_id", orgID.String(), "user_id", userID.String())
+	}
+	return s.uow(ctx, func(ctx context.Context) error {
+		if err := s.store.LockOrg(ctx, orgID); err != nil {
+			return s.unexpected(ctx, "org.SetRole: lock", err, "org_id", orgID.String())
+		}
+		m, err := s.settable(ctx, orgID, userID, next)
+		if err != nil || m.Role == next {
+			return err
+		}
+		updated := *m
+		updated.Role = next
+		if err := s.store.SaveMembership(ctx, &updated); err != nil {
+			return s.unexpected(ctx, "org.SetRole: save", err, "org_id", orgID.String(), "user_id", userID.String())
+		}
+		return s.record(ctx, audit.Event{Action: "member.role_changed", TargetKind: "user", TargetID: userID.String(),
+			Detail: map[string]string{"name": email, "email": email, "from_role": string(m.Role), "to_role": role}})
+	})
+}
+
+// SECURITY: runs before the unit of work and again under the org lock, so a concurrent change cannot slip past the cover or last-owner check.
+func (s *Service) settable(ctx context.Context, orgID, userID uuid.UUID, next Role) (*Membership, error) {
+	m, err := s.store.MembershipOf(ctx, orgID, userID)
+	if err != nil {
+		if IsMembershipMissingError(err) || IsNotFoundError(err) {
+			return nil, err
+		}
+		return nil, s.unexpected(ctx, "org.SetRole: MembershipOf", err, "org_id", orgID.String(), "user_id", userID.String())
+	}
+	if m.System {
+		return nil, &SystemProtectedError{Op: "set_role", OrgID: orgID.String(), UserID: userID.String(), Resource: "membership"}
+	}
+	covers, err := s.covers(ctx, m.Role, next)
+	if err != nil {
+		return nil, err
+	}
+	if !covers {
+		return nil, &authz.EscalationError{Role: string(next)}
+	}
+	if m.Role == RoleOwner && next != RoleOwner {
+		if err := s.requireAnotherOwner(ctx, orgID, userID); err != nil {
+			return nil, err
+		}
+	}
+	return m, nil
+}
+
+// MemberControl is what the caller may do to one member, so every surface offers only what would succeed.
+type MemberControl struct {
+	Member       *MemberProfile
+	Removable    bool
+	RoleEditable bool
+	CanMakeOwner bool
+	LastOwner    bool
+}
+
+// MemberControls lists orgID's members with what the caller on ctx may change, plus the roles a role picker may offer; owner is never among them, it is granted on its own.
+func (s *Service) MemberControls(ctx context.Context, orgID uuid.UUID) ([]MemberControl, []Role, error) {
+	ctx = tenant.WithOrg(ctx, orgID)
+	tc, err := tenant.From(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	profiles, err := s.ListMemberProfiles(ctx, orgID)
+	if err != nil {
+		return nil, nil, err
+	}
+	manage := authz.Can(ctx, authz.MembersWrite) == nil
+	owners := 0
+	for _, m := range profiles {
+		if m.Role == RoleOwner && !m.System {
+			owners++
+		}
+	}
+	var grantable []Role
+	makeOwner := false
+	if manage {
+		for _, r := range []Role{RoleAdmin, RoleMember} {
+			if ok, err := s.covers(ctx, r); err != nil {
+				return nil, nil, err
+			} else if ok {
+				grantable = append(grantable, r)
+			}
+		}
+		if makeOwner, err = s.covers(ctx, RoleOwner); err != nil {
+			return nil, nil, err
+		}
+	}
+	out := make([]MemberControl, 0, len(profiles))
+	for _, m := range profiles {
+		c := MemberControl{Member: m, LastOwner: m.Role == RoleOwner && !m.System && owners == 1}
+		if manage && !m.System {
+			editable, err := s.covers(ctx, m.Role)
+			if err != nil {
+				return nil, nil, err
+			}
+			c.RoleEditable = editable
+			c.Removable = editable && m.UserID != tc.UserID && !c.LastOwner
+			c.CanMakeOwner = editable && makeOwner && m.Role != RoleOwner
+		}
+		out = append(out, c)
+	}
+	return out, grantable, nil
+}
+
+func (s *Service) requireAnotherOwner(ctx context.Context, orgID, userID uuid.UUID) error {
+	members, err := s.store.ListMembers(ctx, orgID)
+	if err != nil {
+		return s.unexpected(ctx, "org: count owners", err, "org_id", orgID.String())
+	}
+	for _, m := range members {
+		if m.Role == RoleOwner && m.UserID != userID {
+			return nil
+		}
+	}
+	name := ""
+	if o, err := s.store.ByID(ctx, orgID); err == nil {
+		name = o.Name
+	}
+	return &LastOwnerError{OrgID: orgID.String(), Org: name}
 }
 
 func (s *Service) memberEmail(ctx context.Context, orgID, userID uuid.UUID) (string, error) {
@@ -530,54 +732,6 @@ func (s *Service) MembershipOf(ctx context.Context, orgID, userID uuid.UUID) (*M
 	return m, nil
 }
 
-// IsManager reports whether userID holds an owner or admin membership in orgID. SECURITY: ctx must already carry the tenant scope.
-func (s *Service) IsManager(ctx context.Context, orgID, userID uuid.UUID) (bool, error) {
-	ctx, span := tracer.Start(ctx, "org.IsManager")
-	defer span.End()
-	if userID == uuid.Nil {
-		return false, nil
-	}
-	m, err := s.MembershipOf(ctx, orgID, userID)
-	if IsMembershipMissingError(err) || IsNotFoundError(err) {
-		return false, nil
-	}
-	if err != nil {
-		return false, err
-	}
-	return m.Role.CanManage(), nil
-}
-
-// RequireManager refuses with *NotManagerError unless userID is an owner or admin of orgID; a machine principal is always refused. SECURITY: ctx must already carry the tenant scope.
-func (s *Service) RequireManager(ctx context.Context, orgID, userID uuid.UUID) error {
-	ctx, span := tracer.Start(ctx, "org.RequireManager")
-	defer span.End()
-	ok, err := s.IsManager(ctx, orgID, userID)
-	if err != nil {
-		return err
-	}
-	if !ok {
-		return &NotManagerError{OrgID: orgID.String(), UserID: userID.String()}
-	}
-	return nil
-}
-
-// RequireCallerManager refuses with *NotManagerError unless the caller on ctx may manage its org, by the rule in ManagerCaller. SECURITY: ctx must already carry the tenant scope.
-func (s *Service) RequireCallerManager(ctx context.Context) error {
-	orgID, userID, managerKey, err := ManagerCaller(ctx)
-	if err != nil || managerKey {
-		return err
-	}
-	return s.RequireManager(ctx, orgID, userID)
-}
-
-// RequireCallerManagerOf is RequireCallerManager for a write into orgID, refusing any orgID other than the tenant org on ctx.
-func (s *Service) RequireCallerManagerOf(ctx context.Context, orgID uuid.UUID) error {
-	if err := RequireTenantOrg(ctx, orgID); err != nil {
-		return err
-	}
-	return s.RequireCallerManager(ctx)
-}
-
 // RequireTenantOrg refuses with *OrgMismatchError when orgID is not the tenant org on ctx.
 func RequireTenantOrg(ctx context.Context, orgID uuid.UUID) error {
 	tc, err := tenant.From(ctx)
@@ -588,26 +742,6 @@ func RequireTenantOrg(ctx context.Context, orgID uuid.UUID) error {
 		return &OrgMismatchError{OrgID: orgID.String()}
 	}
 	return nil
-}
-
-// ManagerCaller resolves the caller on ctx for a manager-only write: a person or a personal key's owner whose role decides, or an org or project key that passes since only a manager mints one. SECURITY: any other caller is refused, so an unknown key kind fails closed.
-func ManagerCaller(ctx context.Context) (orgID, userID uuid.UUID, managerKey bool, err error) { //nolint:nonamedreturns // four results read better named
-	tc, err := tenant.From(ctx)
-	if err != nil {
-		return uuid.Nil, uuid.Nil, false, err
-	}
-	if tc.UserID != uuid.Nil {
-		return tc.OrgID, tc.UserID, false, nil
-	}
-	p := session.PrincipalFrom(ctx)
-	switch {
-	case p.KeyID == uuid.Nil:
-	case p.KeyKind == session.KeyKindOrg, p.KeyKind == session.KeyKindProject:
-		return tc.OrgID, uuid.Nil, true, nil
-	case p.KeyKind == session.KeyKindPersonal && p.KeyOwnerID != uuid.Nil:
-		return tc.OrgID, p.KeyOwnerID, false, nil
-	}
-	return uuid.Nil, uuid.Nil, false, &NotManagerError{OrgID: tc.OrgID.String()}
 }
 
 // RequireMember refuses with *MembershipMissingError unless userID holds any membership in orgID. SECURITY: ctx must already carry the tenant scope.

@@ -27,6 +27,7 @@ import (
 	"altalune.id/yasaku/internal/platform/tenant"
 	"altalune.id/yasaku/internal/platform/tokens"
 	"altalune.id/yasaku/internal/project"
+	"altalune.id/yasaku/internal/testutil/fakes"
 	"altalune.id/yasaku/internal/user"
 	"altalune.id/yasaku/internal/web"
 	"altalune.id/yasaku/logger"
@@ -94,7 +95,7 @@ func newYasakuHarnessOn(t *testing.T, cfg *config.Config) *yasakuHarness {
 	o, err := srv.Orgs.Create(ctx, org.CreateRequest{Slug: "acme", Name: "Acme", OwnerID: u.ID})
 	require.NoError(t, err)
 
-	orgCtx := tenant.Into(ctx, tenant.Context{OrgID: o.ID, UserID: u.ID})
+	orgCtx := fakes.Owner(ctx, tenant.Context{OrgID: o.ID, UserID: u.ID})
 	p, err := srv.Projects.Create(orgCtx, o.ID, "main", "Main")
 	require.NoError(t, err)
 
@@ -222,7 +223,7 @@ func TestScope_TwoProjectsNeedProject(t *testing.T) {
 	h := newYasakuHarness(t)
 	ctx := t.Context()
 
-	orgCtx := tenant.Into(ctx, tenant.Context{OrgID: h.org.ID, UserID: h.user.ID})
+	orgCtx := fakes.Owner(ctx, tenant.Context{OrgID: h.org.ID, UserID: h.user.ID})
 	_, err := h.boot.Projects.Create(orgCtx, h.org.ID, "side", "Side")
 	require.NoError(t, err)
 

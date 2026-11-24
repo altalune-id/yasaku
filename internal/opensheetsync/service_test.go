@@ -16,7 +16,7 @@ import (
 	"altalune.id/yasaku/civil"
 	"altalune.id/yasaku/internal/apperror"
 	"altalune.id/yasaku/internal/opensheetsync"
-	"altalune.id/yasaku/internal/org"
+	"altalune.id/yasaku/internal/platform/authz"
 	"altalune.id/yasaku/internal/platform/db"
 	"altalune.id/yasaku/internal/platform/queue"
 	"altalune.id/yasaku/internal/platform/sealer"
@@ -28,12 +28,11 @@ const goodKey = "osk_live_0123456789abcd"
 
 type serviceEnv struct {
 	*mirrorEnv
-	sheets  *fakes.Opensheet
-	members *fakes.Members
-	sealer  sealer.Sealer
-	logs    *lockedBuffer
-	source  opensheetsync.Source
-	svc     *opensheetsync.Service
+	sheets *fakes.Opensheet
+	sealer sealer.Sealer
+	logs   *lockedBuffer
+	source opensheetsync.Source
+	svc    *opensheetsync.Service
 }
 
 type lockedBuffer struct {
@@ -72,10 +71,9 @@ func newServiceEnv(t *testing.T) *serviceEnv {
 	t.Helper()
 	m := newMirrorEnv(t)
 	e := &serviceEnv{
-		mirrorEnv: m, sheets: fakes.NewOpensheet(t, "acme", "home", goodKey), members: fakes.NewMembers(),
+		mirrorEnv: m, sheets: fakes.NewOpensheet(t, "acme", "home", goodKey),
 		sealer: newSealer(t), logs: &lockedBuffer{},
 	}
-	e.members.SeatManager(m.tc.OrgID, m.tc.UserID)
 	e.svc = e.service(e.sealer, m.mirror)
 	return e
 }
@@ -88,7 +86,7 @@ func (e *serviceEnv) serviceWith(store opensheetsync.Store, sl sealer.Sealer, mi
 	log := slog.New(slog.NewTextHandler(e.logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	return opensheetsync.NewService(store, log, apperror.NewReporter(log, false).Unexpected,
 		opensheetsync.ServiceDeps{
-			Mirror: mirror, Members: e.members, Sealer: sl, Source: e.source,
+			Mirror: mirror, Sealer: sl, Source: e.source,
 			Endpoint:   opensheetsync.Endpoint{BaseURL: e.sheets.URL(), AllowPrivateHosts: true, Timeout: 2 * time.Second},
 			UnitOfWork: fakes.UnitOfWork, Now: func() time.Time { return e.now },
 		})
@@ -98,23 +96,22 @@ func settings(key string) opensheetsync.Settings {
 	return opensheetsync.Settings{OSOrg: "acme", OSProject: "home", APIKey: key, Sheets: opensheetsync.DefaultSheetSlugs()}
 }
 
-func TestService_EveryChangeNeedsAnOwnerOrAdmin(t *testing.T) {
+func TestService_EveryChangeNeedsLedgerSettings(t *testing.T) {
 	e := newServiceEnv(t)
 	addContractSheets(e.sheets, true)
 	plain := uuid.New()
-	e.members.SeatMember(e.tc.OrgID, plain)
-	member := tenant.Into(context.Background(), tenant.Context{OrgID: e.tc.OrgID, ProjectID: e.tc.ProjectID, UserID: plain})
-	key := tenant.Into(context.Background(), tenant.Context{OrgID: e.tc.OrgID, ProjectID: e.tc.ProjectID})
-	for name, ctx := range map[string]context.Context{"plain member": member, "API key principal": key} {
+	member := fakes.Allow(context.Background(), tenant.Context{OrgID: e.tc.OrgID, ProjectID: e.tc.ProjectID, UserID: plain}, authz.Builtin("member")...)
+	key := fakes.Allow(context.Background(), tenant.Context{OrgID: e.tc.OrgID, ProjectID: e.tc.ProjectID}, authz.WalletsRead, authz.WalletsWrite)
+	for name, ctx := range map[string]context.Context{"plain member": member, "key without ledger:settings": key} {
 		_, err := e.svc.Test(ctx, settings(goodKey))
-		require.True(t, org.IsNotManagerError(err), "%s Test: %v", name, err)
+		require.True(t, authz.IsDeniedError(err), "%s Test: %v", name, err)
 		_, _, err = e.svc.Save(ctx, settings(goodKey))
-		require.True(t, org.IsNotManagerError(err), name)
+		require.True(t, authz.IsDeniedError(err), name)
 		_, err = e.svc.SetEnabled(ctx, true)
-		require.True(t, org.IsNotManagerError(err), name)
+		require.True(t, authz.IsDeniedError(err), name)
 		_, err = e.svc.SyncNow(ctx)
-		require.True(t, org.IsNotManagerError(err), name)
-		require.True(t, org.IsNotManagerError(e.svc.Delete(ctx)), name)
+		require.True(t, authz.IsDeniedError(err), name)
+		require.True(t, authz.IsDeniedError(e.svc.Delete(ctx)), name)
 	}
 	require.Zero(t, e.sheets.CountRequests("GET", "yasaku-transactions"), "a refused caller never reaches opensheet")
 	st, err := e.svc.Status(member)
@@ -461,7 +458,7 @@ func TestService_AClientThatCannotBeBuiltIsReportedWithItsTenant(t *testing.T) {
 	addContractSheets(e.sheets, true)
 	log := slog.New(slog.NewTextHandler(e.logs, nil))
 	svc := opensheetsync.NewService(e.store, log, apperror.NewReporter(log, false).Unexpected, opensheetsync.ServiceDeps{
-		Mirror: e.mirror, Members: e.members, Sealer: e.sealer,
+		Mirror: e.mirror, Sealer: e.sealer,
 		Endpoint: opensheetsync.Endpoint{BaseURL: e.sheets.URL()}, UnitOfWork: fakes.UnitOfWork,
 	})
 	_, err := svc.Test(e.ctx, settings(goodKey))

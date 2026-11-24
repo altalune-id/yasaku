@@ -8,6 +8,7 @@ import (
 
 	"altalune.id/yasaku/internal/apperror"
 	"altalune.id/yasaku/internal/ledger"
+	"altalune.id/yasaku/internal/platform/authz"
 	"altalune.id/yasaku/internal/project"
 	"altalune.id/yasaku/internal/web"
 	"altalune.id/yasaku/internal/web/templates"
@@ -68,7 +69,7 @@ func (h *SettingsHandler) GetSettings(w http.ResponseWriter, r *http.Request) {
 		h.ErrorPage(w, sc.req, http.StatusInternalServerError, pageTitle(sc.req, "error_title.load_failed"), "Could not load project settings.", err)
 		return
 	}
-	v := h.view(sc, h.CanManage(sc))
+	v := h.view(sc, holds(sc.req, authz.LedgerSettings))
 	v.Timezone, v.Currency, v.PeriodStartDay = st.Timezone, string(st.Currency), st.PeriodStartDay
 	v.NameSaved = sc.req.URL.Query().Get("saved") == "name"
 	Render(w, sc.req, templates.SettingsLayout(h.layout(sc), v))
@@ -123,7 +124,7 @@ func (h *SettingsHandler) PostSettings(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if err := h.Orgs.RequireCallerManager(sc.req.Context()); err != nil {
+	if err := authz.Can(sc.req.Context(), authz.LedgerSettings); err != nil {
 		if !h.refuseNotManager(w, sc.req, err, "settings.ledger_member", settingsLedgerMember) {
 			h.LogErr("web settings: role", err)
 			h.ErrorPage(w, sc.req, http.StatusInternalServerError, pageTitle(sc.req, "error_title.save_failed"), "Could not save project settings.", err)

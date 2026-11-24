@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"sync"
 	"testing"
 	"time"
 
@@ -22,6 +23,7 @@ import (
 	"altalune.id/yasaku/internal/platform/config"
 	"altalune.id/yasaku/internal/platform/db"
 	"altalune.id/yasaku/internal/platform/tenant"
+	"altalune.id/yasaku/internal/testutil/fakes"
 	"altalune.id/yasaku/internal/testutil/pgtest"
 	"altalune.id/yasaku/schema"
 )
@@ -60,7 +62,7 @@ func newPostgresStoreForTest(t *testing.T) (store org.Store, tc tenant.Context, 
 func scopedTo(t *testing.T, tc tenant.Context, orgID uuid.UUID) context.Context {
 	t.Helper()
 	tc.OrgID = orgID
-	return tenant.Into(t.Context(), tc)
+	return fakes.Owner(t.Context(), tc)
 }
 
 func TestPostgres_SaveAndLookup(t *testing.T) {
@@ -226,14 +228,160 @@ func TestPostgres_IsStaff_UsesTheUnitOfWorkConnection(t *testing.T) {
 	sys, err := org.NewOrg("system", "System", creator)
 	require.NoError(t, err)
 	sys.System = true
-	require.NoError(t, store.Save(tenant.Into(t.Context(), tenant.Context{OrgID: sys.ID}), sys))
+	require.NoError(t, store.Save(fakes.Owner(t.Context(), tenant.Context{OrgID: sys.ID}), sys))
 
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
-	ctx = tenant.Into(ctx, tenant.Context{OrgID: uuid.New(), UserID: uuid.New()})
+	ctx = fakes.Owner(ctx, tenant.Context{OrgID: uuid.New(), UserID: uuid.New()})
 	err = tenant.NewUnitOfWork(dbCfg, pool, pc)(ctx, func(ctx context.Context) error {
 		_, err := store.IsStaff(ctx, uuid.New())
 		return err
 	})
 	require.NoError(t, err, "with one pooled connection held by the unit of work, a second connection never comes")
+}
+
+type pausingStore struct {
+	org.Store
+	once    sync.Once
+	entered chan struct{}
+	release chan struct{}
+}
+
+func (p *pausingStore) SaveMembership(ctx context.Context, m *org.Membership) error {
+	p.once.Do(func() {
+		close(p.entered)
+		<-p.release
+	})
+	return p.Store.SaveMembership(ctx, m)
+}
+
+type pausingRemoveStore struct {
+	org.Store
+	once    sync.Once
+	entered chan struct{}
+	release chan struct{}
+}
+
+func (p *pausingRemoveStore) RemoveMember(ctx context.Context, orgID, userID uuid.UUID) error {
+	p.once.Do(func() {
+		close(p.entered)
+		<-p.release
+	})
+	return p.Store.RemoveMember(ctx, orgID, userID)
+}
+
+// SECURITY: two owners removing each other at once must leave one owner; the second waits on the org row and then sees the first's removal.
+func TestRemoveMember_ConcurrentRemovalsKeepAnOwner(t *testing.T) {
+	h := pgtest.New(t)
+	sqlDB := h.OpenDB(t)
+	cfg := config.Defaults()
+	cfg.DB.Driver = "postgres"
+	cfg.DB.DSN = h.DSN
+	cfg.DB.Schema = h.Schema
+	cfg.DB.AllowBypassRLS = true
+	require.NoError(t, schema.MigrateUp(t.Context(), sqlDB, cfg))
+	dbCfg := db.DBConfig{Driver: db.DriverPostgres, Schema: h.Schema, TablePrefix: cfg.DB.TablePrefix}
+	pool := db.Pool{W: sqlDB, R: sqlDB}
+	pc := tenant.NewPgConn(sqlDB)
+	store := org.NewStore(dbCfg, pool, pc)
+	uow := tenant.NewUnitOfWork(dbCfg, pool, pc)
+	unexpected := func(_ context.Context, msg string, cause error, _ ...any) *apperror.AppError {
+		return apperror.New("yasaku.unexpected", msg, codes.Internal, &apperrorv1.ErrorDetail{Code: "yasaku.unexpected"}).WithCause(cause)
+	}
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	a, b := uuid.New(), uuid.New()
+	for _, id := range []uuid.UUID{a, b} {
+		_, err := sqlDB.ExecContext(t.Context(),
+			"INSERT INTO "+cfg.DB.TablePrefix+"users (id, email, name, avatar_url, is_admin, created_at, updated_at) VALUES ($1, $2, '', '', false, now(), now())",
+			id, id.String()+"@x.co")
+		require.NoError(t, err)
+	}
+	plain := org.NewService(store, capabilities.Capabilities{OrgCreation: true}, log, unexpected, uow)
+	o, err := plain.Create(t.Context(), org.CreateRequest{Slug: "acme", Name: "Acme", OwnerID: a})
+	require.NoError(t, err)
+	orgCtx := tenant.Into(t.Context(), tenant.Context{OrgID: o.ID})
+	require.NoError(t, store.SaveMembership(orgCtx, &org.Membership{OrgID: o.ID, UserID: b, Role: org.RoleOwner}))
+
+	paused := &pausingRemoveStore{Store: store, entered: make(chan struct{}), release: make(chan struct{})}
+	first := org.NewService(paused, capabilities.Capabilities{}, log, unexpected, uow)
+	as := func(id uuid.UUID) context.Context {
+		return fakes.Owner(t.Context(), tenant.Context{OrgID: o.ID, UserID: id})
+	}
+
+	firstErr := make(chan error, 1)
+	go func() { firstErr <- first.RemoveMember(as(a), o.ID, b) }()
+	<-paused.entered
+	secondErr := make(chan error, 1)
+	go func() { secondErr <- plain.RemoveMember(as(b), o.ID, a) }()
+	select {
+	case err := <-secondErr:
+		t.Fatalf("the second removal must wait on the org row while the first holds it, returned %v", err)
+	case <-time.After(300 * time.Millisecond):
+	}
+	close(paused.release)
+	require.NoError(t, <-firstErr)
+	err = <-secondErr
+	require.True(t, org.IsLastOwnerError(err), "the second removal sees the first and refuses, got %T: %v", err, err)
+	m, err := store.MembershipOf(orgCtx, o.ID, a)
+	require.NoError(t, err)
+	require.Equal(t, org.RoleOwner, m.Role, "one owner is left")
+}
+
+// SECURITY: two owners stepping down at once must leave one owner; the second waits on the org row and then sees the first's demotion.
+func TestSetRole_ConcurrentDemotionsKeepAnOwner(t *testing.T) {
+	h := pgtest.New(t)
+	sqlDB := h.OpenDB(t)
+	cfg := config.Defaults()
+	cfg.DB.Driver = "postgres"
+	cfg.DB.DSN = h.DSN
+	cfg.DB.Schema = h.Schema
+	cfg.DB.AllowBypassRLS = true
+	require.NoError(t, schema.MigrateUp(t.Context(), sqlDB, cfg))
+	dbCfg := db.DBConfig{Driver: db.DriverPostgres, Schema: h.Schema, TablePrefix: cfg.DB.TablePrefix}
+	pool := db.Pool{W: sqlDB, R: sqlDB}
+	pc := tenant.NewPgConn(sqlDB)
+	store := org.NewStore(dbCfg, pool, pc)
+	uow := tenant.NewUnitOfWork(dbCfg, pool, pc)
+	unexpected := func(_ context.Context, msg string, cause error, _ ...any) *apperror.AppError {
+		return apperror.New("yasaku.unexpected", msg, codes.Internal, &apperrorv1.ErrorDetail{Code: "yasaku.unexpected"}).WithCause(cause)
+	}
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	a, b := uuid.New(), uuid.New()
+	for _, id := range []uuid.UUID{a, b} {
+		_, err := sqlDB.ExecContext(t.Context(),
+			"INSERT INTO "+cfg.DB.TablePrefix+"users (id, email, name, avatar_url, is_admin, created_at, updated_at) VALUES ($1, $2, '', '', false, now(), now())",
+			id, id.String()+"@x.co")
+		require.NoError(t, err)
+	}
+	plain := org.NewService(store, capabilities.Capabilities{OrgCreation: true}, log, unexpected, uow)
+	o, err := plain.Create(t.Context(), org.CreateRequest{Slug: "acme", Name: "Acme", OwnerID: a})
+	require.NoError(t, err)
+	orgCtx := tenant.Into(t.Context(), tenant.Context{OrgID: o.ID})
+	require.NoError(t, store.SaveMembership(orgCtx, &org.Membership{OrgID: o.ID, UserID: b, Role: org.RoleOwner}))
+
+	paused := &pausingStore{Store: store, entered: make(chan struct{}), release: make(chan struct{})}
+	first := org.NewService(paused, capabilities.Capabilities{}, log, unexpected, uow)
+	as := func(id uuid.UUID) context.Context {
+		return fakes.Owner(t.Context(), tenant.Context{OrgID: o.ID, UserID: id})
+	}
+
+	firstErr := make(chan error, 1)
+	go func() { firstErr <- first.SetRole(as(a), o.ID, a, string(org.RoleAdmin), uuid.Nil) }()
+	<-paused.entered
+	secondErr := make(chan error, 1)
+	go func() { secondErr <- plain.SetRole(as(b), o.ID, b, string(org.RoleAdmin), uuid.Nil) }()
+	select {
+	case err := <-secondErr:
+		t.Fatalf("the second demotion must wait on the org row while the first holds it, returned %v", err)
+	case <-time.After(300 * time.Millisecond):
+	}
+	close(paused.release)
+	require.NoError(t, <-firstErr)
+	err = <-secondErr
+	require.True(t, org.IsLastOwnerError(err), "the second demotion sees the first and refuses, got %T: %v", err, err)
+	m, err := store.MembershipOf(orgCtx, o.ID, b)
+	require.NoError(t, err)
+	require.Equal(t, org.RoleOwner, m.Role, "one owner is left")
 }

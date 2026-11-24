@@ -23,7 +23,6 @@ import (
 	"altalune.id/yasaku/internal/apperror"
 	"altalune.id/yasaku/internal/opensheetsync"
 	"altalune.id/yasaku/internal/platform/queue"
-	"altalune.id/yasaku/internal/platform/tenant"
 	"altalune.id/yasaku/internal/testutil/fakes"
 	"altalune.id/yasaku/money"
 	"altalune.id/yasaku/opensheet"
@@ -600,7 +599,7 @@ func TestConsumer_MapsFailuresToPermanentOrRetry(t *testing.T) {
 	err := h.Handle(e.ctx, msg(opensheetsync.SyncPayload{ProjectID: e.tc.ProjectID, Refs: []opensheetsync.SyncPayloadRef{{Entity: "transaction", ID: r.ID}}}))
 	require.Error(t, err)
 	require.False(t, queue.IsPermanentError(err), "a 5xx is retried")
-	require.NoError(t, h.Handle(tenant.Into(context.Background(), e.tc), msg(opensheetsync.SyncPayload{ProjectID: e.tc.ProjectID,
+	require.NoError(t, h.Handle(fakes.Owner(context.Background(), e.tc), msg(opensheetsync.SyncPayload{ProjectID: e.tc.ProjectID,
 		Refs: []opensheetsync.SyncPayloadRef{{Entity: "transaction", ID: r.ID}}})))
 }
 

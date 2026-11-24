@@ -12,7 +12,6 @@ import (
 	yasakuv1 "altalune.id/yasaku/gen/go/yasaku/v1"
 	"altalune.id/yasaku/internal/category"
 	"altalune.id/yasaku/internal/i18n"
-	"altalune.id/yasaku/internal/org"
 	"altalune.id/yasaku/internal/project"
 )
 
@@ -21,19 +20,19 @@ var hexColor = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
 
 // CategoryService implements yasaku.v1.CategoryService.
 type CategoryService struct {
-	orgs     *org.Service
+	sc       Scope
 	projects *project.Service
 	cats     *category.Service
 }
 
 // NewCategoryService binds the handler to its collaborators.
-func NewCategoryService(orgs *org.Service, projects *project.Service, cats *category.Service) *CategoryService {
-	return &CategoryService{orgs: orgs, projects: projects, cats: cats}
+func NewCategoryService(sc Scope, projects *project.Service, cats *category.Service) *CategoryService {
+	return &CategoryService{sc: sc, projects: projects, cats: cats}
 }
 
 // ListCategories returns the project's categories, optionally filtered by kind.
 func (s *CategoryService) ListCategories(ctx context.Context, req *connect.Request[yasakuv1.ListCategoriesRequest]) (*connect.Response[yasakuv1.ListCategoriesResponse], error) {
-	sc, nd, err := scopeToTarget(ctx, s.orgs, s.projects, req.Msg.GetTarget())
+	sc, nd, err := scopeToTarget(ctx, s.sc, s.projects, req.Msg.GetTarget())
 	if err != nil {
 		return nil, err
 	}
@@ -61,7 +60,7 @@ func (s *CategoryService) ListCategories(ctx context.Context, req *connect.Reque
 
 // CreateCategory previews, then on confirm persists, one category.
 func (s *CategoryService) CreateCategory(ctx context.Context, req *connect.Request[yasakuv1.CreateCategoryRequest]) (*connect.Response[yasakuv1.CreateCategoryResponse], error) {
-	sc, nd, err := scopeToTarget(ctx, s.orgs, s.projects, req.Msg.GetTarget())
+	sc, nd, err := scopeToTarget(ctx, s.sc, s.projects, req.Msg.GetTarget())
 	if err != nil {
 		return nil, err
 	}
@@ -182,7 +181,7 @@ func (s *CategoryService) DeleteCategory(ctx context.Context, req *connect.Reque
 
 // SeedDefaultCategories previews, then on confirm inserts, the default category set.
 func (s *CategoryService) SeedDefaultCategories(ctx context.Context, req *connect.Request[yasakuv1.SeedDefaultCategoriesRequest]) (*connect.Response[yasakuv1.SeedDefaultCategoriesResponse], error) {
-	sc, nd, err := scopeToTarget(ctx, s.orgs, s.projects, req.Msg.GetTarget())
+	sc, nd, err := scopeToTarget(ctx, s.sc, s.projects, req.Msg.GetTarget())
 	if err != nil {
 		return nil, err
 	}
@@ -206,7 +205,7 @@ func (s *CategoryService) SeedDefaultCategories(ctx context.Context, req *connec
 }
 
 func (s *CategoryService) lookup(ctx context.Context, t *yasakuv1.Target, q string) (targetResult, *category.Category, *yasakuv1.Needs, error) {
-	sc, nd, err := scopeToTarget(ctx, s.orgs, s.projects, t)
+	sc, nd, err := scopeToTarget(ctx, s.sc, s.projects, t)
 	if err != nil || nd != nil {
 		return targetResult{}, nil, nd, err
 	}
@@ -215,7 +214,7 @@ func (s *CategoryService) lookup(ctx context.Context, t *yasakuv1.Target, q stri
 }
 
 func (s *CategoryService) lookupArchived(ctx context.Context, t *yasakuv1.Target, q string) (targetResult, *category.Category, *yasakuv1.Needs, error) {
-	sc, nd, err := scopeToTarget(ctx, s.orgs, s.projects, t)
+	sc, nd, err := scopeToTarget(ctx, s.sc, s.projects, t)
 	if err != nil || nd != nil {
 		return targetResult{}, nil, nd, err
 	}

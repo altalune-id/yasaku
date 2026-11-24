@@ -9,20 +9,19 @@ import (
 	yasakuv1 "altalune.id/yasaku/gen/go/yasaku/v1"
 	"altalune.id/yasaku/internal/apperror"
 	"altalune.id/yasaku/internal/opensheetsync"
-	"altalune.id/yasaku/internal/org"
 	"altalune.id/yasaku/internal/project"
 )
 
 // OpensheetService implements yasaku.v1.OpensheetService; boot mounts it only with the Opensheet module.
 type OpensheetService struct {
-	orgs     *org.Service
+	sc       Scope
 	projects *project.Service
 	links    *opensheetsync.Service
 }
 
 // NewOpensheetService binds the handler to its collaborators.
-func NewOpensheetService(orgs *org.Service, projects *project.Service, links *opensheetsync.Service) *OpensheetService {
-	return &OpensheetService{orgs: orgs, projects: projects, links: links}
+func NewOpensheetService(sc Scope, projects *project.Service, links *opensheetsync.Service) *OpensheetService {
+	return &OpensheetService{sc: sc, projects: projects, links: links}
 }
 
 // GetOpensheetLink returns the project's link and backlog, without the key.
@@ -117,7 +116,7 @@ func (s *OpensheetService) current(ctx context.Context) (*yasakuv1.OpensheetLink
 }
 
 func (s *OpensheetService) scope(ctx context.Context, t *yasakuv1.Target) (targetResult, error) {
-	sc, nd, err := scopeToTarget(ctx, s.orgs, s.projects, t)
+	sc, nd, err := scopeToTarget(ctx, s.sc, s.projects, t)
 	if err != nil {
 		return targetResult{}, err
 	}

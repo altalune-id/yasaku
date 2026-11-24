@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strings"
 
+	"altalune.id/yasaku/internal/platform/authz"
 	"altalune.id/yasaku/internal/project"
 	"altalune.id/yasaku/internal/web"
 	"altalune.id/yasaku/internal/web/templates"
@@ -47,7 +48,7 @@ func (h *ProjectHandler) GetNew(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !h.CanManageOrg(sc) {
+	if !holds(sc.req, authz.ProjectsWrite) {
 		h.forbidNonManager(w, sc.req, "project_new.error_not_manager", projectNewNotManager)
 		return
 	}

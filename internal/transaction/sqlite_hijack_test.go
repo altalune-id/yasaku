@@ -12,6 +12,7 @@ import (
 	"altalune.id/yasaku/internal/platform/config"
 	"altalune.id/yasaku/internal/platform/db"
 	"altalune.id/yasaku/internal/platform/tenant"
+	"altalune.id/yasaku/internal/testutil/fakes"
 	"altalune.id/yasaku/internal/transaction"
 	"altalune.id/yasaku/money"
 	"altalune.id/yasaku/schema"
@@ -71,7 +72,7 @@ func (f txnHijackFixture) seedVictim(t *testing.T) *transaction.Transaction {
 	if err != nil {
 		t.Fatalf("transaction.New: %v", err)
 	}
-	if err := f.store.Save(tenant.Into(context.Background(), f.orgA), victim); err != nil {
+	if err := f.store.Save(fakes.Owner(context.Background(), f.orgA), victim); err != nil {
 		t.Fatalf("seed Save: %v", err)
 	}
 	return victim
@@ -79,7 +80,7 @@ func (f txnHijackFixture) seedVictim(t *testing.T) *transaction.Transaction {
 
 func (f txnHijackFixture) requireNote(t *testing.T, id uuid.UUID, want string) {
 	t.Helper()
-	got, err := f.store.ByID(tenant.Into(context.Background(), f.orgA), id)
+	got, err := f.store.ByID(fakes.Owner(context.Background(), f.orgA), id)
 	if err != nil {
 		t.Fatalf("ByID: %v", err)
 	}
@@ -117,7 +118,7 @@ func TestSQLiteStore_Save_RejectsReskinnedHijack(t *testing.T) {
 	}
 	attack.ID = victim.ID
 
-	requireTxnBlocked(t, f.store.Save(tenant.Into(context.Background(), f.orgB), attack), "reskinned Save")
+	requireTxnBlocked(t, f.store.Save(fakes.Owner(context.Background(), f.orgB), attack), "reskinned Save")
 	f.requireNote(t, victim.ID, "org A's transaction")
 }
 
@@ -129,7 +130,7 @@ func TestSQLiteStore_Save_RejectsVerbatimHijack(t *testing.T) {
 	attack := *victim
 	attack.Note = "Hijacked"
 
-	requireTxnBlocked(t, f.store.Save(tenant.Into(context.Background(), f.orgB), &attack), "verbatim Save")
+	requireTxnBlocked(t, f.store.Save(fakes.Owner(context.Background(), f.orgB), &attack), "verbatim Save")
 	f.requireNote(t, victim.ID, "org A's transaction")
 }
 
@@ -139,7 +140,7 @@ func TestSQLiteStore_Save_UpdatesOwnRow(t *testing.T) {
 	victim := f.seedVictim(t)
 
 	victim.Note = "renamed by its owner"
-	if err := f.store.Save(tenant.Into(context.Background(), f.orgA), victim); err != nil {
+	if err := f.store.Save(fakes.Owner(context.Background(), f.orgA), victim); err != nil {
 		t.Fatalf("owner Save: %v", err)
 	}
 	f.requireNote(t, victim.ID, "renamed by its owner")
@@ -150,7 +151,7 @@ func TestSQLiteStore_Delete_RejectsCrossTenant(t *testing.T) {
 	f := newTxnHijackFixture(t)
 	victim := f.seedVictim(t)
 
-	requireTxnBlocked(t, f.store.Delete(tenant.Into(context.Background(), f.orgB), victim.ID), "cross-tenant Delete")
+	requireTxnBlocked(t, f.store.Delete(fakes.Owner(context.Background(), f.orgB), victim.ID), "cross-tenant Delete")
 	f.requireNote(t, victim.ID, "org A's transaction")
 }
 
@@ -159,7 +160,7 @@ func TestSQLiteStore_ByID_RejectsCrossTenant(t *testing.T) {
 	f := newTxnHijackFixture(t)
 	victim := f.seedVictim(t)
 
-	_, err := f.store.ByID(tenant.Into(context.Background(), f.orgB), victim.ID)
+	_, err := f.store.ByID(fakes.Owner(context.Background(), f.orgB), victim.ID)
 	requireTxnBlocked(t, err, "cross-tenant ByID")
 }
 
@@ -167,7 +168,7 @@ func TestSQLiteStore_ByID_RejectsCrossTenant(t *testing.T) {
 func TestSQLiteStore_Reads_RejectCrossTenant(t *testing.T) {
 	f := newTxnHijackFixture(t)
 	victim := f.seedVictim(t)
-	ctxB := tenant.Into(context.Background(), f.orgB)
+	ctxB := fakes.Owner(context.Background(), f.orgB)
 
 	rows, err := f.store.List(ctxB, f.orgA.OrgID, f.orgA.ProjectID, transaction.ListOpts{})
 	if err != nil {

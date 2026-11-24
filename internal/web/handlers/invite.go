@@ -11,6 +11,7 @@ import (
 	"altalune.id/yasaku/internal/invite"
 	"altalune.id/yasaku/internal/limits"
 	"altalune.id/yasaku/internal/org"
+	"altalune.id/yasaku/internal/platform/authz"
 	"altalune.id/yasaku/internal/platform/tenant"
 	"altalune.id/yasaku/internal/web"
 	"altalune.id/yasaku/internal/web/templates"
@@ -38,7 +39,7 @@ func (h *InviteHandler) GetList(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *InviteHandler) renderList(w http.ResponseWriter, sc OrgScope, errMsg, errCode string) {
-	p, o, r := sc.principal, sc.org, sc.req
+	o, r := sc.org, sc.req
 	slug := o.Slug
 	items, err := h.Invites.ListPending(r.Context())
 	if err != nil {
@@ -46,7 +47,7 @@ func (h *InviteHandler) renderList(w http.ResponseWriter, sc OrgScope, errMsg, e
 		h.ErrorPage(w, r, http.StatusInternalServerError, pageTitle(r, "error_title.list_failed"), "Could not load invites.", err)
 		return
 	}
-	canManage, _ := h.Orgs.IsManager(r.Context(), o.ID, p.UserID)
+	canManage := holds(r, authz.MembersWrite)
 	Render(w, r, templates.InvitesLayout(h.LayoutForOrg(r, pageTitle(r, "invites.title"), slug, "invites"), templates.InvitesView{
 		OrgSlug: slug, Seats: h.seats(r), Invites: inviteRows(items), CanManage: canManage, Disabled: !h.Caps.InvitesEnabled,
 		Error: errMsg, ErrorCode: errCode,
@@ -74,9 +75,9 @@ func (h *InviteHandler) PostSend(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	p, o, r := sc.principal, sc.org, sc.req
+	o, r := sc.org, sc.req
 	slug := o.Slug
-	canManage, _ := h.Orgs.IsManager(r.Context(), o.ID, p.UserID)
+	canManage := holds(r, authz.MembersWrite)
 	if !canManage {
 		h.ErrorPage(w, r, http.StatusForbidden, pageTitle(r, "error_title.not_allowed"), "Only owners and admins can invite.")
 		return
@@ -114,9 +115,9 @@ func (h *InviteHandler) PostRevoke(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	p, o, r := sc.principal, sc.org, sc.req
+	o, r := sc.org, sc.req
 	slug := o.Slug
-	canManage, _ := h.Orgs.IsManager(r.Context(), o.ID, p.UserID)
+	canManage := holds(r, authz.MembersWrite)
 	if !canManage {
 		h.ErrorPage(w, r, http.StatusForbidden, pageTitle(r, "error_title.not_allowed"), "Only owners and admins can revoke invites.")
 		return

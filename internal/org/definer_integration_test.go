@@ -26,6 +26,7 @@ import (
 	"altalune.id/yasaku/internal/platform/config"
 	"altalune.id/yasaku/internal/platform/db"
 	"altalune.id/yasaku/internal/platform/tenant"
+	"altalune.id/yasaku/internal/testutil/fakes"
 	"altalune.id/yasaku/internal/testutil/pgtest"
 	"altalune.id/yasaku/nanoid"
 	"altalune.id/yasaku/schema"
@@ -250,7 +251,7 @@ func newDefinerService(t *testing.T, f *definerFixture) *org.Service {
 
 func (f *definerFixture) assertOrgAndOwnerCommitted(t *testing.T, o *org.Org, ownerID uuid.UUID) {
 	t.Helper()
-	scoped := tenant.Into(context.Background(), tenant.Context{OrgID: o.ID, UserID: ownerID})
+	scoped := fakes.Owner(context.Background(), tenant.Context{OrgID: o.ID, UserID: ownerID})
 	got, err := f.store.ByID(scoped, o.ID)
 	require.NoError(t, err, "the org row must be committed and readable under its own scope")
 	require.Equal(t, o.Slug, got.Slug)
@@ -276,7 +277,7 @@ func TestPostgres_OrgCreate_UnderAnotherOrgsScope(t *testing.T) {
 	f := newDefinerFixture(t)
 	svc := newDefinerService(t, f)
 
-	other := tenant.Into(context.Background(), tenant.Context{OrgID: f.orgID, UserID: f.userID})
+	other := fakes.Owner(context.Background(), tenant.Context{OrgID: f.orgID, UserID: f.userID})
 	o, err := svc.Create(other, org.CreateRequest{
 		Slug: "second-" + f.slug, Name: "Second Org", OwnerID: f.userID,
 	})
@@ -289,7 +290,7 @@ func TestPostgres_OrgCreate_UnderAnotherOrgsScope(t *testing.T) {
 func TestPostgres_OrgCreate_ScopeNamingNoOrgIsRejected(t *testing.T) {
 	f := newDefinerFixture(t)
 
-	nilScoped := tenant.Into(context.Background(), tenant.Context{UserID: f.userID})
+	nilScoped := fakes.Owner(context.Background(), tenant.Context{UserID: f.userID})
 	_, err := f.store.ByID(nilScoped, f.orgID)
 	require.Error(t, err)
 	require.True(t, tenant.IsUnscopedError(err), "want *UnscopedError, got %T: %v", err, err)
@@ -366,7 +367,7 @@ func TestPostgres_SecondSystemOrgIsRefused(t *testing.T) {
 	second, err := org.NewOrg("second-"+f.slug, "Second", owner)
 	require.NoError(t, err)
 	second.System = true
-	err = f.store.Save(tenant.Into(t.Context(), tenant.Context{OrgID: second.ID, UserID: owner}), second)
+	err = f.store.Save(fakes.Owner(t.Context(), tenant.Context{OrgID: second.ID, UserID: owner}), second)
 	require.True(t, org.IsSystemOrgExistsError(err), "want SystemOrgExistsError, got %T: %v", err, err)
 }
 

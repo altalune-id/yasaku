@@ -15,6 +15,7 @@ import (
 	"altalune.id/yasaku/internal/platform/db"
 	"altalune.id/yasaku/internal/platform/tenant"
 	"altalune.id/yasaku/internal/project"
+	"altalune.id/yasaku/internal/testutil/fakes"
 	"altalune.id/yasaku/internal/testutil/pgtest"
 	"altalune.id/yasaku/schema"
 )
@@ -60,7 +61,7 @@ func seedUserAndOrg(t *testing.T, sqlDB *sql.DB, prefix string) (uuid.UUID, uuid
 
 func TestPostgres_Project_SaveAndLookup(t *testing.T) {
 	store, orgID, userID := newProjectStoreForTest(t)
-	ctx := tenant.Into(t.Context(), tenant.Context{OrgID: orgID, UserID: userID})
+	ctx := fakes.Owner(t.Context(), tenant.Context{OrgID: orgID, UserID: userID})
 
 	p, err := project.New(orgID, "web", "Web")
 	require.NoError(t, err)
@@ -77,7 +78,7 @@ func TestPostgres_Project_SaveAndLookup(t *testing.T) {
 
 func TestPostgres_Project_NotFound(t *testing.T) {
 	store, orgID, userID := newProjectStoreForTest(t)
-	ctx := tenant.Into(t.Context(), tenant.Context{OrgID: orgID, UserID: userID})
+	ctx := fakes.Owner(t.Context(), tenant.Context{OrgID: orgID, UserID: userID})
 
 	_, err := store.ByID(ctx, uuid.New())
 	assert.True(t, project.IsNotFoundError(err), "ByID: want NotFoundError, got %T: %v", err, err)
@@ -88,7 +89,7 @@ func TestPostgres_Project_NotFound(t *testing.T) {
 
 func TestPostgres_Project_List(t *testing.T) {
 	store, orgID, userID := newProjectStoreForTest(t)
-	ctx := tenant.Into(t.Context(), tenant.Context{OrgID: orgID, UserID: userID})
+	ctx := fakes.Owner(t.Context(), tenant.Context{OrgID: orgID, UserID: userID})
 
 	for _, s := range []string{"a", "b", "c"} {
 		p, err := project.New(orgID, s, s)
@@ -103,7 +104,7 @@ func TestPostgres_Project_List(t *testing.T) {
 
 func TestPostgres_Project_SaveIsUpsert(t *testing.T) {
 	store, orgID, userID := newProjectStoreForTest(t)
-	ctx := tenant.Into(t.Context(), tenant.Context{OrgID: orgID, UserID: userID})
+	ctx := fakes.Owner(t.Context(), tenant.Context{OrgID: orgID, UserID: userID})
 
 	p, err := project.New(orgID, "web", "Web")
 	require.NoError(t, err)
@@ -119,7 +120,7 @@ func TestPostgres_Project_SaveIsUpsert(t *testing.T) {
 
 func TestPostgres_Project_SecondSystemProjectIsRefused(t *testing.T) {
 	store, orgID, userID := newProjectStoreForTest(t)
-	ctx := tenant.Into(t.Context(), tenant.Context{OrgID: orgID, UserID: userID})
+	ctx := fakes.Owner(t.Context(), tenant.Context{OrgID: orgID, UserID: userID})
 
 	first, err := project.New(orgID, "web", "Web")
 	require.NoError(t, err)

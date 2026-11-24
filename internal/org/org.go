@@ -36,9 +36,6 @@ func (r Role) IsValid() bool {
 	return false
 }
 
-// CanManage reports whether r may administer the org: its members, invites and API keys.
-func (r Role) CanManage() bool { return r == RoleOwner || r == RoleAdmin }
-
 // Org is the tenant boundary aggregate.
 type Org struct {
 	ID        uuid.UUID

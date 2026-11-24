@@ -12,6 +12,7 @@ import (
 	"altalune.id/yasaku/internal/platform/capabilities"
 	sqliteent "altalune.id/yasaku/internal/platform/db/entity/sqlite"
 	"altalune.id/yasaku/internal/platform/tenant"
+	"altalune.id/yasaku/internal/testutil/fakes"
 	"altalune.id/yasaku/internal/transaction"
 	"altalune.id/yasaku/internal/wallet"
 	"altalune.id/yasaku/money"
@@ -40,7 +41,7 @@ func TestBuildServices_SQLite_ConcurrentRecordsThroughBootsPoolNeverFail(t *test
 		_, err := k.Pool.W.ExecContext(t.Context(), q.sql, q.args...)
 		require.NoError(t, err)
 	}
-	ctx := tenant.Into(context.Background(), tc)
+	ctx := fakes.Owner(context.Background(), tc)
 	w, err := svcs.Wallets.Create(ctx, wallet.Params{Name: "Cash", Kind: wallet.KindCash, Currency: money.IDR})
 	require.NoError(t, err)
 

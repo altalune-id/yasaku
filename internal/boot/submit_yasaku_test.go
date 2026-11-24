@@ -20,6 +20,7 @@ import (
 	"altalune.id/yasaku/internal/platform/db"
 	"altalune.id/yasaku/internal/platform/queue"
 	"altalune.id/yasaku/internal/platform/tenant"
+	"altalune.id/yasaku/internal/testutil/fakes"
 	"altalune.id/yasaku/reqid"
 )
 
@@ -113,7 +114,7 @@ func disabledSubmitter(t *testing.T, jobs *echoJobs) *jobSubmitter {
 
 func scopedCtx(ctx context.Context) (context.Context, tenant.Context) {
 	tc := tenant.Context{OrgID: uuid.New(), ProjectID: uuid.New(), UserID: uuid.New()}
-	return tenant.Into(ctx, tc), tc
+	return fakes.Owner(ctx, tc), tc
 }
 
 func TestJobSubmitter_DisabledRunsTheHandlerInline(t *testing.T) {

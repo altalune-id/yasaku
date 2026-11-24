@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"altalune.id/yasaku/internal/platform/tenant"
+	"altalune.id/yasaku/internal/testutil/fakes"
 	"altalune.id/yasaku/internal/transaction"
 	"altalune.id/yasaku/money"
 )
@@ -24,7 +25,7 @@ func (sc recentScenario) save(t *testing.T, store transaction.Store, tc tenant.C
 	p.CreatedBy = tc.UserID
 	tx, err := transaction.New(tc.OrgID, tc.ProjectID, p)
 	require.NoError(t, err)
-	require.NoError(t, store.Save(tenant.Into(t.Context(), tc), tx))
+	require.NoError(t, store.Save(fakes.Owner(t.Context(), tc), tx))
 }
 
 func (sc recentScenario) expense(t *testing.T, store transaction.Store, cat uuid.UUID, wallet uuid.UUID, note string, minor int64, at time.Time) {
@@ -62,7 +63,7 @@ func (sc recentScenario) checkTopCategories(t *testing.T, store transaction.Stor
 		})
 	}
 
-	ctx := tenant.Into(t.Context(), sc.tc)
+	ctx := fakes.Owner(t.Context(), sc.tc)
 	got, err := store.TopCategories(ctx, sc.tc.OrgID, sc.tc.ProjectID, sc.since, 10)
 	require.NoError(t, err)
 	require.Equal(t, []transaction.CategoryCount{
@@ -90,7 +91,7 @@ func (sc recentScenario) checkRecentByCategory(t *testing.T, store transaction.S
 		CategoryID: &sc.sibCat, Note: "sibling", OccurredAt: day(6),
 	})
 
-	ctx := tenant.Into(t.Context(), sc.tc)
+	ctx := fakes.Owner(t.Context(), sc.tc)
 	got, err := store.RecentByCategory(ctx, sc.tc.OrgID, sc.tc.ProjectID, sc.food, 3)
 	require.NoError(t, err)
 	require.Equal(t, []transaction.RecentEntry{
