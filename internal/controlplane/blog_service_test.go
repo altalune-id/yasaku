@@ -242,7 +242,7 @@ func TestBlog_CreatePost_CrossTenantProjectIsDenied(t *testing.T) {
 	withBearer(req.Header())
 	_, err = f.h.blogClient().CreatePost(context.Background(), req)
 	require.Error(t, err)
-	require.Equal(t, connect.CodePermissionDenied, connectCode(err))
+	require.Equal(t, connect.CodeNotFound, connectCode(err), "another org's project reads as absent, never forbidden")
 }
 
 // SECURITY: another org's post must read as absent, never forbidden, or the answer confirms the id exists.

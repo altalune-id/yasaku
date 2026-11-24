@@ -1,0 +1,73 @@
+package templates
+
+import (
+	"time"
+
+	"altalune.id/yasaku/internal/web"
+)
+
+type ActivityRow struct {
+	Actor      string
+	ActorKind  string
+	Action     string
+	Target     string
+	Reason     string
+	OccurredAt time.Time
+}
+
+type ActivityView struct {
+	Rows     []ActivityRow
+	NextHref string
+}
+
+templ ActivityPage(d web.LayoutData, v ActivityView) {
+	<section>
+		@PageHeader(d.Tr("activity.title"), d.Tr("activity.subtitle"))
+		<ul class="mt-6 divide-y divide-base-300/50 overflow-hidden rounded-lg border border-base-300 bg-base-100 shadow-sm">
+			if len(v.Rows) == 0 {
+				<li class="px-4 py-6 text-center text-sm text-base-content/70">{ d.Tr("activity.empty") }</li>
+			}
+			for _, a := range v.Rows {
+				<li class="flex items-center justify-between gap-4 px-4 py-3">
+					<div class="min-w-0">
+						<p class="flex items-center gap-2 truncate text-sm font-medium text-base-content">
+							<span class="truncate">
+								if a.Actor != "" {
+									{ a.Actor }
+								} else if a.ActorKind == "api_key" {
+									{ d.Tr("activity.actor_api_key") }
+								} else {
+									{ d.Tr("common.system") }
+								}
+							</span>
+							if a.ActorKind == "staff" {
+								<span class="inline-flex shrink-0 items-center rounded-full bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning ring-1 ring-inset ring-warning/30">{ d.Tr("activity.staff_badge") }</span>
+							}
+						</p>
+						<p class="truncate text-xs text-base-content/70">
+							<span>{ a.Action }</span>
+							if a.Target != "" {
+								· { a.Target }
+							}
+							if a.Reason != "" {
+								· { a.Reason }
+							}
+						</p>
+					</div>
+					<span class="shrink-0 text-xs text-base-content/70">
+						@DateTime(d, a.OccurredAt)
+					</span>
+				</li>
+			}
+		</ul>
+		if v.NextHref != "" {
+			<div class="mt-4 flex justify-center">
+				<a href={ templ.SafeURL(v.NextHref) } class="btn btn-ghost btn-sm">{ d.Tr("activity.older") }</a>
+			</div>
+		}
+	</section>
+}
+
+templ ActivityLayout(d web.LayoutData, v ActivityView) {
+	@Layout(web.WithContent(d, ActivityPage(d, v)))
+}

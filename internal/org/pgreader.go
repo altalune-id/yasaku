@@ -53,6 +53,27 @@ func (s *postgresStore) List(ctx context.Context, userID uuid.UUID) ([]*Org, err
 	return s.scanOrgs(ctx, s.listForUserStmt, postgres.RawArgs{"#userID": userID})
 }
 
+func (s *postgresStore) CountCreatedBy(ctx context.Context, userID uuid.UUID) (int64, error) {
+	var row struct {
+		Count int64 `alias:"count"`
+	}
+	if err := postgres.RawStatement(s.countCreatedByStmt, postgres.RawArgs{"#userID": userID}).QueryContext(ctx, s.execer(ctx), &row); err != nil {
+		return 0, fmt.Errorf("org.postgres: count created by: %w", err)
+	}
+	return row.Count, nil
+}
+
+// SECURITY: one SECURITY DEFINER query on the caller's connection, so a unit of work holding limit locks never waits for a second one.
+func (s *postgresStore) IsStaff(ctx context.Context, userID uuid.UUID) (bool, error) {
+	var row struct {
+		Staff bool `alias:"staff"`
+	}
+	if err := postgres.RawStatement(s.isStaffStmt, postgres.RawArgs{"#userID": userID}).QueryContext(ctx, s.execer(ctx), &row); err != nil {
+		return false, fmt.Errorf("org.postgres: is staff: %w", err)
+	}
+	return row.Staff, nil
+}
+
 func (s *postgresStore) MembershipOf(ctx context.Context, orgID, userID uuid.UUID) (*Membership, error) {
 	tx, owned, err := s.txAcquire(ctx)
 	if err != nil {

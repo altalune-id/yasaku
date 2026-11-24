@@ -31,8 +31,8 @@ func newTargetHarness(t *testing.T) *targetHarness {
 	reporter := apperror.NewReporter(log, false)
 	return &targetHarness{
 		t:        t,
-		orgs:     org.NewService(fakes.NewOrg(), capabilities.Capabilities{OrgCreation: true}, log, reporter.Unexpected),
-		projects: project.NewService(fakes.NewProject(), log, reporter.Unexpected, fakes.PermissiveMembers()),
+		orgs:     org.NewService(fakes.NewOrg(), capabilities.Capabilities{OrgCreation: true}, log, reporter.Unexpected, fakes.UnitOfWork),
+		projects: project.NewService(fakes.NewProject(), log, reporter.Unexpected, fakes.PermissiveMembers(), fakes.UnitOfWork),
 	}
 }
 

@@ -22,7 +22,7 @@ func run() int {
 
 	root := cli.NewRootCmd(boot.BootServer, boot.BootClient)
 	if err := root.ExecuteContext(ctx); err != nil {
-		slog.ErrorContext(ctx, "yasaku", "error", err)
+		slog.ErrorContext(ctx, "yasaku", "error", cli.ErrorLine(err))
 		return cli.ExitCodeFor(err)
 	}
 	return cli.ExitOK

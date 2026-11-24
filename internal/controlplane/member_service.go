@@ -8,7 +8,6 @@ import (
 
 	orgv1 "altalune.id/yasaku/gen/go/org/v1"
 	"altalune.id/yasaku/internal/org"
-	"altalune.id/yasaku/internal/platform/tenant"
 )
 
 // MemberService implements org.v1.MemberService.
@@ -21,13 +20,13 @@ func NewMemberService(orgs *org.Service) *MemberService {
 	return &MemberService{orgs: orgs}
 }
 
-// ListMembers returns the members of the principal's own org. SECURITY: the org is read from the principal alone, so no caller can re-target this read.
-func (s *MemberService) ListMembers(ctx context.Context, _ *connect.Request[orgv1.ListMembersRequest]) (*connect.Response[orgv1.ListMembersResponse], error) {
-	p, err := principal(ctx)
+// ListMembers returns the members of the principal's org. SECURITY: a person may name only an org they belong to; a key stays on its own.
+func (s *MemberService) ListMembers(ctx context.Context, req *connect.Request[orgv1.ListMembersRequest]) (*connect.Response[orgv1.ListMembersResponse], error) {
+	tctx, p, err := scopeToOrg(ctx, s.orgs, req.Msg.GetOrg())
 	if err != nil {
 		return nil, err
 	}
-	items, err := s.orgs.ListMemberProfiles(tenant.Into(ctx, tenant.Context{OrgID: p.ActiveOrgID, UserID: p.UserID}), p.ActiveOrgID)
+	items, err := s.orgs.ListMemberProfiles(tctx, p.ActiveOrgID)
 	if err != nil {
 		return nil, err
 	}

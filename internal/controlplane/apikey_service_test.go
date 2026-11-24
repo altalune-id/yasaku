@@ -63,7 +63,7 @@ func newAPIKeyFixtureFor(t *testing.T, manager bool, src session.Source) *apikey
 	projs := fakes.NewProject()
 	keyStore := fakes.NewAPIKey()
 
-	projectSvc := project.NewService(projs, log, reporter.Unexpected, managers)
+	projectSvc := project.NewService(projs, log, reporter.Unexpected, managers, fakes.UnitOfWork)
 	keySvc := apikey.NewService(keyStore, apikey.Scheme{}, managers, fakes.NewOrgProjects(), log, reporter.Unexpected)
 
 	kernel := &platform.Kernel{

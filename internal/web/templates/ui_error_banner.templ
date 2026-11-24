@@ -1,26 +1,53 @@
 package templates
 
-import "altalune.id/yasaku/internal/web"
+import (
+	"altalune.id/yasaku/internal/web"
+	"altalune.id/yasaku/internal/web/icons"
+)
+
+const shortRefLen = 8
+
+func shortRef(rid string) string {
+	if len(rid) <= shortRefLen {
+		return rid
+	}
+	return rid[:shortRefLen] + "…"
+}
 
 // ErrorBanner renders an inline form error with its code and the request id, so a user report maps to a log line. Codes: ../../../docs/errors/README.md.
 templ ErrorBanner(d web.LayoutData, msg, code string) {
-	<div role="alert" class="alert alert-soft alert-error mt-4 flex-col items-start gap-1 text-sm">
-		<p>{ msg }</p>
-		if code != "" || d.RequestID != "" {
-			<p class="flex flex-wrap gap-x-3 text-xs">
-				if code != "" {
-					<span>
-						{ d.Tr("error.code") }
-						<code class="select-all font-mono">{ code }</code>
-					</span>
-				}
-				if d.RequestID != "" {
-					<span>
-						{ d.Tr("error.request_id") }
-						<code class="select-all font-mono">{ d.RequestID }</code>
-					</span>
-				}
-			</p>
-		}
+	<div role="alert" class="alert alert-soft alert-error mt-4 grid-cols-[auto_minmax(0,1fr)] items-start text-sm">
+		@icons.Icon("circle-x", "size-5")
+		<div class="w-full min-w-0">
+			<p dir="auto">{ msg }</p>
+			if code != "" || d.RequestID != "" {
+				<div data-error-footer class="mt-2 flex flex-wrap items-center gap-x-2 border-t border-error/20 pt-2 text-xs text-base-content/70">
+					if code != "" {
+						<code class="font-mono">{ code }</code>
+					}
+					if code != "" && d.RequestID != "" {
+						<span aria-hidden="true">·</span>
+					}
+					if d.RequestID != "" {
+						<span title={ d.Tr("error.request_id") + " " + d.RequestID }>
+							{ d.Tr("error.ref_short") }
+							<code class="font-mono">{ shortRef(d.RequestID) }</code>
+						</span>
+						<button
+							type="button"
+							class="btn btn-ghost btn-xs"
+							data-copy={ d.RequestID }
+							data-copy-text={ d.Tr("common.copy") }
+							data-copy-label={ d.Tr("error.copy_reference") }
+							data-copied-label={ d.Tr("common.copied") }
+							aria-label={ d.Tr("error.copy_reference") }
+						>
+							@icons.Icon("copy", "size-3.5")
+							<span data-copy-slot>{ d.Tr("common.copy") }</span>
+						</button>
+					}
+				</div>
+			}
+		</div>
 	</div>
 }

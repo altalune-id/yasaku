@@ -78,10 +78,10 @@ func newFixture(t *testing.T) *handlerFixture {
 	users := user.NewService(userStore, user.GenesisConfig{}, discardLogger(), passthroughUnexpected())
 
 	orgStore := fakes.NewOrg()
-	orgs := org.NewService(orgStore, caps, discardLogger(), passthroughUnexpected())
+	orgs := org.NewService(orgStore, caps, discardLogger(), passthroughUnexpected(), fakes.UnitOfWork)
 
 	projStore := fakes.NewProject()
-	projects := project.NewService(projStore, discardLogger(), passthroughUnexpected(), orgs)
+	projects := project.NewService(projStore, discardLogger(), passthroughUnexpected(), orgs, fakes.UnitOfWork)
 
 	todoStore := fakes.NewTodo()
 	todos := todo.NewService(todoStore, discardLogger(), passthroughUnexpected(), &fakes.Queue{})

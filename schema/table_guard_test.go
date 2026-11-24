@@ -111,3 +111,18 @@ func TestExistingTables_EmptyWant(t *testing.T) {
 		t.Errorf("existingTables with no wanted tables = %v, want empty", present)
 	}
 }
+
+func TestRequiredTables_IncludeLimits(t *testing.T) {
+	for _, want := range []string{"plan_limits", "limit_overrides"} {
+		if !slices.Contains(RequiredTableSuffixes, want) {
+			t.Errorf("RequiredTableSuffixes misses the global %s table; a stale schema would boot without it", want)
+		}
+	}
+	conn, cfg := migratedSQLite(t)
+	if _, err := conn.ExecContext(t.Context(), `DROP TABLE `+cfg.DB.TablePrefix+`limit_overrides`); err != nil {
+		t.Fatalf("drop limit_overrides: %v", err)
+	}
+	if err := AssertRequiredTables(t.Context(), conn, &cfg.DB); !IsStaleSchemaError(err) {
+		t.Fatalf("a database missing limit_overrides must read as stale, got %v", err)
+	}
+}

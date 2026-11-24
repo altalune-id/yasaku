@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"cmp"
 	"context"
 	"net/http"
 	"strings"
@@ -150,13 +149,14 @@ func (h *SignupHandler) defaultView(p session.Principal) templates.SignupComplet
 	if !usableWorkspaceName(name) {
 		name = ""
 	}
+	terms, privacy := h.legalURLs()
 	return templates.SignupCompleteView{
 		Email:          p.Email,
 		Name:           name,
 		AskDisplayName: name == "",
 		AskAccept:      h.Cfg.Compliance.RequireAcceptance && p.TermsAcceptedAt.IsZero(),
-		TermsURL:       cmp.Or(strings.TrimSpace(h.Cfg.Compliance.TermsURL), web.Path(h.Cfg.HTTP.BasePath, "/terms")),
-		PrivacyURL:     cmp.Or(strings.TrimSpace(h.Cfg.Compliance.PrivacyURL), web.Path(h.Cfg.HTTP.BasePath, "/privacy")),
+		TermsURL:       terms,
+		PrivacyURL:     privacy,
 		FieldErrors:    map[string]string{},
 	}
 }

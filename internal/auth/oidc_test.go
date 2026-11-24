@@ -12,6 +12,8 @@ import (
 	"altalune.id/yasaku/internal/apperror"
 	"altalune.id/yasaku/internal/auth"
 	"altalune.id/yasaku/internal/platform/session"
+	"altalune.id/yasaku/internal/testutil/fakes"
+	"altalune.id/yasaku/internal/user"
 )
 
 func TestOIDCLogin_MissingClaims(t *testing.T) {
@@ -242,5 +244,57 @@ func TestOIDCLogin_OnboardUnexpectedRoutes(t *testing.T) {
 	}
 	if !routed {
 		t.Error("unexpected func not invoked")
+	}
+}
+
+func TestOIDCLogin_SignupRequiredKeepsNotice(t *testing.T) {
+	t.Parallel()
+	refused := errors.New("signup required")
+	o := auth.NewOIDCLogin(
+		func(_ context.Context, c auth.EnsureClaims) (*auth.UserRef, bool, error) {
+			return &auth.UserRef{ID: uuid.New(), Email: c.Email}, false, nil
+		},
+		func(_ context.Context, _ auth.OnboardRequest) (auth.OnboardResult, error) {
+			return auth.OnboardResult{OrgID: uuid.New(), Notice: "Couldn't join Acme"}, refused
+		},
+		newTestLogger(),
+		noopUnexpected(),
+		auth.WithSignupRequired(func(err error) bool { return errors.Is(err, refused) }),
+	)
+	p, err := o.Execute(context.Background(), auth.OIDCClaims{Issuer: "iss", Subject: "sub", Email: "a@b.co", EmailVerified: true})
+	if err != nil {
+		t.Fatalf("a refused auto-accept must not fail sign-in: %v", err)
+	}
+	if p.Notice != "Couldn't join Acme" || p.ActiveOrgID != uuid.Nil {
+		t.Fatalf("want the notice and no active org, got notice %q org %v", p.Notice, p.ActiveOrgID)
+	}
+}
+
+// SECURITY: an unverified email never reaches onboarding, so it can never auto-accept an invite addressed to that email.
+func TestOIDCLogin_UnverifiedEmailNeverOnboards(t *testing.T) {
+	t.Parallel()
+	users := user.NewService(fakes.NewUser(), user.GenesisConfig{}, newTestLogger(), noopUnexpected())
+	onboarded := 0
+	o := auth.NewOIDCLogin(
+		func(ctx context.Context, c auth.EnsureClaims) (*auth.UserRef, bool, error) {
+			u, err := users.EnsureFromOIDC(ctx, user.Claims(c))
+			if err != nil {
+				return nil, false, err
+			}
+			return &auth.UserRef{ID: u.ID, Email: u.Email}, false, nil
+		},
+		func(context.Context, auth.OnboardRequest) (auth.OnboardResult, error) {
+			onboarded++
+			return auth.OnboardResult{}, nil
+		},
+		newTestLogger(),
+		noopUnexpected(),
+	)
+	_, err := o.Execute(context.Background(), auth.OIDCClaims{Issuer: "https://idp", Subject: "sub-new", Email: "invitee@example.com", EmailVerified: false})
+	if !user.IsEmailUnverifiedError(err) {
+		t.Fatalf("want EmailUnverifiedError, got %T: %v", err, err)
+	}
+	if onboarded != 0 {
+		t.Fatalf("onboarding (and with it invite accept) ran %d times for an unverified email", onboarded)
 	}
 }

@@ -11,8 +11,8 @@ domain interfaces — SQLite is dev/demo, Postgres is production.
 
 ```
 schema/
-├── migrations/postgres/    # 001_init … 019_user_prefs, VERSION
-├── migrations/sqlite/      # 001_init … 016_user_prefs, VERSION
+├── migrations/postgres/    # 001_init … 021_audit, VERSION
+├── migrations/sqlite/      # 001_init … 018_audit, VERSION
 ├── migrator.go             # goose runner, template rendering, embed FS
 ├── migrator_templatefs.go  # per-boot template-rendered file system
 ├── rls_guard.go            # boot-time BYPASSRLS assertion
@@ -30,8 +30,8 @@ enforcement — every table in this list carries `org_id` and gets
 
 ## Tables
 
-`users` and `sessions` are global (no `org_id`); every other table is
-tenant-scoped and appears in `TenantTableSuffixes`.
+`users`, `sessions`, `plan_limits` and `limit_overrides` are global (no `org_id`, listed in
+`RequiredTableSuffixes`); every other table is tenant-scoped and appears in `TenantTableSuffixes`.
 
 ```mermaid
 erDiagram
@@ -39,6 +39,8 @@ erDiagram
     orgs ||--o{ memberships : "has"
     orgs ||--o{ projects : "owns"
     orgs ||--o{ invites : "pending"
+    orgs }o--o{ plan_limits : "plan"
+    orgs ||--o{ audit_events : "records"
     projects ||--o{ todos : "contains"
     projects ||--o{ blog_posts : "contains"
     blog_posts ||--o{ blog_post_tags : "tagged"
@@ -55,6 +57,29 @@ erDiagram
         text theme "theme family, '' until chosen"
         text color_mode "light|dark|system, '' until chosen"
         text tips_seen "JSON array, default []"
+    }
+    orgs {
+        uuid id PK
+        text plan "default 'first'"
+    }
+    plan_limits {
+        text plan PK
+        text key PK
+        bigint value "null = unlimited"
+    }
+    limit_overrides {
+        text subject_kind PK "user|org|project"
+        uuid subject_id PK
+        text key PK
+        bigint value "null = unlimited"
+    }
+    audit_events {
+        uuid id PK
+        uuid org_id "no FK"
+        text actor_kind "user|staff|api_key|system"
+        text action
+        jsonb detail "allowlisted keys"
+        timestamptz occurred_at
     }
     memberships {
         uuid org_id FK
@@ -83,7 +108,16 @@ erDiagram
     }
 ```
 
-Also tenant-scoped: `blog_categories`, `blog_tags`, `outbox_entries`, `bootstrap`.
+Also tenant-scoped: `blog_categories`, `blog_tags`, `outbox_entries`, `bootstrap`, `audit_events`.
+
+## Audit log
+
+- **Append-only.** Both dialects refuse UPDATE and DELETE with a `BEFORE` trigger, so the log
+  stays append-only with `rlsEnforce` off. Postgres also has only a `FOR SELECT` and a
+  `FOR INSERT WITH CHECK` policy. Pinned by `TestAuditEvents_AppendOnly`,
+  `TestAuditEvents_AppendOnlyWithoutRLS` and `TestAuditEvents_AppendOnlySQLite`.
+- **No foreign key to `orgs`.** An org's history outlives the org row.
+- **Platform actions** (operator commands) are recorded under the system org's id.
 
 ## API keys
 
@@ -103,17 +137,20 @@ Also tenant-scoped: `blog_categories`, `blog_tags`, `outbox_entries`, `bootstrap
 
 Each one lifts RLS for a lookup that runs before any tenant scope exists.
 All are owned by the migration role, with `EXECUTE` revoked from `PUBLIC`,
-pinned by `TestMigrateUp_DefinerFunctionsAreOwnedByTheMigrationRole`.
+pinned by `TestMigrateUp_DefinerFunctionsAreOwnedByTheMigrationRole`,
+`TestMigration020_DefinerRevokedFromPublic` and `TestMigration021_IsStaffDefinerRevokedFromPublic`.
 
-| Function                                | Resolves                                |
-| --------------------------------------- | --------------------------------------- |
-| `resolve_api_key_by_secret_hash(bytea)` | a key and its project grant, by hash    |
-| `resolve_org_by_slug(text)`             | an org from a path slug                 |
-| `resolve_invite_by_token_hash(text)`    | an invite from its link                 |
-| `list_pending_invites_for_email(text)`  | invites waiting for a signing-up user   |
-| `list_orgs_for_user(uuid)`              | a user's orgs, to resolve their tenant  |
-| `list_org_ids()`                        | every org id, for cross-tenant jobs     |
-| `resolve_system_org()`                  | the singleton org on a selfhosted login |
+| Function                                | Resolves                                          |
+| --------------------------------------- | ------------------------------------------------- |
+| `resolve_api_key_by_secret_hash(bytea)` | a key and its project grant, by hash              |
+| `resolve_org_by_slug(text)`             | an org from a path slug                           |
+| `resolve_invite_by_token_hash(text)`    | an invite from its link                           |
+| `list_pending_invites_for_email(text)`  | invites waiting for a signing-up user             |
+| `list_orgs_for_user(uuid)`              | a user's orgs, to resolve their tenant            |
+| `list_org_ids()`                        | every org id, for cross-tenant jobs               |
+| `resolve_system_org()`                  | the singleton org on a selfhosted login           |
+| `count_orgs_created_by(uuid)`           | how many orgs a user created, for limits          |
+| `is_staff(uuid)`                        | whether a user owns or administers the system org |
 
 ## Adding a migration
 
@@ -139,9 +176,9 @@ pinned by `TestMigrateUp_DefinerFunctionsAreOwnedByTheMigrationRole`.
 ### Numbering
 
 yasaku keeps one numbering per dialect. Its own migrations (`007_yasaku`,
-`016_key_authorship`, `017_opensheet`, `018_opensheet_resync`, `019_user_prefs` on Postgres;
+`016_key_authorship`, `017_opensheet`, `018_opensheet_resync`, `019_user_prefs`, `020_limits`, `021_audit` on Postgres;
 `005_yasaku`, `013_key_authorship`, `014_opensheet`, `015_opensheet_resync`,
-`016_user_prefs` on SQLite) interleave with the template's. A template migration lands at yasaku's
+`016_user_prefs`, `017_limits`, `018_audit` on SQLite) interleave with the template's. A template migration lands at yasaku's
 next free number with byte-identical content, so template `007_apikey` is
 yasaku `008_apikey`. Never renumber or edit an applied migration. Production has
 applied everything up to the version it ran.

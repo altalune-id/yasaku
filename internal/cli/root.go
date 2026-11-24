@@ -97,6 +97,7 @@ func NewRootCmd(bootServer ServerBootFn, bootClient ClientBootFn) *cobra.Command
 		markOperator(newOrgCmd(bootServer)),
 		markOperator(newProjectCmd(bootServer)),
 		markOperator(newInviteCmd(bootServer)),
+		markOperator(newAdminCmd()),
 		newVersionCmd(),
 		newHealthzCmd(),
 		newCompletionCmd(),

@@ -79,8 +79,8 @@ func newHarnessOpts(t *testing.T, p session.Principal, verr error, mods ...func(
 	keys := fakes.NewAPIKey()
 	ledgers := fakes.NewLedger()
 
-	orgSvc := org.NewService(orgs, capabilities.Capabilities{OrgCreation: true}, log, reporter.Unexpected)
-	projectSvc := project.NewService(projs, log, reporter.Unexpected, orgSvc)
+	orgSvc := org.NewService(orgs, capabilities.Capabilities{OrgCreation: true}, log, reporter.Unexpected, fakes.UnitOfWork)
+	projectSvc := project.NewService(projs, log, reporter.Unexpected, orgSvc, fakes.UnitOfWork)
 	todoSvc := todo.NewService(tds, log, reporter.Unexpected, &fakes.Queue{})
 	postSvc := blog.NewService(posts, log, reporter.Unexpected, fakes.UnitOfWork, &fakes.Webhooks{})
 	catSvc := category.NewService(cats, log, reporter.Unexpected)
@@ -107,8 +107,8 @@ func newHarnessOpts(t *testing.T, p session.Principal, verr error, mods ...func(
 	mux := http.NewServeMux()
 	mux.Handle("/", srv.Handler(""))
 	ref := srv.ReferenceHandler(
-		controlplane.NewTodoService(todoSvc, tds, projectSvc),
-		controlplane.NewBlogService(postSvc, catSvc, tagSvc, projectSvc),
+		controlplane.NewTodoService(todoSvc, tds, orgSvc, projectSvc),
+		controlplane.NewBlogService(postSvc, catSvc, tagSvc, orgSvc, projectSvc),
 	)
 	mux.Handle("/api/"+todov1connect.TodoServiceName+"/", ref)
 	mux.Handle("/api/"+blogv1connect.BlogServiceName+"/", ref)

@@ -253,6 +253,9 @@ templ orgLinks(d web.LayoutData, slug string) {
 	@menuLink(d.Href("/orgs/"+slug+"/members"), "users", d.Tr("nav.members"), d.ActiveNav.OrgKey == "members")
 	@menuLink(d.Href("/orgs/"+slug+"/invites"), "mail", d.Tr("nav.invites"), d.ActiveNav.OrgKey == "invites")
 	@menuLink(d.Href("/orgs/"+slug+"/apikeys"), "key", d.Tr("nav.apikeys"), d.ActiveNav.OrgKey == "apikeys")
+	if canManageOrg(d) {
+		@menuLink(d.Href("/orgs/"+slug+"/activity"), "list-checks", d.Tr("nav.activity"), d.ActiveNav.OrgKey == "activity")
+	}
 }
 
 const railRow = "btn-ghost h-11 min-h-11 w-full list-none justify-start gap-2 px-3 text-sm font-normal [&::-webkit-details-marker]:hidden"

@@ -23,6 +23,7 @@ R11: the CLI owns no verbs. What a command calls decides which credential it nee
 | Reaches                                    | Commands                                                                                  | Credential                  |
 | ------------------------------------------ | ----------------------------------------------------------------------------------------- | --------------------------- |
 | in-process services (`ServerBootFn`)       | `init`, `serve`, `migrate`, `scheduler`, `org`, `project`, `invite`, `auth login` (local) | local profile, or DB        |
+| the database, as the migrator role         | `admin limits`                                                                            | DB                          |
 | control plane S2, Connect (`ClientBootFn`) | `todo`, `auth whoami`, `auth login --url` (its `Whoami`)                                  | profile token, or `--token` |
 | Othra, OAuth 2.0                           | `auth login --url` (RFC 8252 loopback), `auth logout` (RFC 7009), refreshes               | native public client, PKCE  |
 | data plane S3, REST                        | `blog`                                                                                    | API key                     |
@@ -38,7 +39,7 @@ Args, flags and what each command prints: [`commands`](commands.md).
 
 ```
 yasaku
-├─ Runtime   init · serve · migrate {up,status,down-to} · scheduler {list,run}
+├─ Runtime   init · serve · migrate {up,status,down-to} · scheduler {list,run} · admin limits {list,set,unset}
 ├─ Auth      auth {login,logout,whoami}
 ├─ Tenancy   org {list,create} · project {list,create} · invite {list,send,revoke}
 ├─ Domain    todo {list,add,toggle,delete}                             control plane S2
@@ -97,6 +98,9 @@ error envelope on stdout and `--output` does not affect it. One line on **stderr
 ```
 2026/01/02 15:04:05 ERROR yasaku error="blog get: no such org, project or post"
 ```
+
+An error that carries a code prints as `CODE: message`, for example
+`error="LIM001: Acme can have 3 projects on the Free plan. …"`.
 
 `internal/cli/render/error.go` defines a structured alternative
 (`{"error":{"code","message","exit"}}` in json, `error:` / `code:` / `exit:` in text) that nothing

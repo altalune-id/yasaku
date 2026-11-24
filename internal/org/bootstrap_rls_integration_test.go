@@ -54,7 +54,7 @@ func TestPostgres_BootstrapSingleton_WithoutTenantContext_UnderRLS(t *testing.T)
 	unexpected := func(_ context.Context, msg string, cause error, _ ...any) *apperror.AppError {
 		return apperror.New("yasaku.unexpected", msg, codes.Internal, &apperrorv1.ErrorDetail{Code: "yasaku.unexpected"}).WithCause(cause)
 	}
-	svc := org.NewService(store, capabilities.Capabilities{}, slog.New(slog.NewTextHandler(io.Discard, nil)), unexpected)
+	svc := org.NewService(store, capabilities.Capabilities{}, slog.New(slog.NewTextHandler(io.Discard, nil)), unexpected, tenant.NewUnitOfWork(db.DBConfig{Driver: db.DriverPostgres}, db.Pool{W: sqlDB, R: sqlDB}, tenant.NewPgConn(sqlDB)))
 
 	o, err := svc.BootstrapSingleton(t.Context(), "acme", "Acme", ownerID)
 	require.NoError(t, err, "bootstrap must not require a tenant scope it cannot have yet")

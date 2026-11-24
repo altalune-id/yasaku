@@ -81,6 +81,9 @@ func (h *ProjectHandler) PostCreate(w http.ResponseWriter, r *http.Request) {
 		if project.IsAlreadyExistsError(err) {
 			msg = "Slug is already taken."
 		}
+		if m, ok := h.limitMessage(r.Context(), err); ok {
+			msg = m
+		}
 		if slug == "" {
 			slug = slugs.Generate()
 		}

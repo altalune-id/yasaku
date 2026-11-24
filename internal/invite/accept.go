@@ -2,6 +2,7 @@ package invite
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -11,6 +12,8 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 
 	"altalune.id/yasaku/internal/apperror"
+	"altalune.id/yasaku/internal/limits"
+	"altalune.id/yasaku/internal/platform/audit"
 	"altalune.id/yasaku/internal/platform/tenant"
 )
 
@@ -67,6 +70,10 @@ type AcceptWorkflow struct {
 	users      userStore
 	orgs       orgStore
 	clock      func() time.Time
+	uow        tenant.UnitOfWork
+	limits     Limiter
+	counter    MemberCounter
+	audit      Auditor
 	log        *slog.Logger
 	unexpected apperror.UnexpectedFunc
 }
@@ -79,6 +86,11 @@ func WithAcceptClock(clock func() time.Time) AcceptOption {
 	return func(w *AcceptWorkflow) { w.clock = clock }
 }
 
+// WithUnitOfWork commits the membership and the consumed invite together.
+func WithUnitOfWork(uow tenant.UnitOfWork) AcceptOption {
+	return func(w *AcceptWorkflow) { w.uow = uow }
+}
+
 // NewAcceptWorkflow wires the workflow.
 func NewAcceptWorkflow(invites Store, users userStore, orgs orgStore, log *slog.Logger, unexpected apperror.UnexpectedFunc, opts ...AcceptOption) *AcceptWorkflow {
 	w := &AcceptWorkflow{
@@ -86,6 +98,7 @@ func NewAcceptWorkflow(invites Store, users userStore, orgs orgStore, log *slog.
 		users:      users,
 		orgs:       orgs,
 		clock:      func() time.Time { return time.Now().UTC() },
+		uow:        func(ctx context.Context, fn func(ctx context.Context) error) error { return fn(ctx) },
 		log:        log,
 		unexpected: unexpected,
 	}
@@ -132,7 +145,8 @@ func (w *AcceptWorkflow) Execute(ctx context.Context, req AcceptRequest) (*Accep
 		return nil, err
 	}
 
-	if _, err := w.orgs.ByID(ctx, inv.OrgID); err != nil {
+	o, err := w.orgs.ByID(ctx, inv.OrgID)
+	if err != nil {
 		span.RecordError(err)
 		return nil, w.unexpected(ctx, "invite.Accept: org lookup", fmt.Errorf("invite.Accept: org lookup: %w", err), "org_id", inv.OrgID)
 	}
@@ -140,17 +154,71 @@ func (w *AcceptWorkflow) Execute(ctx context.Context, req AcceptRequest) (*Accep
 	// tenant-scope the writes to the invite's org — the acceptor isn't yet a member of any tenant so ctx has no tenant.Context on it.
 	tctx := tenant.Into(ctx, tenant.Context{OrgID: inv.OrgID, UserID: usr.ID})
 	m := &MembershipRef{OrgID: inv.OrgID, UserID: usr.ID, Role: inv.Role}
-	if err := w.orgs.SaveMembership(tctx, m); err != nil {
-		span.RecordError(err)
-		return nil, w.unexpected(ctx, "invite.Accept: save membership", fmt.Errorf("invite.Accept: save membership: %w", err),
-			"org_id", inv.OrgID, "user_id", usr.ID)
-	}
-	if err := w.invites.Save(tctx, inv); err != nil {
-		span.RecordError(err)
-		return nil, w.unexpected(ctx, "invite.Accept: save invite", fmt.Errorf("invite.Accept: save invite: %w", err),
-			"invite_id", inv.ID)
+	err = w.uow(tctx, func(tctx context.Context) error {
+		if err := w.checkJoin(tctx, usr.ID, o); err != nil {
+			return err
+		}
+		if err := w.orgs.SaveMembership(tctx, m); err != nil {
+			span.RecordError(err)
+			return w.unexpected(ctx, "invite.Accept: save membership", fmt.Errorf("invite.Accept: save membership: %w", err),
+				"org_id", inv.OrgID, "user_id", usr.ID)
+		}
+		if err := w.invites.Save(tctx, inv); err != nil {
+			span.RecordError(err)
+			return w.unexpected(ctx, "invite.Accept: save invite", fmt.Errorf("invite.Accept: save invite: %w", err),
+				"invite_id", inv.ID)
+		}
+		if err := record(tctx, w.audit, audit.Event{Action: "member.joined", TargetKind: "user", TargetID: usr.ID.String(),
+			Detail: map[string]string{"name": usr.Email, "email": usr.Email, "role": string(inv.Role)}}); err != nil {
+			return w.unexpected(ctx, "invite.Accept: audit", err, "invite_id", inv.ID)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 	return &AcceptResult{Invite: inv, User: usr, Membership: m}, nil
+}
+
+func (w *AcceptWorkflow) checkJoin(ctx context.Context, userID uuid.UUID, o *OrgRef) error {
+	if w.limits == nil {
+		return nil
+	}
+	err := checkJoinLimits(ctx, w.limits, w.counter, userID, o.ID)
+	if re, ok := errors.AsType[*limits.ReachedError](err); ok {
+		re.Name = o.Name
+		return re
+	}
+	if err != nil && !limits.IsReachedError(err) {
+		return w.unexpected(ctx, "invite.Accept: limits", err, "org_id", o.ID)
+	}
+	return err
+}
+
+func checkJoinLimits(ctx context.Context, l Limiter, c MemberCounter, userID, orgID uuid.UUID) error {
+	user := limits.Subject{Kind: limits.SubjectUser, ID: userID}
+	org := limits.Subject{Kind: limits.SubjectOrg, ID: orgID}
+	if err := l.Lock(ctx, user, org); err != nil {
+		return err
+	}
+	staff, err := c.IsStaff(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if !staff {
+		joined, err := c.CountOrgsJoined(ctx, userID)
+		if err != nil {
+			return err
+		}
+		if err := l.Check(ctx, limits.UserOrgsJoined, user, joined); err != nil {
+			return err
+		}
+	}
+	members, err := c.CountMembers(ctx, orgID)
+	if err != nil {
+		return err
+	}
+	return l.Check(ctx, limits.OrgMembers, org, members)
 }
 
 func (w *AcceptWorkflow) ensureUser(ctx context.Context, email, name string) (*UserRef, error) {

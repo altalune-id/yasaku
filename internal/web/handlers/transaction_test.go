@@ -131,8 +131,8 @@ func newTxFixture(t *testing.T) *txFixture {
 	bundle := i18n.NewEmbeddedBundle(i18n.IdID)
 
 	users := user.NewService(fakes.NewUser(), user.GenesisConfig{}, discardLogger(), passthroughUnexpected())
-	orgs := org.NewService(fakes.NewOrg(), caps, discardLogger(), passthroughUnexpected())
-	projects := project.NewService(fakes.NewProject(), discardLogger(), passthroughUnexpected(), orgs)
+	orgs := org.NewService(fakes.NewOrg(), caps, discardLogger(), passthroughUnexpected(), fakes.UnitOfWork)
+	projects := project.NewService(fakes.NewProject(), discardLogger(), passthroughUnexpected(), orgs, fakes.UnitOfWork)
 
 	ledgers := ledger.NewService(fakes.NewLedger(), discardLogger(), passthroughUnexpected(), orgs)
 	wallets := wallet.NewService(fakes.NewWallet(), discardLogger(), passthroughUnexpected())

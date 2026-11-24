@@ -101,7 +101,9 @@ func (x *Member) GetJoinedAt() *timestamppb.Timestamp {
 }
 
 type ListMembersRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Org is the organization slug or id, needed when the caller belongs to more than one
+	Org           string `protobuf:"bytes,1,opt,name=org,proto3" json:"org,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -134,6 +136,13 @@ func (x *ListMembersRequest) ProtoReflect() protoreflect.Message {
 // Deprecated: Use ListMembersRequest.ProtoReflect.Descriptor instead.
 func (*ListMembersRequest) Descriptor() ([]byte, []int) {
 	return file_org_v1_org_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *ListMembersRequest) GetOrg() string {
+	if x != nil {
+		return x.Org
+	}
+	return ""
 }
 
 type ListMembersResponse struct {
@@ -190,8 +199,9 @@ const file_org_v1_org_proto_rawDesc = "" +
 	"\x05email\x18\x02 \x01(\tR\x05email\x12\x12\n" +
 	"\x04name\x18\x03 \x01(\tR\x04name\x12\x12\n" +
 	"\x04role\x18\x04 \x01(\tR\x04role\x127\n" +
-	"\tjoined_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\bjoinedAt\"\x14\n" +
-	"\x12ListMembersRequest\"?\n" +
+	"\tjoined_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\bjoinedAt\"&\n" +
+	"\x12ListMembersRequest\x12\x10\n" +
+	"\x03org\x18\x01 \x01(\tR\x03org\"?\n" +
 	"\x13ListMembersResponse\x12(\n" +
 	"\amembers\x18\x01 \x03(\v2\x0e.org.v1.MemberR\amembers2\x84\x02\n" +
 	"\rMemberService\x12\xf2\x01\n" +

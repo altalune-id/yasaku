@@ -109,7 +109,9 @@ func (x *Project) GetCreatedAt() *timestamppb.Timestamp {
 }
 
 type ListProjectsRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Org is the organization slug or id, needed when the caller belongs to more than one
+	Org           string `protobuf:"bytes,1,opt,name=org,proto3" json:"org,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -142,6 +144,13 @@ func (x *ListProjectsRequest) ProtoReflect() protoreflect.Message {
 // Deprecated: Use ListProjectsRequest.ProtoReflect.Descriptor instead.
 func (*ListProjectsRequest) Descriptor() ([]byte, []int) {
 	return file_project_v1_project_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *ListProjectsRequest) GetOrg() string {
+	if x != nil {
+		return x.Org
+	}
+	return ""
 }
 
 type ListProjectsResponse struct {
@@ -201,8 +210,9 @@ const file_project_v1_project_proto_rawDesc = "" +
 	"\x04name\x18\x04 \x01(\tR\x04name\x12\x16\n" +
 	"\x06system\x18\x05 \x01(\bR\x06system\x129\n" +
 	"\n" +
-	"created_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"\x15\n" +
-	"\x13ListProjectsRequest\"G\n" +
+	"created_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"'\n" +
+	"\x13ListProjectsRequest\x12\x10\n" +
+	"\x03org\x18\x01 \x01(\tR\x03org\"G\n" +
 	"\x14ListProjectsResponse\x12/\n" +
 	"\bprojects\x18\x01 \x03(\v2\x13.project.v1.ProjectR\bprojects2\x95\x02\n" +
 	"\x0eProjectService\x12\x82\x02\n" +

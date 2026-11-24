@@ -2,6 +2,7 @@ package invite_test
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -9,6 +10,7 @@ import (
 	"github.com/google/uuid"
 
 	"altalune.id/yasaku/internal/invite"
+	"altalune.id/yasaku/internal/platform/db"
 	"altalune.id/yasaku/internal/testutil/fakes"
 )
 
@@ -80,14 +82,23 @@ func (f *fakeOrgs) ByID(_ context.Context, id uuid.UUID) (*invite.OrgRef, error)
 	return nil, &notFoundErr{msg: "org: not found"}
 }
 
-func (f *fakeOrgs) SaveMembership(_ context.Context, m *invite.MembershipRef) error {
+func (f *fakeOrgs) SaveMembership(ctx context.Context, m *invite.MembershipRef) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.SaveMembershipErr != nil {
 		return f.SaveMembershipErr
 	}
 	cp := *m
-	f.mems[[2]uuid.UUID{m.OrgID, m.UserID}] = &cp
+	apply := func() { f.mems[[2]uuid.UUID{m.OrgID, m.UserID}] = &cp }
+	if _, inTx := db.CurrentTx(ctx); inTx {
+		db.AfterCommit(ctx, func() {
+			f.mu.Lock()
+			defer f.mu.Unlock()
+			apply()
+		})
+		return nil
+	}
+	apply()
 	return nil
 }
 
@@ -266,5 +277,28 @@ func TestAccept_InvalidEmail(t *testing.T) {
 	_, err := wf.Execute(context.Background(), invite.AcceptRequest{Token: "x", Email: ""})
 	if !invite.IsInvalidEmailError(err) {
 		t.Errorf("want IsInvalidEmailError, got %v", err)
+	}
+}
+
+func TestAccept_MembershipAndInviteCommitTogether(t *testing.T) {
+	t.Parallel()
+	store := fakes.NewInvite()
+	users := newFakeUsers()
+	orgs := newFakeOrgs()
+	orgID := uuid.New()
+	_, raw := seedAcceptable(t, store, orgs, orgID, "alice@example.com", time.Hour)
+	store.SaveErr = errors.New("invite save failed")
+
+	unex := 0
+	wf := invite.NewAcceptWorkflow(store, users, orgs, newTestLogger(), noopUnexpected(&unex), invite.WithUnitOfWork(fakes.UnitOfWork))
+	if _, err := wf.Execute(context.Background(), invite.AcceptRequest{Token: raw, Email: "alice@example.com"}); err == nil {
+		t.Fatal("a failed invite save must fail the accept")
+	}
+	usr, err := users.ByEmail(context.Background(), "alice@example.com")
+	if err != nil {
+		t.Fatalf("ensureUser stays outside the unit of work and keeps its user: %v", err)
+	}
+	if _, err := orgs.MembershipOf(context.Background(), orgID, usr.ID); err == nil {
+		t.Fatal("membership must roll back with the failed invite save")
 	}
 }

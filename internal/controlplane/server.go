@@ -108,7 +108,7 @@ func New(cfg *config.Config, kernel *platform.Kernel, d Deps) *Server {
 		Invites:  d.Invites,
 
 		AuthSvc:    NewAuthService(d.Orgs),
-		ProjectSvc: NewProjectService(d.Projects),
+		ProjectSvc: NewProjectService(d.Orgs, d.Projects),
 		MemberSvc:  NewMemberService(d.Orgs),
 
 		WorkspaceSvc: NewWorkspaceService(d.Orgs, d.Projects, d.Ledgers, d.Periods),
@@ -155,7 +155,7 @@ var (
 func (s *Server) Handler(basePath string) http.Handler {
 	opts := s.handlerOptions()
 	// NOTE: built here, not in New, since s.APIKeys isn't set until after New returns.
-	s.APIKeySvc = NewAPIKeyService(s.APIKeys, s.Projects)
+	s.APIKeySvc = NewAPIKeyService(s.APIKeys, s.Projects, s.Orgs)
 
 	inner := http.NewServeMux()
 	for _, m := range []mountedHandler{

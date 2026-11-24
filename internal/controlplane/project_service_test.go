@@ -15,6 +15,7 @@ import (
 	"altalune.id/yasaku/internal/blog"
 	"altalune.id/yasaku/internal/blog/category"
 	"altalune.id/yasaku/internal/platform/session"
+	"altalune.id/yasaku/internal/platform/tenant"
 	"altalune.id/yasaku/internal/project"
 )
 
@@ -111,7 +112,7 @@ func appErrorDetail(t *testing.T, err error) *apperrorv1.ErrorDetail {
 func TestProject_ListProjects_HidesOtherOrgs(t *testing.T) {
 	f := newDiscoveryFixture(t, true)
 
-	stored, err := f.h.projs.ByID(context.Background(), f.foreign.ID)
+	stored, err := f.h.projs.ByID(tenant.Into(context.Background(), tenant.Context{OrgID: f.foreignOrgID}), f.foreign.ID)
 	require.NoError(t, err, "the foreign project must be in the store, or this guard hides nothing")
 	require.Equal(t, f.foreignOrgID, stored.OrgID)
 
@@ -164,7 +165,7 @@ func TestBlog_ListPosts_ResolvesTheProject(t *testing.T) {
 
 		_, err := f.listPosts(t, f.foreign.ID.String())
 		require.Error(t, err, "a project UUID from another org was readable by naming it")
-		require.Equal(t, connect.CodePermissionDenied, connectCode(err))
+		require.Equal(t, connect.CodeNotFound, connectCode(err), "another org's project reads as absent, never forbidden")
 		require.NotContains(t, err.Error(), "foreign-post",
 			"the refusal leaked the foreign project's contents")
 	})

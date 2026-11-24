@@ -10,6 +10,8 @@ type LoginView struct {
 	LastEmail  string
 	AdminForce bool
 	LocalAuth  bool
+	TermsURL   string
+	PrivacyURL string
 }
 
 templ LoginPage(d web.LayoutData, v LoginView) {
@@ -94,6 +96,19 @@ templ LoginPage(d web.LayoutData, v LoginView) {
 		if !v.LocalAuth && !d.Caps.ExternalIdentity {
 			<p class="mt-6 text-center text-sm text-base-content/70">
 				{ d.Tr("login.no_method") }
+			</p>
+		}
+		if v.TermsURL != "" || v.PrivacyURL != "" {
+			<p data-legal-links class="mt-8 flex items-center justify-center gap-2 text-xs text-base-content/70">
+				if v.TermsURL != "" {
+					<a href={ templ.SafeURL(v.TermsURL) } class="link link-hover">{ d.Tr("title.terms") }</a>
+				}
+				if v.TermsURL != "" && v.PrivacyURL != "" {
+					<span aria-hidden="true">·</span>
+				}
+				if v.PrivacyURL != "" {
+					<a href={ templ.SafeURL(v.PrivacyURL) } class="link link-hover">{ d.Tr("title.privacy") }</a>
+				}
 			</p>
 		}
 	</section>

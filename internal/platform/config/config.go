@@ -79,6 +79,7 @@ type ComplianceConfig struct {
 	TermsURL          string `yaml:"termsURL"          mapstructure:"termsURL"          validate:"omitempty,url"`
 	PrivacyURL        string `yaml:"privacyURL"        mapstructure:"privacyURL"        validate:"omitempty,url"`
 	RequireAcceptance bool   `yaml:"requireAcceptance" mapstructure:"requireAcceptance"`
+	ContactEmail      string `yaml:"contactEmail"      mapstructure:"contactEmail"      validate:"omitempty,email" awareness:"-"`
 }
 
 // I18nConfig configures the SSR i18n subsystem.

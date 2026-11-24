@@ -29,6 +29,10 @@ var upsertGuardExemptions = map[string]string{ //nolint:gochecknoglobals // Immu
 	"platform/session/sqlite.go:Save":   "sessions carries no org_id by design; a session is resolved before any tenant scope exists (see schema.RequiredTableSuffixes and migrations/postgres/001_init.sql)",
 	"org/pgwriter.go:Save":              "the orgs table has no org_id column — its own id is the tenant id, and org.Service.Create writes a row for an org that does not exist yet",
 	"org/sqlite.go:Save":                "the orgs table has no org_id column — its own id is the tenant id, and org.Service.Create writes a row for an org that does not exist yet",
+	"limits/postgres.go:SetPlan":        "plan_limits is global — a plan's limits apply to every org on that plan, so the table has no org_id column and only operators write it",
+	"limits/sqlite.go:SetPlan":          "plan_limits is global — a plan's limits apply to every org on that plan, so the table has no org_id column and only operators write it",
+	"limits/postgres.go:SetOverride":    "limit_overrides is global — an override names its own user, org or project subject, so the table has no org_id column and only operators write it",
+	"limits/sqlite.go:SetOverride":      "limit_overrides is global — an override names its own user, org or project subject, so the table has no org_id column and only operators write it",
 }
 
 type conflictSite struct {

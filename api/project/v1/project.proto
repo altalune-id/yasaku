@@ -26,7 +26,10 @@ message Project {
   google.protobuf.Timestamp created_at = 6;
 }
 
-message ListProjectsRequest {}
+message ListProjectsRequest {
+  // Org is the organization slug or id, needed when the caller belongs to more than one
+  string org = 1;
+}
 
 message ListProjectsResponse {
   repeated Project projects = 1;

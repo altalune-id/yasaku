@@ -7,27 +7,27 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	projectv1 "altalune.id/yasaku/gen/go/project/v1"
-	"altalune.id/yasaku/internal/platform/tenant"
+	"altalune.id/yasaku/internal/org"
 	"altalune.id/yasaku/internal/project"
 )
 
 // ProjectService implements project.v1.ProjectService.
 type ProjectService struct {
+	orgs     *org.Service
 	projects *project.Service
 }
 
 // NewProjectService binds the handler to its collaborators.
-func NewProjectService(projects *project.Service) *ProjectService {
-	return &ProjectService{projects: projects}
+func NewProjectService(orgs *org.Service, projects *project.Service) *ProjectService {
+	return &ProjectService{orgs: orgs, projects: projects}
 }
 
-// ListProjects returns the projects in the principal's active org that the principal reaches. SECURITY: the org is read from the principal alone, so no caller can re-target this read.
-func (s *ProjectService) ListProjects(ctx context.Context, _ *connect.Request[projectv1.ListProjectsRequest]) (*connect.Response[projectv1.ListProjectsResponse], error) {
-	p, err := principal(ctx)
+// ListProjects returns the projects in the principal's org that the principal reaches. SECURITY: a person may name only an org they belong to; a key stays on its own.
+func (s *ProjectService) ListProjects(ctx context.Context, req *connect.Request[projectv1.ListProjectsRequest]) (*connect.Response[projectv1.ListProjectsResponse], error) {
+	tctx, p, err := scopeToOrg(ctx, s.orgs, req.Msg.GetOrg())
 	if err != nil {
 		return nil, err
 	}
-	tctx := tenant.Into(ctx, tenant.Context{OrgID: p.ActiveOrgID, UserID: p.UserID})
 	items, err := s.projects.List(tctx, p.ActiveOrgID)
 	if err != nil {
 		return nil, err

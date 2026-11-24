@@ -25,17 +25,18 @@ type BlogService struct {
 	posts    *blog.Service
 	cats     *category.Service
 	tags     *tag.Service
+	orgs     orgLister
 	projects *project.Service
 }
 
 // NewBlogService binds the handler to its collaborators.
-func NewBlogService(posts *blog.Service, cats *category.Service, tags *tag.Service, projects *project.Service) *BlogService {
-	return &BlogService{posts: posts, cats: cats, tags: tags, projects: projects}
+func NewBlogService(posts *blog.Service, cats *category.Service, tags *tag.Service, orgs orgLister, projects *project.Service) *BlogService {
+	return &BlogService{posts: posts, cats: cats, tags: tags, orgs: orgs, projects: projects}
 }
 
 // CreatePost persists a draft post in the request's project and sets its tag set.
 func (s *BlogService) CreatePost(ctx context.Context, req *connect.Request[blogv1.CreatePostRequest]) (*connect.Response[blogv1.CreatePostResponse], error) {
-	tctx, _, err := scopeToProject(ctx, s.projects, req.Msg.GetProjectId())
+	tctx, _, err := scopeToProject(ctx, s.orgs, s.projects, req.Msg.GetProjectId())
 	if err != nil {
 		return nil, err
 	}
@@ -79,7 +80,7 @@ func (s *BlogService) GetPost(ctx context.Context, req *connect.Request[blogv1.G
 
 // ListPosts returns the posts in the request's project, or in the principal's active project when project_id is omitted, optionally filtered by status and category.
 func (s *BlogService) ListPosts(ctx context.Context, req *connect.Request[blogv1.ListPostsRequest]) (*connect.Response[blogv1.ListPostsResponse], error) {
-	tctx, _, err := scopeToActiveProject(ctx, s.projects, req.Msg.GetProjectId())
+	tctx, _, err := scopeToActiveProject(ctx, s.orgs, s.projects, req.Msg.GetProjectId())
 	if err != nil {
 		return nil, err
 	}

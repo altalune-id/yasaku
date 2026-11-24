@@ -17,6 +17,7 @@ import (
 
 	"altalune.id/yasaku/internal/apperror"
 	"altalune.id/yasaku/internal/boot"
+	"altalune.id/yasaku/internal/limits"
 	"altalune.id/yasaku/internal/onboard"
 	"altalune.id/yasaku/internal/org"
 	"altalune.id/yasaku/internal/platform/authn"
@@ -58,6 +59,7 @@ func probeRoutes() []probeRoute {
 		{http.MethodGet, base + "/switch", nil},
 		{http.MethodGet, base + "/members", nil},
 		{http.MethodGet, base + "/invites", nil},
+		{http.MethodGet, base + "/activity", nil},
 		{http.MethodGet, base + "/apikeys", nil},
 		{http.MethodGet, base + "/projects", nil},
 		{http.MethodGet, base + "/projects/new", nil},
@@ -416,6 +418,8 @@ func TestOrgSwitcher_PinnedOrgIsNotAlsoOfferedToSwitchTo(t *testing.T) {
 		Email: "probe-two-orgs@example.com", Name: "Probe", Source: user.SourceOIDC,
 	})
 	require.NoError(t, err)
+	require.NoError(t, limits.NewStore(srv.Cfg.DB, srv.Platform.Pool).SetOverride(context.Background(),
+		limits.Subject{Kind: limits.SubjectUser, ID: owner.ID}, limits.UserOrgsCreated, 2, uuid.Nil))
 	active, err := srv.Orgs.Create(context.Background(), org.CreateRequest{
 		Slug: "org-active", Name: "Org Active", OwnerID: owner.ID,
 	})

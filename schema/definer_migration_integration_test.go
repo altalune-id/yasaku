@@ -82,3 +82,52 @@ func TestMigrateUp_RaisesWhenMigrationRoleLacksBypassRLS(t *testing.T) {
 
 	require.Zero(t, wrapperCount(t, migDB, prefix), "the aborted migration must leave no wrapper behind")
 }
+
+func TestMigration020_DefinerRevokedFromPublic(t *testing.T) {
+	h := pgtest.New(t)
+	suffix := uniqueSuffix(t)
+	role := "yasaku_limits_" + suffix
+	prefix := "t" + suffix + "_"
+
+	migDB := migrationRoleDB(t, h, role, "BYPASSRLS")
+	cfg := migrationConfig(prefix)
+	require.NoError(t, schema.MigrateUp(t.Context(), migDB, cfg))
+
+	var secdef bool
+	require.NoError(t, migDB.QueryRowContext(t.Context(),
+		`SELECT p.prosecdef FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+		  WHERE n.nspname = 'public' AND p.proname = $1`,
+		prefix+"count_orgs_created_by").Scan(&secdef))
+	require.True(t, secdef, "count_orgs_created_by must be SECURITY DEFINER to count across tenants")
+
+	var publicExec bool
+	require.NoError(t, migDB.QueryRowContext(t.Context(),
+		`SELECT has_function_privilege('public', $1, 'EXECUTE')`,
+		"public."+prefix+"count_orgs_created_by(uuid)").Scan(&publicExec))
+	require.False(t, publicExec, "PUBLIC must not hold EXECUTE on count_orgs_created_by")
+}
+
+func TestMigration021_IsStaffDefinerRevokedFromPublic(t *testing.T) {
+	h := pgtest.New(t)
+	suffix := uniqueSuffix(t)
+	role := "yasaku_staff_" + suffix
+	prefix := "t" + suffix + "_"
+
+	migDB := migrationRoleDB(t, h, role, "BYPASSRLS")
+	require.NoError(t, schema.MigrateUp(t.Context(), migDB, migrationConfig(prefix)))
+
+	var secdef bool
+	var config string
+	require.NoError(t, migDB.QueryRowContext(t.Context(),
+		`SELECT p.prosecdef, coalesce(array_to_string(p.proconfig, ','), '') FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+		  WHERE n.nspname = 'public' AND p.proname = $1`,
+		prefix+"is_staff").Scan(&secdef, &config))
+	require.True(t, secdef, "is_staff must be SECURITY DEFINER to read the system org's memberships from any scope")
+	require.Contains(t, config, "search_path=", "a definer pins its search_path")
+
+	var publicExec bool
+	require.NoError(t, migDB.QueryRowContext(t.Context(),
+		`SELECT has_function_privilege('public', $1, 'EXECUTE')`,
+		"public."+prefix+"is_staff(uuid)").Scan(&publicExec))
+	require.False(t, publicExec, "PUBLIC must not hold EXECUTE on is_staff")
+}
