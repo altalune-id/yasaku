@@ -272,9 +272,9 @@ func (e *erroringStore) LockOrg(ctx context.Context, o uuid.UUID) error {
 	return e.inner.LockOrg(ctx, o)
 }
 
-func (e *erroringStore) MemberRole(ctx context.Context, o, u uuid.UUID) (org.Role, string, error) {
+func (e *erroringStore) MemberRole(ctx context.Context, o, u uuid.UUID) (org.Role, uuid.UUID, string, error) {
 	if e.memberOfErr != nil {
-		return "", "", e.memberOfErr
+		return "", uuid.Nil, "", e.memberOfErr
 	}
 	return e.inner.MemberRole(ctx, o, u)
 }

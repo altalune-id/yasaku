@@ -54,11 +54,12 @@ type Authenticator interface {
 // Chain tries each Authenticator in order and returns the first success.
 type Chain []Authenticator
 
-// Authenticate implements Authenticator. SECURITY: every refusal collapses to one opaque error; only an *UnavailableError passes through, so an outage never reads as a bad credential.
+// Authenticate implements Authenticator. SECURITY: every bad credential collapses to one opaque error; only an *UnavailableError or a valid credential's *RefusedError passes through, so an outage never reads as a bad credential.
 func (c Chain) Authenticate(ctx context.Context, raw string) (session.Principal, error) {
 	var (
 		causes      []error
 		unavailable *UnavailableError
+		refused     *RefusedError
 	)
 	for _, a := range c {
 		p, err := a.Authenticate(ctx, raw)
@@ -68,7 +69,13 @@ func (c Chain) Authenticate(ctx context.Context, raw string) (session.Principal,
 		if u, ok := errors.AsType[*UnavailableError](err); ok && unavailable == nil {
 			unavailable = u
 		}
+		if r, ok := errors.AsType[*RefusedError](err); ok && refused == nil {
+			refused = r
+		}
 		causes = append(causes, err)
+	}
+	if refused != nil {
+		return session.Principal{}, refused
 	}
 	if unavailable != nil {
 		return session.Principal{}, unavailable

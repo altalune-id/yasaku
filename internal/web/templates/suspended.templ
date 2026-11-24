@@ -1,0 +1,19 @@
+package templates
+
+import "altalune.id/yasaku/internal/web"
+
+// SuspendedPage tells a suspended user why nothing works and lets them sign out.
+templ SuspendedPage(d web.LayoutData, message string) {
+	<section class="mx-auto flex max-w-md flex-col items-center gap-4 py-12 text-center" data-suspended>
+		<h1 class="text-2xl font-bold tracking-tight text-balance">{ d.Tr("user.suspended_title") }</h1>
+		<p class="text-sm text-pretty text-base-content/70">{ message }</p>
+		<form method="post" action={ templ.SafeURL(d.Href("/logout")) }>
+			<button type="submit" class="btn btn-ghost whitespace-nowrap">{ d.Tr("common.sign_out") }</button>
+		</form>
+	</section>
+}
+
+// SuspendedLayout renders SuspendedPage as a full, chromeless page.
+templ SuspendedLayout(d web.LayoutData, message string) {
+	@Layout(web.WithContent(d, SuspendedPage(d, message)))
+}

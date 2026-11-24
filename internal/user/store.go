@@ -2,6 +2,7 @@ package user
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -21,4 +22,35 @@ type Store interface {
 	MarkTipsSeen(ctx context.Context, id uuid.UUID, ids []string) ([]string, error)
 	// ResetTipsSeen forgets every seen tip so the tips show again.
 	ResetTipsSeen(ctx context.Context, id uuid.UUID) error
+	// StampSignIn records that id signed in at at.
+	StampSignIn(ctx context.Context, id uuid.UUID, at time.Time) error
+	// SetSuspended suspends id from at, or lifts the suspension when at is nil.
+	SetSuspended(ctx context.Context, id uuid.UUID, at *time.Time) error
+	// AdminListOrgs lists every org with its counts for platform staff; no ledger data.
+	AdminListOrgs(ctx context.Context) ([]AdminOrg, error)
+	// AdminListUsers lists every user with sign-in and suspension state for platform staff.
+	AdminListUsers(ctx context.Context) ([]AdminUser, error)
+}
+
+// AdminOrg is one org as platform staff see it: identity and counts, never ledger data.
+type AdminOrg struct {
+	ID           uuid.UUID
+	Slug         string
+	Name         string
+	Plan         string
+	CreatedAt    time.Time
+	MemberCount  int64
+	ProjectCount int64
+	LastActive   *time.Time
+}
+
+// AdminUser is one user as platform staff see them.
+type AdminUser struct {
+	ID           uuid.UUID
+	Email        string
+	Name         string
+	CreatedAt    time.Time
+	LastSignInAt *time.Time
+	SuspendedAt  *time.Time
+	OrgCount     int64
 }

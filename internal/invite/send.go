@@ -29,7 +29,9 @@ type TokenGenFunc = func() (raw, hash string, err error)
 type SendRequest struct {
 	Email string
 	Role  Role
-	TTL   time.Duration
+	// RoleID names the custom role when Role is RoleCustom.
+	RoleID uuid.UUID
+	TTL    time.Duration
 }
 
 // SendWorkflow issues an invite: mints a token, persists the aggregate, and emails the raw token in an accept URL.
@@ -91,7 +93,7 @@ func (w *SendWorkflow) Execute(ctx context.Context, req SendRequest) (*Invite, e
 		attribute.String("org_id", tc.OrgID.String()),
 	)
 
-	if !req.Role.IsValid() {
+	if !validGrant(req.Role, req.RoleID) {
 		return nil, &InvalidRoleError{Role: string(req.Role)}
 	}
 	if _, err := normalizeEmail(req.Email); err != nil {
@@ -108,12 +110,13 @@ func (w *SendWorkflow) Execute(ctx context.Context, req SendRequest) (*Invite, e
 		return nil, w.unexpected(ctx, "invite.Send: tokenGen", fmt.Errorf("invite.Send: tokenGen: %w", err))
 	}
 	inv, err := New(NewParams{
-		OrgID: tc.OrgID,
-		Email: req.Email,
-		Role:  req.Role,
-		TTL:   ttl,
-		Token: raw,
-		Now:   w.clock(),
+		OrgID:  tc.OrgID,
+		Email:  req.Email,
+		Role:   req.Role,
+		RoleID: req.RoleID,
+		TTL:    ttl,
+		Token:  raw,
+		Now:    w.clock(),
 	})
 	if err != nil {
 		span.RecordError(err)
@@ -180,6 +183,23 @@ func (w *SendWorkflow) checkSeats(ctx context.Context, orgID uuid.UUID) error {
 	re.Pending = open
 	if re.Name, err = w.counter.OrgName(ctx, orgID); err != nil {
 		return w.unexpected(ctx, "invite.Send: org name", err, "org_id", orgID)
+	}
+	return re
+}
+
+func (w *SendWorkflow) allowed(ctx context.Context, orgID uuid.UUID) error {
+	s, err := w.seats(ctx, orgID)
+	if err != nil {
+		return err
+	}
+	err = w.limits.Check(ctx, limits.OrgMembers, limits.Subject{Kind: limits.SubjectOrg, ID: orgID}, s.Used)
+	re, ok := errors.AsType[*limits.ReachedError](err)
+	if !ok {
+		return err
+	}
+	re.Pending = s.Pending
+	if re.Name, err = w.counter.OrgName(ctx, orgID); err != nil {
+		return w.unexpected(ctx, "invite.SendAllowed: org name", err, "org_id", orgID)
 	}
 	return re
 }

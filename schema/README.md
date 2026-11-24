@@ -11,8 +11,8 @@ domain interfaces — SQLite is dev/demo, Postgres is production.
 
 ```
 schema/
-├── migrations/postgres/    # 001_init … 022_revoke_orphan_keys, VERSION
-├── migrations/sqlite/      # 001_init … 019_revoke_orphan_keys, VERSION
+├── migrations/postgres/    # 001_init … 024_roles, VERSION
+├── migrations/sqlite/      # 001_init … 021_roles, VERSION
 ├── migrator.go             # goose runner, template rendering, embed FS
 ├── migrator_templatefs.go  # per-boot template-rendered file system
 ├── rls_guard.go            # boot-time BYPASSRLS assertion
@@ -39,6 +39,9 @@ erDiagram
     orgs ||--o{ memberships : "has"
     orgs ||--o{ projects : "owns"
     orgs ||--o{ invites : "pending"
+    orgs ||--o{ roles : "defines"
+    roles |o--o{ memberships : "custom role"
+    roles |o--o{ invites : "custom role"
     orgs }o--o{ plan_limits : "plan"
     orgs ||--o{ audit_events : "records"
     projects ||--o{ todos : "contains"
@@ -57,6 +60,8 @@ erDiagram
         text theme "theme family, '' until chosen"
         text color_mode "light|dark|system, '' until chosen"
         text tips_seen "JSON array, default []"
+        timestamptz last_sign_in_at "stamped at sign-in"
+        timestamptz suspended_at "null = active"
     }
     orgs {
         uuid id PK
@@ -84,7 +89,20 @@ erDiagram
     memberships {
         uuid org_id FK
         uuid user_id FK
-        text role "owner|admin|member"
+        text role "owner|admin|member|custom"
+        uuid role_id FK "set only when role = custom"
+    }
+    invites {
+        uuid org_id FK
+        text role "owner|admin|member|custom"
+        uuid role_id FK "set only when role = custom"
+    }
+    roles {
+        uuid id PK
+        uuid org_id FK
+        text name "unique per org, ignoring case"
+        text_array permissions "catalogue permissions; SQLite: JSON text"
+        bigint version
     }
     projects {
         uuid id PK
@@ -109,6 +127,15 @@ erDiagram
 ```
 
 Also tenant-scoped: `blog_categories`, `blog_tags`, `outbox_entries`, `bootstrap`, `audit_events`.
+
+## Custom roles
+
+- **A custom role belongs to one org.** `memberships` and `invites` reference it through the
+  composite `(org_id, role_id)` foreign key, so a row cannot name another org's role.
+- **`role_id` is set exactly when `role = 'custom'`**, by the `*_role_custom` check.
+- **A held role cannot be deleted.** The foreign key is `NO ACTION`, so deleting the org still
+  cascades through its roles and their holders in one statement.
+- Pinned by the `TestMigration024_*` tests in both dialects.
 
 ## Audit log
 
@@ -142,17 +169,17 @@ NULL`), which already refuses a personal token. Postgres runs the trigger as
 
 ## SECURITY DEFINER functions (Postgres)
 
-Each one lifts RLS for a lookup that runs before any tenant scope exists.
+Each one lifts RLS for a lookup that runs before any tenant scope exists, or for a staff console list across tenants.
 All are owned by the migration role, with `EXECUTE` revoked from `PUBLIC`,
 pinned by `TestMigrateUp_DefinerFunctionsAreOwnedByTheMigrationRole`,
-`TestMigration020_DefinerRevokedFromPublic`, `TestMigration021_IsStaffDefinerRevokedFromPublic` and
-`TestMigration022_RevokeTriggerDefinerRevokedFromPublic`.
+`TestMigration020_DefinerRevokedFromPublic`, `TestMigration021_IsStaffDefinerRevokedFromPublic`,
+`TestMigration022_RevokeTriggerDefinerRevokedFromPublic`, `TestAdminListOrgs_DefinerRevokedFromPublic` and `TestMigration024_DefinersRevokedFromPublic`.
 
 | Function                                | Resolves                                               |
 | --------------------------------------- | ------------------------------------------------------ |
 | `resolve_api_key_by_secret_hash(bytea)` | a key and its project grant, by hash                   |
 | `resolve_org_by_slug(text)`             | an org from a path slug                                |
-| `resolve_invite_by_token_hash(text)`    | an invite from its link                                |
+| `resolve_invite_by_token_hash(text)`    | an invite and its custom role from its link            |
 | `list_pending_invites_for_email(text)`  | invites waiting for a signing-up user                  |
 | `list_orgs_for_user(uuid)`              | a user's orgs, to resolve their tenant                 |
 | `list_org_ids()`                        | every org id, for cross-tenant jobs                    |
@@ -160,6 +187,8 @@ pinned by `TestMigrateUp_DefinerFunctionsAreOwnedByTheMigrationRole`,
 | `count_orgs_created_by(uuid)`           | how many orgs a user created, for limits               |
 | `revoke_keys_of_deleted_user()`         | trigger: revokes a deleted user's org and project keys |
 | `is_staff(uuid)`                        | whether a user owns or administers the system org      |
+| `admin_list_orgs()`                     | every org with member and project counts, for staff    |
+| `admin_list_users()`                    | every user with sign-in and suspension, for staff      |
 
 ## Adding a migration
 
@@ -186,9 +215,9 @@ pinned by `TestMigrateUp_DefinerFunctionsAreOwnedByTheMigrationRole`,
 
 yasaku keeps one numbering per dialect. Its own migrations (`007_yasaku`,
 `016_key_authorship`, `017_opensheet`, `018_opensheet_resync`, `019_user_prefs`, `020_limits`, `021_audit`,
-`022_revoke_orphan_keys` on Postgres;
+`022_revoke_orphan_keys`, `023_support`, `024_roles` on Postgres;
 `005_yasaku`, `013_key_authorship`, `014_opensheet`, `015_opensheet_resync`,
-`016_user_prefs`, `017_limits`, `018_audit`, `019_revoke_orphan_keys` on SQLite) interleave with the template's. A template migration lands at yasaku's
+`016_user_prefs`, `017_limits`, `018_audit`, `019_revoke_orphan_keys`, `020_support`, `021_roles` on SQLite) interleave with the template's. A template migration lands at yasaku's
 next free number with byte-identical content, so template `007_apikey` is
 yasaku `008_apikey`. Never renumber or edit an applied migration. Production has
 applied everything up to the version it ran.

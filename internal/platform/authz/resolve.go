@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -67,8 +69,31 @@ func (r *Resolver) held(ctx context.Context, p session.Principal, orgID uuid.UUI
 		g.perms = admitted(g.perms, p.Scopes)
 		return g, err
 	default:
-		return r.roleOf(ctx, orgID, p.UserID)
+		g, err := r.roleOf(ctx, orgID, p.UserID)
+		if err != nil || g.role != "" {
+			return g, err
+		}
+		return r.support(ctx, p, orgID, g)
 	}
+}
+
+// SECURITY: a non-member holds the read permissions only during a live support visit to this org, and only while still staff.
+func (r *Resolver) support(ctx context.Context, p session.Principal, orgID uuid.UUID, g grant) (grant, error) {
+	if !p.Support.Live(orgID, time.Now()) {
+		return g, nil
+	}
+	staff, err := r.src.IsStaff(ctx, p.UserID)
+	if err != nil {
+		return grant{}, fmt.Errorf("authz: staff check of %s: %w", p.UserID, err)
+	}
+	if staff {
+		g.perms = reads()
+	}
+	return g, nil
+}
+
+func reads() []Permission {
+	return slices.DeleteFunc(all(), func(p Permission) bool { return !strings.HasSuffix(string(p), ":read") })
 }
 
 // SECURITY: a key acts for its creator, so it holds no more than the creator's current role; a legacy key with no recorded creator keeps admin rights minus people and key management.

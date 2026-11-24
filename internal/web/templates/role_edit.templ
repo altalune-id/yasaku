@@ -1,0 +1,101 @@
+package templates
+
+import (
+	"strconv"
+
+	"altalune.id/yasaku/internal/web"
+)
+
+// PermOption is one checkbox in the role permission grid.
+type PermOption struct {
+	Value   string
+	Label   string
+	Checked bool
+}
+
+type RoleEditView struct {
+	OrgSlug     string
+	ID          string
+	Name        string
+	Description string
+	Version     int64
+	Perms       []PermOption
+	Blocked     bool
+	Error       string
+	ErrorCode   string
+}
+
+func (v RoleEditView) action(d web.LayoutData) string {
+	if v.ID == "" {
+		return d.Href("/orgs/" + v.OrgSlug + "/roles")
+	}
+	return d.Href("/orgs/" + v.OrgSlug + "/roles/" + v.ID)
+}
+
+func (v RoleEditView) page(d web.LayoutData) string {
+	if v.ID == "" {
+		return d.Href("/orgs/" + v.OrgSlug + "/roles/new")
+	}
+	return d.Href("/orgs/" + v.OrgSlug + "/roles/" + v.ID)
+}
+
+func (v RoleEditView) title(d web.LayoutData) string {
+	if v.ID == "" {
+		return d.Tr("role_edit.title_new")
+	}
+	return d.Tr("role_edit.title_edit", "Name", v.Name)
+}
+
+templ RoleEditPage(d web.LayoutData, v RoleEditView) {
+	<section class="mx-auto max-w-xl">
+		<header class="border-b border-base-300 pb-4">
+			<h1 class="text-2xl font-semibold text-base-content">{ v.title(d) }</h1>
+			<p class="mt-1 text-sm text-base-content/70">{ d.Tr("role_edit.subtitle") }</p>
+		</header>
+		if v.Error != "" {
+			@ErrorBanner(d, v.Error, v.ErrorCode)
+		}
+		<form method="post" action={ templ.SafeURL(v.action(d)) } class="mt-6 space-y-5" novalidate>
+			<button type="submit" class="sr-only" tabindex="-1" aria-hidden="true" disabled?={ v.Blocked }></button>
+			if v.ID != "" {
+				<input type="hidden" name="version" value={ strconv.FormatInt(v.Version, 10) }/>
+			}
+			{{ nameField := FieldProps{ID: "role-name", Label: d.Tr("common.name")} }}
+			@FormField(nameField) {
+				<input { nameField.Attrs()... } name="name" type="text" dir="auto" required maxlength="40" autofocus?={ v.ID == "" } value={ v.Name } class="input w-full"/>
+			}
+			{{ descField := FieldProps{ID: "role-description", Label: d.Tr("role_edit.description")} }}
+			@FormField(descField) {
+				<input { descField.Attrs()... } name="description" type="text" dir="auto" value={ v.Description } class="input w-full"/>
+			}
+			@FieldGroup(d.Tr("role_edit.permissions")) {
+				<p class="flex flex-wrap items-center gap-1 text-sm text-base-content/70">
+					<span class="me-1">{ d.Tr("role_edit.copy_from") }</span>
+					for _, b := range []string{"owner", "admin", "member"} {
+						<button type="submit" formmethod="get" formaction={ templ.SafeURL(v.page(d)) } formnovalidate name="from" value={ b } class="btn btn-ghost btn-xs">{ builtinRoleLabel(d, b) }</button>
+					}
+				</p>
+				<div class="grid gap-2 rounded-box border border-base-300 bg-base-100 p-4 sm:grid-cols-2">
+					for _, p := range v.Perms {
+						<label class="label min-h-11 gap-3 whitespace-normal text-base-content">
+							<input type="checkbox" name="perm" value={ p.Value } checked?={ p.Checked } class="checkbox checkbox-sm"/>
+							<span class="first-letter:uppercase">{ p.Label }</span>
+						</label>
+					}
+				</div>
+			}
+			<div class="flex items-center gap-3 pt-2">
+				if v.Blocked {
+					<button type="submit" class="btn btn-primary" disabled data-limit-blocked>{ d.Tr("role_edit.save") }</button>
+				} else {
+					<button type="submit" class="btn btn-primary">{ d.Tr("role_edit.save") }</button>
+				}
+				<a href={ templ.SafeURL(d.Href("/orgs/" + v.OrgSlug + "/roles")) } class="btn btn-ghost">{ d.Tr("common.cancel") }</a>
+			</div>
+		</form>
+	</section>
+}
+
+templ RoleEditLayout(d web.LayoutData, v RoleEditView) {
+	@Layout(web.WithContent(d, RoleEditPage(d, v)))
+}

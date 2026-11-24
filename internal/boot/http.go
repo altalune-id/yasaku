@@ -16,11 +16,13 @@ import (
 	"altalune.id/yasaku/internal/dataplane"
 	i18npkg "altalune.id/yasaku/internal/i18n"
 	"altalune.id/yasaku/internal/ingest"
+	"altalune.id/yasaku/internal/limits"
 	"altalune.id/yasaku/internal/platform"
 	"altalune.id/yasaku/internal/platform/authn"
 	"altalune.id/yasaku/internal/platform/capabilities"
 	"altalune.id/yasaku/internal/platform/config"
 	"altalune.id/yasaku/internal/platform/session"
+	"altalune.id/yasaku/internal/platform/tenant"
 	"altalune.id/yasaku/internal/platform/tokens"
 	"altalune.id/yasaku/internal/web"
 	webhandlers "altalune.id/yasaku/internal/web/handlers"
@@ -102,8 +104,10 @@ func buildWebHandler(d webHandlerDeps) (handler http.Handler, routes []string) {
 	deps := newWebDeps(cfg, d.Caps, kernel.Sessions, slogger)
 	deps.Secret = kernel.StateSecret
 	deps.Orgs = svcs.Orgs
+	deps.Users = svcs.Users
 	deps.Projects = svcs.Projects
 	deps.Authz = svcs.Authz
+	deps.Roles = svcs.Roles
 	deps.I18n = d.Bundle
 	deps.ProjectLocation = svcs.Ledgers.Location
 
@@ -118,6 +122,7 @@ func buildWebHandler(d webHandlerDeps) (handler http.Handler, routes []string) {
 	apiKeyHandler := webhandlers.NewAPIKeyHandler(deps, svcs.Projects, svcs.APIKeys)
 	webhookHandler := webhandlers.NewWebhookHandler(deps, svcs.Projects, svcs.Webhooks)
 	inviteHandler := webhandlers.NewInviteHandler(deps, svcs.Orgs, svcs.Invites)
+	roleHandler := webhandlers.NewRoleHandler(deps, svcs.Roles)
 	activityHandler := webhandlers.NewActivityHandler(deps, svcs.Orgs, svcs.Audit)
 	localeHandler := webhandlers.NewLocaleHandler(deps, svcs.Users)
 	themeHandler := webhandlers.NewThemeHandler(deps, svcs.Users)
@@ -135,6 +140,16 @@ func buildWebHandler(d webHandlerDeps) (handler http.Handler, routes []string) {
 	settingsHandler := webhandlers.NewSettingsHandler(deps, svcs.Projects, svcs.Ledgers, d.MCP.Scopes)
 	firstRunHandler := webhandlers.NewFirstRunHandler(deps, svcs.Projects, svcs.Wallets, svcs.WalletOpen, svcs.TxCategories, svcs.Ledgers)
 	moreHandler := webhandlers.NewMoreHandler(deps, svcs.Projects)
+	adminHandler := webhandlers.NewAdminHandler(deps, webhandlers.AdminDeps{
+		Directory:  svcs.UserStore,
+		Audit:      svcs.Audit,
+		UnitOfWork: tenant.NewUnitOfWork(cfg.DB, kernel.Pool, kernel.PgConn),
+		Limits:     limits.NewStore(cfg.DB, kernel.Pool),
+		Notify: func(ctx context.Context, n webhandlers.SupportNotice) error {
+			return svcs.jobs.Submit(ctx, supportNotifyJob(), n)
+		},
+		Suspender: svcs.Users,
+	})
 
 	errTmpl := webmw.LogError{Log: slogger}
 
@@ -142,8 +157,8 @@ func buildWebHandler(d webHandlerDeps) (handler http.Handler, routes []string) {
 		BasePath: cfg.HTTP.BasePath,
 		HealthOK: d.HealthOK,
 		AppHandlers: publishedConsoleHandlers(append([]web.Register{
-			authHandler, onboardingHandler, onboardHandler, homeHandler, orgHandler, projectHandler, todoHandler, blogHandler, apiKeyHandler, webhookHandler, inviteHandler, activityHandler, localeHandler, themeHandler, tipsHandler, welcomeHandler, signupHandler, legalHandler,
-			overviewHandler, walletHandler, txCategoryHandler, transactionHandler, periodHandler, reportHandler, settingsHandler, firstRunHandler, moreHandler,
+			authHandler, onboardingHandler, onboardHandler, homeHandler, orgHandler, projectHandler, todoHandler, blogHandler, apiKeyHandler, webhookHandler, inviteHandler, roleHandler, activityHandler, localeHandler, themeHandler, tipsHandler, welcomeHandler, signupHandler, legalHandler,
+			overviewHandler, walletHandler, txCategoryHandler, transactionHandler, periodHandler, reportHandler, settingsHandler, firstRunHandler, moreHandler, adminHandler,
 		}, yasakuConsoleHandlers(deps, svcs)...)),
 		APIHandler:       d.APIHandler,
 		DataHandler:      d.DataHandler,

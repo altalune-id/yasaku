@@ -64,6 +64,7 @@ type MembershipRef struct {
 	OrgID  uuid.UUID
 	UserID uuid.UUID
 	Role   string
+	RoleID uuid.UUID
 }
 
 // ProjectRef is the projection of a project record.
@@ -81,6 +82,7 @@ type InviteRef struct {
 	OrgID      uuid.UUID
 	Email      string
 	Role       string
+	RoleID     uuid.UUID
 	ExpiresAt  time.Time
 	AcceptedAt *time.Time
 }
@@ -242,7 +244,7 @@ func (w *OnboardWorkflow) acceptInvite(ctx context.Context, inv *InviteRef, user
 		if err := w.invites.Save(tctx, &accepted); err != nil {
 			return w.unexpected(ctx, "user.Onboard: accept invite", err)
 		}
-		m := &MembershipRef{OrgID: inv.OrgID, UserID: userID, Role: inv.Role}
+		m := &MembershipRef{OrgID: inv.OrgID, UserID: userID, Role: inv.Role, RoleID: inv.RoleID}
 		if err := w.orgs.SaveMembership(tctx, m); err != nil {
 			return w.unexpected(ctx, "user.Onboard: save membership", err)
 		}

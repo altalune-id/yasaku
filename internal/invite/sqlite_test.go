@@ -241,3 +241,34 @@ func TestSQLiteStore_TenantMissing(t *testing.T) {
 		t.Errorf("Save without tenant: want MissingError, got %v", err)
 	}
 }
+
+func TestSQLiteStore_ReadsRoleID(t *testing.T) {
+	store, sqlDB, tc := newSQLiteStoreForTest(t)
+	ctx := fakes.Owner(context.Background(), tc)
+	inv := newInviteForTest(t, tc.OrgID, "custom@example.com", time.Hour)
+	if err := store.Save(ctx, inv); err != nil {
+		t.Fatal(err)
+	}
+	roleID := uuid.New()
+	now := sqliteent.SQLiteTime(time.Now())
+	if _, err := sqlDB.Exec(`INSERT INTO yasaku_roles (id, org_id, name, permissions, created_at, updated_at) VALUES (?, ?, 'Viewer', '[]', ?, ?)`,
+		roleID.String(), tc.OrgID.String(), now, now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sqlDB.Exec(`UPDATE yasaku_invites SET role = 'custom', role_id = ? WHERE id = ?`, roleID.String(), inv.ID.String()); err != nil {
+		t.Fatal(err)
+	}
+
+	byID, err := store.ByID(ctx, inv.ID)
+	if err != nil || byID.RoleID != roleID {
+		t.Errorf("ByID role_id = %v, %v; want %v", byID, err, roleID)
+	}
+	byHash, err := store.ByTokenHash(context.Background(), inv.TokenHash)
+	if err != nil || byHash.RoleID != roleID {
+		t.Errorf("ByTokenHash role_id = %v, %v; want %v", byHash, err, roleID)
+	}
+	pending, err := store.FindPendingForEmail(context.Background(), "custom@example.com")
+	if err != nil || len(pending) != 1 || pending[0].RoleID != roleID {
+		t.Errorf("FindPendingForEmail = %v, %v; want role_id %v", pending, err, roleID)
+	}
+}

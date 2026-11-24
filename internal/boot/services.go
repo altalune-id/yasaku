@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
+
 	"altalune.id/yasaku/internal/apikey"
 	"altalune.id/yasaku/internal/auth"
 	"altalune.id/yasaku/internal/blog"
@@ -31,11 +33,13 @@ import (
 	"altalune.id/yasaku/internal/platform/tokens"
 	"altalune.id/yasaku/internal/project"
 	"altalune.id/yasaku/internal/report"
+	"altalune.id/yasaku/internal/role"
 	"altalune.id/yasaku/internal/todo"
 	"altalune.id/yasaku/internal/transaction"
 	"altalune.id/yasaku/internal/user"
 	"altalune.id/yasaku/internal/wallet"
 	"altalune.id/yasaku/internal/webhook"
+	"altalune.id/yasaku/mailer"
 )
 
 const apiKeyUsageFlushInterval = 30 * time.Second
@@ -62,6 +66,7 @@ type Services struct {
 	Projects   *project.Service
 	Todos      *todo.Service
 	Invites    *invite.Service
+	Roles      *role.Service
 	Onboards   *onboard.Service
 	Posts      *blog.Service
 	Categories *blogcategory.Service
@@ -93,6 +98,7 @@ type Services struct {
 	Authz *authz.Resolver
 
 	jobs *jobSubmitter
+	mail mailer.Mailer
 }
 
 func buildServices(cfg *config.Config, k *platform.Kernel, caps capabilities.Capabilities) (*Services, error) {
@@ -112,9 +118,10 @@ func buildServices(cfg *config.Config, k *platform.Kernel, caps capabilities.Cap
 	uow := tenant.NewUnitOfWork(cfg.DB, pool, pgConn)
 	limiter := limits.NewService(limits.NewStore(cfg.DB, pool), cfg.Mode, limits.WithContact(cfg.Compliance.ContactEmail))
 	members := org.NewCounter(orgStore, caps)
-	resolver := authz.NewResolver(roleSourceAdapter{Counter: members})
+	roleStore := role.NewStore(cfg.DB, pool, pgConn)
+	resolver := authz.NewResolver(roleSourceAdapter{Counter: members, roles: roleStore})
 	recorder := audit.NewRecorder(cfg.DB, pool, pgConn)
-	orgs := org.NewService(orgStore, caps, log, reporter.Unexpected, uow, org.WithLimits(limiter), org.WithAudit(recorder), org.WithPermissions(resolver))
+	orgs := org.NewService(orgStore, caps, log, reporter.Unexpected, uow, org.WithLimits(limiter), org.WithAudit(recorder), org.WithPermissions(resolver), org.WithRoleNames(roleNames{store: roleStore}))
 	projects := project.NewService(projectStore, log, reporter.Unexpected, uow, project.WithLimits(limiter, members))
 	todos := todo.NewService(todoStore, log, reporter.Unexpected, k.Queue)
 	jobs := newJobSubmitter(k.Queue, k.Tracer, log)
@@ -173,7 +180,7 @@ func buildServices(cfg *config.Config, k *platform.Kernel, caps capabilities.Cap
 		invite.WithAcceptAudit(recorder),
 	)
 	invites := invite.NewService(inviteStore, sendWorkflow, acceptWorkflow, invitesEnabled, log, reporter.Unexpected,
-		invite.WithRevokeAudit(uow, recorder))
+		invite.WithRevokeAudit(uow, recorder), invite.WithPermissions(resolver), invite.WithRoleNames(roleNames{store: roleStore}))
 
 	users := user.NewService(
 		userStore,
@@ -181,6 +188,7 @@ func buildServices(cfg *config.Config, k *platform.Kernel, caps capabilities.Cap
 		log,
 		reporter.Unexpected,
 		user.WithInviteFinder(invites),
+		user.WithSuspension(staffDirectory{Counter: members, store: orgStore}, uow, recorder, cfg.Compliance.ContactEmail),
 	)
 
 	onboardWorkflow := user.NewOnboardWorkflow(
@@ -246,12 +254,14 @@ func buildServices(cfg *config.Config, k *platform.Kernel, caps capabilities.Cap
 		oidcOpts...,
 	)
 
-	auths := auth.NewService(local, oidcLogin, log, reporter.Unexpected)
+	auths := auth.NewService(local, oidcLogin, log, reporter.Unexpected,
+		auth.WithSignInGate(users.RequireActive),
+		auth.WithSignInStamp(func(ctx context.Context, id uuid.UUID) error { return userStore.StampSignIn(ctx, id, time.Now()) }))
 
 	keyStore := apikey.NewStore(cfg.DB, pool, pgConn)
 	keyUsage := apikey.NewUsageWorker(keyStore, apiKeyUsageFlushInterval, log)
 	keyScheme := apikey.NewScheme(cfg.API.KeyPrefix)
-	keyAuthn := apikey.NewAuthenticator(keyStore, keyUsage, keyScheme, orgs)
+	keyAuthn := apikey.NewAuthenticator(keyStore, keyUsage, keyScheme, orgs, apikey.WithSuspendedCreators(suspendedUsers{store: userStore}))
 	keys := apikey.NewService(keyStore, keyScheme, orgs, projectServiceForAPIKeys{svc: projects}, log, reporter.Unexpected,
 		apikey.WithAudit(uow, recorder))
 	orgs.OnMemberRemoved(keys.RevokePersonalOf)
@@ -261,7 +271,7 @@ func buildServices(cfg *config.Config, k *platform.Kernel, caps capabilities.Cap
 		projectStoreForOnboard{store: projectStore},
 	)
 	tokenAuthn := tokens.NewAuthenticator(k.Verifier, credentialScheme(keyScheme, cfg.Tokens.Introspection))
-	chain := authn.Chain{keyAuthn, user.NewAuthenticator(tokenAuthn, userStore, tenantResolution)}
+	chain := authn.Chain{keyAuthn, user.NewAuthenticator(tokenAuthn, userStore, tenantResolution, user.WithSuspendedContact(cfg.Compliance.ContactEmail))}
 
 	return &Services{
 		UserStore:    userStore,
@@ -284,6 +294,7 @@ func buildServices(cfg *config.Config, k *platform.Kernel, caps capabilities.Cap
 		Projects:   projects,
 		Todos:      todos,
 		Invites:    invites,
+		Roles:      role.NewService(roleStore, systemOrgs{store: orgStore}, log, reporter.Unexpected, uow, role.WithLimits(limiter, members), role.WithAudit(recorder)),
 		Onboards:   onboards,
 		Posts:      posts,
 		Categories: categories,
@@ -313,6 +324,7 @@ func buildServices(cfg *config.Config, k *platform.Kernel, caps capabilities.Cap
 		Authz: resolver,
 
 		jobs: jobs,
+		mail: mail,
 	}, nil
 }
 

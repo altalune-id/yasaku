@@ -8,6 +8,7 @@ type ProjectNewView struct {
 	Name  string
 	Error string
 	ErrorCode string
+	Blocked   bool
 }
 
 templ ProjectNewPage(d web.LayoutData, v ProjectNewView) {
@@ -36,7 +37,11 @@ templ ProjectNewPage(d web.LayoutData, v ProjectNewView) {
 				<input name="slug" type="text" value={ v.Slug } placeholder={ d.Tr("project_new.slug_placeholder") } pattern="[a-z0-9-]+" dir="ltr" class="input w-full font-mono" { slug.Attrs()... }/>
 			}
 			<div class="flex items-center gap-3 pt-2">
-				<button type="submit" class="btn btn-primary">{ d.Tr("nav.create_project") }</button>
+				if v.Blocked {
+					<button type="submit" class="btn btn-primary" disabled data-limit-blocked>{ d.Tr("nav.create_project") }</button>
+				} else {
+					<button type="submit" class="btn btn-primary">{ d.Tr("nav.create_project") }</button>
+				}
 				<a href={ templ.SafeURL(d.OrgPath("/projects")) } class="btn btn-ghost">{ d.Tr("common.cancel") }</a>
 			</div>
 		</form>

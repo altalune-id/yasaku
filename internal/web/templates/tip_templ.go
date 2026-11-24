@@ -162,7 +162,7 @@ func Tip(d web.LayoutData, id string) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "\" hidden class=\"card fixed z-50 w-72 outline-none max-w-[calc(100vw-2rem)] bg-neutral text-neutral-content shadow-xl data-tip-inline:static data-tip-inline:w-full data-tip-inline:max-w-full data-tip-inline:shadow-none\"><div class=\"card-body gap-3 p-4\"><p class=\"flex items-start gap-3 text-sm\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "\" hidden class=\"card fixed z-50 w-72 outline-none [body:has(details.dropdown[open])_&:not([data-tip-inline])]:hidden max-w-[calc(100vw-2rem)] bg-neutral text-neutral-content shadow-xl data-tip-inline:static data-tip-inline:w-full data-tip-inline:max-w-full data-tip-inline:shadow-none\"><div class=\"card-body gap-3 p-4\"><p class=\"flex items-start gap-3 text-sm\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}

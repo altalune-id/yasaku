@@ -69,8 +69,26 @@ type Principal struct {
 	HeldOrg string `json:"-"`
 	// HeldOrgID is the org Held was resolved in. SECURITY: Held answers for this org only.
 	HeldOrgID uuid.UUID `json:"-"`
-	// HeldRole is the role Held came from, for display only.
+	// HeldRole is the role Held came from; owner-only actions read it, since a custom role can hold every permission.
 	HeldRole string `json:"-"`
+	// Support is the staff member's open support visit, persisted with the session. SECURITY: never proof of staff status; every request checks staff again.
+	Support *Support `json:",omitempty"`
+}
+
+// SupportTTL is how long a support visit lasts before it ends or is renewed.
+const SupportTTL = 60 * time.Minute
+
+// Support is a staff member's audited, read-only visit to one org.
+type Support struct {
+	OrgID   uuid.UUID
+	Reason  string
+	Until   time.Time
+	EventID uuid.UUID
+}
+
+// Live reports whether s admits orgID at now.
+func (s *Support) Live(orgID uuid.UUID, now time.Time) bool {
+	return s != nil && s.OrgID == orgID && now.Before(s.Until)
 }
 
 type principalKey struct{}

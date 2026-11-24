@@ -22,6 +22,7 @@ var TenantTableSuffixes = []string{
 	"period_closings",
 	"periods",
 	"projects",
+	"roles",
 	"todos",
 	"transactions",
 	"wallets",

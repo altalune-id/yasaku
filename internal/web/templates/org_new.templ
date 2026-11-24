@@ -30,7 +30,7 @@ templ OrgNewPage(d web.LayoutData, v OrgNewView) {
 			}
 			<div class="flex items-center gap-3 pt-2">
 				if v.Blocked {
-					<button type="submit" class="btn btn-primary" disabled>{ d.Tr("nav.create_organization") }</button>
+					<button type="submit" class="btn btn-primary" disabled data-limit-blocked>{ d.Tr("nav.create_organization") }</button>
 				} else {
 					<button type="submit" class="btn btn-primary">{ d.Tr("nav.create_organization") }</button>
 				}

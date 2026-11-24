@@ -187,12 +187,12 @@ func (r *Org) SaveMembership(ctx context.Context, m *org.Membership) error {
 func (r *Org) LockOrg(context.Context, uuid.UUID) error { return nil }
 
 // MemberRole returns userID's role in orgID and the org's name, as the real stores join them; it shares MembershipOf's call count and injected failure.
-func (r *Org) MemberRole(_ context.Context, orgID, userID uuid.UUID) (org.Role, string, error) {
+func (r *Org) MemberRole(_ context.Context, orgID, userID uuid.UUID) (org.Role, uuid.UUID, string, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.membershipOfCalls++
 	if r.MembershipOfErr != nil && r.membershipOfCalls > r.MembershipOfFailAfter {
-		return "", "", r.MembershipOfErr
+		return "", uuid.Nil, "", r.MembershipOfErr
 	}
 	name := ""
 	if o, ok := r.orgs[orgID]; ok {
@@ -200,10 +200,10 @@ func (r *Org) MemberRole(_ context.Context, orgID, userID uuid.UUID) (org.Role, 
 	}
 	for _, x := range r.memberships {
 		if x.OrgID == orgID && x.UserID == userID {
-			return x.Role, name, nil
+			return x.Role, x.RoleID, name, nil
 		}
 	}
-	return "", name, nil
+	return "", uuid.Nil, name, nil
 }
 
 func (r *Org) MembershipOf(_ context.Context, orgID, userID uuid.UUID) (*org.Membership, error) {
@@ -259,6 +259,7 @@ func (r *Org) ListMemberProfiles(_ context.Context, orgID uuid.UUID) ([]*org.Mem
 			Email:     email,
 			Name:      name,
 			Role:      x.Role,
+			RoleID:    x.RoleID,
 			CreatedAt: x.CreatedAt,
 			System:    x.System,
 		})

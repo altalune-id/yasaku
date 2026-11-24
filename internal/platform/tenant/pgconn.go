@@ -20,7 +20,7 @@ func NewPgConn(sqlDB *sql.DB) *PgConn { return &PgConn{DB: sqlDB} }
 
 // BeginTenanted opens a transaction and binds the tenant scope via set_config so RLS policies see the current org.
 func (p *PgConn) BeginTenanted(ctx context.Context, tc Context) (*sql.Tx, error) {
-	tx, err := p.DB.BeginTx(ctx, nil)
+	tx, err := p.DB.BeginTx(ctx, &sql.TxOptions{ReadOnly: tc.ReadOnly})
 	if err != nil {
 		return nil, err
 	}

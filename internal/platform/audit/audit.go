@@ -95,7 +95,7 @@ func (r *Recorder) Record(ctx context.Context, e Event) error {
 	if _, ok := db.CurrentTx(ctx); !ok {
 		return &NoUnitOfWorkError{Action: e.Action}
 	}
-	kind, actorID, email := actorOf(session.PrincipalFrom(ctx))
+	kind, actorID, email := actorOf(session.PrincipalFrom(ctx), tc.OrgID)
 	entry := Entry{
 		ID:         uuid.New(),
 		OrgID:      tc.OrgID,
@@ -144,10 +144,12 @@ func Redact(detail map[string]string) map[string]string {
 	return out
 }
 
-func actorOf(p session.Principal) (ActorKind, uuid.UUID, string) {
+func actorOf(p session.Principal, orgID uuid.UUID) (ActorKind, uuid.UUID, string) {
 	switch {
 	case p.KeyID != uuid.Nil:
 		return ActorAPIKey, p.KeyID, ""
+	case p.UserID != uuid.Nil && p.Support != nil && p.Support.OrgID == orgID:
+		return ActorStaff, p.UserID, p.Email
 	case p.UserID != uuid.Nil:
 		return ActorUser, p.UserID, p.Email
 	default:

@@ -97,3 +97,41 @@ func IsEscalationError(err error) bool {
 	_, ok := errors.AsType[*EscalationError](err)
 	return ok
 }
+
+// SupportReasonRequiredError refuses a support visit opened without a reason.
+type SupportReasonRequiredError struct{}
+
+func (*SupportReasonRequiredError) Error() string { return "authz: support visit needs a reason" }
+
+// ToAppError maps SupportReasonRequiredError to SUP001 InvalidArgument.
+func (e *SupportReasonRequiredError) ToAppError() *apperror.AppError {
+	return apperror.New(apperror.CodeSupportReasonRequired, bundle().For(i18n.EnUS).T("authz.support_reason_required"), codes.InvalidArgument,
+		&apperrorv1.ErrorDetail{Code: apperror.CodeSupportReasonRequired})
+}
+
+// IsSupportReasonRequiredError reports whether err's tree contains a *SupportReasonRequiredError.
+func IsSupportReasonRequiredError(err error) bool {
+	_, ok := errors.AsType[*SupportReasonRequiredError](err)
+	return ok
+}
+
+// SupportReadOnlyError refuses a change attempted in a read-only support visit.
+type SupportReadOnlyError struct {
+	Org string
+}
+
+func (e *SupportReadOnlyError) Error() string {
+	return "authz: support visit to " + e.Org + " is read-only"
+}
+
+// ToAppError maps SupportReadOnlyError to SUP004 PermissionDenied.
+func (e *SupportReadOnlyError) ToAppError() *apperror.AppError {
+	return apperror.New(apperror.CodeSupportReadOnly, bundle().For(i18n.EnUS).T("authz.support_read_only", "Org", e.Org), codes.PermissionDenied,
+		&apperrorv1.ErrorDetail{Code: apperror.CodeSupportReadOnly})
+}
+
+// IsSupportReadOnlyError reports whether err's tree contains a *SupportReadOnlyError.
+func IsSupportReadOnlyError(err error) bool {
+	_, ok := errors.AsType[*SupportReadOnlyError](err)
+	return ok
+}

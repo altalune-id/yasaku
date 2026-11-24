@@ -52,6 +52,9 @@ func translateAuthnErrors(resource *tokens.Resource) connect.UnaryInterceptorFun
 					&apperrorv1.ErrorDetail{Code: apperror.CodeTokenUnavailable},
 				).WithCause(err)
 			}
+			if ae, ok := apperror.AsAppError(err); ok && authn.IsRefusedError(err) {
+				return nil, withChallenge(connect.CodePermissionDenied, ae, resource, (*tokens.Resource).Challenge)
+			}
 			if authn.IsUnauthorizedError(err) {
 				ae := apperror.New(
 					apperror.CodeUnauthenticated,

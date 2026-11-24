@@ -9,6 +9,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
+
+	"altalune.id/yasaku/internal/apperror"
 
 	"altalune.id/yasaku/internal/platform/authn"
 	"altalune.id/yasaku/internal/platform/session"
@@ -338,4 +341,26 @@ func TestAuthenticator_IsAdminComesFromTheLocalRecordNotTheToken(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, got.IsAdmin, "a token claiming admin must not make the principal an admin")
 	assert.Equal(t, f.orgA, got.ActiveOrgID, "the honored membership must still resolve")
+}
+
+// TestAuthenticator_SuspendedTokenUserRefused proves a suspended person's valid token is refused with the suspension, and the chain does not mask it.
+func TestAuthenticator_SuspendedTokenUserRefused(t *testing.T) {
+	t.Parallel()
+	u, err := user.New("gone@example.com", "Gone", user.SourceOIDC)
+	require.NoError(t, err)
+	u.IDPIssuer, u.IDPSubject = "https://idp.example", "sub-gone"
+	u.SuspendedAt = new(time.Now())
+	store := fakes.NewUser()
+	require.NoError(t, store.Save(context.Background(), u))
+	next := stubAuthenticator{p: session.Principal{Source: session.SourceToken, IDPIssuer: u.IDPIssuer, IDPSubject: u.IDPSubject}}
+	a := user.NewAuthenticator(next, store, user.WithSuspendedContact("help@example.com"))
+
+	_, err = authn.Chain{stubAuthenticator{err: &authn.UnauthorizedError{}}, a}.Authenticate(context.Background(), "token")
+	require.True(t, user.IsSuspendedError(err), "got %T: %v", err, err)
+	assert.False(t, authn.IsUnauthorizedError(err))
+	ae, ok := apperror.AsAppError(err)
+	require.True(t, ok)
+	assert.Equal(t, apperror.CodeUserSuspended, ae.Code())
+	assert.Equal(t, codes.PermissionDenied, ae.GRPCCode())
+	assert.Contains(t, ae.Message(), "Contact help@example.com.")
 }

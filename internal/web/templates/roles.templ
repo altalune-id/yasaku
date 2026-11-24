@@ -1,0 +1,154 @@
+package templates
+
+import (
+	"strconv"
+
+	"altalune.id/yasaku/internal/web"
+	"altalune.id/yasaku/internal/web/icons"
+)
+
+// RoleOption is one choice in a role picker: a built-in role name, or a custom role's id.
+type RoleOption struct {
+	Value string
+	Label string
+}
+
+// BuiltinRoleRow is a read-only built-in role on the Roles page.
+type BuiltinRoleRow struct {
+	Name  string
+	Perms int
+}
+
+// RoleRow is one custom role on the Roles page.
+type RoleRow struct {
+	ID          string
+	Name        string
+	Description string
+	Perms       int
+	Held        bool
+}
+
+type RolesView struct {
+	OrgSlug       string
+	Builtins      []BuiltinRoleRow
+	Roles         []RoleRow
+	CanEdit       bool
+	CreateBlocked string
+	Error         string
+	ErrorCode     string
+}
+
+func builtinRoleLabel(d web.LayoutData, role string) string {
+	if role == "owner" {
+		return d.Tr("members.role_owner")
+	}
+	return roleLabel(d, role)
+}
+
+func permsLine(d web.LayoutData, n int) string {
+	return d.TrN("roles.permissions_count", n, "Count", strconv.Itoa(n))
+}
+
+func roleDeleteDialogID(r RoleRow) string {
+	return "role-delete-" + r.ID
+}
+
+templ RolesPage(d web.LayoutData, v RolesView) {
+	<section class="flex flex-col gap-6">
+		@PageHeader(d.Tr("roles.title"), d.Tr("roles.subtitle")) {
+			if v.CanEdit && v.CreateBlocked != "" {
+				<button type="button" class="btn btn-primary" disabled aria-describedby="role-create-blocked" data-limit-blocked>
+					@icons.Icon("plus", "size-4")
+					{ d.Tr("roles.new") }
+				</button>
+			} else if v.CanEdit {
+				@AppButton(d.Href("/orgs/"+v.OrgSlug+"/roles/new"), "btn-primary", nil) {
+					@icons.Icon("plus", "size-4")
+					{ d.Tr("roles.new") }
+				}
+			}
+		}
+		if v.CanEdit && v.CreateBlocked != "" {
+			<p id="role-create-blocked" role="status" class="-mt-2 text-sm text-base-content/70">{ v.CreateBlocked }</p>
+		}
+		if v.Error != "" {
+			<div class="[&>[role=alert]]:mt-0">
+				@ErrorBanner(d, v.Error, v.ErrorCode)
+			</div>
+		}
+		<div class="flex flex-col gap-2">
+			<h2 class="text-base font-semibold">{ d.Tr("roles.custom_heading") }</h2>
+			<ul class="list rounded-box border border-base-300 bg-base-100" data-custom-roles>
+				if len(v.Roles) == 0 {
+					<li class="px-4 py-6 text-center text-sm text-base-content/70">{ d.Tr("roles.empty") }</li>
+				}
+				for _, r := range v.Roles {
+					<li class="list-row items-center">
+						<div class="list-col-grow min-w-0">
+							<p class="truncate text-sm font-medium">{ r.Name }</p>
+							<p class="truncate text-xs text-base-content/70">
+								if r.Description != "" {
+									{ r.Description } ·
+								}
+								{ permsLine(d, r.Perms) }
+							</p>
+							if v.CanEdit && r.Held {
+								<p id={ "role-held-" + r.ID } class="text-xs text-base-content/70">{ d.Tr("roles.in_use") }</p>
+							}
+						</div>
+						if v.CanEdit {
+							<div class="flex shrink-0 items-center gap-1">
+								<a href={ templ.SafeURL(d.Href("/orgs/" + v.OrgSlug + "/roles/" + r.ID)) } class="btn btn-ghost btn-sm">{ d.Tr("roles.edit") }</a>
+								if r.Held {
+									<button type="button" disabled aria-label={ d.Tr("roles.delete_named", "Name", r.Name) } aria-describedby={ "role-held-" + r.ID } class="btn btn-ghost btn-sm btn-square">
+										@icons.Icon("trash-2", "size-4")
+									</button>
+								} else {
+									<button type="button" data-dialog-open={ roleDeleteDialogID(r) } aria-haspopup="dialog" aria-label={ d.Tr("roles.delete_named", "Name", r.Name) } class="btn btn-ghost btn-sm btn-square hover:text-error">
+										@icons.Icon("trash-2", "size-4")
+									</button>
+								}
+							</div>
+						}
+					</li>
+				}
+			</ul>
+		</div>
+		<div class="flex flex-col gap-2">
+			<h2 class="text-base font-semibold">{ d.Tr("roles.builtin_heading") }</h2>
+			<ul class="list rounded-box border border-base-300 bg-base-100">
+				for _, b := range v.Builtins {
+					<li class="list-row items-center">
+						<div class="list-col-grow min-w-0">
+							<p class="flex items-center gap-2 text-sm font-medium">
+								{ builtinRoleLabel(d, b.Name) }
+								<span class="badge badge-sm badge-ghost">{ d.Tr("roles.builtin_badge") }</span>
+							</p>
+							<p class="text-xs text-base-content/70">{ permsLine(d, b.Perms) }</p>
+						</div>
+					</li>
+				}
+			</ul>
+		</div>
+	</section>
+}
+
+templ roleDialogs(d web.LayoutData, v RolesView) {
+	if v.CanEdit {
+		for _, r := range v.Roles {
+			if !r.Held {
+				@ConfirmModal(d, ConfirmModalProps{
+					ID:           roleDeleteDialogID(r),
+					Title:        d.Tr("roles.delete_title", "Name", r.Name),
+					Body:         d.Tr("roles.delete_confirm"),
+					Action:       d.Href("/orgs/" + v.OrgSlug + "/roles/" + r.ID + "/delete"),
+					ConfirmLabel: d.Tr("roles.delete"),
+				})
+			}
+		}
+	}
+}
+
+templ RolesLayout(d web.LayoutData, v RolesView) {
+	@Layout(web.WithDialogs(web.WithContent(d, RolesPage(d, v)), roleDialogs(d, v)))
+}

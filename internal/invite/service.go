@@ -15,6 +15,7 @@ import (
 	"altalune.id/yasaku/internal/platform/audit"
 	"altalune.id/yasaku/internal/platform/authz"
 	"altalune.id/yasaku/internal/platform/tenant"
+	"altalune.id/yasaku/internal/role"
 )
 
 //nolint:gochecknoglobals // OTel tracer is a package-level fixture, not runtime state.
@@ -28,6 +29,8 @@ type Service struct {
 	enabled    bool
 	uow        func(ctx context.Context, fn func(ctx context.Context) error) error
 	audit      Auditor
+	perms      Permissions
+	roleNames  RoleNamer
 	log        *slog.Logger
 	unexpected apperror.UnexpectedFunc
 }
@@ -57,8 +60,15 @@ func (s *Service) Send(ctx context.Context, req SendRequest) (*Invite, error) {
 	if err := authz.Can(ctx, authz.MembersWrite); err != nil {
 		return nil, err
 	}
-	if !authz.Covers(authz.Held(ctx), authz.Builtin(string(req.Role))...) {
-		return nil, &authz.EscalationError{Role: string(req.Role)}
+	if !validGrant(req.Role, req.RoleID) {
+		return nil, &InvalidRoleError{Role: string(req.Role)}
+	}
+	perms, err := s.permissionsOf(ctx, req.Role, req.RoleID)
+	if err != nil {
+		return nil, err
+	}
+	if !authz.Covers(authz.Held(ctx), perms...) {
+		return nil, &authz.EscalationError{Role: s.roleLabel(ctx, req.Role, req.RoleID)}
 	}
 	ctx, span := tracer.Start(ctx, "invite.Send")
 	defer span.End()
@@ -66,6 +76,34 @@ func (s *Service) Send(ctx context.Context, req SendRequest) (*Invite, error) {
 		return nil, &InvitesDisabledError{Reason: "invites require OIDC in selfhosted mode; set YASAKU_OIDC_ISSUER to enable"}
 	}
 	return s.send.Execute(ctx, req)
+}
+
+// NOTE: a display label only, so a failed lookup falls back to the bare role kind.
+func (s *Service) roleLabel(ctx context.Context, r Role, roleID uuid.UUID) string {
+	if roleID == uuid.Nil || s.roleNames == nil {
+		return string(r)
+	}
+	if name, err := s.roleNames.RoleName(ctx, roleID); err == nil {
+		return name
+	}
+	return string(r)
+}
+
+func (s *Service) permissionsOf(ctx context.Context, r Role, roleID uuid.UUID) ([]authz.Permission, error) {
+	if roleID == uuid.Nil {
+		return authz.Builtin(string(r)), nil
+	}
+	if s.perms == nil {
+		return nil, &InvalidRoleError{Role: string(r)}
+	}
+	perms, err := s.perms.PermissionsOf(ctx, string(r), roleID)
+	if role.IsNotFoundError(err) {
+		return nil, &InvalidRoleError{Role: string(r)}
+	}
+	if err != nil {
+		return nil, s.unexpected(ctx, "invite.Send: role permissions", err, "role_id", roleID.String())
+	}
+	return perms, nil
 }
 
 // Seats reports the caller's org seat use for the invites page.
@@ -80,6 +118,18 @@ func (s *Service) Seats(ctx context.Context) (Seats, error) {
 		return Seats{Max: limits.Unlimited}, nil
 	}
 	return s.send.seats(ctx, tc.OrgID)
+}
+
+// SendAllowed returns the *limits.ReachedError Send would refuse the caller's org with, read without a lock, so the console can disable the invite form with its reason.
+func (s *Service) SendAllowed(ctx context.Context) error {
+	tc, err := tenant.From(ctx)
+	if err != nil {
+		return err
+	}
+	if s.send == nil || s.send.limits == nil {
+		return nil
+	}
+	return s.send.allowed(ctx, tc.OrgID)
 }
 
 // HasPendingForEmail reports whether email has any pending (non-consumed) invite.

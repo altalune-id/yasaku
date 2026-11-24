@@ -24,6 +24,7 @@ type Authenticator struct {
 	store    Store
 	orgs     orgMemberships
 	projects projectLister
+	contact  string
 }
 
 // AuthenticatorOption configures an Authenticator.
@@ -35,6 +36,11 @@ func WithTenantResolution(orgs orgMemberships, projects projectLister) Authentic
 		a.orgs = orgs
 		a.projects = projects
 	}
+}
+
+// WithSuspendedContact names the address a suspended person is told to contact.
+func WithSuspendedContact(contact string) AuthenticatorOption {
+	return func(a *Authenticator) { a.contact = contact }
 }
 
 // NewAuthenticator binds an Authenticator to the authn.Authenticator it wraps and the Store it resolves against.
@@ -63,6 +69,9 @@ func (a *Authenticator) Authenticate(ctx context.Context, raw string) (session.P
 	}
 	if err != nil {
 		return session.Principal{}, &authn.UnavailableError{Cause: err}
+	}
+	if u.SuspendedAt != nil {
+		return session.Principal{}, &authn.RefusedError{Cause: &SuspendedError{Contact: a.contact}}
 	}
 	p.UserID = u.ID
 	p.Email = u.Email

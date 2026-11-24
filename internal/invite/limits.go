@@ -7,6 +7,7 @@ import (
 
 	"altalune.id/yasaku/internal/limits"
 	"altalune.id/yasaku/internal/platform/audit"
+	"altalune.id/yasaku/internal/platform/authz"
 )
 
 // Limiter locks a subject's row and refuses a create past its limit.
@@ -66,6 +67,22 @@ func WithAcceptAudit(a Auditor) AcceptOption {
 
 // ServiceOption configures a Service.
 type ServiceOption func(*Service)
+
+// Permissions resolves what a built-in or custom role holds.
+type Permissions interface {
+	PermissionsOf(ctx context.Context, role string, roleID uuid.UUID) ([]authz.Permission, error)
+}
+
+// RoleNamer names a custom role for a refusal message.
+type RoleNamer interface {
+	RoleName(ctx context.Context, roleID uuid.UUID) (string, error)
+}
+
+// WithRoleNames names custom roles in escalation refusals; without it they read "custom".
+func WithRoleNames(n RoleNamer) ServiceOption { return func(s *Service) { s.roleNames = n } }
+
+// WithPermissions resolves custom roles for Send's cover check; without it only built-in roles can be sent.
+func WithPermissions(p Permissions) ServiceOption { return func(s *Service) { s.perms = p } }
 
 // WithRevokeAudit deletes each revoked invite in uow and records invite.revoked.
 func WithRevokeAudit(uow func(ctx context.Context, fn func(ctx context.Context) error) error, a Auditor) ServiceOption {

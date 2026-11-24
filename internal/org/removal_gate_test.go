@@ -40,7 +40,7 @@ func (f *removalFixture) as(t *testing.T, actor uuid.UUID) context.Context {
 	t.Helper()
 	m, err := f.store.MembershipOf(t.Context(), f.orgID, actor)
 	require.NoError(t, err)
-	return fakes.Allow(t.Context(), tenant.Context{OrgID: f.orgID, UserID: actor}, authz.Builtin(string(m.Role))...)
+	return fakes.AsRole(t.Context(), tenant.Context{OrgID: f.orgID, UserID: actor}, string(m.Role), authz.Builtin(string(m.Role))...)
 }
 
 func (f *removalFixture) stillAMember(t *testing.T, actor, target uuid.UUID) bool {

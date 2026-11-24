@@ -271,3 +271,43 @@ func IsTipsSeenContendedError(err error) bool {
 	_, ok := errors.AsType[*TipsSeenContendedError](err)
 	return ok
 }
+
+// SuspendedError refuses a suspended user on every surface.
+type SuspendedError struct {
+	Contact string
+}
+
+func (e *SuspendedError) Error() string { return "user: suspended" }
+
+// ToAppError maps SuspendedError to USR008 PermissionDenied.
+func (e *SuspendedError) ToAppError() *apperror.AppError {
+	msg := "This account is suspended."
+	if e.Contact != "" {
+		msg = "This account is suspended. Contact " + e.Contact + "."
+	}
+	return apperror.New(apperror.CodeUserSuspended, msg, codes.PermissionDenied,
+		&apperrorv1.ErrorDetail{Code: apperror.CodeUserSuspended})
+}
+
+// IsSuspendedError reports whether err's tree contains a *SuspendedError.
+func IsSuspendedError(err error) bool {
+	_, ok := errors.AsType[*SuspendedError](err)
+	return ok
+}
+
+// StaffProtectedError refuses suspending platform staff, the caller included.
+type StaffProtectedError struct{}
+
+func (*StaffProtectedError) Error() string { return "user: staff cannot be suspended" }
+
+// ToAppError maps StaffProtectedError to USR009 FailedPrecondition.
+func (*StaffProtectedError) ToAppError() *apperror.AppError {
+	return apperror.New(apperror.CodeUserStaffProtected, "Staff can't be suspended here. Remove them from the system org first.",
+		codes.FailedPrecondition, &apperrorv1.ErrorDetail{Code: apperror.CodeUserStaffProtected})
+}
+
+// IsStaffProtectedError reports whether err's tree contains a *StaffProtectedError.
+func IsStaffProtectedError(err error) bool {
+	_, ok := errors.AsType[*StaffProtectedError](err)
+	return ok
+}

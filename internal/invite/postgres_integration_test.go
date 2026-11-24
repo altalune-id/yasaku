@@ -121,3 +121,37 @@ func TestPostgres_Invite_Delete(t *testing.T) {
 	_, err := store.ByID(ctx, i.ID)
 	assert.True(t, invite.IsNotFoundError(err), "want NotFoundError after delete, got %T: %v", err, err)
 }
+
+func TestPostgres_Invite_ReadsRoleID(t *testing.T) {
+	h := pgtest.New(t)
+	sqlDB := h.OpenDB(t)
+	cfg := config.Defaults()
+	cfg.DB.Driver = "postgres"
+	cfg.DB.DSN = h.DSN
+	cfg.DB.Schema = h.Schema
+	cfg.DB.AllowBypassRLS = true
+	require.NoError(t, schema.MigrateUp(t.Context(), sqlDB, cfg))
+	prefix := cfg.DB.TablePrefix
+	userID, orgID := seedInviteUserAndOrg(t, sqlDB, prefix)
+	store := invite.NewStore(db.DBConfig{Driver: db.DriverPostgres, Schema: h.Schema, TablePrefix: prefix}, db.Pool{W: sqlDB, R: sqlDB}, tenant.NewPgConn(sqlDB))
+	ctx := fakes.Owner(t.Context(), tenant.Context{OrgID: orgID, UserID: userID})
+
+	inv := newInvite(t, orgID, "custom@example.com", "tok-custom")
+	require.NoError(t, store.Save(ctx, inv))
+	roleID := uuid.New()
+	_, err := sqlDB.ExecContext(t.Context(), "INSERT INTO "+prefix+"roles (id, org_id, name, permissions, created_at, updated_at) VALUES ($1, $2, 'Viewer', '{}', now(), now())", roleID, orgID)
+	require.NoError(t, err)
+	_, err = sqlDB.ExecContext(t.Context(), "UPDATE "+prefix+"invites SET role = 'custom', role_id = $1 WHERE id = $2", roleID, inv.ID)
+	require.NoError(t, err)
+
+	byID, err := store.ByID(ctx, inv.ID)
+	require.NoError(t, err)
+	assert.Equal(t, roleID, byID.RoleID)
+	byHash, err := store.ByTokenHash(t.Context(), inv.TokenHash)
+	require.NoError(t, err)
+	assert.Equal(t, roleID, byHash.RoleID, "resolve_invite_by_token_hash carries role_id")
+	pending, err := store.FindPendingForEmail(t.Context(), "custom@example.com")
+	require.NoError(t, err)
+	require.Len(t, pending, 1)
+	assert.Equal(t, roleID, pending[0].RoleID, "list_pending_invites_for_email carries role_id")
+}

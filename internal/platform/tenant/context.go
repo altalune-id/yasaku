@@ -12,6 +12,8 @@ type Context struct {
 	OrgID     uuid.UUID
 	ProjectID uuid.UUID
 	UserID    uuid.UUID
+	// ReadOnly opens every transaction in this scope READ ONLY, as a staff support visit needs.
+	ReadOnly bool
 }
 
 type ctxKey struct{}

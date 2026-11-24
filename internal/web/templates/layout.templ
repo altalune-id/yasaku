@@ -99,6 +99,7 @@ func hasShell(d web.LayoutData) bool {
 }
 
 templ pageNotices(d web.LayoutData) {
+	@SupportBanner(d)
 	if d.Flash != nil {
 		<div role="status" class={ "mb-4 text-sm", flashClass(d.Flash.Kind) }>{ d.Flash.Message }</div>
 	}
@@ -254,6 +255,7 @@ templ orgLinks(d web.LayoutData, slug string) {
 	@menuLink(d.Href("/orgs/"+slug+"/invites"), "mail", d.Tr("nav.invites"), d.ActiveNav.OrgKey == "invites")
 	@menuLink(d.Href("/orgs/"+slug+"/apikeys"), "key", d.Tr("nav.apikeys"), d.ActiveNav.OrgKey == "apikeys")
 	if canManageOrg(d) {
+		@menuLink(d.Href("/orgs/"+slug+"/roles"), "lock", d.Tr("nav.roles"), d.ActiveNav.OrgKey == "roles")
 		@menuLink(d.Href("/orgs/"+slug+"/activity"), "list-checks", d.Tr("nav.activity"), d.ActiveNav.OrgKey == "activity")
 	}
 }

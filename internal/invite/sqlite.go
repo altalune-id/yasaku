@@ -34,6 +34,7 @@ type sqliteInviteRow struct {
 	ExpiresAt  string  `alias:"invites.expires_at"`
 	AcceptedAt *string `alias:"invites.accepted_at"`
 	CreatedAt  string  `alias:"invites.created_at"`
+	RoleID     *string `alias:"invites.role_id"`
 }
 
 func (r *sqliteInviteRow) toInvite() (*Invite, error) {
@@ -62,6 +63,11 @@ func (r *sqliteInviteRow) toInvite() (*Invite, error) {
 		ExpiresAt: exp,
 		CreatedAt: ca,
 	}
+	if r.RoleID != nil && *r.RoleID != "" {
+		if inv.RoleID, err = uuid.Parse(*r.RoleID); err != nil {
+			return nil, fmt.Errorf("invite.sqlite: parse role_id: %w", err)
+		}
+	}
 	if r.AcceptedAt != nil && *r.AcceptedAt != "" {
 		t, err := time.Parse(time.RFC3339Nano, *r.AcceptedAt)
 		if err != nil {
@@ -88,12 +94,14 @@ func (s *sqliteStore) Save(ctx context.Context, i *Invite) error {
 			sqliteNullableTimeArg(i.UsedAt),
 			tc.UserID.String(),
 			sqliteent.SQLiteTime(i.CreatedAt),
+			sqliteNullableUUID(i.RoleID),
 		).
 		ON_CONFLICT(s.table.ID).
 		// SECURITY: SQLite has no RLS, so this tenant predicate is the only thing stopping an attacker-supplied row id from updating another org's row.
 		DO_UPDATE(sqlite.SET(
 			s.table.Email.SET(sqlite.String(i.Email)),
 			s.table.Role.SET(sqlite.String(string(i.Role))),
+			s.table.RoleID.SET(sqliteRoleIDExpr(i.RoleID)),
 			s.table.TokenHash.SET(sqlite.String(i.TokenHash)),
 			s.table.ExpiresAt.SET(sqlite.String(sqliteent.SQLiteTime(i.ExpiresAt))),
 			s.table.AcceptedAt.SET(sqliteNullableTimeExpr(i.UsedAt)),
@@ -217,6 +225,20 @@ func (s *sqliteStore) queryOne(ctx context.Context, cond sqlite.BoolExpression, 
 		return nil, fmt.Errorf("invite.sqlite.query: %w", err)
 	}
 	return row.toInvite()
+}
+
+func sqliteNullableUUID(id uuid.UUID) any {
+	if id == uuid.Nil {
+		return nil
+	}
+	return id.String()
+}
+
+func sqliteRoleIDExpr(id uuid.UUID) sqlite.StringExpression {
+	if id == uuid.Nil {
+		return sqliteent.NullText()
+	}
+	return sqlite.String(id.String())
 }
 
 func sqliteNullableTimeArg(t *time.Time) any {

@@ -15,7 +15,9 @@ import (
 	"altalune.id/yasaku/internal/platform/audit"
 	"altalune.id/yasaku/internal/platform/authz"
 	"altalune.id/yasaku/internal/platform/capabilities"
+	"altalune.id/yasaku/internal/platform/session"
 	"altalune.id/yasaku/internal/platform/tenant"
+	customrole "altalune.id/yasaku/internal/role"
 	slugs "altalune.id/yasaku/slug"
 )
 
@@ -28,6 +30,7 @@ type Service struct {
 	caps       capabilities.Capabilities
 	counter    Counter
 	perms      Permissions
+	roleNames  RoleNamer
 	log        *slog.Logger
 	unexpected apperror.UnexpectedFunc
 	uow        tenant.UnitOfWork
@@ -68,6 +71,16 @@ type Option func(*Service)
 // Permissions resolves what a role holds, for the escalation guard.
 type Permissions interface {
 	PermissionsOf(ctx context.Context, role string, roleID uuid.UUID) ([]authz.Permission, error)
+}
+
+// RoleNamer names a custom role for a refusal message.
+type RoleNamer interface {
+	RoleName(ctx context.Context, roleID uuid.UUID) (string, error)
+}
+
+// WithRoleNames names custom roles in escalation refusals; without it they read "custom".
+func WithRoleNames(n RoleNamer) Option {
+	return func(s *Service) { s.roleNames = n }
 }
 
 // WithPermissions resolves role permissions through p, custom roles included; without it only built-in roles resolve.
@@ -483,11 +496,11 @@ func (s *Service) removable(ctx context.Context, orgID, userID uuid.UUID) (*Memb
 	if refusal := RemovalRefusal(orgID, tc.UserID, userID, m.System); refusal != nil {
 		return nil, refusal
 	}
-	covers, err := s.covers(ctx, m.Role)
+	covers, err := s.covers(ctx, roleRef{m.Role, m.RoleID})
 	if err != nil {
 		return nil, err
 	}
-	if !covers {
+	if !covers || (m.Role == RoleOwner && !callerIsOwner(ctx, orgID)) {
 		return nil, &authz.EscalationError{Role: string(m.Role), Op: authz.EscalationRemove}
 	}
 	if m.Role == RoleOwner {
@@ -498,7 +511,14 @@ func (s *Service) removable(ctx context.Context, orgID, userID uuid.UUID) (*Memb
 	return m, nil
 }
 
-func (s *Service) covers(ctx context.Context, roles ...Role) (bool, error) {
+type roleRef struct {
+	role Role
+	id   uuid.UUID
+}
+
+func builtin(r Role) roleRef { return roleRef{role: r} }
+
+func (s *Service) covers(ctx context.Context, roles ...roleRef) (bool, error) {
 	held := authz.Held(ctx)
 	for _, r := range roles {
 		perms, err := s.permissionsOf(ctx, r)
@@ -512,18 +532,49 @@ func (s *Service) covers(ctx context.Context, roles ...Role) (bool, error) {
 	return true, nil
 }
 
-func (s *Service) permissionsOf(ctx context.Context, r Role) ([]authz.Permission, error) {
-	if s.perms == nil {
-		return authz.Builtin(string(r)), nil
+func (s *Service) permissionsOf(ctx context.Context, r roleRef) ([]authz.Permission, error) {
+	if r.id == uuid.Nil {
+		return authz.Builtin(string(r.role)), nil
 	}
-	perms, err := s.perms.PermissionsOf(ctx, string(r), uuid.Nil)
+	if s.perms == nil {
+		return nil, &InvalidRoleError{Role: string(r.role)}
+	}
+	perms, err := s.perms.PermissionsOf(ctx, string(r.role), r.id)
+	if customrole.IsNotFoundError(err) {
+		return nil, &InvalidRoleError{Role: string(r.role)}
+	}
 	if err != nil {
-		return nil, s.unexpected(ctx, "org: role permissions", err, "role", string(r))
+		return nil, s.unexpected(ctx, "org: role permissions", err, "role_id", r.id.String())
 	}
 	return perms, nil
 }
 
-// SetRole gives userID a built-in role in orgID. SECURITY: the caller's held set must cover the target's current permissions and the new role's, so nobody grants or strips more than they hold, and only an owner makes an owner.
+// SECURITY: only a built-in owner makes, demotes or removes an owner; a custom role holding every permission is still not one.
+func callerIsOwner(ctx context.Context, orgID uuid.UUID) bool {
+	p := session.PrincipalFrom(ctx)
+	return p.HeldOrgID == orgID && p.HeldRole == string(RoleOwner)
+}
+
+// NOTE: a display label only, so a failed lookup falls back to the bare role kind.
+func (s *Service) roleLabel(ctx context.Context, r roleRef) string {
+	if r.id == uuid.Nil || s.roleNames == nil {
+		return string(r.role)
+	}
+	if name, err := s.roleNames.RoleName(ctx, r.id); err == nil {
+		return name
+	}
+	return string(r.role)
+}
+
+// SECURITY: a custom role always names its role id and a built-in never does, so the guard reads the permissions actually granted.
+func validGrant(r Role, roleID uuid.UUID) bool {
+	if r == RoleCustom {
+		return roleID != uuid.Nil
+	}
+	return r.IsValid() && roleID == uuid.Nil
+}
+
+// SetRole gives userID a built-in role, or the custom role roleID, in orgID. SECURITY: the caller's held set must cover the target's current permissions and the new role's, so nobody grants or strips more than they hold, and only an owner makes an owner.
 func (s *Service) SetRole(ctx context.Context, orgID, userID uuid.UUID, role string, roleID uuid.UUID) error {
 	ctx, span := tracer.Start(ctx, "org.SetRole")
 	defer span.End()
@@ -531,12 +582,12 @@ func (s *Service) SetRole(ctx context.Context, orgID, userID uuid.UUID, role str
 	if err := authz.Can(ctx, authz.MembersWrite); err != nil {
 		return err
 	}
-	next := Role(role)
-	if !next.IsValid() || roleID != uuid.Nil {
+	next := roleRef{Role(role), roleID}
+	if !validGrant(next.role, next.id) {
 		return &InvalidRoleError{Role: role}
 	}
 	m, err := s.settable(ctx, orgID, userID, next)
-	if err != nil || m.Role == next {
+	if err != nil || (m.Role == next.role && m.RoleID == next.id) {
 		return err
 	}
 	email, err := s.memberEmail(ctx, orgID, userID)
@@ -548,11 +599,11 @@ func (s *Service) SetRole(ctx context.Context, orgID, userID uuid.UUID, role str
 			return s.unexpected(ctx, "org.SetRole: lock", err, "org_id", orgID.String())
 		}
 		m, err := s.settable(ctx, orgID, userID, next)
-		if err != nil || m.Role == next {
+		if err != nil || (m.Role == next.role && m.RoleID == next.id) {
 			return err
 		}
 		updated := *m
-		updated.Role = next
+		updated.Role, updated.RoleID = next.role, next.id
 		if err := s.store.SaveMembership(ctx, &updated); err != nil {
 			return s.unexpected(ctx, "org.SetRole: save", err, "org_id", orgID.String(), "user_id", userID.String())
 		}
@@ -562,7 +613,7 @@ func (s *Service) SetRole(ctx context.Context, orgID, userID uuid.UUID, role str
 }
 
 // SECURITY: runs before the unit of work and again under the org lock, so a concurrent change cannot slip past the cover or last-owner check.
-func (s *Service) settable(ctx context.Context, orgID, userID uuid.UUID, next Role) (*Membership, error) {
+func (s *Service) settable(ctx context.Context, orgID, userID uuid.UUID, next roleRef) (*Membership, error) {
 	m, err := s.store.MembershipOf(ctx, orgID, userID)
 	if err != nil {
 		if IsMembershipMissingError(err) || IsNotFoundError(err) {
@@ -573,14 +624,14 @@ func (s *Service) settable(ctx context.Context, orgID, userID uuid.UUID, next Ro
 	if m.System {
 		return nil, &SystemProtectedError{Op: "set_role", OrgID: orgID.String(), UserID: userID.String(), Resource: "membership"}
 	}
-	covers, err := s.covers(ctx, m.Role, next)
+	covers, err := s.covers(ctx, roleRef{m.Role, m.RoleID}, next)
 	if err != nil {
 		return nil, err
 	}
-	if !covers {
-		return nil, &authz.EscalationError{Role: string(next)}
+	if !covers || ((m.Role == RoleOwner || next.role == RoleOwner) && !callerIsOwner(ctx, orgID)) {
+		return nil, &authz.EscalationError{Role: s.roleLabel(ctx, next)}
 	}
-	if m.Role == RoleOwner && next != RoleOwner {
+	if m.Role == RoleOwner && next.role != RoleOwner {
 		if err := s.requireAnotherOwner(ctx, orgID, userID); err != nil {
 			return nil, err
 		}
@@ -619,24 +670,26 @@ func (s *Service) MemberControls(ctx context.Context, orgID uuid.UUID) ([]Member
 	makeOwner := false
 	if manage {
 		for _, r := range []Role{RoleAdmin, RoleMember} {
-			if ok, err := s.covers(ctx, r); err != nil {
+			if ok, err := s.covers(ctx, builtin(r)); err != nil {
 				return nil, nil, err
 			} else if ok {
 				grantable = append(grantable, r)
 			}
 		}
-		if makeOwner, err = s.covers(ctx, RoleOwner); err != nil {
+		if makeOwner, err = s.covers(ctx, builtin(RoleOwner)); err != nil {
 			return nil, nil, err
 		}
+		makeOwner = makeOwner && callerIsOwner(ctx, orgID)
 	}
 	out := make([]MemberControl, 0, len(profiles))
 	for _, m := range profiles {
 		c := MemberControl{Member: m, LastOwner: m.Role == RoleOwner && !m.System && owners == 1}
 		if manage && !m.System {
-			editable, err := s.covers(ctx, m.Role)
+			editable, err := s.covers(ctx, roleRef{m.Role, m.RoleID})
 			if err != nil {
 				return nil, nil, err
 			}
+			editable = editable && (m.Role != RoleOwner || callerIsOwner(ctx, orgID))
 			c.RoleEditable = editable
 			c.Removable = editable && m.UserID != tc.UserID && !c.LastOwner
 			c.CanMakeOwner = editable && makeOwner && m.Role != RoleOwner

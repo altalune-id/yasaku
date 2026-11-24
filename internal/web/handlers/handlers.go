@@ -23,6 +23,8 @@ import (
 	"altalune.id/yasaku/internal/platform/session"
 	"altalune.id/yasaku/internal/platform/tenant"
 	"altalune.id/yasaku/internal/project"
+	"altalune.id/yasaku/internal/role"
+	"altalune.id/yasaku/internal/user"
 	"altalune.id/yasaku/internal/web"
 	"altalune.id/yasaku/internal/web/middleware"
 	"altalune.id/yasaku/internal/web/templates"
@@ -37,7 +39,10 @@ type Deps struct {
 	Sessions session.Store
 	Logger   *log.Logger
 	Orgs     *org.Service
+	Users    *user.Service
 	Projects *project.Service
+	// Roles manages the org's custom roles.
+	Roles *role.Service
 	// Authz binds an org-scoped request with the caller's held set.
 	Authz *authz.Resolver
 	I18n  *i18n.Bundle
@@ -117,6 +122,7 @@ func (d Deps) layout(r *http.Request, title string, nav web.ActiveNav, pinnedOrg
 		d.LogErr("layout: list orgs", err)
 	}
 	base.ActiveOrg, base.OtherOrgs = splitOrgs(orgs, cmp.Or(pinnedOrg, p.ActiveOrgID))
+	d.applySupport(ctx, &base, p, pinnedOrg)
 	if base.ActiveOrg == nil {
 		return base
 	}
@@ -276,11 +282,11 @@ func uuidFromString(s string) uuid.UUID {
 	return id
 }
 
-func capitaliseRole(role string) string {
-	if role == "" {
+func capitaliseRole(name string) string {
+	if name == "" {
 		return ""
 	}
-	return strings.ToUpper(role[:1]) + strings.ToLower(role[1:])
+	return strings.ToUpper(name[:1]) + strings.ToLower(name[1:])
 }
 
 // Key returns the cookie-signing key for purpose, derived from Secret.
@@ -345,19 +351,22 @@ func ErrorRef(errs ...error) string {
 	return ""
 }
 
-// OrgScopeFor resolves the org named by slug and returns a context scoped to it, refusing callers who are not members. SECURITY: the handler, not RLS, picks the org, so membership is verified here and a non-member gets the same 404 as a bad slug.
+// OrgScopeFor resolves the org named by slug and returns a context scoped to it, refusing callers who are not members unless staff on a live support visit. SECURITY: the handler, not RLS, picks the org, so membership is verified here and a non-member gets the same 404 as a bad slug.
 func (d Deps) OrgScopeFor(w http.ResponseWriter, r *http.Request, p session.Principal, slug string) (*org.Org, *http.Request, bool) {
 	o, err := d.Orgs.BySlug(r.Context(), slug)
 	if err != nil {
 		d.ErrorPage(w, r, http.StatusNotFound, pageTitle(r, "error_title.organization_not_found"), "", err)
 		return nil, nil, false
 	}
+	tc := tenant.Context{OrgID: o.ID, UserID: p.UserID}
 	scoped := orgScopedRequest(r, p, o)
 	if _, err := d.Orgs.MembershipOf(scoped.Context(), o.ID, p.UserID); err != nil {
-		d.ErrorPage(w, r, http.StatusNotFound, pageTitle(r, "error_title.organization_not_found"), "", err)
-		return nil, nil, false
+		if !d.admitSupport(w, r, p, o, err) {
+			return nil, nil, false
+		}
+		tc.ReadOnly = true
 	}
-	ctx, err := d.Authz.Bind(r.Context(), p, tenant.Context{OrgID: o.ID, UserID: p.UserID})
+	ctx, err := d.Authz.Bind(r.Context(), p, tc)
 	if err != nil {
 		d.ErrorPage(w, r, http.StatusInternalServerError, pageTitle(r, "error_title.lookup_failed"), "", err)
 		return nil, nil, false
@@ -365,8 +374,19 @@ func (d Deps) OrgScopeFor(w http.ResponseWriter, r *http.Request, p session.Prin
 	return o, r.WithContext(ctx), true
 }
 
-// LoadSession reads the sid cookie, verifies its HMAC, and loads the Principal from the store.
+// LoadSession reads the sid cookie, verifies its HMAC, and loads the Principal from the store. SECURITY: a suspended or deleted user loads as signed out.
 func (d Deps) LoadSession(r *http.Request) (session.Principal, string, bool) {
+	p, sid, ok := d.loadSession(r)
+	if !ok || p.UserID == uuid.Nil || d.Users == nil {
+		return p, sid, ok
+	}
+	if err := d.Users.RequireActive(r.Context(), p.UserID); err != nil {
+		return session.Principal{}, "", false
+	}
+	return p, sid, true
+}
+
+func (d Deps) loadSession(r *http.Request) (session.Principal, string, bool) {
 	c, err := r.Cookie(web.SessionCookieName)
 	if err != nil {
 		return session.Principal{}, "", false
@@ -419,7 +439,7 @@ func (d Deps) UpdateSession(r *http.Request, sid string, p session.Principal) er
 
 // ClearSession deletes the store row + expires the cookie.
 func (d Deps) ClearSession(w http.ResponseWriter, r *http.Request) {
-	if _, sid, ok := d.LoadSession(r); ok {
+	if _, sid, ok := d.loadSession(r); ok {
 		_ = d.Sessions.Delete(r.Context(), sid)
 	}
 	web.ClearCookie(w, web.SessionCookieName, d.Cfg.HTTP.BasePath, d.SecureCookie(r))

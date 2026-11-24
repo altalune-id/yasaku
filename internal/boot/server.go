@@ -39,6 +39,7 @@ import (
 	"altalune.id/yasaku/internal/platform/tenant"
 	"altalune.id/yasaku/internal/platform/tokens"
 	"altalune.id/yasaku/internal/project"
+	"altalune.id/yasaku/internal/role"
 	"altalune.id/yasaku/internal/todo"
 	"altalune.id/yasaku/internal/user"
 	"altalune.id/yasaku/internal/web"
@@ -76,6 +77,7 @@ type Server struct {
 	Projects   *project.Service
 	Todos      *todo.Service
 	Invites    *invite.Service
+	Roles      *role.Service
 	Onboards   *onboard.Service
 	Posts      *blog.Service
 	Categories *category.Service
@@ -394,6 +396,7 @@ func BootServer(ctx context.Context, cfg *config.Config, opts ...Option) (*Serve
 		Projects:           svcs.Projects,
 		Todos:              svcs.Todos,
 		Invites:            svcs.Invites,
+		Roles:              svcs.Roles,
 		Onboards:           svcs.Onboards,
 		Posts:              svcs.Posts,
 		Categories:         svcs.Categories,

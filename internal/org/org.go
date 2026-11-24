@@ -25,6 +25,8 @@ const (
 	RoleOwner  Role = "owner"
 	RoleAdmin  Role = "admin"
 	RoleMember Role = "member"
+	// RoleCustom marks a membership or invite whose permissions come from the custom role its RoleID names.
+	RoleCustom Role = "custom"
 )
 
 // IsValid reports whether r is one of the enumerated roles.
@@ -88,6 +90,7 @@ type Membership struct {
 	OrgID     uuid.UUID
 	UserID    uuid.UUID
 	Role      Role
+	RoleID    uuid.UUID
 	CreatedAt time.Time
 	// System marks a bootstrap-owned membership that cannot be removed.
 	System bool
@@ -99,6 +102,7 @@ type MemberProfile struct {
 	Email     string
 	Name      string
 	Role      Role
+	RoleID    uuid.UUID
 	CreatedAt time.Time
 	System    bool
 }

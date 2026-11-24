@@ -48,6 +48,7 @@ type MembershipRef struct {
 	OrgID  uuid.UUID
 	UserID uuid.UUID
 	Role   Role
+	RoleID uuid.UUID
 }
 
 // AcceptRequest is the input to AcceptWorkflow.Execute.
@@ -153,7 +154,7 @@ func (w *AcceptWorkflow) Execute(ctx context.Context, req AcceptRequest) (*Accep
 
 	// tenant-scope the writes to the invite's org — the acceptor isn't yet a member of any tenant so ctx has no tenant.Context on it.
 	tctx := tenant.Into(ctx, tenant.Context{OrgID: inv.OrgID, UserID: usr.ID})
-	m := &MembershipRef{OrgID: inv.OrgID, UserID: usr.ID, Role: inv.Role}
+	m := &MembershipRef{OrgID: inv.OrgID, UserID: usr.ID, Role: inv.Role, RoleID: inv.RoleID}
 	err = w.uow(tctx, func(tctx context.Context) error {
 		if err := w.checkJoin(tctx, usr.ID, o); err != nil {
 			return err

@@ -289,7 +289,7 @@ func (h *AuthHandler) renderNotInvited(w http.ResponseWriter, r *http.Request) {
 // PostLogout clears the local session and, when cfg.OIDC.EndSessionOnLogout is set (the default), also ends the issuer session through RP-Initiated Logout.
 func (h *AuthHandler) PostLogout(w http.ResponseWriter, r *http.Request) {
 	var idToken string
-	if p, _, ok := h.LoadSession(r); ok && p.Source == session.SourceOIDC {
+	if p, _, ok := h.loadSession(r); ok && p.Source == session.SourceOIDC {
 		idToken = p.IDToken
 	}
 	h.ClearSession(w, r)

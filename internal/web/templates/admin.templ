@@ -1,0 +1,241 @@
+package templates
+
+import (
+	"strconv"
+	"time"
+
+	"altalune.id/yasaku/internal/web"
+)
+
+type AdminTab string
+
+const (
+	AdminTabOrgs     AdminTab = "orgs"
+	AdminTabUsers    AdminTab = "users"
+	AdminTabLimits   AdminTab = "limits"
+	AdminTabActivity AdminTab = "activity"
+)
+
+type AdminOrgRow struct {
+	Slug       string
+	Name       string
+	Plan       string
+	Members    int64
+	Projects   int64
+	CreatedAt  time.Time
+	LastActive *time.Time
+}
+
+type AdminUserRow struct {
+	ID         string
+	Email      string
+	Name       string
+	CreatedAt  time.Time
+	LastSignIn *time.Time
+	Suspended  *time.Time
+	Orgs       int64
+}
+
+type AdminOrgView struct {
+	Slug     string
+	Name     string
+	Projects []string
+}
+
+templ adminShell(d web.LayoutData, active AdminTab) {
+	<section>
+		@PageHeader(d.Tr("admin.title"), d.Tr("admin.subtitle"))
+		<div role="tablist" class="tabs tabs-border mt-4 overflow-x-auto">
+			@adminTab(d.Href("/admin"), d.Tr("admin.tab_orgs"), active == AdminTabOrgs)
+			@adminTab(d.Href("/admin/users"), d.Tr("admin.tab_users"), active == AdminTabUsers)
+			@adminTab(d.Href("/admin/limits"), d.Tr("admin.tab_limits"), active == AdminTabLimits)
+			@adminTab(d.Href("/admin/activity"), d.Tr("admin.tab_activity"), active == AdminTabActivity)
+		</div>
+		<div class="mt-6">
+			{ children... }
+		</div>
+	</section>
+}
+
+templ adminTab(href, label string, active bool) {
+	<a
+		role="tab"
+		href={ templ.SafeURL(href) }
+		class={ "tab min-h-11 whitespace-nowrap", templ.KV("tab-active", active) }
+		if active {
+			aria-current="page"
+		}
+	>{ label }</a>
+}
+
+templ adminTable() {
+	<div class="overflow-x-auto rounded-box border border-base-300 bg-base-100">
+		<table class="table table-sm">
+			{ children... }
+		</table>
+	</div>
+}
+
+templ adminWhen(d web.LayoutData, t *time.Time) {
+	if t == nil {
+		<span class="text-base-content/70">{ d.Tr("admin.never") }</span>
+	} else {
+		@DateTime(d, *t)
+	}
+}
+
+templ AdminOrgsPage(d web.LayoutData, rows []AdminOrgRow) {
+	@adminShell(d, AdminTabOrgs) {
+		@adminTable() {
+			<thead>
+				<tr>
+					<th>{ d.Tr("admin.col_name") }</th>
+					<th>{ d.Tr("admin.col_plan") }</th>
+					<th class="text-end">{ d.Tr("admin.col_members") }</th>
+					<th class="text-end">{ d.Tr("admin.col_projects") }</th>
+					<th>{ d.Tr("admin.col_created") }</th>
+					<th>{ d.Tr("admin.col_last_active") }</th>
+				</tr>
+			</thead>
+			<tbody>
+				if len(rows) == 0 {
+					<tr><td colspan="6" class="py-6 text-center text-base-content/70">{ d.Tr("admin.empty_orgs") }</td></tr>
+				}
+				for _, o := range rows {
+					<tr>
+						<td class="min-w-0">
+							<a href={ templ.SafeURL(d.Href("/admin/orgs/" + o.Slug)) } class="link link-hover font-medium">{ o.Name }</a>
+							<div class="text-xs text-base-content/70">{ o.Slug }</div>
+						</td>
+						<td>{ o.Plan }</td>
+						<td class="text-end tabular-nums">{ strconv.FormatInt(o.Members, 10) }</td>
+						<td class="text-end tabular-nums">{ strconv.FormatInt(o.Projects, 10) }</td>
+						<td class="whitespace-nowrap">
+							@DateTime(d, o.CreatedAt)
+						</td>
+						<td class="whitespace-nowrap">
+							@adminWhen(d, o.LastActive)
+						</td>
+					</tr>
+				}
+			</tbody>
+		}
+	}
+}
+
+templ AdminUsersPage(d web.LayoutData, rows []AdminUserRow) {
+	@adminShell(d, AdminTabUsers) {
+		@adminTable() {
+			<thead>
+				<tr>
+					<th>{ d.Tr("admin.col_email") }</th>
+					<th class="text-end">{ d.Tr("admin.col_orgs") }</th>
+					<th>{ d.Tr("admin.col_created") }</th>
+					<th>{ d.Tr("admin.col_last_sign_in") }</th>
+					<th>{ d.Tr("admin.col_status") }</th>
+					<th><span class="sr-only">{ d.Tr("admin.col_actions") }</span></th>
+				</tr>
+			</thead>
+			<tbody>
+				if len(rows) == 0 {
+					<tr><td colspan="6" class="py-6 text-center text-base-content/70">{ d.Tr("admin.empty_users") }</td></tr>
+				}
+				for _, u := range rows {
+					<tr>
+						<td class="min-w-0">
+							<div class="font-medium">{ u.Email }</div>
+							if u.Name != "" && u.Name != u.Email {
+								<div class="text-xs text-base-content/70">{ u.Name }</div>
+							}
+						</td>
+						<td class="text-end tabular-nums">{ strconv.FormatInt(u.Orgs, 10) }</td>
+						<td class="whitespace-nowrap">
+							@DateTime(d, u.CreatedAt)
+						</td>
+						<td class="whitespace-nowrap">
+							@adminWhen(d, u.LastSignIn)
+						</td>
+						<td>
+							if u.Suspended != nil {
+								<span class="badge badge-sm badge-error badge-soft whitespace-nowrap">{ d.Tr("admin.status_suspended") }</span>
+							} else {
+								<span class="badge badge-sm badge-ghost whitespace-nowrap">{ d.Tr("admin.status_active") }</span>
+							}
+						</td>
+						<td class="text-end">
+							@adminSuspendControl(d, u)
+						</td>
+					</tr>
+				}
+			</tbody>
+		}
+	}
+}
+
+templ adminSuspendControl(d web.LayoutData, u AdminUserRow) {
+	if u.Suspended != nil {
+		<form method="post" action={ templ.SafeURL(d.Href("/admin/users/" + u.ID + "/unsuspend")) }>
+			<button type="submit" class="btn btn-ghost btn-sm whitespace-nowrap max-lg:btn-md">{ d.Tr("admin.unsuspend") }</button>
+		</form>
+	} else {
+		<button type="button" class="btn btn-ghost btn-sm whitespace-nowrap text-error max-lg:btn-md" data-dialog-open={ "suspend-" + u.ID }>{ d.Tr("admin.suspend") }</button>
+	}
+}
+
+templ AdminUsersDialogs(d web.LayoutData, rows []AdminUserRow) {
+	for _, u := range rows {
+		if u.Suspended == nil {
+			@ConfirmModal(d, ConfirmModalProps{
+				ID:           "suspend-" + u.ID,
+				Title:        d.Tr("admin.suspend_title", "Email", u.Email),
+				Body:         d.Tr("admin.suspend_body"),
+				Action:       d.Href("/admin/users/" + u.ID + "/suspend"),
+				ConfirmLabel: d.Tr("admin.suspend"),
+			})
+		}
+	}
+}
+
+templ AdminOrgPage(d web.LayoutData, v AdminOrgView) {
+	@adminShell(d, AdminTabOrgs) {
+		<div class="flex flex-wrap items-center justify-between gap-3">
+			<div class="min-w-0">
+				<h2 class="truncate text-lg font-semibold">{ v.Name }</h2>
+				<p class="text-sm text-base-content/70">{ v.Slug }</p>
+			</div>
+			<button type="button" class="btn btn-primary shrink-0 whitespace-nowrap" data-dialog-open={ assumeDialogID }>{ d.Tr("admin.assume") }</button>
+		</div>
+		<h3 class="mt-6 mb-2 text-sm font-semibold">{ d.Tr("admin.org_projects") }</h3>
+		<ul class="divide-y divide-base-300/50 rounded-box border border-base-300 bg-base-100">
+			if len(v.Projects) == 0 {
+				<li class="px-4 py-3 text-sm text-base-content/70">{ d.Tr("admin.org_no_projects") }</li>
+			}
+			for _, name := range v.Projects {
+				<li class="truncate px-4 py-3 text-sm">{ name }</li>
+			}
+		</ul>
+	}
+}
+
+templ AdminOrgsLayout(d web.LayoutData, rows []AdminOrgRow) {
+	@Layout(web.WithContent(d, AdminOrgsPage(d, rows)))
+}
+
+templ AdminUsersLayout(d web.LayoutData, rows []AdminUserRow) {
+	@Layout(web.WithDialogs(web.WithContent(d, AdminUsersPage(d, rows)), AdminUsersDialogs(d, rows)))
+}
+
+templ AdminOrgLayout(d web.LayoutData, v AdminOrgView) {
+	@Layout(web.WithDialogs(web.WithContent(d, AdminOrgPage(d, v)), AssumeDialog(d, v.Slug, v.Name)))
+}
+
+templ AdminActivityPage(d web.LayoutData, v ActivityView) {
+	@adminShell(d, AdminTabActivity) {
+		<p class="mb-4 text-sm text-base-content/70">{ d.Tr("admin.activity_subtitle") }</p>
+		@ActivityList(d, v)
+	}
+}
+
+templ AdminActivityLayout(d web.LayoutData, v ActivityView) {
+	@Layout(web.WithContent(d, AdminActivityPage(d, v)))
+}

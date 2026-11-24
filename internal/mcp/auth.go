@@ -44,6 +44,10 @@ func Authenticate(a authn.Authenticator, resource tokens.Resource, log *slog.Log
 				writeUnavailable(r.Context(), w)
 				return
 			}
+			if ae, ok := refusal(err); ok {
+				writeRefused(r.Context(), w, ae, resource.Challenge())
+				return
+			}
 			if err != nil {
 				// SECURITY: the reason is logged, never returned.
 				if log != nil {
@@ -162,6 +166,23 @@ func writeInsufficientScope(ctx context.Context, w http.ResponseWriter, challeng
 		Code:    apperror.CodeForbidden,
 		Message: "credential lacks the required scope",
 	}))
+}
+
+// SECURITY: only a valid credential whose holder is refused, such as a suspended person, says why; a bad credential stays the masked 401.
+func refusal(err error) (*apperror.AppError, bool) {
+	if !authn.IsRefusedError(err) {
+		return nil, false
+	}
+	return apperror.AsAppError(err)
+}
+
+// NOTE: RFC 6750 Section 3: the challenge names the resource but carries no error value, so the client keeps its valid token.
+func writeRefused(ctx context.Context, w http.ResponseWriter, ae *apperror.AppError, challenge string) {
+	w.Header().Set("WWW-Authenticate", challenge)
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusForbidden)
+	_ = json.NewEncoder(w).Encode(AttachContext(ctx, rootmcp.ErrorPayload{Code: ae.Code(), Message: ae.Message()}))
 }
 
 // NOTE: no WWW-Authenticate, so a client keeps its token through an issuer or database outage.

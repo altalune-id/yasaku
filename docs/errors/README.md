@@ -35,15 +35,17 @@ In the Status column, `—` means registered but not yet constructed.
 
 ## USR — Users
 
-| Code     | Constant                            | Status             | Meaning                |
-| -------- | ----------------------------------- | ------------------ | ---------------------- |
-| `USR001` | `apperror.CodeUserNotFound`         | `NotFound`         | User Not Found         |
-| `USR002` | `apperror.CodeUserAlreadyExists`    | `AlreadyExists`    | User Already Exists    |
-| `USR003` | `apperror.CodeUserNotInvited`       | `PermissionDenied` | User Not Invited       |
-| `USR004` | `apperror.CodeUserInvalidEmail`     | `InvalidArgument`  | User Invalid Email     |
-| `USR005` | `apperror.CodeUserInvalidName`      | `InvalidArgument`  | User Invalid Name      |
-| `USR006` | `apperror.CodeUserEmailUnverified`  | `PermissionDenied` | User Email Unverified  |
-| `USR007` | `apperror.CodeUserIdentityConflict` | `PermissionDenied` | User Identity Conflict |
+| Code     | Constant                            | Status               | Meaning                |
+| -------- | ----------------------------------- | -------------------- | ---------------------- |
+| `USR001` | `apperror.CodeUserNotFound`         | `NotFound`           | User Not Found         |
+| `USR002` | `apperror.CodeUserAlreadyExists`    | `AlreadyExists`      | User Already Exists    |
+| `USR003` | `apperror.CodeUserNotInvited`       | `PermissionDenied`   | User Not Invited       |
+| `USR004` | `apperror.CodeUserInvalidEmail`     | `InvalidArgument`    | User Invalid Email     |
+| `USR005` | `apperror.CodeUserInvalidName`      | `InvalidArgument`    | User Invalid Name      |
+| `USR006` | `apperror.CodeUserEmailUnverified`  | `PermissionDenied`   | User Email Unverified  |
+| `USR007` | `apperror.CodeUserIdentityConflict` | `PermissionDenied`   | User Identity Conflict |
+| `USR008` | `apperror.CodeUserSuspended`        | `PermissionDenied`   | User Suspended         |
+| `USR009` | `apperror.CodeUserStaffProtected`   | `FailedPrecondition` | User Staff Protected   |
 
 ## ORG — Organizations
 
@@ -215,7 +217,21 @@ unmapped `GEN900` incident.
 
 ## ROL — Roles and permissions
 
-| Code     | Constant                        | Status             | Meaning           |
-| -------- | ------------------------------- | ------------------ | ----------------- |
-| `ROL001` | `apperror.CodePermissionDenied` | `PermissionDenied` | Permission Denied |
-| `ROL004` | `apperror.CodeRoleEscalation`   | `PermissionDenied` | Role Escalation   |
+| Code     | Constant                             | Status               | Meaning                 |
+| -------- | ------------------------------------ | -------------------- | ----------------------- |
+| `ROL001` | `apperror.CodePermissionDenied`      | `PermissionDenied`   | Permission Denied       |
+| `ROL002` | `apperror.CodeRoleNotFound`          | `NotFound`           | Role Not Found          |
+| `ROL003` | `apperror.CodeRoleInUse`             | `FailedPrecondition` | Role In Use             |
+| `ROL004` | `apperror.CodeRoleEscalation`        | `PermissionDenied`   | Role Escalation         |
+| `ROL005` | `apperror.CodeRoleInvalidPermission` | `InvalidArgument`    | Role Invalid Permission |
+| `ROL006` | `apperror.CodeRoleSystemOrg`         | `FailedPrecondition` | Role System Org         |
+| `ROL007` | `apperror.CodeRoleInvalidName`       | `InvalidArgument`    | Role Invalid Name       |
+| `ROL008` | `apperror.CodeRoleAlreadyExists`     | `AlreadyExists`      | Role Already Exists     |
+| `ROL009` | `apperror.CodeRoleStaleVersion`      | `FailedPrecondition` | Role Stale Version      |
+
+## SUP — Support sessions
+
+| Code     | Constant                             | Status             | Meaning                   |
+| -------- | ------------------------------------ | ------------------ | ------------------------- |
+| `SUP001` | `apperror.CodeSupportReasonRequired` | `InvalidArgument`  | Support Reason Required   |
+| `SUP004` | `apperror.CodeSupportReadOnly`       | `PermissionDenied` | Support Session Read Only |

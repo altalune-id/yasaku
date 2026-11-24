@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -186,5 +187,7 @@ func streamMsgs(t *testing.T, url, stream string) uint64 {
 func TestPublishedConsumers_DropsTheUnmountedTodoConsumer(t *testing.T) {
 	all := consumerProviders(&Services{}, discardLogger())
 	require.NoError(t, assertConsumerWiring(all), "the full manifest must still be wired")
-	require.Empty(t, handlersOf(publishedConsumers(all)), "the todo consumer is declared while todo is not mounted")
+	for _, h := range handlersOf(publishedConsumers(all)) {
+		require.False(t, strings.HasPrefix(h.Job.Name, "todo."), "the todo consumer is declared while todo is not mounted")
+	}
 }

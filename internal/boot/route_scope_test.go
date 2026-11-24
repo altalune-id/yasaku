@@ -60,6 +60,9 @@ func probeRoutes() []probeRoute {
 		{http.MethodGet, base + "/switch", nil},
 		{http.MethodGet, base + "/members", nil},
 		{http.MethodGet, base + "/invites", nil},
+		{http.MethodGet, base + "/roles", nil},
+		{http.MethodGet, base + "/roles/new", nil},
+		{http.MethodGet, base + "/roles/" + id, nil},
 		{http.MethodGet, base + "/activity", nil},
 		{http.MethodGet, base + "/apikeys", nil},
 		{http.MethodGet, base + "/projects", nil},
@@ -97,6 +100,9 @@ func probeRoutes() []probeRoute {
 		{http.MethodPost, base + "/rename", url.Values{"name": {"Renamed"}}},
 		{http.MethodPost, base + "/invites", url.Values{"email": {"probe@example.com"}, "role": {"member"}}},
 		{http.MethodPost, base + "/invites/" + id + "/revoke", url.Values{}},
+		{http.MethodPost, base + "/roles", url.Values{"name": {"Probe"}, "perm": {"wallets:read"}}},
+		{http.MethodPost, base + "/roles/" + id, url.Values{"name": {"Probe"}, "version": {"1"}}},
+		{http.MethodPost, base + "/roles/" + id + "/delete", url.Values{}},
 		{http.MethodPost, base + "/apikeys", url.Values{"name": {"Probe Key"}, "grant": {"all"}}},
 		{http.MethodPost, base + "/apikeys/" + id + "/projects", url.Values{}},
 		{http.MethodPost, base + "/apikeys/" + id + "/all-projects", url.Values{}},
@@ -164,6 +170,19 @@ func probeRoutes() []probeRoute {
 		{http.MethodPost, "/locale", url.Values{"locale": {"en-US"}, "redirect": {"/"}}},
 		{http.MethodPost, "/theme", url.Values{"mode": {"dark"}, "redirect": {"/"}}},
 		{http.MethodPost, "/tips/" + web.Tips()[0].ID + "/seen", url.Values{"redirect": {"/"}}},
+		{http.MethodGet, "/admin", nil},
+		{http.MethodGet, "/admin/users", nil},
+		{http.MethodGet, "/admin/orgs/" + org, nil},
+		{http.MethodPost, "/admin/orgs/" + org + "/assume", url.Values{"reason": {"probe"}}},
+		{http.MethodPost, "/admin/support/renew", url.Values{}},
+		{http.MethodPost, "/admin/support/exit", url.Values{}},
+		{http.MethodGet, "/admin/limits", nil},
+		{http.MethodPost, "/admin/limits", url.Values{"key": {"org.projects"}, "value": {"3"}}},
+		{http.MethodPost, "/admin/limits/overrides", url.Values{"key": {"org.projects"}, "subject": {org}, "value": {"3"}}},
+		{http.MethodPost, "/admin/limits/overrides/delete", url.Values{"key": {"org.projects"}, "kind": {"org"}, "id": {id}}},
+		{http.MethodGet, "/admin/activity", nil},
+		{http.MethodPost, "/admin/users/" + id + "/suspend", url.Values{}},
+		{http.MethodPost, "/admin/users/" + id + "/unsuspend", url.Values{}},
 	}
 }
 
@@ -317,6 +336,7 @@ func templatize(path string) string {
 		path = strings.Replace(path, "/members/{id}/", "/members/{user}/", 1)
 	}
 	path = strings.Replace(path, "/deliveries/{id}", "/deliveries/{did}", 1)
+	path = strings.Replace(path, "/admin/users/{id}/", "/admin/users/{user}/", 1)
 	path = strings.Replace(path, "/tips/"+web.Tips()[0].ID+"/", "/tips/{id}/", 1)
 	if path == "/" {
 		return "/{$}"

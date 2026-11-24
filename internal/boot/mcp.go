@@ -56,6 +56,7 @@ func buildMCPSurface(cfg *config.Config, log *slog.Logger, s *Services, apiSrv *
 				orgStoreForOnboard{store: s.OrgStore},
 				projectStoreForOnboard{store: s.ProjectStore},
 			),
+			user.WithSuspendedContact(cfg.Compliance.ContactEmail),
 		),
 	}
 

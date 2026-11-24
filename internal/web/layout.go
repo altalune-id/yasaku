@@ -134,6 +134,16 @@ type LayoutData struct {
 	AddPulse bool
 	// Opensheet shows the Opensheet project nav entry; true only when the server mounts the module.
 	Opensheet bool
+	// Support is the staff member's open support visit; nil outside one.
+	Support *SupportBanner
+}
+
+// SupportBanner is what the chrome shows during a support visit.
+type SupportBanner struct {
+	OrgName string
+	OrgSlug string
+	Reason  string
+	Until   time.Time
 }
 
 // LocaleOption is one row in the locale-selector dropdown.

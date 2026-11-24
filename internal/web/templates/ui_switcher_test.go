@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"altalune.id/yasaku/internal/platform/capabilities"
 	"altalune.id/yasaku/internal/web"
 )
 
@@ -122,4 +123,27 @@ func TestLayout_NavbarSwitcherAlwaysHasItsSheet(t *testing.T) {
 			t.Errorf("%s: the trigger needs exactly one switcher dialog on the page", tc.name)
 		}
 	}
+}
+
+func TestSwitcher_PlatformEntryOnlyForSystemOrgMembersWithSupportAccess(t *testing.T) {
+	sys := web.ActiveOrg{Slug: "ops", Name: "Ops", System: true}
+	home := &web.ActiveOrg{Slug: "home", Name: "Home"}
+	for name, tc := range map[string]struct {
+		d    web.LayoutData
+		want bool
+	}{
+		"system org listed": {web.LayoutData{ActiveOrg: home, OtherOrgs: []web.ActiveOrg{sys}, Caps: capsWithSupport()}, true},
+		"system org active": {web.LayoutData{ActiveOrg: &sys, Caps: capsWithSupport()}, true},
+		"no system org":     {web.LayoutData{ActiveOrg: home, Caps: capsWithSupport()}, false},
+		"no support access": {web.LayoutData{ActiveOrg: &sys}, false},
+	} {
+		got := strings.Contains(renderSwitcher(t, tc.d), `href="/admin"`)
+		if got != tc.want {
+			t.Errorf("%s: Platform entry shown = %v, want %v", name, got, tc.want)
+		}
+	}
+}
+
+func capsWithSupport() capabilities.Capabilities {
+	return capabilities.Capabilities{SupportAccess: true}
 }
