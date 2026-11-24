@@ -11,6 +11,8 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"altalune.id/yasaku/internal/apperror"
+	"altalune.id/yasaku/internal/limits"
+	"altalune.id/yasaku/internal/platform/audit"
 	"altalune.id/yasaku/internal/platform/tenant"
 )
 
@@ -23,20 +25,27 @@ type Service struct {
 	send       *SendWorkflow
 	accept     *AcceptWorkflow
 	enabled    bool
+	uow        func(ctx context.Context, fn func(ctx context.Context) error) error
+	audit      Auditor
 	log        *slog.Logger
 	unexpected apperror.UnexpectedFunc
 }
 
 // NewService binds the service to its dependencies; enabled=false blocks Send with InvitesDisabledError.
-func NewService(store Store, send *SendWorkflow, accept *AcceptWorkflow, enabled bool, log *slog.Logger, unexpected apperror.UnexpectedFunc) *Service {
-	return &Service{
+func NewService(store Store, send *SendWorkflow, accept *AcceptWorkflow, enabled bool, log *slog.Logger, unexpected apperror.UnexpectedFunc, opts ...ServiceOption) *Service {
+	s := &Service{
 		store:      store,
 		send:       send,
 		accept:     accept,
 		enabled:    enabled,
+		uow:        passthrough,
 		log:        log.With("module", "invite"),
 		unexpected: unexpected,
 	}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
 }
 
 // Enabled reports whether invite issuance is allowed for this deployment.
@@ -50,6 +59,20 @@ func (s *Service) Send(ctx context.Context, req SendRequest) (*Invite, error) {
 		return nil, &InvitesDisabledError{Reason: "invites require OIDC in selfhosted mode; set YASAKU_OIDC_ISSUER to enable"}
 	}
 	return s.send.Execute(ctx, req)
+}
+
+// Seats reports the caller's org seat use for the invites page.
+func (s *Service) Seats(ctx context.Context) (Seats, error) {
+	ctx, span := tracer.Start(ctx, "invite.Seats")
+	defer span.End()
+	tc, err := tenant.From(ctx)
+	if err != nil {
+		return Seats{}, err
+	}
+	if s.send == nil {
+		return Seats{Max: limits.Unlimited}, nil
+	}
+	return s.send.seats(ctx, tc.OrgID)
 }
 
 // HasPendingForEmail reports whether email has any pending (non-consumed) invite.
@@ -112,12 +135,18 @@ func (s *Service) Revoke(ctx context.Context, id uuid.UUID) error {
 	if inv.OrgID != tc.OrgID {
 		return &NotFoundError{ID: id.String()}
 	}
-	if err := s.store.Delete(ctx, id); err != nil {
-		span.RecordError(err)
-		if IsNotFoundError(err) {
-			return err
+	return s.uow(ctx, func(ctx context.Context) error {
+		if err := s.store.Delete(ctx, id); err != nil {
+			span.RecordError(err)
+			if IsNotFoundError(err) {
+				return err
+			}
+			return s.unexpected(ctx, "invite.Revoke: delete", fmt.Errorf("invite.Revoke: delete: %w", err), "invite_id", id)
 		}
-		return s.unexpected(ctx, "invite.Revoke: delete", fmt.Errorf("invite.Revoke: delete: %w", err), "invite_id", id)
-	}
-	return nil
+		if err := record(ctx, s.audit, audit.Event{Action: "invite.revoked", TargetKind: "invite", TargetID: id.String(),
+			Detail: map[string]string{"name": inv.Email, "email": inv.Email}}); err != nil {
+			return s.unexpected(ctx, "invite.Revoke: audit", err, "invite_id", id)
+		}
+		return nil
+	})
 }

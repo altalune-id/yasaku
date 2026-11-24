@@ -10,10 +10,12 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
 	yasakuv1 "altalune.id/yasaku/gen/go/yasaku/v1"
 	"altalune.id/yasaku/gen/go/yasaku/v1/yasakuv1connect"
+	"altalune.id/yasaku/internal/limits"
 	"altalune.id/yasaku/internal/opensheetsync"
 	"altalune.id/yasaku/internal/platform/config"
 	sqliteent "altalune.id/yasaku/internal/platform/db/entity/sqlite"
@@ -211,6 +213,8 @@ func TestOpensheetE2E_QueueOff_EnablePushesOneBatchAndTheReconcilerDrainsTwoPage
 	e.publish()
 	_, err := e.save(ctx)
 	require.NoError(t, err)
+	require.NoError(t, limits.NewStore(e.boot.Cfg.DB, e.boot.Platform.Pool).SetOverride(ctx,
+		limits.Subject{Kind: limits.SubjectProject, ID: e.project.ID}, limits.ProjectWallets, limits.Unlimited, uuid.Nil))
 	const n = 157
 	for i := range n {
 		e.createWallet(ctx, fmt.Sprintf("W%03d", i), nil)

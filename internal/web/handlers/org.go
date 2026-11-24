@@ -34,19 +34,24 @@ func (h *OrgHandler) GetList(w http.ResponseWriter, r *http.Request) {
 		h.ErrorPage(w, r, http.StatusInternalServerError, pageTitle(r, "error_title.list_failed"), "Could not load orgs.", err)
 		return
 	}
-	Render(w, r, templates.OrgsLayout(h.Layout(r, pageTitle(r, "orgs.title"), web.ActiveNav{Scope: web.NavScopeOrg}), templates.OrgsView{Orgs: orgSummaries(items)}))
+	blocked, _ := h.createBlocked(r, p.UserID)
+	Render(w, r, templates.OrgsLayout(h.Layout(r, pageTitle(r, "orgs.title"), web.ActiveNav{Scope: web.NavScopeOrg}), templates.OrgsView{Orgs: orgSummaries(items), CreateBlocked: blocked}))
 }
 
 // GetNew renders /orgs/new.
 func (h *OrgHandler) GetNew(w http.ResponseWriter, r *http.Request) {
-	if _, ok := h.requireAuth(w, r); !ok {
+	p, ok := h.requireAuth(w, r)
+	if !ok {
 		return
 	}
 	if !h.Caps.OrgCreation {
 		h.orgCreationDisabled(w, r)
 		return
 	}
-	Render(w, r, templates.OrgNewLayout(h.Layout(r, pageTitle(r, "nav.create_organization"), web.ActiveNav{Scope: web.NavScopeOrg}), templates.OrgNewView{Slug: slugs.Generate()}))
+	v := templates.OrgNewView{Slug: slugs.Generate()}
+	v.Error, v.ErrorCode = h.createBlocked(r, p.UserID)
+	v.Blocked = v.Error != ""
+	Render(w, r, templates.OrgNewLayout(h.Layout(r, pageTitle(r, "nav.create_organization"), web.ActiveNav{Scope: web.NavScopeOrg}), v))
 }
 
 // PostCreate handles POST /orgs (org creation is capability-gated).
@@ -174,6 +179,22 @@ func (h *OrgHandler) PostRemoveMember(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, ResolveReturnTo(h.Cfg.HTTP.BasePath, "/orgs/"+o.Slug+"/members"), http.StatusSeeOther) //nolint:gosec // G710: destination sanitized via ResolveReturnTo → SanitizeReturnTo
 }
 
+func (h *OrgHandler) createBlocked(r *http.Request, userID uuid.UUID) (msg, code string) { //nolint:nonamedreturns // message and code differ in role
+	if !h.Caps.OrgCreation {
+		return "", ""
+	}
+	err := h.Orgs.CreateAllowed(r.Context(), userID)
+	if err == nil {
+		return "", ""
+	}
+	m, ok := h.limitMessage(r.Context(), err)
+	if !ok {
+		h.LogErr("web org: create allowed", err)
+		return "", ""
+	}
+	return m, ErrorRef(err)
+}
+
 func (h *OrgHandler) requireAuth(w http.ResponseWriter, r *http.Request) (session.Principal, bool) {
 	p, _, ok := h.LoadSession(r)
 	if !ok {
@@ -193,6 +214,9 @@ func (h *OrgHandler) renderNewErr(w http.ResponseWriter, r *http.Request, slug, 
 		msg = "Slug is already taken."
 	case org.IsCreationDisabledError(err):
 		msg = "Organization creation is disabled."
+	}
+	if m, ok := h.limitMessage(r.Context(), err); ok {
+		msg = m
 	}
 	Render(w, r, templates.OrgNewLayout(
 		h.Layout(r, pageTitle(r, "nav.create_organization"), web.ActiveNav{Scope: web.NavScopeOrg}),

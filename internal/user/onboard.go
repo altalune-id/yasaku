@@ -2,6 +2,7 @@ package user
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -10,6 +11,9 @@ import (
 	"github.com/google/uuid"
 
 	"altalune.id/yasaku/internal/apperror"
+	"altalune.id/yasaku/internal/limits"
+	"altalune.id/yasaku/internal/platform/audit"
+	"altalune.id/yasaku/internal/platform/session"
 	"altalune.id/yasaku/internal/platform/tenant"
 )
 
@@ -97,6 +101,18 @@ type OnboardWorkflow struct {
 	log        *slog.Logger
 	unexpected apperror.UnexpectedFunc
 	now        func() time.Time
+	uow        tenant.UnitOfWork
+	limits     Limiter
+	counter    MemberCounter
+	audit      Auditor
+}
+
+// OnboardOption configures an OnboardWorkflow.
+type OnboardOption func(*OnboardWorkflow)
+
+// WithOnboardUnitOfWork commits an auto-accepted invite and its membership together.
+func WithOnboardUnitOfWork(uow tenant.UnitOfWork) OnboardOption {
+	return func(w *OnboardWorkflow) { w.uow = uow }
 }
 
 // NewOnboardWorkflow constructs an OnboardWorkflow with typed dependencies.
@@ -108,8 +124,9 @@ func NewOnboardWorkflow(
 	policy Policy,
 	log *slog.Logger,
 	unexpected apperror.UnexpectedFunc,
+	opts ...OnboardOption,
 ) *OnboardWorkflow {
-	return &OnboardWorkflow{
+	w := &OnboardWorkflow{
 		users:      users,
 		orgs:       orgs,
 		projects:   projects,
@@ -118,7 +135,12 @@ func NewOnboardWorkflow(
 		log:        log,
 		unexpected: unexpected,
 		now:        func() time.Time { return time.Now().UTC() },
+		uow:        func(ctx context.Context, fn func(ctx context.Context) error) error { return fn(ctx) },
 	}
+	for _, opt := range opts {
+		opt(w)
+	}
+	return w
 }
 
 // Onboard resolves (orgID, projectID) for the given user under the workflow's policy.
@@ -160,14 +182,8 @@ func (w *OnboardWorkflow) onboardSelfhosted(ctx context.Context, userID uuid.UUI
 		return OnboardResult{}, &NotInvitedError{Email: userEmail}
 	}
 
-	now := w.now()
-	inv.AcceptedAt = &now
-	if err := w.invites.Save(tenant.WithOrg(ctx, inv.OrgID), inv); err != nil {
-		return OnboardResult{}, w.unexpected(ctx, "user.Onboard: accept invite", err)
-	}
-	m := &MembershipRef{OrgID: o.ID, UserID: userID, Role: inv.Role}
-	if err := w.orgs.SaveMembership(tenant.WithOrg(ctx, m.OrgID), m); err != nil {
-		return OnboardResult{}, w.unexpected(ctx, "user.Onboard: save membership", err)
+	if err := w.acceptInvite(ctx, inv, userID); err != nil {
+		return OnboardResult{}, joinRefusedSignup(err, userID, userEmail)
 	}
 	projectID, err := w.pickProject(ctx, o.ID)
 	if err != nil {
@@ -195,20 +211,51 @@ func (w *OnboardWorkflow) onboardCloud(ctx context.Context, userID uuid.UUID, us
 	if inv == nil {
 		return OnboardResult{}, &SignupRequiredError{UserID: userID.String(), Email: userEmail}
 	}
-	now := w.now()
-	inv.AcceptedAt = &now
-	if err := w.invites.Save(tenant.WithOrg(ctx, inv.OrgID), inv); err != nil {
-		return OnboardResult{}, w.unexpected(ctx, "user.Onboard: accept invite", err)
-	}
-	m := &MembershipRef{OrgID: inv.OrgID, UserID: userID, Role: inv.Role}
-	if err := w.orgs.SaveMembership(tenant.WithOrg(ctx, m.OrgID), m); err != nil {
-		return OnboardResult{}, w.unexpected(ctx, "user.Onboard: save membership", err)
+	if err := w.acceptInvite(ctx, inv, userID); err != nil {
+		return OnboardResult{}, joinRefusedSignup(err, userID, userEmail)
 	}
 	projectID, err := w.pickProject(ctx, inv.OrgID)
 	if err != nil {
 		return OnboardResult{}, err
 	}
 	return OnboardResult{OrgID: inv.OrgID, ProjectID: projectID}, nil
+}
+
+// NOTE: a limit refusal lets the sign-in through with no tenant; the invite stays pending and JoinRefused carries the notice.
+func joinRefusedSignup(err error, userID uuid.UUID, email string) error {
+	if re, ok := errors.AsType[*limits.ReachedError](err); ok {
+		return &SignupRequiredError{UserID: userID.String(), Email: email, JoinRefused: re}
+	}
+	return err
+}
+
+// SECURITY: the caller is mid-login and holds no tenant scope yet, so bind to the inviting org.
+func (w *OnboardWorkflow) acceptInvite(ctx context.Context, inv *InviteRef, userID uuid.UUID) error {
+	tctx := tenant.Into(ctx, tenant.Context{OrgID: inv.OrgID, UserID: userID})
+	return w.uow(tctx, func(tctx context.Context) error {
+		if err := w.checkJoin(tctx, userID, inv.OrgID); err != nil {
+			return err
+		}
+		now := w.now()
+		accepted := *inv
+		accepted.AcceptedAt = &now
+		if err := w.invites.Save(tctx, &accepted); err != nil {
+			return w.unexpected(ctx, "user.Onboard: accept invite", err)
+		}
+		m := &MembershipRef{OrgID: inv.OrgID, UserID: userID, Role: inv.Role}
+		if err := w.orgs.SaveMembership(tctx, m); err != nil {
+			return w.unexpected(ctx, "user.Onboard: save membership", err)
+		}
+		if w.audit == nil {
+			return nil
+		}
+		actx := session.PrincipalInto(tctx, session.Principal{UserID: userID, Email: inv.Email})
+		if err := w.audit.Record(actx, audit.Event{Action: "member.joined", TargetKind: "user", TargetID: userID.String(),
+			Detail: map[string]string{"name": inv.Email, "email": inv.Email, "role": inv.Role}}); err != nil {
+			return w.unexpected(ctx, "user.Onboard: audit", err)
+		}
+		return nil
+	})
 }
 
 func (w *OnboardWorkflow) findAnyPendingInvite(ctx context.Context, userEmail string) (*InviteRef, error) {

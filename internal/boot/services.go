@@ -2,6 +2,7 @@ package boot
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -14,12 +15,14 @@ import (
 	"altalune.id/yasaku/internal/category"
 	"altalune.id/yasaku/internal/invite"
 	"altalune.id/yasaku/internal/ledger"
+	"altalune.id/yasaku/internal/limits"
 	"altalune.id/yasaku/internal/onboard"
 	"altalune.id/yasaku/internal/opensheetsync"
 	"altalune.id/yasaku/internal/org"
 	"altalune.id/yasaku/internal/password"
 	"altalune.id/yasaku/internal/period"
 	"altalune.id/yasaku/internal/platform"
+	"altalune.id/yasaku/internal/platform/audit"
 	"altalune.id/yasaku/internal/platform/authn"
 	"altalune.id/yasaku/internal/platform/capabilities"
 	"altalune.id/yasaku/internal/platform/config"
@@ -84,6 +87,8 @@ type Services struct {
 	APIKeys     *apikey.Service
 	APIKeyUsage *apikey.UsageWorker
 
+	Audit *audit.Recorder
+
 	jobs *jobSubmitter
 }
 
@@ -101,12 +106,15 @@ func buildServices(cfg *config.Config, k *platform.Kernel, caps capabilities.Cap
 	inviteStore := invite.NewStore(cfg.DB, pool, pgConn)
 	onboardStore := onboard.NewStore(cfg.DB, pool)
 
-	orgs := org.NewService(orgStore, caps, log, reporter.Unexpected)
-	projects := project.NewService(projectStore, log, reporter.Unexpected, orgs)
+	uow := tenant.NewUnitOfWork(cfg.DB, pool, pgConn)
+	limiter := limits.NewService(limits.NewStore(cfg.DB, pool), cfg.Mode, limits.WithContact(cfg.Compliance.ContactEmail))
+	members := org.NewCounter(orgStore, caps)
+	recorder := audit.NewRecorder(cfg.DB, pool, pgConn)
+	orgs := org.NewService(orgStore, caps, log, reporter.Unexpected, uow, org.WithLimits(limiter), org.WithAudit(recorder))
+	projects := project.NewService(projectStore, log, reporter.Unexpected, orgs, uow, project.WithLimits(limiter, members))
 	todos := todo.NewService(todoStore, log, reporter.Unexpected, k.Queue)
 	jobs := newJobSubmitter(k.Queue, k.Tracer, log)
 	onboards := onboard.NewService(onboardStore, log, reporter.Unexpected)
-	uow := tenant.NewUnitOfWork(cfg.DB, pool, pgConn)
 	osw, err := newOpensheetWiring(cfg, k, jobs, log)
 	if err != nil {
 		return nil, err
@@ -123,8 +131,8 @@ func buildServices(cfg *config.Config, k *platform.Kernel, caps capabilities.Cap
 	periodStore := period.NewStore(cfg.DB, pool, pgConn)
 	transactionStore := transaction.NewStore(cfg.DB, pool, pgConn)
 
-	ledgers := ledger.NewService(ledgerStore, log, reporter.Unexpected, orgs)
-	wallets := wallet.NewService(walletStore, log, reporter.Unexpected, wallet.WithMirror(osw.walletMirror(), wallet.UnitOfWork(uow)))
+	ledgers := ledger.NewService(ledgerStore, log, reporter.Unexpected, orgs, ledger.WithAudit(uow, recorder))
+	wallets := wallet.NewService(walletStore, log, reporter.Unexpected, wallet.WithMirror(osw.walletMirror(), wallet.UnitOfWork(uow)), wallet.WithLimits(limiter))
 	txCategories := category.NewService(txCategoryStore, log, reporter.Unexpected, namerAdapter{},
 		category.WithMirror(osw.categoryMirror(), category.UnitOfWork(uow)))
 	reports := report.NewService(report.NewReader(cfg.DB, pool, pgConn), log, reporter.Unexpected, ledgers)
@@ -146,6 +154,9 @@ func buildServices(cfg *config.Config, k *platform.Kernel, caps capabilities.Cap
 		strings.TrimRight(cfg.HTTP.BaseURL, "/")+cfg.HTTP.BasePath,
 		log,
 		reporter.Unexpected,
+		invite.WithSendUnitOfWork(uow),
+		invite.WithSendLimits(limiter, members),
+		invite.WithSendAudit(recorder),
 	)
 	acceptWorkflow := invite.NewAcceptWorkflow(
 		inviteStore,
@@ -153,8 +164,12 @@ func buildServices(cfg *config.Config, k *platform.Kernel, caps capabilities.Cap
 		orgStoreForInvite{store: orgStore},
 		log,
 		reporter.Unexpected,
+		invite.WithUnitOfWork(uow),
+		invite.WithAcceptLimits(limiter, members),
+		invite.WithAcceptAudit(recorder),
 	)
-	invites := invite.NewService(inviteStore, sendWorkflow, acceptWorkflow, invitesEnabled, log, reporter.Unexpected)
+	invites := invite.NewService(inviteStore, sendWorkflow, acceptWorkflow, invitesEnabled, log, reporter.Unexpected,
+		invite.WithRevokeAudit(uow, recorder))
 
 	users := user.NewService(
 		userStore,
@@ -172,6 +187,9 @@ func buildServices(cfg *config.Config, k *platform.Kernel, caps capabilities.Cap
 		onboardPolicyFrom(cfg),
 		log,
 		reporter.Unexpected,
+		user.WithOnboardUnitOfWork(uow),
+		user.WithOnboardLimits(limiter, members),
+		user.WithOnboardAudit(recorder),
 	)
 
 	genesisHash, err := hashGenesisPassword(cfg.Genesis.Password)
@@ -211,6 +229,9 @@ func buildServices(cfg *config.Config, k *platform.Kernel, caps capabilities.Cap
 		},
 		func(ctx context.Context, req auth.OnboardRequest) (auth.OnboardResult, error) {
 			res, err := onboardWorkflow.Onboard(ctx, req.UserID, req.Email)
+			if re, ok := errors.AsType[*limits.ReachedError](joinRefused(err)); ok {
+				return auth.OnboardResult{Notice: limits.JoinNotice(req.Locale, cfg.Mode, re, cfg.Compliance.ContactEmail)}, err
+			}
 			if err != nil {
 				return auth.OnboardResult{}, err
 			}
@@ -227,7 +248,8 @@ func buildServices(cfg *config.Config, k *platform.Kernel, caps capabilities.Cap
 	keyUsage := apikey.NewUsageWorker(keyStore, apiKeyUsageFlushInterval, log)
 	keyScheme := apikey.NewScheme(cfg.API.KeyPrefix)
 	keyAuthn := apikey.NewAuthenticator(keyStore, keyUsage, keyScheme, orgs)
-	keys := apikey.NewService(keyStore, keyScheme, orgs, projectServiceForAPIKeys{svc: projects}, log, reporter.Unexpected)
+	keys := apikey.NewService(keyStore, keyScheme, orgs, projectServiceForAPIKeys{svc: projects}, log, reporter.Unexpected,
+		apikey.WithAudit(uow, recorder))
 	orgs.OnMemberRemoved(keys.RevokePersonalOf)
 	// SECURITY: key first, so its shape gate rejects a non-key credential without a DB call.
 	tenantResolution := user.WithTenantResolution(
@@ -283,6 +305,8 @@ func buildServices(cfg *config.Config, k *platform.Kernel, caps capabilities.Cap
 		APIKeys:     keys,
 		APIKeyUsage: keyUsage,
 
+		Audit: recorder,
+
 		jobs: jobs,
 	}, nil
 }
@@ -300,4 +324,11 @@ func hashGenesisPassword(plain string) (string, error) {
 		return "", nil
 	}
 	return password.Hash(plain)
+}
+
+func joinRefused(err error) error {
+	if sr, ok := errors.AsType[*user.SignupRequiredError](err); ok {
+		return sr.JoinRefused
+	}
+	return nil
 }

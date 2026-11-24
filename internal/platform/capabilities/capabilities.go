@@ -13,6 +13,7 @@ type Capabilities struct {
 	PublicSignup           bool
 	Signup                 bool
 	OrgCreation            bool
+	SupportAccess          bool
 	InvitesEnabled         bool
 	APIEnabled             bool
 	DataPlaneEnabled       bool
@@ -51,6 +52,7 @@ func From(c *config.Config) Capabilities {
 	caps.PublicSignup = caps.Mode == config.ModeCloud && caps.ExternalIdentity
 	caps.Signup = caps.PublicSignup
 	caps.OrgCreation = caps.Mode == config.ModeCloud
+	caps.SupportAccess = caps.Mode == config.ModeCloud
 	caps.InvitesEnabled = caps.Mode == config.ModeCloud || caps.ExternalIdentity
 	return caps
 }

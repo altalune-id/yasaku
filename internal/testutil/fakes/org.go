@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 
 	"altalune.id/yasaku/internal/org"
+	"altalune.id/yasaku/internal/platform/db"
 )
 
 // Org is an in-memory org.Store.
@@ -21,6 +22,10 @@ type Org struct {
 	MembershipOfFailAfter int
 	MembershipOfErr       error
 	membershipOfCalls     int
+	// SaveMembershipErr makes every SaveMembership call fail with it.
+	SaveMembershipErr error
+	// DeferWritesToCommit applies Save and SaveMembership only when the unit of work on ctx commits, so a rollback leaves no row.
+	DeferWritesToCommit bool
 }
 
 // NewOrg returns an empty in-memory org.Store.
@@ -33,7 +38,7 @@ func NewOrg() *Org {
 
 var _ org.Store = (*Org)(nil)
 
-func (r *Org) Save(_ context.Context, o *org.Org) error {
+func (r *Org) Save(ctx context.Context, o *org.Org) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for id, existing := range r.orgs {
@@ -45,8 +50,20 @@ func (r *Org) Save(_ context.Context, o *org.Org) error {
 		}
 	}
 	c := *o
-	r.orgs[o.ID] = &c
+	r.atCommit(ctx, func() { r.orgs[o.ID] = &c })
 	return nil
+}
+
+func (r *Org) atCommit(ctx context.Context, apply func()) {
+	if _, ok := db.CurrentTx(ctx); !ok || !r.DeferWritesToCommit {
+		apply()
+		return
+	}
+	db.AfterCommit(ctx, func() {
+		r.mu.Lock()
+		defer r.mu.Unlock()
+		apply()
+	})
 }
 
 // TakeNextSlugs makes the next n BySlug lookups report the slug as taken, without storing a row.
@@ -119,18 +136,50 @@ func (r *Org) List(_ context.Context, userID uuid.UUID) ([]*org.Org, error) {
 	return out, nil
 }
 
-func (r *Org) SaveMembership(_ context.Context, m *org.Membership) error {
+func (r *Org) CountCreatedBy(_ context.Context, userID uuid.UUID) (int64, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	for i, x := range r.memberships {
-		if x.OrgID == m.OrgID && x.UserID == m.UserID {
-			c := *m
-			r.memberships[i] = &c
-			return nil
+	var n int64
+	for _, o := range r.orgs {
+		if o.OwnerID == userID && !o.System {
+			n++
 		}
 	}
+	return n, nil
+}
+
+// IsStaff mirrors the stores: an owner or admin of the earliest system org.
+func (r *Org) IsStaff(ctx context.Context, userID uuid.UUID) (bool, error) {
+	sys, err := r.SystemOrg(ctx)
+	if err != nil {
+		return false, nil //nolint:nilerr // no system org means nobody is staff
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, m := range r.memberships {
+		if m.OrgID == sys.ID && m.UserID == userID && (m.Role == org.RoleOwner || m.Role == org.RoleAdmin) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (r *Org) SaveMembership(ctx context.Context, m *org.Membership) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.SaveMembershipErr != nil {
+		return r.SaveMembershipErr
+	}
 	c := *m
-	r.memberships = append(r.memberships, &c)
+	r.atCommit(ctx, func() {
+		for i, x := range r.memberships {
+			if x.OrgID == m.OrgID && x.UserID == m.UserID {
+				r.memberships[i] = &c
+				return
+			}
+		}
+		r.memberships = append(r.memberships, &c)
+	})
 	return nil
 }
 

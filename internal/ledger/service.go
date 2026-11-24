@@ -3,6 +3,7 @@ package ledger
 import (
 	"context"
 	"log/slog"
+	"strconv"
 	"time"
 
 	"github.com/google/uuid"
@@ -10,6 +11,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 
 	"altalune.id/yasaku/internal/apperror"
+	"altalune.id/yasaku/internal/platform/audit"
 	"altalune.id/yasaku/internal/platform/tenant"
 	"altalune.id/yasaku/money"
 )
@@ -28,11 +30,31 @@ type Service struct {
 	log        *slog.Logger
 	unexpected apperror.UnexpectedFunc
 	managers   Managers
+	uow        tenant.UnitOfWork
+	audit      Auditor
+}
+
+// Auditor records a settings change in the caller's unit of work.
+type Auditor interface {
+	Record(ctx context.Context, e audit.Event) error
+}
+
+// Option configures a Service.
+type Option func(*Service)
+
+// WithAudit saves each settings change in uow and records ledger.settings_changed.
+func WithAudit(uow tenant.UnitOfWork, a Auditor) Option {
+	return func(s *Service) { s.uow, s.audit = uow, a }
 }
 
 // NewService binds the service to its dependencies.
-func NewService(store Store, log *slog.Logger, unexpected apperror.UnexpectedFunc, managers Managers) *Service {
-	return &Service{store: store, log: log.With("module", "ledger"), unexpected: unexpected, managers: managers}
+func NewService(store Store, log *slog.Logger, unexpected apperror.UnexpectedFunc, managers Managers, opts ...Option) *Service {
+	s := &Service{store: store, log: log.With("module", "ledger"), unexpected: unexpected, managers: managers,
+		uow: func(ctx context.Context, fn func(ctx context.Context) error) error { return fn(ctx) }}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
 }
 
 // Get returns the caller's project settings, or the defaults when none were ever saved.
@@ -78,7 +100,19 @@ func (s *Service) Update(ctx context.Context, p Patch) (*Settings, error) {
 		span.RecordError(applyErr)
 		return nil, applyErr
 	}
-	if saveErr := s.store.Save(ctx, cur); saveErr != nil {
+	saveErr := s.uow(ctx, func(ctx context.Context) error {
+		if err := s.store.Save(ctx, cur); err != nil {
+			return err
+		}
+		if s.audit == nil {
+			return nil
+		}
+		return s.audit.Record(ctx, audit.Event{Action: "ledger.settings_changed", TargetKind: "project", TargetID: tc.ProjectID.String(),
+			ProjectID: tc.ProjectID, Detail: map[string]string{
+				"timezone": cur.Timezone, "currency": string(cur.Currency), "start_day": strconv.Itoa(cur.PeriodStartDay),
+			}})
+	})
+	if saveErr != nil {
 		span.RecordError(saveErr)
 		if IsNotFoundError(saveErr) {
 			return nil, saveErr

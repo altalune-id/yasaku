@@ -61,6 +61,8 @@ type Principal struct {
 	TipsSeen        []string
 	TermsAcceptedAt time.Time
 	IssuedAt        time.Time
+	// Notice is a message shown once after sign-in, then cleared.
+	Notice string `json:",omitempty"`
 }
 
 type principalKey struct{}

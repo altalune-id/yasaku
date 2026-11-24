@@ -2,14 +2,18 @@ package invite
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
 
 	"altalune.id/yasaku/internal/apperror"
+	"altalune.id/yasaku/internal/limits"
+	"altalune.id/yasaku/internal/platform/audit"
 	"altalune.id/yasaku/internal/platform/tenant"
 	"altalune.id/yasaku/mailer"
 	"altalune.id/yasaku/nanoid"
@@ -35,6 +39,10 @@ type SendWorkflow struct {
 	baseURL    string
 	tokenGen   TokenGenFunc
 	clock      func() time.Time
+	uow        func(ctx context.Context, fn func(ctx context.Context) error) error
+	limits     Limiter
+	counter    MemberCounter
+	audit      Auditor
 	log        *slog.Logger
 	unexpected apperror.UnexpectedFunc
 }
@@ -60,6 +68,7 @@ func NewSendWorkflow(invites Store, mail mailer.Mailer, baseURL string, log *slo
 		baseURL:    strings.TrimRight(baseURL, "/"),
 		tokenGen:   nanoid.NewInviteToken,
 		clock:      func() time.Time { return time.Now().UTC() },
+		uow:        passthrough,
 		log:        log,
 		unexpected: unexpected,
 	}
@@ -110,10 +119,23 @@ func (w *SendWorkflow) Execute(ctx context.Context, req SendRequest) (*Invite, e
 		span.RecordError(err)
 		return nil, err
 	}
-	if err := w.invites.Save(ctx, inv); err != nil {
-		span.RecordError(err)
-		return nil, w.unexpected(ctx, "invite.Send: save", fmt.Errorf("invite.Send: save: %w", err),
-			"invite_id", inv.ID)
+	err = w.uow(ctx, func(ctx context.Context) error {
+		if err := w.checkSeats(ctx, tc.OrgID); err != nil {
+			return err
+		}
+		if err := w.invites.Save(ctx, inv); err != nil {
+			span.RecordError(err)
+			return w.unexpected(ctx, "invite.Send: save", fmt.Errorf("invite.Send: save: %w", err),
+				"invite_id", inv.ID)
+		}
+		if err := record(ctx, w.audit, audit.Event{Action: "invite.sent", TargetKind: "invite", TargetID: inv.ID.String(),
+			Detail: map[string]string{"name": inv.Email, "email": inv.Email, "role": string(inv.Role)}}); err != nil {
+			return w.unexpected(ctx, "invite.Send: audit", err, "invite_id", inv.ID)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	msg := mailer.Message{
@@ -131,4 +153,64 @@ func (w *SendWorkflow) Execute(ctx context.Context, req SendRequest) (*Invite, e
 	}
 	span.SetAttributes(attribute.String("invite.id", inv.ID.String()))
 	return inv, nil
+}
+
+func (w *SendWorkflow) checkSeats(ctx context.Context, orgID uuid.UUID) error {
+	if w.limits == nil {
+		return nil
+	}
+	sub := limits.Subject{Kind: limits.SubjectOrg, ID: orgID}
+	if err := w.limits.Lock(ctx, sub); err != nil {
+		return w.unexpected(ctx, "invite.Send: limit lock", err, "org_id", orgID)
+	}
+	members, err := w.counter.CountMembers(ctx, orgID)
+	if err != nil {
+		return w.unexpected(ctx, "invite.Send: count members", err, "org_id", orgID)
+	}
+	pending, err := w.invites.ListPending(ctx, orgID)
+	if err != nil {
+		return w.unexpected(ctx, "invite.Send: count pending", err, "org_id", orgID)
+	}
+	open := countUnexpired(pending, w.clock())
+	err = w.limits.Check(ctx, limits.OrgMembers, sub, members+open)
+	re, ok := errors.AsType[*limits.ReachedError](err)
+	if !ok {
+		return err
+	}
+	re.Pending = open
+	if re.Name, err = w.counter.OrgName(ctx, orgID); err != nil {
+		return w.unexpected(ctx, "invite.Send: org name", err, "org_id", orgID)
+	}
+	return re
+}
+
+func countUnexpired(invites []*Invite, now time.Time) int64 {
+	var n int64
+	for _, inv := range invites {
+		if inv.ExpiresAt.After(now) {
+			n++
+		}
+	}
+	return n
+}
+
+func (w *SendWorkflow) seats(ctx context.Context, orgID uuid.UUID) (Seats, error) {
+	if w.limits == nil {
+		return Seats{Max: limits.Unlimited}, nil
+	}
+	sub := limits.Subject{Kind: limits.SubjectOrg, ID: orgID}
+	maxSeats, err := w.limits.Effective(ctx, limits.OrgMembers, sub)
+	if err != nil {
+		return Seats{}, w.unexpected(ctx, "invite.Seats: limit", err, "org_id", orgID)
+	}
+	members, err := w.counter.CountMembers(ctx, orgID)
+	if err != nil {
+		return Seats{}, w.unexpected(ctx, "invite.Seats: count members", err, "org_id", orgID)
+	}
+	pending, err := w.invites.ListPending(ctx, orgID)
+	if err != nil {
+		return Seats{}, w.unexpected(ctx, "invite.Seats: count pending", err, "org_id", orgID)
+	}
+	open := countUnexpired(pending, w.clock())
+	return Seats{Used: members + open, Max: maxSeats, Pending: open}, nil
 }

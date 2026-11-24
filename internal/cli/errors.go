@@ -230,3 +230,37 @@ func IsSessionFileError(err error) bool {
 	_, ok := errors.AsType[*SessionFileError](err)
 	return ok
 }
+
+// ErrorLine renders err for the terminal: an app error as "CODE: message", anything else as its text.
+func ErrorLine(err error) string {
+	if ae, ok := apperror.AsAppError(err); ok && ae.Code() != "" {
+		return ae.Code() + ": " + ae.Message()
+	}
+	return err.Error()
+}
+
+// NoSystemOrgError refuses an operator write before the system org exists to hold its audit row.
+type NoSystemOrgError struct{ Cause error }
+
+func (e *NoSystemOrgError) Error() string {
+	return "admin: no system org yet; run `yasaku init` first: " + e.Cause.Error()
+}
+
+func (e *NoSystemOrgError) Unwrap() error { return e.Cause }
+
+// IsNoSystemOrgError reports whether err's tree contains a *NoSystemOrgError.
+func IsNoSystemOrgError(err error) bool {
+	_, ok := errors.AsType[*NoSystemOrgError](err)
+	return ok
+}
+
+// UnknownProjectError refuses a --project id that names no project.
+type UnknownProjectError struct{ ID string }
+
+func (e *UnknownProjectError) Error() string { return "admin limits: no project with id " + e.ID }
+
+// IsUnknownProjectError reports whether err's tree contains a *UnknownProjectError.
+func IsUnknownProjectError(err error) bool {
+	_, ok := errors.AsType[*UnknownProjectError](err)
+	return ok
+}

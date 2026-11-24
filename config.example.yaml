@@ -31,6 +31,8 @@ blog:
   publicReads: ""
 
 compliance:
+  # env: YASAKU_COMPLIANCE_CONTACT_EMAIL
+  contactEmail: ""
   # env: YASAKU_COMPLIANCE_PRIVACY_URL
   privacyURL: ""
   # env: YASAKU_COMPLIANCE_REQUIRE_ACCEPTANCE

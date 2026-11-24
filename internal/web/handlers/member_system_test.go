@@ -32,7 +32,7 @@ func TestPostRemoveMember_SystemProtected_Returns409(t *testing.T) {
 	unexpected := func(_ context.Context, _ string, cause error, _ ...any) *apperror.AppError {
 		return apperror.New("yasaku.unexpected", "unexpected", codes.Internal, &apperrorv1.ErrorDetail{Code: "yasaku.unexpected"}).WithCause(cause)
 	}
-	orgSvc := org.NewService(store, capabilities.Capabilities{OrgCreation: true}, slog.New(slog.NewTextHandler(io.Discard, nil)), unexpected)
+	orgSvc := org.NewService(store, capabilities.Capabilities{OrgCreation: true}, slog.New(slog.NewTextHandler(io.Discard, nil)), unexpected, fakes.UnitOfWork)
 
 	ctx := context.Background()
 	owner := uuid.New()

@@ -61,6 +61,7 @@ In the Status column, `—` means registered but not yet constructed.
 | `ORG010` | `apperror.CodeOrgOwnerRemoval`      | `FailedPrecondition` | Org Owner Removal      |
 | `ORG011` | `apperror.CodeOrgManagerRequired`   | `PermissionDenied`   | Org Manager Required   |
 | `ORG012` | `apperror.CodeOrgMismatch`          | `PermissionDenied`   | Org Mismatch           |
+| `ORG014` | `apperror.CodeOrgChoiceRequired`    | `FailedPrecondition` | Org Choice Required    |
 
 ## PRJ — Projects
 
@@ -203,3 +204,9 @@ unmapped `GEN900` incident.
 | `WHK006` | `apperror.CodeWebhookDeliveryNotFound`     | `NotFound`           | Webhook Delivery Not Found     |
 | `WHK007` | `apperror.CodeWebhookEndpointInactive`     | `FailedPrecondition` | Webhook Endpoint Inactive      |
 | `WHK008` | `apperror.CodeWebhookSecretConflict`       | `FailedPrecondition` | Webhook Secret Conflict        |
+
+## LIM — Limits
+
+| Code     | Constant                    | Status               | Meaning       |
+| -------- | --------------------------- | -------------------- | ------------- |
+| `LIM001` | `apperror.CodeLimitReached` | `FailedPrecondition` | Limit Reached |

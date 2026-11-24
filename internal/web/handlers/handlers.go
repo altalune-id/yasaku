@@ -100,6 +100,10 @@ func (d Deps) layout(r *http.Request, title string, nav web.ActiveNav, pinnedOrg
 	base.ActiveNav = nav
 	ctx := r.Context()
 	p := *base.Principal
+	if p.Notice != "" {
+		base.Flash = &web.FlashMessage{Kind: "warn", Message: p.Notice}
+		d.clearNotice(r, p)
+	}
 	if d.Orgs == nil {
 		return base
 	}
@@ -383,6 +387,17 @@ func (d Deps) WriteSession(w http.ResponseWriter, r *http.Request, p session.Pri
 		MaxAge:       int(web.SessionTTL.Seconds()),
 	})
 	return nil
+}
+
+func (d Deps) clearNotice(r *http.Request, p session.Principal) {
+	_, sid, ok := d.LoadSession(r)
+	if !ok {
+		return
+	}
+	p.Notice = ""
+	if err := d.UpdateSession(r, sid, p); err != nil {
+		d.LogErr("layout: clear notice", err)
+	}
 }
 
 // UpdateSession re-saves the Principal under the existing sid, preserving the cookie.

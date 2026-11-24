@@ -29,6 +29,8 @@ type postgresStore struct {
 	resolveBySlugStmt    string
 	resolveSystemOrgStmt string
 	listForUserStmt      string
+	countCreatedByStmt   string
+	isStaffStmt          string
 }
 
 func newPostgresStore(pool pdb.Pool, pc *tenant.PgConn, schema, tablePrefix string) *postgresStore {
@@ -47,6 +49,8 @@ func newPostgresStore(pool pdb.Pool, pc *tenant.PgConn, schema, tablePrefix stri
 		// NOTE: a SELECT without ORDER BY has no guaranteed row order, whatever ordering the wrapper body carries.
 		listForUserStmt: orgFuncSelect + fnPrefix + "list_orgs_for_user(#userID) AS o" +
 			" ORDER BY o.created_at ASC, o.id ASC",
+		countCreatedByStmt: `SELECT ` + fnPrefix + `count_orgs_created_by(#userID) AS "count"`,
+		isStaffStmt:        `SELECT ` + fnPrefix + `is_staff(#userID) AS "staff"`,
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"log/slog"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -13,6 +14,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"altalune.id/yasaku/internal/apperror"
+	"altalune.id/yasaku/internal/platform/audit"
 	"altalune.id/yasaku/internal/platform/authn"
 	"altalune.id/yasaku/internal/platform/session"
 	"altalune.id/yasaku/internal/platform/tenant"
@@ -41,11 +43,26 @@ type Service struct {
 	log        *slog.Logger
 	unexpected apperror.UnexpectedFunc
 	now        func() time.Time
+	uow        tenant.UnitOfWork
+	audit      Auditor
+}
+
+// Auditor records a key action in the caller's unit of work.
+type Auditor interface {
+	Record(ctx context.Context, e audit.Event) error
+}
+
+// Option configures a Service.
+type Option func(*Service)
+
+// WithAudit saves each minted or revoked key in uow and records it.
+func WithAudit(uow tenant.UnitOfWork, a Auditor) Option {
+	return func(s *Service) { s.uow, s.audit = uow, a }
 }
 
 // NewService binds the service to its dependencies.
-func NewService(store Store, scheme Scheme, members Members, projects Projects, log *slog.Logger, unexpected apperror.UnexpectedFunc) *Service {
-	return &Service{
+func NewService(store Store, scheme Scheme, members Members, projects Projects, log *slog.Logger, unexpected apperror.UnexpectedFunc, opts ...Option) *Service {
+	s := &Service{
 		store:      store,
 		scheme:     scheme,
 		members:    members,
@@ -53,7 +70,24 @@ func NewService(store Store, scheme Scheme, members Members, projects Projects, 
 		log:        log.With("module", "apikey"),
 		unexpected: unexpected,
 		now:        func() time.Time { return time.Now().UTC() },
+		uow:        func(ctx context.Context, fn func(ctx context.Context) error) error { return fn(ctx) },
 	}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
+}
+
+func (s *Service) saveAudited(ctx context.Context, k *APIKey, e audit.Event) error {
+	return s.uow(ctx, func(ctx context.Context) error {
+		if err := s.store.Save(ctx, k); err != nil {
+			return err
+		}
+		if s.audit == nil {
+			return nil
+		}
+		return s.audit.Record(ctx, e)
+	})
 }
 
 // Mint creates a new project key in the caller's project and returns it with its one-time plaintext secret.
@@ -125,7 +159,9 @@ func (s *Service) MintPersonal(ctx context.Context, name string, scopes []string
 
 func (s *Service) saveMinted(ctx context.Context, span trace.Span, tc tenant.Context, k *APIKey, plaintext string) (*APIKey, string, error) {
 	k.CreatedBy = tc.UserID
-	if saveErr := s.store.Save(ctx, k); saveErr != nil {
+	e := audit.Event{Action: "apikey.created", TargetKind: "api_key", TargetID: k.ID.String(), ProjectID: k.ProjectID,
+		Detail: map[string]string{"name": k.Name, "kind": string(k.Kind), "scopes": strings.Join(k.Scopes, " ")}}
+	if saveErr := s.saveAudited(ctx, k, e); saveErr != nil {
 		span.RecordError(saveErr)
 		return nil, "", s.unexpected(ctx, "apikey.Mint: save", saveErr,
 			"org_id", tc.OrgID, "project_id", tc.ProjectID)
@@ -243,7 +279,9 @@ func (s *Service) Revoke(ctx context.Context, id uuid.UUID) error {
 		now := s.now()
 		k.RevokedAt = &now
 	}
-	if saveErr := s.store.Save(ctx, k); saveErr != nil {
+	e := audit.Event{Action: "apikey.revoked", TargetKind: "api_key", TargetID: k.ID.String(), ProjectID: k.ProjectID,
+		Detail: map[string]string{"name": k.Name, "kind": string(k.Kind)}}
+	if saveErr := s.saveAudited(ctx, k, e); saveErr != nil {
 		span.RecordError(saveErr)
 		return s.unexpected(ctx, "apikey.Revoke: save", saveErr, "apikey_id", id)
 	}

@@ -26,6 +26,7 @@ type Service struct {
 	unexpected apperror.UnexpectedFunc
 	mirror     Mirror
 	uow        UnitOfWork
+	limits     Limiter
 }
 
 // NewService binds the service to its dependencies.
@@ -78,6 +79,10 @@ func (s *Service) create(ctx context.Context, p Params) (*Wallet, error) {
 
 	w, err := New(tc.OrgID, tc.ProjectID, p)
 	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+	if err := s.checkActiveLimit(ctx, tc); err != nil {
 		span.RecordError(err)
 		return nil, err
 	}
@@ -189,10 +194,20 @@ func (s *Service) Unarchive(ctx context.Context, id uuid.UUID) (*Wallet, error) 
 		return w, nil
 	}
 	w.Unarchive()
-	if err := s.save(ctx, w, "wallet.Unarchive", false); err != nil {
+	refs, err := s.commit(ctx, "wallet.Unarchive", func(ctx context.Context) ([]MirrorRef, error) {
+		if err := s.checkActiveLimit(ctx, tenant.Context{OrgID: w.OrgID, ProjectID: w.ProjectID}); err != nil {
+			return nil, err
+		}
+		if err := s.saveRow(ctx, w, "wallet.Unarchive"); err != nil {
+			return nil, err
+		}
+		return []MirrorRef{{Entity: MirrorWallet, ID: w.ID}}, nil
+	})
+	if err != nil {
 		span.RecordError(err)
 		return nil, err
 	}
+	s.mirror.Kick(ctx, refs...)
 	return w, nil
 }
 

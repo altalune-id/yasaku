@@ -4,14 +4,21 @@ package org_test
 
 import (
 	"context"
+	"errors"
+	"io"
+	"log/slog"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
 
+	apperrorv1 "altalune.id/yasaku/gen/go/apperror/v1"
+	"altalune.id/yasaku/internal/apperror"
 	"altalune.id/yasaku/internal/org"
+	"altalune.id/yasaku/internal/platform/capabilities"
 	"altalune.id/yasaku/internal/platform/config"
 	"altalune.id/yasaku/internal/platform/db"
 	"altalune.id/yasaku/internal/platform/tenant"
@@ -131,4 +138,102 @@ func TestPostgres_MembershipRoundTrip(t *testing.T) {
 	require.NoError(t, store.RemoveMember(ctx, o.ID, tc.UserID))
 	_, err = store.MembershipOf(ctx, o.ID, tc.UserID)
 	assert.True(t, org.IsMembershipMissingError(err) || org.IsNotFoundError(err), "want missing, got %T: %v", err, err)
+}
+
+type failingMembershipStore struct{ org.Store }
+
+func (failingMembershipStore) SaveMembership(context.Context, *org.Membership) error {
+	return errors.New("membership insert failed")
+}
+
+func TestOrgCreate_RollsBackOnMembershipFailure(t *testing.T) {
+	h := pgtest.New(t)
+	sqlDB := h.OpenDB(t)
+	cfg := config.Defaults()
+	cfg.DB.Driver = "postgres"
+	cfg.DB.DSN = h.DSN
+	cfg.DB.Schema = h.Schema
+	cfg.DB.AllowBypassRLS = true
+	require.NoError(t, schema.MigrateUp(t.Context(), sqlDB, cfg))
+
+	dbCfg := db.DBConfig{Driver: db.DriverPostgres, Schema: h.Schema, TablePrefix: cfg.DB.TablePrefix}
+	pool := db.Pool{W: sqlDB, R: sqlDB}
+	pc := tenant.NewPgConn(sqlDB)
+	store := org.NewStore(dbCfg, pool, pc)
+	svc := org.NewService(failingMembershipStore{store}, capabilities.Capabilities{OrgCreation: true},
+		slog.New(slog.NewTextHandler(io.Discard, nil)), func(_ context.Context, msg string, cause error, _ ...any) *apperror.AppError {
+			return apperror.New("yasaku.unexpected", msg, codes.Internal, &apperrorv1.ErrorDetail{Code: "yasaku.unexpected"}).WithCause(cause)
+		}, tenant.NewUnitOfWork(dbCfg, pool, pc))
+
+	ownerID := uuid.New()
+	_, err := sqlDB.ExecContext(t.Context(),
+		"INSERT INTO "+cfg.DB.TablePrefix+"users (id, email, name, avatar_url, is_admin, created_at, updated_at) VALUES ($1, $2, '', '', false, now(), now())",
+		ownerID, ownerID.String()+"@x.co")
+	require.NoError(t, err)
+
+	_, err = svc.Create(t.Context(), org.CreateRequest{Slug: "acme", Name: "Acme", OwnerID: ownerID})
+	require.Error(t, err)
+
+	var n int
+	require.NoError(t, sqlDB.QueryRowContext(t.Context(), "SELECT count(*) FROM "+cfg.DB.TablePrefix+"orgs WHERE slug = 'acme'").Scan(&n))
+	assert.Zero(t, n, "the org row must roll back with its failed membership")
+}
+
+func TestPostgres_IsStaff(t *testing.T) {
+	store, tc, _ := newPostgresStoreForTest(t)
+	sys, err := org.NewOrg("system", "System", tc.UserID)
+	require.NoError(t, err)
+	sys.System = true
+	sysCtx := scopedTo(t, tc, sys.ID)
+	require.NoError(t, store.Save(sysCtx, sys))
+	m, err := org.NewMembership(sys.ID, tc.UserID, org.RoleAdmin)
+	require.NoError(t, err)
+	require.NoError(t, store.SaveMembership(sysCtx, m))
+
+	other, err := org.NewOrg("acme", "Acme", tc.UserID)
+	require.NoError(t, err)
+	otherCtx := scopedTo(t, tc, other.ID)
+	require.NoError(t, store.Save(otherCtx, other))
+
+	staff, err := store.IsStaff(otherCtx, tc.UserID)
+	require.NoError(t, err)
+	assert.True(t, staff, "an admin of the system org is staff, whatever scope the caller holds")
+	staff, err = store.IsStaff(otherCtx, uuid.New())
+	require.NoError(t, err)
+	assert.False(t, staff)
+}
+
+// SECURITY: IsStaff runs inside a limit-holding unit of work, so it must answer on that transaction's connection, never wait for a second one.
+func TestPostgres_IsStaff_UsesTheUnitOfWorkConnection(t *testing.T) {
+	h := pgtest.New(t)
+	sqlDB := h.OpenDB(t)
+	sqlDB.SetMaxOpenConns(1)
+	cfg := config.Defaults()
+	cfg.DB.Driver = "postgres"
+	cfg.DB.DSN = h.DSN
+	cfg.DB.Schema = h.Schema
+	cfg.DB.AllowBypassRLS = true
+	require.NoError(t, schema.MigrateUp(t.Context(), sqlDB, cfg))
+	dbCfg := db.DBConfig{Driver: db.DriverPostgres, Schema: h.Schema, TablePrefix: cfg.DB.TablePrefix}
+	pool := db.Pool{W: sqlDB, R: sqlDB}
+	pc := tenant.NewPgConn(sqlDB)
+	store := org.NewStore(dbCfg, pool, pc)
+	creator := uuid.New()
+	_, err := sqlDB.ExecContext(t.Context(),
+		"INSERT INTO "+cfg.DB.TablePrefix+"users (id, email, name, avatar_url, is_admin, created_at, updated_at) VALUES ($1, $2, '', '', false, now(), now())",
+		creator, creator.String()+"@x.co")
+	require.NoError(t, err)
+	sys, err := org.NewOrg("system", "System", creator)
+	require.NoError(t, err)
+	sys.System = true
+	require.NoError(t, store.Save(tenant.Into(t.Context(), tenant.Context{OrgID: sys.ID}), sys))
+
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	ctx = tenant.Into(ctx, tenant.Context{OrgID: uuid.New(), UserID: uuid.New()})
+	err = tenant.NewUnitOfWork(dbCfg, pool, pc)(ctx, func(ctx context.Context) error {
+		_, err := store.IsStaff(ctx, uuid.New())
+		return err
+	})
+	require.NoError(t, err, "with one pooled connection held by the unit of work, a second connection never comes")
 }

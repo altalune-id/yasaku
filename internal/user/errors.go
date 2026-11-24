@@ -149,10 +149,11 @@ func IsInvalidEmailError(err error) bool {
 	return ok
 }
 
-// SignupRequiredError signals a cloud OIDC login where the user has no membership and no pending invite; the caller should route to /signup/complete.
+// SignupRequiredError signals an OIDC login with no membership and no invite it could accept, signed in with no tenant; JoinRefused names an invite a limit refused.
 type SignupRequiredError struct {
-	UserID string
-	Email  string
+	UserID      string
+	Email       string
+	JoinRefused error
 }
 
 func (e *SignupRequiredError) Error() string {

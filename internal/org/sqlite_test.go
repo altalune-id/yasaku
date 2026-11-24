@@ -3,16 +3,27 @@ package org_test
 import (
 	"context"
 	"database/sql"
+	"errors"
+	"io"
+	"log/slog"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
 	_ "modernc.org/sqlite"
 
+	apperrorv1 "altalune.id/yasaku/gen/go/apperror/v1"
+	"altalune.id/yasaku/internal/apperror"
 	"altalune.id/yasaku/internal/org"
+	"altalune.id/yasaku/internal/platform/capabilities"
 	"altalune.id/yasaku/internal/platform/config"
 	"altalune.id/yasaku/internal/platform/db"
 	sqliteent "altalune.id/yasaku/internal/platform/db/entity/sqlite"
+	"altalune.id/yasaku/internal/platform/tenant"
 	"altalune.id/yasaku/schema"
 )
 
@@ -375,4 +386,33 @@ func TestSQLite_BootstrapSingleton_TwoOnboardingsLeaveOneSystemOrg(t *testing.T)
 	if _, err := store.MembershipOf(ctx, o.ID, second); err != nil {
 		t.Fatalf("the second admin must be a member of the system org: %v", err)
 	}
+}
+
+type sqliteFailingMembershipStore struct{ org.Store }
+
+func (sqliteFailingMembershipStore) SaveMembership(context.Context, *org.Membership) error {
+	return errors.New("membership insert failed")
+}
+
+func TestOrgCreate_RollsBackOnMembershipFailureSQLite(t *testing.T) {
+	sqlDB, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "org.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	cfg := config.Defaults()
+	require.NoError(t, schema.MigrateUp(t.Context(), sqlDB, cfg))
+	dbCfg := db.DBConfig{Driver: db.DriverSQLite, TablePrefix: cfg.DB.TablePrefix}
+	pool := db.Pool{W: sqlDB, R: sqlDB}
+	store := org.NewStore(dbCfg, pool, nil)
+	svc := org.NewService(sqliteFailingMembershipStore{store}, capabilities.Capabilities{OrgCreation: true},
+		slog.New(slog.NewTextHandler(io.Discard, nil)), func(_ context.Context, msg string, cause error, _ ...any) *apperror.AppError {
+			return apperror.New("yasaku.unexpected", msg, codes.Internal, &apperrorv1.ErrorDetail{Code: "yasaku.unexpected"}).WithCause(cause)
+		}, tenant.NewUnitOfWork(dbCfg, pool, nil))
+	owner := seedUser(t, sqlDB, cfg.DB.TablePrefix)
+
+	_, err = svc.Create(t.Context(), org.CreateRequest{Slug: "acme", Name: "Acme", OwnerID: owner})
+	require.Error(t, err)
+
+	var n int
+	require.NoError(t, sqlDB.QueryRowContext(t.Context(), "SELECT count(*) FROM "+cfg.DB.TablePrefix+"orgs WHERE slug = 'acme'").Scan(&n))
+	assert.Zero(t, n, "the org row must roll back with its failed membership")
 }

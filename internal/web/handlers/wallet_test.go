@@ -109,8 +109,8 @@ func newWalletFixture(t *testing.T) *walletFixture {
 	unexpected := passthroughUnexpected()
 
 	users := user.NewService(user.NewStore(dbCfg, pool), user.GenesisConfig{}, log, unexpected)
-	orgs := org.NewService(org.NewStore(dbCfg, pool, nil), caps, log, unexpected)
-	projects := project.NewService(project.NewStore(dbCfg, pool, nil), log, unexpected, orgs)
+	orgs := org.NewService(org.NewStore(dbCfg, pool, nil), caps, log, unexpected, tenant.NewUnitOfWork(dbCfg, pool, nil))
+	projects := project.NewService(project.NewStore(dbCfg, pool, nil), log, unexpected, orgs, tenant.NewUnitOfWork(dbCfg, pool, nil))
 	ledgers := ledger.NewService(ledger.NewStore(dbCfg, pool, nil), log, unexpected, orgs)
 	wallets := wallet.NewService(wallet.NewStore(dbCfg, pool, nil), log, unexpected)
 	cats := category.NewService(category.NewStore(dbCfg, pool, nil), log, unexpected, bundleNamer{})

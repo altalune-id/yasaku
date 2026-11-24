@@ -24,6 +24,7 @@ type pgFixture struct {
 	store  wallet.Store
 	db     *sql.DB
 	prefix string
+	schema string
 	tc     tenant.Context
 }
 
@@ -50,6 +51,7 @@ func newPgFixture(t *testing.T) pgFixture {
 		store:  store,
 		db:     sqlDB,
 		prefix: prefix,
+		schema: h.Schema,
 		tc:     tenant.Context{OrgID: orgID, ProjectID: projID, UserID: userID},
 	}
 }

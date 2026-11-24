@@ -12,6 +12,7 @@ import (
 	"github.com/go-jet/jet/v2/sqlite"
 	"github.com/google/uuid"
 
+	pdb "altalune.id/yasaku/internal/platform/db"
 	sqliteent "altalune.id/yasaku/internal/platform/db/entity/sqlite"
 )
 
@@ -20,6 +21,7 @@ type sqliteStore struct {
 	orgs    *sqliteent.Orgs
 	members *sqliteent.Memberships
 	users   *sqliteent.Users
+	prefix  string
 }
 
 func newSQLiteStore(db *sql.DB, tablePrefix string) *sqliteStore {
@@ -28,6 +30,7 @@ func newSQLiteStore(db *sql.DB, tablePrefix string) *sqliteStore {
 		orgs:    sqliteent.NewOrgs(tablePrefix),
 		members: sqliteent.NewMemberships(tablePrefix),
 		users:   sqliteent.NewUsers(tablePrefix),
+		prefix:  tablePrefix,
 	}
 }
 
@@ -134,7 +137,7 @@ func (s *sqliteStore) Save(ctx context.Context, o *Org) error {
 			s.orgs.UpdatedAt.SET(sqlite.String(now)),
 			s.orgs.System.SET(sqlite.Int64(boolToInt(o.System))),
 		))
-	if _, err := stmt.ExecContext(ctx, s.db); err != nil {
+	if _, err := stmt.ExecContext(ctx, s.conn(ctx)); err != nil {
 		if isSQLiteUniqueViolation(err, "orgs.system") {
 			return &SystemOrgExistsError{Slug: o.Slug}
 		}
@@ -157,7 +160,7 @@ func (s *sqliteStore) SystemOrg(ctx context.Context) (*Org, error) {
 		ORDER_BY(s.orgs.CreatedAt.ASC(), s.orgs.ID.ASC()).
 		LIMIT(1)
 	var row sqliteOrgRow
-	if err := stmt.QueryContext(ctx, s.db, &row); err != nil {
+	if err := stmt.QueryContext(ctx, s.conn(ctx), &row); err != nil {
 		if errors.Is(err, qrm.ErrNoRows) || errors.Is(err, sql.ErrNoRows) {
 			return nil, &NotFoundError{System: true}
 		}
@@ -176,7 +179,7 @@ func (s *sqliteStore) List(ctx context.Context, userID uuid.UUID) ([]*Org, error
 		WHERE(s.members.UserID.EQ(sqlite.String(userID.String()))).
 		ORDER_BY(s.orgs.CreatedAt.ASC())
 	var rows []sqliteOrgRow
-	if err := stmt.QueryContext(ctx, s.db, &rows); err != nil {
+	if err := stmt.QueryContext(ctx, s.conn(ctx), &rows); err != nil {
 		return nil, fmt.Errorf("org.sqlite: List: %w", err)
 	}
 	out := make([]*Org, 0, len(rows))
@@ -188,6 +191,26 @@ func (s *sqliteStore) List(ctx context.Context, userID uuid.UUID) ([]*Org, error
 		out = append(out, o)
 	}
 	return out, nil
+}
+
+func (s *sqliteStore) CountCreatedBy(ctx context.Context, userID uuid.UUID) (int64, error) {
+	var n int64
+	q := "SELECT count(*) FROM " + s.prefix + "orgs WHERE created_by = ? AND system = 0"
+	if err := s.conn(ctx).QueryRowContext(ctx, q, userID.String()).Scan(&n); err != nil {
+		return 0, fmt.Errorf("org.sqlite: count created by: %w", err)
+	}
+	return n, nil
+}
+
+func (s *sqliteStore) IsStaff(ctx context.Context, userID uuid.UUID) (bool, error) {
+	q := "SELECT count(*) FROM " + s.prefix + "memberships m JOIN " + s.prefix + "orgs o ON o.id = m.org_id " +
+		"WHERE o.id = (SELECT id FROM " + s.prefix + "orgs WHERE system = 1 ORDER BY created_at, id LIMIT 1) " +
+		"AND m.user_id = ? AND m.role IN ('owner','admin')"
+	var n int64
+	if err := s.conn(ctx).QueryRowContext(ctx, q, userID.String()).Scan(&n); err != nil {
+		return false, fmt.Errorf("org.sqlite: is staff: %w", err)
+	}
+	return n > 0, nil
 }
 
 func (s *sqliteStore) SaveMembership(ctx context.Context, m *Membership) error {
@@ -205,7 +228,7 @@ func (s *sqliteStore) SaveMembership(ctx context.Context, m *Membership) error {
 			s.members.Role.SET(sqlite.String(string(m.Role))),
 			s.members.System.SET(sqlite.Int64(boolToInt(m.System))),
 		))
-	if _, err := stmt.ExecContext(ctx, s.db); err != nil {
+	if _, err := stmt.ExecContext(ctx, s.conn(ctx)); err != nil {
 		return fmt.Errorf("org.sqlite: SaveMembership: %w", err)
 	}
 	return nil
@@ -218,7 +241,7 @@ func (s *sqliteStore) MembershipOf(ctx context.Context, orgID, userID uuid.UUID)
 			AND(s.members.UserID.EQ(sqlite.String(userID.String())))).
 		LIMIT(1)
 	var row sqliteMembershipRow
-	if err := stmt.QueryContext(ctx, s.db, &row); err != nil {
+	if err := stmt.QueryContext(ctx, s.conn(ctx), &row); err != nil {
 		if errors.Is(err, qrm.ErrNoRows) || errors.Is(err, sql.ErrNoRows) {
 			return nil, &MembershipMissingError{OrgID: orgID.String(), UserID: userID.String()}
 		}
@@ -233,7 +256,7 @@ func (s *sqliteStore) ListMembers(ctx context.Context, orgID uuid.UUID) ([]*Memb
 		WHERE(s.members.OrgID.EQ(sqlite.String(orgID.String()))).
 		ORDER_BY(s.members.CreatedAt.ASC())
 	var rows []sqliteMembershipRow
-	if err := stmt.QueryContext(ctx, s.db, &rows); err != nil {
+	if err := stmt.QueryContext(ctx, s.conn(ctx), &rows); err != nil {
 		return nil, fmt.Errorf("org.sqlite: ListMembers: %w", err)
 	}
 	out := make([]*Membership, 0, len(rows))
@@ -260,7 +283,7 @@ func (s *sqliteStore) ListMemberProfiles(ctx context.Context, orgID uuid.UUID) (
 		WHERE(s.members.OrgID.EQ(sqlite.String(orgID.String()))).
 		ORDER_BY(s.members.CreatedAt.ASC())
 	var rows []sqliteMemberProfileRow
-	if err := stmt.QueryContext(ctx, s.db, &rows); err != nil {
+	if err := stmt.QueryContext(ctx, s.conn(ctx), &rows); err != nil {
 		return nil, fmt.Errorf("org.sqlite: ListMemberProfiles: %w", err)
 	}
 	out := make([]*MemberProfile, 0, len(rows))
@@ -278,7 +301,7 @@ func (s *sqliteStore) RemoveMember(ctx context.Context, orgID, userID uuid.UUID)
 	stmt := s.members.DELETE().
 		WHERE(s.members.OrgID.EQ(sqlite.String(orgID.String())).
 			AND(s.members.UserID.EQ(sqlite.String(userID.String()))))
-	res, err := stmt.ExecContext(ctx, s.db)
+	res, err := stmt.ExecContext(ctx, s.conn(ctx))
 	if err != nil {
 		return fmt.Errorf("org.sqlite: RemoveMember: %w", err)
 	}
@@ -298,7 +321,7 @@ func (s *sqliteStore) queryOrg(ctx context.Context, cond sqlite.BoolExpression, 
 		WHERE(cond).
 		LIMIT(1)
 	var row sqliteOrgRow
-	if err := stmt.QueryContext(ctx, s.db, &row); err != nil {
+	if err := stmt.QueryContext(ctx, s.conn(ctx), &row); err != nil {
 		if errors.Is(err, qrm.ErrNoRows) || errors.Is(err, sql.ErrNoRows) {
 			return nil, notFound
 		}
@@ -320,4 +343,16 @@ func boolToInt(b bool) int64 {
 		return 1
 	}
 	return 0
+}
+
+func (s *sqliteStore) conn(ctx context.Context) sqliteConn {
+	if tx, ok := pdb.CurrentTx(ctx); ok {
+		return tx
+	}
+	return s.db
+}
+
+type sqliteConn interface {
+	qrm.DB
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
 }

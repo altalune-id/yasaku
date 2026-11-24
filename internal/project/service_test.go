@@ -10,7 +10,10 @@ import (
 	"github.com/google/uuid"
 
 	"altalune.id/yasaku/internal/apperror"
+	"altalune.id/yasaku/internal/limits"
 	"altalune.id/yasaku/internal/org"
+	"altalune.id/yasaku/internal/platform/config"
+	"altalune.id/yasaku/internal/platform/db"
 	"altalune.id/yasaku/internal/platform/tenant"
 	"altalune.id/yasaku/internal/project"
 	"altalune.id/yasaku/internal/testutil/fakes"
@@ -19,7 +22,7 @@ import (
 func newTestService(t *testing.T) (*project.Service, *fakes.Project) {
 	t.Helper()
 	store := fakes.NewProject()
-	return project.NewService(store, discardLog(), failOnUnexpected(t), fakes.PermissiveMembers()), store
+	return project.NewService(store, discardLog(), failOnUnexpected(t), fakes.PermissiveMembers(), fakes.UnitOfWork), store
 }
 
 func discardLog() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }
@@ -270,7 +273,7 @@ func TestService_Unexpected_Wraps(t *testing.T) {
 		}
 		return apperror.New(apperror.CodeUnexpectedError, "unexpected", 0)
 	}
-	svc := project.NewService(store, log, unexpected, fakes.PermissiveMembers())
+	svc := project.NewService(store, log, unexpected, fakes.PermissiveMembers(), fakes.UnitOfWork)
 	ctx := tenantCtx(orgID, userID)
 	if _, err := svc.List(ctx, orgID); err == nil {
 		t.Fatal("expected error")
@@ -297,7 +300,7 @@ func (s *erroringStore) List(context.Context, uuid.UUID) ([]*project.Project, er
 func TestService_CreateAndRename_OnlyAManager(t *testing.T) {
 	store := fakes.NewProject()
 	members := fakes.NewMembers()
-	svc := project.NewService(store, discardLog(), failOnUnexpected(t), members)
+	svc := project.NewService(store, discardLog(), failOnUnexpected(t), members, fakes.UnitOfWork)
 	orgID, member, manager := uuid.New(), uuid.New(), uuid.New()
 	members.SeatMember(orgID, member)
 	members.SeatManager(orgID, manager)
@@ -334,7 +337,7 @@ func TestService_CreateAndRename_OnlyAManager(t *testing.T) {
 func TestService_Create_RefusesAnOrgOtherThanTheTenants(t *testing.T) {
 	store := fakes.NewProject()
 	members := fakes.NewMembers()
-	svc := project.NewService(store, discardLog(), failOnUnexpected(t), members)
+	svc := project.NewService(store, discardLog(), failOnUnexpected(t), members, fakes.UnitOfWork)
 	orgA, orgB, manager := uuid.New(), uuid.New(), uuid.New()
 	members.SeatManager(orgA, manager)
 
@@ -350,3 +353,59 @@ func TestService_Create_RefusesAnOrgOtherThanTheTenants(t *testing.T) {
 		t.Fatalf("a refused cross-org Create stored %d projects in the other org", len(items))
 	}
 }
+
+type txRecordingStore struct {
+	*fakes.Project
+	bySlugInTx, saveInTx bool
+}
+
+func (s *txRecordingStore) BySlug(ctx context.Context, orgID uuid.UUID, slug string) (*project.Project, error) {
+	_, s.bySlugInTx = db.CurrentTx(ctx)
+	return s.Project.BySlug(ctx, orgID, slug)
+}
+
+func (s *txRecordingStore) Save(ctx context.Context, p *project.Project) error {
+	_, s.saveInTx = db.CurrentTx(ctx)
+	return s.Project.Save(ctx, p)
+}
+
+func TestProjectCreate_RunsInUnitOfWork(t *testing.T) {
+	store := &txRecordingStore{Project: fakes.NewProject()}
+	svc := project.NewService(store, discardLog(), failOnUnexpected(t), fakes.PermissiveMembers(), fakes.UnitOfWork)
+	orgID := uuid.New()
+
+	if _, err := svc.Create(tenantCtx(orgID, uuid.New()), orgID, "home", "Home"); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if !store.bySlugInTx || !store.saveInTx {
+		t.Fatalf("slug check and save must share one unit of work: bySlug=%v save=%v", store.bySlugInTx, store.saveInTx)
+	}
+}
+
+func TestProjectCreate_FourthRefused(t *testing.T) {
+	orgID := uuid.New()
+	ctx := tenantCtx(orgID, uuid.New())
+	lstore := fakes.NewLimits()
+	svc := project.NewService(fakes.NewProject(), discardLog(), failOnUnexpected(t), fakes.PermissiveMembers(), fakes.UnitOfWork,
+		project.WithLimits(limits.NewService(lstore, config.ModeCloud), orgNames{orgID: "Acme"}))
+	for _, slug := range []string{"one", "two", "three"} {
+		if _, err := svc.Create(ctx, orgID, slug, slug); err != nil {
+			t.Fatalf("Create %s: %v", slug, err)
+		}
+	}
+	_, err := svc.Create(ctx, orgID, "four", "Four")
+	re, ok := errors.AsType[*limits.ReachedError](err)
+	if !ok {
+		t.Fatalf("the fourth project must hit org.projects, got %T: %v", err, err)
+	}
+	if re.Name != "Acme" {
+		t.Fatalf("the refusal names the org, got %q", re.Name)
+	}
+	if len(lstore.Locked) != 4 {
+		t.Fatalf("every create locks the org first, got %d locks", len(lstore.Locked))
+	}
+}
+
+type orgNames map[uuid.UUID]string
+
+func (n orgNames) OrgName(_ context.Context, orgID uuid.UUID) (string, error) { return n[orgID], nil }

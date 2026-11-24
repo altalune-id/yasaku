@@ -6,6 +6,7 @@ package schema
 var TenantTableSuffixes = []string{
 	"api_key_projects",
 	"api_keys",
+	"audit_events",
 	"blog_categories",
 	"blog_post_tags",
 	"blog_posts",

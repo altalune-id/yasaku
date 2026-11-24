@@ -14,8 +14,10 @@ import (
 
 	apperrorv1 "altalune.id/yasaku/gen/go/apperror/v1"
 	"altalune.id/yasaku/internal/apperror"
+	"altalune.id/yasaku/internal/limits"
 	"altalune.id/yasaku/internal/org"
 	"altalune.id/yasaku/internal/platform/capabilities"
+	"altalune.id/yasaku/internal/platform/config"
 	"altalune.id/yasaku/internal/platform/tenant"
 	"altalune.id/yasaku/internal/testutil/fakes"
 )
@@ -27,7 +29,7 @@ func newTestService(t *testing.T, orgCreation bool) (*org.Service, *fakes.Org) {
 	unexpected := func(_ context.Context, msg string, cause error, _ ...any) *apperror.AppError {
 		return apperror.New("yasaku.unexpected", msg, codes.Internal, &apperrorv1.ErrorDetail{Code: "yasaku.unexpected"}).WithCause(cause)
 	}
-	svc := org.NewService(store, capabilities.Capabilities{OrgCreation: orgCreation}, log, unexpected)
+	svc := org.NewService(store, capabilities.Capabilities{OrgCreation: orgCreation}, log, unexpected, fakes.UnitOfWork)
 	return svc, store
 }
 
@@ -271,6 +273,14 @@ func (e *erroringStore) MembershipOf(ctx context.Context, o, u uuid.UUID) (*org.
 	}
 	return e.inner.MembershipOf(ctx, o, u)
 }
+func (e *erroringStore) IsStaff(ctx context.Context, u uuid.UUID) (bool, error) {
+	return e.inner.IsStaff(ctx, u)
+}
+
+func (e *erroringStore) CountCreatedBy(ctx context.Context, u uuid.UUID) (int64, error) {
+	return e.inner.CountCreatedBy(ctx, u)
+}
+
 func (e *erroringStore) ListMembers(ctx context.Context, o uuid.UUID) ([]*org.Membership, error) {
 	if e.listMembsErr != nil {
 		return nil, e.listMembsErr
@@ -296,7 +306,7 @@ func newServiceWithStore(t *testing.T, store org.Store) *org.Service {
 	unexpected := func(_ context.Context, msg string, cause error, _ ...any) *apperror.AppError {
 		return apperror.New("yasaku.unexpected", msg, codes.Internal, &apperrorv1.ErrorDetail{Code: "yasaku.unexpected"}).WithCause(cause)
 	}
-	return org.NewService(store, capabilities.Capabilities{OrgCreation: true}, log, unexpected)
+	return org.NewService(store, capabilities.Capabilities{OrgCreation: true}, log, unexpected, fakes.UnitOfWork)
 }
 
 func TestService_UnexpectedPaths(t *testing.T) {
@@ -373,4 +383,224 @@ func TestService_UnexpectedPaths(t *testing.T) {
 		_, err := svc.ListMembers(context.Background(), uuid.New())
 		assertAppError(t, err)
 	})
+}
+
+func TestOrgCreate_MembershipFailureLeavesNoOrg(t *testing.T) {
+	svc, store := newTestService(t, true)
+	store.DeferWritesToCommit = true
+	store.SaveMembershipErr = errors.New("membership insert failed")
+
+	_, err := svc.Create(context.Background(), org.CreateRequest{Slug: "acme", Name: "Acme", OwnerID: uuid.New()})
+	require.Error(t, err)
+
+	_, err = store.BySlug(context.Background(), "acme")
+	assert.True(t, org.IsNotFoundError(err), "a failed membership save must leave no org, got %T: %v", err, err)
+}
+
+func newLimitedOrgService(t *testing.T) (*org.Service, *fakes.Org) {
+	t.Helper()
+	store := fakes.NewOrg()
+	unexpected := func(_ context.Context, msg string, cause error, _ ...any) *apperror.AppError {
+		return apperror.New("yasaku.unexpected", msg, codes.Internal, &apperrorv1.ErrorDetail{Code: "yasaku.unexpected"}).WithCause(cause)
+	}
+	svc := org.NewService(store, capabilities.Capabilities{OrgCreation: true}, slog.New(slog.NewTextHandler(io.Discard, nil)), unexpected,
+		fakes.UnitOfWork, org.WithLimits(limits.NewService(fakes.NewLimits(), config.ModeCloud)))
+	return svc, store
+}
+
+func TestOrgCreate_SecondOrgRefused(t *testing.T) {
+	svc, _ := newLimitedOrgService(t)
+	owner := uuid.New()
+	_, err := svc.Create(context.Background(), org.CreateRequest{Slug: "first", Name: "First", OwnerID: owner})
+	require.NoError(t, err)
+	_, err = svc.Create(context.Background(), org.CreateRequest{Slug: "second", Name: "Second", OwnerID: owner})
+	re, ok := errors.AsType[*limits.ReachedError](err)
+	require.True(t, ok, "want *limits.ReachedError, got %T: %v", err, err)
+	assert.Equal(t, limits.UserOrgsCreated, re.Key)
+}
+
+func TestOrgsJoined_ExcludesSystemOrg(t *testing.T) {
+	svc, store := newLimitedOrgService(t)
+	user := uuid.New()
+	sys, err := org.NewOrg("system", "System", uuid.New())
+	require.NoError(t, err)
+	sys.System = true
+	require.NoError(t, store.Save(context.Background(), sys))
+	m, err := org.NewMembership(sys.ID, user, org.RoleOwner)
+	require.NoError(t, err)
+	require.NoError(t, store.SaveMembership(context.Background(), m))
+	for i := range 4 {
+		o, err := org.NewOrg("member-"+string(rune('a'+i)), "Member", uuid.New())
+		require.NoError(t, err)
+		require.NoError(t, store.Save(context.Background(), o))
+		m, err := org.NewMembership(o.ID, user, org.RoleMember)
+		require.NoError(t, err)
+		require.NoError(t, store.SaveMembership(context.Background(), m))
+	}
+
+	joined, err := svc.OrgsJoined(context.Background(), user)
+	require.NoError(t, err)
+	assert.Equal(t, int64(4), joined, "the system org never counts toward user.orgs_joined")
+	_, err = svc.Create(context.Background(), org.CreateRequest{Slug: "own", Name: "Own", OwnerID: user})
+	require.NoError(t, err, "four joined orgs plus the system org leave room for a fifth")
+}
+
+func joinFiveOrgs(t *testing.T, store *fakes.Org, user uuid.UUID) {
+	t.Helper()
+	for i := range 5 {
+		o, err := org.NewOrg("joined-"+string(rune('a'+i)), "Joined", uuid.New())
+		require.NoError(t, err)
+		require.NoError(t, store.Save(context.Background(), o))
+		m, err := org.NewMembership(o.ID, user, org.RoleMember)
+		require.NoError(t, err)
+		require.NoError(t, store.SaveMembership(context.Background(), m))
+	}
+}
+
+func TestOrgCreate_JoinedLimitNamesTheNewOrg(t *testing.T) {
+	svc, store := newLimitedOrgService(t)
+	user := uuid.New()
+	joinFiveOrgs(t, store, user)
+	_, err := svc.Create(context.Background(), org.CreateRequest{Slug: "sixth", Name: "Sixth", OwnerID: user})
+	re, ok := errors.AsType[*limits.ReachedError](err)
+	require.True(t, ok, "got %T: %v", err, err)
+	assert.Equal(t, limits.UserOrgsJoined, re.Key)
+	assert.Equal(t, "Sixth", re.Name, "the message reads \"Leave one to join Sixth.\"")
+}
+
+func TestOrgCreateAllowed_RefusesAtJoinedLimit(t *testing.T) {
+	svc, store := newLimitedOrgService(t)
+	user := uuid.New()
+	joinFiveOrgs(t, store, user)
+	err := svc.CreateAllowed(context.Background(), user)
+	re, ok := errors.AsType[*limits.ReachedError](err)
+	require.True(t, ok, "New organization must be disabled when Create would refuse, got %T: %v", err, err)
+	assert.Equal(t, limits.UserOrgsJoined, re.Key)
+}
+
+func TestOrgCreateAllowed_ReportsReason(t *testing.T) {
+	svc, _ := newLimitedOrgService(t)
+	owner := uuid.New()
+	require.NoError(t, svc.CreateAllowed(context.Background(), owner))
+	_, err := svc.Create(context.Background(), org.CreateRequest{Slug: "first", Name: "First", OwnerID: owner})
+	require.NoError(t, err)
+	err = svc.CreateAllowed(context.Background(), owner)
+	re, ok := errors.AsType[*limits.ReachedError](err)
+	require.True(t, ok, "got %T: %v", err, err)
+	assert.Equal(t, limits.UserOrgsCreated, re.Key)
+}
+
+func newAuditedOrgService(t *testing.T) (*org.Service, *fakes.Org, *fakes.Audit) {
+	t.Helper()
+	store := fakes.NewOrg()
+	a := &fakes.Audit{}
+	unexpected := func(_ context.Context, msg string, cause error, _ ...any) *apperror.AppError {
+		return apperror.New("yasaku.unexpected", msg, codes.Internal, &apperrorv1.ErrorDetail{Code: "yasaku.unexpected"}).WithCause(cause)
+	}
+	svc := org.NewService(store, capabilities.Capabilities{OrgCreation: true}, slog.New(slog.NewTextHandler(io.Discard, nil)), unexpected,
+		fakes.UnitOfWork, org.WithAudit(a))
+	return svc, store, a
+}
+
+func TestOrgRenamed_AuditedInSameTx(t *testing.T) {
+	svc, _, a := newAuditedOrgService(t)
+	owner := uuid.New()
+	o, err := svc.Create(context.Background(), org.CreateRequest{Slug: "acme", Name: "Acme", OwnerID: owner})
+	require.NoError(t, err)
+	_, err = svc.Rename(tenant.Into(context.Background(), tenant.Context{OrgID: o.ID, UserID: owner}), o.ID, "Acme Inc")
+	require.NoError(t, err)
+	recs := a.Records()
+	require.Len(t, recs, 1)
+	assert.Equal(t, "org.renamed", recs[0].Action)
+	assert.Equal(t, o.ID, recs[0].OrgID)
+	assert.True(t, recs[0].InTx)
+	assert.Equal(t, map[string]string{"from_name": "Acme", "to_name": "Acme Inc"}, recs[0].Detail)
+}
+
+func TestMemberRemoved_AuditedInSameTx(t *testing.T) {
+	svc, store, a := newAuditedOrgService(t)
+	owner, member := uuid.New(), uuid.New()
+	o, err := svc.Create(context.Background(), org.CreateRequest{Slug: "acme", Name: "Acme", OwnerID: owner})
+	require.NoError(t, err)
+	m, err := org.NewMembership(o.ID, member, org.RoleMember)
+	require.NoError(t, err)
+	require.NoError(t, store.SaveMembership(context.Background(), m))
+	store.SetUser(member, "bob@example.com", "Bob")
+
+	require.NoError(t, svc.RemoveMember(tenant.Into(context.Background(), tenant.Context{OrgID: o.ID, UserID: owner}), o.ID, member))
+	recs := a.Records()
+	require.Len(t, recs, 1)
+	assert.Equal(t, "member.removed", recs[0].Action)
+	assert.Equal(t, member.String(), recs[0].TargetID)
+	assert.Equal(t, "bob@example.com", recs[0].Detail["name"], "the Activity row names the member, never a UUID")
+	assert.True(t, recs[0].InTx)
+}
+
+func TestIsStaff(t *testing.T) {
+	ctx := context.Background()
+	store := fakes.NewOrg()
+	sys, err := org.NewOrg("system", "System", uuid.New())
+	require.NoError(t, err)
+	sys.System = true
+	require.NoError(t, store.Save(ctx, sys))
+	other, err := org.NewOrg("acme", "Acme", uuid.New())
+	require.NoError(t, err)
+	require.NoError(t, store.Save(ctx, other))
+	join := func(o *org.Org, role org.Role) uuid.UUID {
+		id := uuid.New()
+		m, err := org.NewMembership(o.ID, id, role)
+		require.NoError(t, err)
+		require.NoError(t, store.SaveMembership(ctx, m))
+		return id
+	}
+	sysOwner, sysAdmin, sysMember, acmeOwner := join(sys, org.RoleOwner), join(sys, org.RoleAdmin), join(sys, org.RoleMember), join(other, org.RoleOwner)
+	unexpected := func(_ context.Context, msg string, cause error, _ ...any) *apperror.AppError {
+		return apperror.New("yasaku.unexpected", msg, codes.Internal, &apperrorv1.ErrorDetail{Code: "yasaku.unexpected"}).WithCause(cause)
+	}
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	cloud := org.NewService(store, capabilities.Capabilities{SupportAccess: true}, logger, unexpected, fakes.UnitOfWork)
+	selfhosted := org.NewService(store, capabilities.Capabilities{}, logger, unexpected, fakes.UnitOfWork)
+
+	tests := []struct {
+		name string
+		svc  *org.Service
+		user uuid.UUID
+		want bool
+	}{
+		{"system owner", cloud, sysOwner, true},
+		{"system admin", cloud, sysAdmin, true},
+		{"system member", cloud, sysMember, false},
+		{"owner of another org", cloud, acmeOwner, false},
+		{"stranger", cloud, uuid.New(), false},
+		{"self-hosted system owner", selfhosted, sysOwner, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := tt.svc.IsStaff(ctx, tt.user)
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestOrgCreate_StaffExemptFromUserLimits(t *testing.T) {
+	ctx := context.Background()
+	store := fakes.NewOrg()
+	staff := uuid.New()
+	sys, err := org.NewOrg("system", "System", staff)
+	require.NoError(t, err)
+	sys.System = true
+	require.NoError(t, store.Save(ctx, sys))
+	m, err := org.NewMembership(sys.ID, staff, org.RoleOwner)
+	require.NoError(t, err)
+	require.NoError(t, store.SaveMembership(ctx, m))
+	unexpected := func(_ context.Context, msg string, cause error, _ ...any) *apperror.AppError {
+		return apperror.New("yasaku.unexpected", msg, codes.Internal, &apperrorv1.ErrorDetail{Code: "yasaku.unexpected"}).WithCause(cause)
+	}
+	svc := org.NewService(store, capabilities.Capabilities{OrgCreation: true, SupportAccess: true}, slog.New(slog.NewTextHandler(io.Discard, nil)),
+		unexpected, fakes.UnitOfWork, org.WithLimits(limits.NewService(fakes.NewLimits(), config.ModeCloud)))
+	for _, slug := range []string{"one", "two", "three"} {
+		_, err := svc.Create(ctx, org.CreateRequest{Slug: slug, Name: slug, OwnerID: staff})
+		require.NoError(t, err, "staff skip user.orgs_created")
+	}
 }

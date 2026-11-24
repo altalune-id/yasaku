@@ -13,3 +13,8 @@ func NullText() sqlite.StringExpression {
 func NullBlob() sqlite.BlobExpression {
 	return sqlite.CAST(sqlite.NULL).AS_BLOB()
 }
+
+// NullInteger returns a fresh SQL NULL typed as INTEGER.
+func NullInteger() sqlite.IntegerExpression {
+	return sqlite.CAST(sqlite.NULL).AS_INTEGER()
+}

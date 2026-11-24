@@ -25,6 +25,7 @@ func TestNullHelpersCarryTheColumnType(t *testing.T) {
 		{"NullUUID", pgent.NullUUID(), `SELECT NULL::uuid AS "v";`},
 		{"NullJSONB", pgent.NullJSONB(), `SELECT NULL::jsonb AS "v";`},
 		{"NullBytea", pgent.NullBytea(), `SELECT NULL::bytea AS "v";`},
+		{"NullBigint", pgent.NullBigint(), `SELECT NULL::bigint AS "v";`},
 	}
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {

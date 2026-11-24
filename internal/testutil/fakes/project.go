@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"altalune.id/yasaku/internal/platform/tenant"
 	"altalune.id/yasaku/internal/project"
 )
 
@@ -45,12 +46,16 @@ func (r *Project) Save(_ context.Context, p *project.Project) error {
 	return nil
 }
 
-// ByID returns the project with the given ID or a *NotFoundError.
-func (r *Project) ByID(_ context.Context, id uuid.UUID) (*project.Project, error) {
+// ByID returns the project with the given ID in the org on ctx, or a *NotFoundError, as the real stores do.
+func (r *Project) ByID(ctx context.Context, id uuid.UUID) (*project.Project, error) {
+	tc, err := tenant.From(ctx)
+	if err != nil {
+		return nil, err
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	p, ok := r.rows[id]
-	if !ok {
+	if !ok || p.OrgID != tc.OrgID {
 		return nil, &project.NotFoundError{ID: id.String()}
 	}
 	c := *p

@@ -120,10 +120,13 @@ func (h *AuthHandler) GetLogin(w http.ResponseWriter, r *http.Request) {
 	if h.AltAuth != nil {
 		lastEmail = h.lastUser(r)
 	}
+	terms, privacy := h.legalURLs()
 	Render(w, r, templates.LoginLayout(h.Base(r, pageTitle(r, "login.title")), templates.LoginView{
-		ReturnTo:  SanitizeReturnTo(r.URL.Query().Get("return_to")),
-		LastEmail: lastEmail,
-		LocalAuth: h.localAuthEnabled(r.Context()),
+		ReturnTo:   SanitizeReturnTo(r.URL.Query().Get("return_to")),
+		LastEmail:  lastEmail,
+		LocalAuth:  h.localAuthEnabled(r.Context()),
+		TermsURL:   terms,
+		PrivacyURL: privacy,
 	}))
 }
 
@@ -133,9 +136,12 @@ func (h *AuthHandler) GetAdminLogin(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, ResolveReturnTo(h.Cfg.HTTP.BasePath, ""), http.StatusSeeOther)
 		return
 	}
+	terms, privacy := h.legalURLs()
 	Render(w, r, templates.LoginLayout(h.Base(r, pageTitle(r, "title.admin_sign_in")), templates.LoginView{
 		AdminForce: true,
 		LocalAuth:  h.localAuthEnabled(r.Context()),
+		TermsURL:   terms,
+		PrivacyURL: privacy,
 	}))
 }
 
@@ -156,11 +162,14 @@ func (h *AuthHandler) PostLogin(w http.ResponseWriter, r *http.Request) {
 			h.LogErr("web auth: local login", err)
 			msg = "Sign-in failed."
 		}
+		terms, privacy := h.legalURLs()
 		Render(w, r, templates.LoginLayout(h.Base(r, pageTitle(r, "login.title")), templates.LoginView{
 			Error:      msg,
 			AdminForce: admin,
 			ReturnTo:   SanitizeReturnTo(r.PostForm.Get("return_to")),
 			LocalAuth:  h.localAuthEnabled(r.Context()),
+			TermsURL:   terms,
+			PrivacyURL: privacy,
 		}))
 		return
 	}

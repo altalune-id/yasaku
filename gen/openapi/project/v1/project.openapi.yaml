@@ -206,6 +206,11 @@ components:
          ) to obtain a formatter capable of generating timestamps in this format.
     project.v1.ListProjectsRequest:
       type: object
+      properties:
+        org:
+          type: string
+          title: org
+          description: Org is the organization slug or id, needed when the caller belongs to more than one
       title: ListProjectsRequest
       additionalProperties: false
     project.v1.ListProjectsResponse:

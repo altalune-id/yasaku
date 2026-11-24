@@ -25,7 +25,10 @@ message Member {
   google.protobuf.Timestamp joined_at = 5;
 }
 
-message ListMembersRequest {}
+message ListMembersRequest {
+  // Org is the organization slug or id, needed when the caller belongs to more than one
+  string org = 1;
+}
 
 message ListMembersResponse {
   repeated Member members = 1;

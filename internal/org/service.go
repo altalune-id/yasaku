@@ -2,6 +2,7 @@ package org
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -10,6 +11,8 @@ import (
 	"go.opentelemetry.io/otel"
 
 	"altalune.id/yasaku/internal/apperror"
+	"altalune.id/yasaku/internal/limits"
+	"altalune.id/yasaku/internal/platform/audit"
 	"altalune.id/yasaku/internal/platform/capabilities"
 	"altalune.id/yasaku/internal/platform/session"
 	"altalune.id/yasaku/internal/platform/tenant"
@@ -23,9 +26,47 @@ var tracer = otel.Tracer("altalune.id/yasaku/internal/org")
 type Service struct {
 	store      Store
 	caps       capabilities.Capabilities
+	counter    Counter
 	log        *slog.Logger
 	unexpected apperror.UnexpectedFunc
+	uow        tenant.UnitOfWork
+	limits     Limiter
+	audit      Auditor
 	onRemoved  []MemberRemovedFunc
+}
+
+// Auditor records an org action in the caller's unit of work.
+type Auditor interface {
+	Record(ctx context.Context, e audit.Event) error
+}
+
+// WithAudit records renames and member removals.
+func WithAudit(a Auditor) Option {
+	return func(s *Service) { s.audit = a }
+}
+
+func (s *Service) record(ctx context.Context, e audit.Event) error {
+	if s.audit == nil {
+		return nil
+	}
+	if err := s.audit.Record(ctx, e); err != nil {
+		return s.unexpected(ctx, "org: audit "+e.Action, err)
+	}
+	return nil
+}
+
+// Limiter locks a subject's row and refuses a create past its limit.
+type Limiter interface {
+	Lock(ctx context.Context, subs ...limits.Subject) error
+	Check(ctx context.Context, key limits.Key, sub limits.Subject, used int64) error
+}
+
+// Option configures a Service.
+type Option func(*Service)
+
+// WithLimits holds Create to the creator's org-creation and org-membership limits.
+func WithLimits(l Limiter) Option {
+	return func(s *Service) { s.limits = l }
 }
 
 // MemberRemovedFunc reacts to a member leaving an org, such as revoking what the member held there.
@@ -35,8 +76,12 @@ type MemberRemovedFunc func(ctx context.Context, orgID, userID uuid.UUID) error
 func (s *Service) OnMemberRemoved(fn MemberRemovedFunc) { s.onRemoved = append(s.onRemoved, fn) }
 
 // NewService wires the Service.
-func NewService(store Store, caps capabilities.Capabilities, log *slog.Logger, unexpected apperror.UnexpectedFunc) *Service {
-	return &Service{store: store, caps: caps, log: log, unexpected: unexpected}
+func NewService(store Store, caps capabilities.Capabilities, log *slog.Logger, unexpected apperror.UnexpectedFunc, uow tenant.UnitOfWork, opts ...Option) *Service {
+	s := &Service{store: store, caps: caps, counter: NewCounter(store, caps), log: log, unexpected: unexpected, uow: uow}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
 }
 
 // BootstrapSingleton idempotently ensures the one system org exists with an owner membership for ownerID; an existing system org is reused whatever slug is passed, and a blank slug is generated.
@@ -193,21 +238,106 @@ func (s *Service) createWithSlug(ctx context.Context, req CreateRequest, chosen 
 	}
 	// SECURITY: orgs and memberships are scoped by the org's own id, so the new row's scope is the only one RLS accepts — never the caller's active org.
 	ctx = tenant.Into(ctx, tenant.Context{OrgID: o.ID, UserID: req.OwnerID})
-	if err := s.store.Save(ctx, o); err != nil {
-		if IsAlreadyExistsError(err) {
-			return nil, err
-		}
-		return nil, s.unexpected(ctx, "org.Create: Save", fmt.Errorf("org.Create: Save: %w", err), "slug", chosen)
-	}
-
 	m, err := NewMembership(o.ID, req.OwnerID, RoleOwner)
 	if err != nil {
 		return nil, err
 	}
-	if err := s.store.SaveMembership(ctx, m); err != nil {
-		return nil, s.unexpected(ctx, "org.Create: SaveMembership", fmt.Errorf("org.Create: SaveMembership: %w", err), "org_id", o.ID.String(), "user_id", req.OwnerID.String())
+	err = s.uow(ctx, func(ctx context.Context) error {
+		if err := s.checkCreatorLimits(ctx, req.OwnerID, req.Name); err != nil {
+			return err
+		}
+		if err := s.store.Save(ctx, o); err != nil {
+			if IsAlreadyExistsError(err) {
+				return err
+			}
+			return s.unexpected(ctx, "org.Create: Save", fmt.Errorf("org.Create: Save: %w", err), "slug", chosen)
+		}
+		if err := s.store.SaveMembership(ctx, m); err != nil {
+			return s.unexpected(ctx, "org.Create: SaveMembership", fmt.Errorf("org.Create: SaveMembership: %w", err), "org_id", o.ID.String(), "user_id", req.OwnerID.String())
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 	return o, nil
+}
+
+// CreateAllowed returns the *limits.ReachedError Create would refuse userID with, read without a lock, so the console can disable "New organization" with its reason.
+func (s *Service) CreateAllowed(ctx context.Context, userID uuid.UUID) error {
+	if s.limits == nil {
+		return nil
+	}
+	c, err := s.creatorCounts(ctx, userID)
+	if err != nil || c.staff {
+		return err
+	}
+	sub := limits.Subject{Kind: limits.SubjectUser, ID: userID}
+	if err := s.limits.Check(ctx, limits.UserOrgsCreated, sub, c.created); err != nil {
+		return err
+	}
+	return s.limits.Check(ctx, limits.UserOrgsJoined, sub, c.joined)
+}
+
+// IsStaff reports whether userID is platform staff: an owner or admin of the system org, on a deployment with support access. Computed per call, never stored.
+func (s *Service) IsStaff(ctx context.Context, userID uuid.UUID) (bool, error) {
+	staff, err := s.counter.IsStaff(ctx, userID)
+	if err != nil {
+		return false, s.unexpected(ctx, "org.IsStaff", err, "user_id", userID.String())
+	}
+	return staff, nil
+}
+
+func (s *Service) checkCreatorLimits(ctx context.Context, userID uuid.UUID, name string) error {
+	if s.limits == nil {
+		return nil
+	}
+	sub := limits.Subject{Kind: limits.SubjectUser, ID: userID}
+	if err := s.limits.Lock(ctx, sub); err != nil {
+		return s.unexpected(ctx, "org.Create: limit lock", err, "user_id", userID.String())
+	}
+	c, err := s.creatorCounts(ctx, userID)
+	if err != nil || c.staff {
+		return err
+	}
+	if err := s.limits.Check(ctx, limits.UserOrgsCreated, sub, c.created); err != nil {
+		return err
+	}
+	err = s.limits.Check(ctx, limits.UserOrgsJoined, sub, c.joined)
+	if re, ok := errors.AsType[*limits.ReachedError](err); ok {
+		re.Name = name
+	}
+	return err
+}
+
+type creatorCounts struct {
+	staff           bool
+	created, joined int64
+}
+
+func (s *Service) creatorCounts(ctx context.Context, userID uuid.UUID) (creatorCounts, error) {
+	staff, err := s.IsStaff(ctx, userID)
+	if err != nil || staff {
+		return creatorCounts{staff: staff}, err
+	}
+	created, err := s.store.CountCreatedBy(ctx, userID)
+	if err != nil {
+		return creatorCounts{}, s.unexpected(ctx, "org.Create: count created", err, "user_id", userID.String())
+	}
+	joined, err := s.OrgsJoined(ctx, userID)
+	if err != nil {
+		return creatorCounts{}, err
+	}
+	return creatorCounts{created: created, joined: joined}, nil
+}
+
+// OrgsJoined counts the orgs userID belongs to, the system org aside.
+func (s *Service) OrgsJoined(ctx context.Context, userID uuid.UUID) (int64, error) {
+	n, err := s.counter.CountOrgsJoined(ctx, userID)
+	if err != nil {
+		return 0, s.unexpected(ctx, "org.OrgsJoined", err, "user_id", userID.String())
+	}
+	return n, nil
 }
 
 // List returns every org the given user is a member of.
@@ -240,11 +370,19 @@ func (s *Service) Rename(ctx context.Context, id uuid.UUID, name string) (*Org, 
 	if o.System {
 		return nil, &SystemProtectedError{Op: "rename", OrgID: id.String(), Resource: "org"}
 	}
+	from := o.Name
 	if err := o.Rename(name); err != nil {
 		return nil, err
 	}
-	if err := s.store.Save(ctx, o); err != nil {
-		return nil, s.unexpected(ctx, "org.Rename: Save", fmt.Errorf("org.Rename: Save: %w", err), "org_id", id.String())
+	err = s.uow(ctx, func(ctx context.Context) error {
+		if err := s.store.Save(ctx, o); err != nil {
+			return s.unexpected(ctx, "org.Rename: Save", fmt.Errorf("org.Rename: Save: %w", err), "org_id", id.String())
+		}
+		return s.record(ctx, audit.Event{Action: "org.renamed", TargetKind: "org", TargetID: id.String(),
+			Detail: map[string]string{"from_name": from, "to_name": o.Name}})
+	})
+	if err != nil {
+		return nil, err
 	}
 	return o, nil
 }
@@ -307,13 +445,33 @@ func (s *Service) RemoveMember(ctx context.Context, orgID, userID uuid.UUID) err
 			return s.unexpected(ctx, "org.RemoveMember: hook", fmt.Errorf("org.RemoveMember: hook: %w", err), "org_id", orgID.String(), "user_id", userID.String())
 		}
 	}
-	if err := s.store.RemoveMember(ctx, orgID, userID); err != nil {
-		if IsMembershipMissingError(err) {
-			return err
-		}
-		return s.unexpected(ctx, "org.RemoveMember", fmt.Errorf("org.RemoveMember: %w", err), "org_id", orgID.String(), "user_id", userID.String())
+	email, err := s.memberEmail(ctx, orgID, userID)
+	if err != nil {
+		return s.unexpected(ctx, "org.RemoveMember: profile", err, "org_id", orgID.String(), "user_id", userID.String())
 	}
-	return nil
+	return s.uow(ctx, func(ctx context.Context) error {
+		if err := s.store.RemoveMember(ctx, orgID, userID); err != nil {
+			if IsMembershipMissingError(err) {
+				return err
+			}
+			return s.unexpected(ctx, "org.RemoveMember", fmt.Errorf("org.RemoveMember: %w", err), "org_id", orgID.String(), "user_id", userID.String())
+		}
+		return s.record(ctx, audit.Event{Action: "member.removed", TargetKind: "user", TargetID: userID.String(),
+			Detail: map[string]string{"name": email, "email": email, "role": string(m.Role)}})
+	})
+}
+
+func (s *Service) memberEmail(ctx context.Context, orgID, userID uuid.UUID) (string, error) {
+	profiles, err := s.store.ListMemberProfiles(ctx, orgID)
+	if err != nil {
+		return "", err
+	}
+	for _, p := range profiles {
+		if p.UserID == userID {
+			return p.Email, nil
+		}
+	}
+	return "", nil
 }
 
 // SystemOrg returns the singleton org by its system flag, or a NotFoundError when none exists.

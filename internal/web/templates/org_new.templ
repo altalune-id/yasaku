@@ -7,6 +7,7 @@ type OrgNewView struct {
 	Name  string
 	Error string
 	ErrorCode string
+	Blocked   bool
 }
 
 templ OrgNewPage(d web.LayoutData, v OrgNewView) {
@@ -28,7 +29,11 @@ templ OrgNewPage(d web.LayoutData, v OrgNewView) {
 				<input name="slug" type="text" value={ v.Slug } placeholder={ d.Tr("org_new.slug_placeholder") } pattern="[a-z0-9-]+" dir="ltr" class="input w-full font-mono" { slug.Attrs()... }/>
 			}
 			<div class="flex items-center gap-3 pt-2">
-				<button type="submit" class="btn btn-primary">{ d.Tr("nav.create_organization") }</button>
+				if v.Blocked {
+					<button type="submit" class="btn btn-primary" disabled>{ d.Tr("nav.create_organization") }</button>
+				} else {
+					<button type="submit" class="btn btn-primary">{ d.Tr("nav.create_organization") }</button>
+				}
 				<a href={ templ.SafeURL(d.Href("/")) } class="btn btn-ghost">{ d.Tr("common.cancel") }</a>
 			</div>
 		</form>

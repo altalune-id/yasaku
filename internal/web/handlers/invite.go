@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"altalune.id/yasaku/internal/invite"
+	"altalune.id/yasaku/internal/limits"
 	"altalune.id/yasaku/internal/org"
 	"altalune.id/yasaku/internal/platform/tenant"
 	"altalune.id/yasaku/internal/web"
@@ -33,6 +34,10 @@ func (h *InviteHandler) GetList(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	h.renderList(w, sc, "", "")
+}
+
+func (h *InviteHandler) renderList(w http.ResponseWriter, sc OrgScope, errMsg, errCode string) {
 	p, o, r := sc.principal, sc.org, sc.req
 	slug := o.Slug
 	items, err := h.Invites.ListPending(r.Context())
@@ -43,8 +48,24 @@ func (h *InviteHandler) GetList(w http.ResponseWriter, r *http.Request) {
 	}
 	canManage, _ := h.Orgs.IsManager(r.Context(), o.ID, p.UserID)
 	Render(w, r, templates.InvitesLayout(h.LayoutForOrg(r, pageTitle(r, "invites.title"), slug, "invites"), templates.InvitesView{
-		OrgSlug: slug, Invites: inviteRows(items), CanManage: canManage, Disabled: !h.Caps.InvitesEnabled,
+		OrgSlug: slug, Seats: h.seats(r), Invites: inviteRows(items), CanManage: canManage, Disabled: !h.Caps.InvitesEnabled,
+		Error: errMsg, ErrorCode: errCode,
 	}))
+}
+
+func (h *InviteHandler) seats(r *http.Request) *templates.SeatsView {
+	if !h.Caps.InvitesEnabled {
+		return nil
+	}
+	s, err := h.Invites.Seats(r.Context())
+	if err != nil {
+		h.LogErr("web invite: seats", err)
+		return nil
+	}
+	if s.Unlimited() {
+		return nil
+	}
+	return &templates.SeatsView{Used: s.Used, Max: s.Max, Pending: s.Pending}
 }
 
 // PostSend handles POST /orgs/{slug}/invites.
@@ -75,6 +96,10 @@ func (h *InviteHandler) PostSend(w http.ResponseWriter, r *http.Request) {
 		h.LogErr("web invite: send", err)
 		if invite.IsInvitesDisabledError(err) {
 			h.ErrorPage(w, r, http.StatusConflict, pageTitle(r, "error_title.invites_disabled"), err.Error(), err)
+			return
+		}
+		if m, ok := h.limitMessage(r.Context(), err); ok {
+			h.renderList(w, sc, m, ErrorRef(err))
 			return
 		}
 		h.ErrorPage(w, r, http.StatusBadRequest, pageTitle(r, "error_title.send_failed"), err.Error())
@@ -142,6 +167,10 @@ func (h *InviteHandler) GetAccept(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case invite.IsNotFoundError(err), invite.IsExpiredError(err), invite.IsAlreadyUsedError(err):
 			h.ErrorPage(w, r, http.StatusGone, pageTitle(r, "error_title.invite_not_usable"), err.Error())
+			return
+		case limits.IsReachedError(err):
+			msg, _ := h.limitMessage(r.Context(), err)
+			h.ErrorPage(w, r, http.StatusConflict, pageTitle(r, "error_title.invite_not_usable"), msg, err)
 			return
 		case invite.IsTokenMismatchError(err):
 			h.ErrorPage(w, r, http.StatusForbidden, pageTitle(r, "error_title.invite_mismatch"), "This invite is for a different email.")

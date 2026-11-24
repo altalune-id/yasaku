@@ -32,7 +32,7 @@ func RegisterMemberServiceTools(reg *mcp.Registry, h orgv1connect.MemberServiceH
 		Scope:       scopeFor(MemberListToolName),
 		Mutation:    false,
 		Destructive: false,
-		InputSchema: json.RawMessage(`{"type":"object","properties":{},"additionalProperties":false}`),
+		InputSchema: json.RawMessage(`{"type":"object","properties":{"org":{"type":"string","description":"Org is the organization slug or id, needed when the caller belongs to more than one"}},"additionalProperties":false}`),
 		Handler: func(ctx context.Context, input json.RawMessage) (json.RawMessage, error) {
 			if len(input) == 0 {
 				input = json.RawMessage(`{}`)

@@ -34,6 +34,7 @@ const (
 	CodeOrgOwnerRemoval      = "ORG010"
 	CodeOrgManagerRequired   = "ORG011"
 	CodeOrgMismatch          = "ORG012"
+	CodeOrgChoiceRequired    = "ORG014"
 
 	CodeProjectNotFound        = "PRJ001"
 	CodeProjectAlreadyExists   = "PRJ002"
@@ -162,4 +163,6 @@ const (
 	CodeWebhookDeliveryNotFound     = "WHK006"
 	CodeWebhookEndpointInactive     = "WHK007"
 	CodeWebhookSecretConflict       = "WHK008"
+
+	CodeLimitReached = "LIM001"
 )

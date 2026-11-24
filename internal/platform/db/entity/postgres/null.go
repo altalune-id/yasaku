@@ -34,3 +34,8 @@ func NullJSONB() postgres.StringExpression {
 func NullBytea() postgres.ByteaExpression {
 	return postgres.ByteaExp(postgres.CAST(postgres.NULL).AS("bytea"))
 }
+
+// NullBigint returns a fresh SQL NULL typed as bigint.
+func NullBigint() postgres.IntegerExpression {
+	return postgres.CAST(postgres.NULL).AS_BIGINT()
+}

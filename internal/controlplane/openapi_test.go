@@ -32,8 +32,8 @@ func openAPIServer(t *testing.T, enabled bool, auth *controlplane.BasicAuth) *ht
 		Verifier: stubVerifier{principal: session.Principal{}},
 	}
 	srv := controlplane.New(nil, kernel, controlplane.Deps{
-		Orgs:     org.NewService(orgs, capabilities.Capabilities{OrgCreation: true}, log, reporter.Unexpected),
-		Projects: project.NewService(projs, log, reporter.Unexpected, fakes.PermissiveMembers()),
+		Orgs:     org.NewService(orgs, capabilities.Capabilities{OrgCreation: true}, log, reporter.Unexpected, fakes.UnitOfWork),
+		Projects: project.NewService(projs, log, reporter.Unexpected, fakes.PermissiveMembers(), fakes.UnitOfWork),
 	})
 	srv.OpenAPIEnabled = enabled
 	srv.OpenAPIBasicAuth = auth

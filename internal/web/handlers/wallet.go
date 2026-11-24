@@ -139,7 +139,7 @@ func (h *WalletHandler) PostCreate(w http.ResponseWriter, r *http.Request) {
 	created, dated, err := h.Open.Run(sc.req.Context(), params, opening, time.Now().UTC())
 	if err != nil {
 		h.LogErr("web wallet: create", err)
-		h.writeWalletForm(w, sc, v, bannerFrom(err), "title.wallet_new")
+		h.writeWalletForm(w, sc, v, h.limitBanner(sc, err), "title.wallet_new")
 		return
 	}
 	if dated.Moved {
@@ -248,7 +248,7 @@ func (h *WalletHandler) PostUnarchive(w http.ResponseWriter, r *http.Request) {
 	}
 	if _, err := h.Wallets.Unarchive(sc.req.Context(), wl.ID); err != nil {
 		h.LogErr("web wallet: unarchive", err)
-		h.writeWalletList(w, sc, bannerFrom(err))
+		h.writeWalletList(w, sc, h.limitBanner(sc, err))
 		return
 	}
 	h.listWritten(w, sc)
@@ -364,6 +364,14 @@ type banner struct {
 	Key  string
 	Msg  string
 	Code string
+}
+
+func (h *WalletHandler) limitBanner(sc ProjectScope, err error) banner {
+	b := bannerFrom(err)
+	if m, ok := h.limitMessage(sc.req.Context(), err); ok {
+		b.Key, b.Msg = "", m
+	}
+	return b
 }
 
 //i18n:use wallet.in_use

@@ -152,8 +152,8 @@ func newPeriodFixture(t *testing.T, caps capabilities.Capabilities) *periodFixtu
 	}
 
 	users := user.NewService(user.NewStore(dbCfg, pool), user.GenesisConfig{}, discardLogger(), passthroughUnexpected())
-	orgs := org.NewService(org.NewStore(dbCfg, pool, nil), caps, discardLogger(), passthroughUnexpected())
-	projects := project.NewService(project.NewStore(dbCfg, pool, nil), discardLogger(), passthroughUnexpected(), orgs)
+	orgs := org.NewService(org.NewStore(dbCfg, pool, nil), caps, discardLogger(), passthroughUnexpected(), tenant.NewUnitOfWork(dbCfg, pool, nil))
+	projects := project.NewService(project.NewStore(dbCfg, pool, nil), discardLogger(), passthroughUnexpected(), orgs, tenant.NewUnitOfWork(dbCfg, pool, nil))
 	ledgers := ledger.NewService(ledger.NewStore(dbCfg, pool, nil), discardLogger(), passthroughUnexpected(), orgs)
 	wallets := wallet.NewService(wallet.NewStore(dbCfg, pool, nil), discardLogger(), passthroughUnexpected())
 	cats := category.NewService(category.NewStore(dbCfg, pool, nil), discardLogger(), passthroughUnexpected(), nil)

@@ -322,3 +322,21 @@ func TestService_Update_OnlyAManagerChangesTheSettings(t *testing.T) {
 		t.Fatalf("PeriodStartDay = %d, want %d", got.PeriodStartDay, day)
 	}
 }
+
+func TestLedgerSettingsChanged_AuditedInSameTx(t *testing.T) {
+	a := &fakes.Audit{}
+	svc := ledger.NewService(fakes.NewLedger(), slog.New(slog.NewTextHandler(io.Discard, nil)),
+		func(_ context.Context, msg string, err error, _ ...any) *apperror.AppError {
+			t.Fatalf("unexpected: %s: %v", msg, err)
+			return nil
+		}, fakes.PermissiveMembers(), ledger.WithAudit(fakes.UnitOfWork, a))
+	ctx, tc := tenantCtx(t)
+	tz := "Asia/Jakarta"
+	if _, err := svc.Update(ctx, ledger.Patch{Timezone: &tz}); err != nil {
+		t.Fatal(err)
+	}
+	recs := a.Records()
+	if len(recs) != 1 || recs[0].Action != "ledger.settings_changed" || recs[0].ProjectID != tc.ProjectID || recs[0].Detail["timezone"] != tz {
+		t.Fatalf("got %+v", recs)
+	}
+}

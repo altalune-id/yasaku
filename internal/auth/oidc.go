@@ -26,12 +26,14 @@ type EnsureClaims struct {
 type OnboardRequest struct {
 	UserID uuid.UUID
 	Email  string
+	Locale string
 }
 
 // OnboardResult carries the active org + project ids that OIDC login should activate.
 type OnboardResult struct {
 	OrgID     uuid.UUID
 	ProjectID uuid.UUID
+	Notice    string
 }
 
 // EnsureFromOIDCFn upserts a user for the given OIDC claims; the bool reports whether the user was newly created.
@@ -121,17 +123,15 @@ func (o *OIDCLogin) Execute(ctx context.Context, claims OIDCClaims) (session.Pri
 	}
 	span.SetAttributes(attribute.String("user.id", u.ID.String()))
 
-	var (
-		orgID     uuid.UUID
-		projectID uuid.UUID
-	)
+	var res OnboardResult
 	if o.onboard != nil {
-		res, err := o.onboard(ctx, OnboardRequest{UserID: u.ID, Email: u.Email})
+		var err error
+		res, err = o.onboard(ctx, OnboardRequest{UserID: u.ID, Email: u.Email, Locale: u.Locale})
 		switch {
 		case err == nil:
-			orgID, projectID = res.OrgID, res.ProjectID
 		case o.isSignupRequired != nil && o.isSignupRequired(err):
 			// NOTE: login succeeds with a zero active tenant; the caller routes to /signup/complete.
+			res = OnboardResult{Notice: res.Notice}
 		default:
 			if _, ok := apperror.AsAppError(err); ok {
 				return session.Principal{}, err
@@ -147,14 +147,15 @@ func (o *OIDCLogin) Execute(ctx context.Context, claims OIDCClaims) (session.Pri
 		Source:          session.SourceOIDC,
 		IDPIssuer:       claims.Issuer,
 		IDPSubject:      claims.Subject,
-		ActiveOrgID:     orgID,
-		ActiveProjectID: projectID,
+		ActiveOrgID:     res.OrgID,
+		ActiveProjectID: res.ProjectID,
 		IsAdmin:         u.IsAdmin,
 		Locale:          u.Locale,
 		Theme:           u.Theme,
 		ColorMode:       u.ColorMode,
 		TipsSeen:        u.TipsSeen,
 		IssuedAt:        o.now(),
+		Notice:          res.Notice,
 	}
 	if u.TermsAcceptedAt != nil {
 		p.TermsAcceptedAt = *u.TermsAcceptedAt

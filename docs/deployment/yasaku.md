@@ -134,6 +134,23 @@ Production values are Railway service variables, never committed.
 5. A person who only uses MCP or tokens gets 401 until they sign in once on the web or with
    `yasaku auth login`: only that sign-in relinks their account to the Othra issuer.
 
+## Limits
+
+Each limit resolves in this order: an override for the user, org or project, else the plan's row,
+else the catalogue default for the mode. Cloud defaults are small; self-hosted defaults are
+unlimited. Config and env never set a limit. Self-hosted has no `/admin` page, so the operator uses
+the CLI, which opens the database as `migrate` does:
+
+| Command                                                     | Effect                                                                                |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `yasaku admin limits list`                                  | catalogue defaults, the `first` plan's rows (`--plan` for another) and every override |
+| `yasaku admin limits set <key> <n\|unlimited>`              | sets the plan's row (`--plan`, default `first`)                                       |
+| `yasaku admin limits set <key> <n\|unlimited> --org <slug>` | overrides one org; `--user <email>` and `--project <id>` likewise                     |
+| `yasaku admin limits unset <key> [--org …]`                 | clears the plan row or deletes the override                                           |
+
+Keys: `user.orgs_created`, `user.orgs_joined`, `org.members`, `org.projects`, `org.custom_roles`,
+`project.wallets`. A key only takes the subject it counts against.
+
 ## Local dev
 
 The queue is off by default, so jobs run inline. To run against NATS:
