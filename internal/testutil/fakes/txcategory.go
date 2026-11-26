@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"altalune.id/yasaku/internal/category"
+	"altalune.id/yasaku/internal/platform/tenant"
 )
 
 // TxCategory is an in-memory category.Store for the transaction categories module.
@@ -122,4 +123,22 @@ func (f *TxCategory) Delete(ctx context.Context, id uuid.UUID) error {
 	}
 	delete(f.rows, id)
 	return nil
+}
+
+// DeleteAllInProject removes every row in the tenant project on ctx and reports how many went.
+func (f *TxCategory) DeleteAllInProject(ctx context.Context) (int64, error) {
+	tc, err := tenant.From(ctx)
+	if err != nil {
+		return 0, err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var n int64
+	for id, row := range f.rows {
+		if row.OrgID == tc.OrgID && row.ProjectID == tc.ProjectID {
+			delete(f.rows, id)
+			n++
+		}
+	}
+	return n, nil
 }

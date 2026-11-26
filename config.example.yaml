@@ -216,6 +216,8 @@ onboard:
 opensheet:
   # [bootstrap] env: YASAKU_OPENSHEET_ALLOW_PRIVATE_HOSTS
   allowPrivateHosts: ""
+  # [bootstrap] env: YASAKU_OPENSHEET_AUDIENCE
+  audience: ""
   # [bootstrap] env: YASAKU_OPENSHEET_BASE_URL
   baseURL: ""
 

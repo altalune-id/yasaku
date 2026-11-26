@@ -159,6 +159,10 @@ func refusalText(err error) string {
 		ae := pe.ToAppError()
 		return ae.Message() + " (" + ae.Code() + ")"
 	}
+	if rn, ok := errors.AsType[*ReconnectNeededError](err); ok {
+		ae := rn.ToAppError()
+		return ae.Message() + " (" + ae.Code() + ")"
+	}
 	sr, ok := errors.AsType[*SyncRefusedError](err)
 	if !ok {
 		return "opensheet refused the sync"

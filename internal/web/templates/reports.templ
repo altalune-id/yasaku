@@ -446,11 +446,9 @@ templ reportDialogs(d web.LayoutData, v ReportsView) {
 templ ReportsPage(d web.LayoutData, v ReportsView) {
 	<section class="flex flex-col gap-4 lg:gap-6">
 		@PageHeader(d.Tr("report.title"), "") {
-			if d.Opensheet {
-				@AppButton(d.ProjectPath(v.ProjectSlug, "/opensheet"), "btn-ghost", nil) {
-					@icons.Icon("sheet", "size-4")
-					{ d.Tr("report.export") }
-				}
+			@AppButton(d.ProjectPath(v.ProjectSlug, "/export.zip"), "btn-ghost", templ.Attributes{"download": true}) {
+				@icons.Icon("sheet", "size-4")
+				{ d.Tr("report.export") }
 			}
 		}
 		switch {

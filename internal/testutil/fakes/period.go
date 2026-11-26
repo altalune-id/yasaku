@@ -2,6 +2,7 @@ package fakes
 
 import (
 	"context"
+	"slices"
 	"sort"
 	"sync"
 
@@ -9,6 +10,7 @@ import (
 
 	"altalune.id/yasaku/civil"
 	"altalune.id/yasaku/internal/period"
+	"altalune.id/yasaku/internal/platform/tenant"
 )
 
 // Period is an in-memory period.Store.
@@ -195,4 +197,25 @@ func (f *Period) ListClosings(_ context.Context, orgID, projectID, periodID uuid
 		return out[i].ID.String() > out[j].ID.String()
 	})
 	return out, nil
+}
+
+// DeleteAllInProject removes every period and closing in the tenant project on ctx and reports how many periods went.
+func (f *Period) DeleteAllInProject(ctx context.Context) (int64, error) {
+	tc, err := tenant.From(ctx)
+	if err != nil {
+		return 0, err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.closings = slices.DeleteFunc(f.closings, func(c *period.Closing) bool {
+		return c.OrgID == tc.OrgID && c.ProjectID == tc.ProjectID
+	})
+	var n int64
+	for id, p := range f.data {
+		if p.OrgID == tc.OrgID && p.ProjectID == tc.ProjectID {
+			delete(f.data, id)
+			n++
+		}
+	}
+	return n, nil
 }

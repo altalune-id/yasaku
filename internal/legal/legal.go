@@ -6,6 +6,7 @@ import (
 	"embed"
 	"errors"
 	"fmt"
+	stdhtml "html"
 	"strings"
 	"sync"
 	"time"
@@ -23,6 +24,25 @@ type Document struct {
 	Title     string
 	HTML      string
 	UpdatedAt time.Time
+	bare      string
+}
+
+// BackupDays is how many days deleted data stays in database backups; the privacy policy and the wipe dialog both state it.
+const BackupDays = 7
+
+const contactToken = "%CONTACT%"
+
+// WithContact returns a copy of d with each contact mention naming email as a mailto link; a blank email drops every line that names a contact.
+func (d *Document) WithContact(email string) *Document {
+	out := *d
+	e := strings.TrimSpace(email)
+	if e == "" {
+		out.HTML = d.bare
+		return &out
+	}
+	esc := stdhtml.EscapeString(e)
+	out.HTML = strings.ReplaceAll(d.HTML, contactToken, `<a class="link" href="mailto:`+esc+`">`+esc+`</a>`)
+	return &out
 }
 
 // TermsSlug identifies the Terms of Service document.
@@ -83,11 +103,16 @@ func loadAll() (map[string]*Document, error) {
 		if err := md.Convert(body, &buf); err != nil {
 			return nil, fmt.Errorf("legal: render %s: %w", path, err)
 		}
+		var bare bytes.Buffer
+		if err := md.Convert(withoutContact(body), &bare); err != nil {
+			return nil, fmt.Errorf("legal: render %s: %w", path, err)
+		}
 		out[slug] = &Document{
 			Slug:      slug,
 			Title:     meta.Title,
 			HTML:      buf.String(),
 			UpdatedAt: meta.Updated,
+			bare:      bare.String(),
 		}
 	}
 	return out, nil
@@ -132,4 +157,33 @@ func splitFrontmatter(raw []byte) (frontmatter, []byte, error) {
 		}
 	}
 	return fm, body, nil
+}
+
+func withoutContact(body []byte) []byte {
+	var kept [][]byte
+	for _, l := range bytes.Split(body, []byte("\n")) {
+		if !bytes.Contains(l, []byte(contactToken)) {
+			kept = append(kept, l)
+		}
+	}
+	out := kept[:0]
+	for i, l := range kept {
+		if bytes.HasPrefix(l, []byte("#")) && emptySection(kept[i+1:]) {
+			continue
+		}
+		out = append(out, l)
+	}
+	return bytes.Join(out, []byte("\n"))
+}
+
+func emptySection(rest [][]byte) bool {
+	for _, l := range rest {
+		if bytes.HasPrefix(l, []byte("#")) {
+			return true
+		}
+		if len(bytes.TrimSpace(l)) > 0 {
+			return false
+		}
+	}
+	return true
 }

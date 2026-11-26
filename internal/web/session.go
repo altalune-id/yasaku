@@ -28,6 +28,8 @@ const (
 	PurposeOnboard   = "onboard"
 	PurposeOIDCState = "oidc-state"
 	PurposeLastUser  = "last-user"
+	// PurposeOpensheetState signs the state of an OAuth connect to opensheet.
+	PurposeOpensheetState = "opensheet-state"
 )
 
 // ErrBadCookie is returned when a cookie fails HMAC verification.

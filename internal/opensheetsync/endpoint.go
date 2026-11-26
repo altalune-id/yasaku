@@ -28,6 +28,13 @@ func (e Endpoint) client(osOrg, osProject, key string) (*opensheet.Client, error
 	return opensheet.New(e.config(osOrg, osProject, key))
 }
 
+func (e Endpoint) control(token string) (*opensheet.Control, error) {
+	return opensheet.NewControl(opensheet.ControlConfig{
+		BaseURL: e.BaseURL, Token: token, AllowPrivateHosts: e.AllowPrivateHosts,
+		Timeout: cmp.Or(e.Timeout, defaultSheetTimeout), Retry: httpclient.RetryPolicy{MaxAttempts: 1}, UserAgent: "yasaku-opensheetsync/1",
+	})
+}
+
 func (e Endpoint) config(osOrg, osProject, key string) opensheet.Config {
 	return opensheet.Config{
 		BaseURL:           e.BaseURL,

@@ -124,3 +124,30 @@ func (s *postgresStore) SaveClosing(ctx context.Context, c *Closing) error {
 	}
 	return s.endTx(tx, owned, nil)
 }
+
+// DeleteAllInProject removes every period and closing in the tenant project on ctx and reports how many periods went.
+func (s *postgresStore) DeleteAllInProject(ctx context.Context) (int64, error) {
+	tx, owned, tc, err := s.txAcquire(ctx)
+	if err != nil {
+		return 0, err
+	}
+	// SECURITY: org and project predicates, not RLS alone.
+	closings := s.closings.DELETE().
+		WHERE(s.closings.OrgID.EQ(postgres.UUID(tc.OrgID)).
+			AND(s.closings.ProjectID.EQ(postgres.UUID(tc.ProjectID))))
+	if _, execErr := closings.ExecContext(ctx, tx); execErr != nil {
+		return 0, s.endTx(tx, owned, fmt.Errorf("period.postgres.DeleteAllInProject: closings: %w", execErr))
+	}
+	stmt := s.table.DELETE().
+		WHERE(s.table.OrgID.EQ(postgres.UUID(tc.OrgID)).
+			AND(s.table.ProjectID.EQ(postgres.UUID(tc.ProjectID))))
+	res, execErr := stmt.ExecContext(ctx, tx)
+	if execErr != nil {
+		return 0, s.endTx(tx, owned, fmt.Errorf("period.postgres.DeleteAllInProject: %w", execErr))
+	}
+	n, raErr := res.RowsAffected()
+	if raErr != nil {
+		return 0, s.endTx(tx, owned, fmt.Errorf("period.postgres.DeleteAllInProject: rows affected: %w", raErr))
+	}
+	return n, s.endTx(tx, owned, nil)
+}

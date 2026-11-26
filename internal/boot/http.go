@@ -137,7 +137,9 @@ func buildWebHandler(d webHandlerDeps) (handler http.Handler, routes []string) {
 	transactionHandler := webhandlers.NewTransactionHandler(deps, svcs.Projects, svcs.Wallets, svcs.Transactions, svcs.Periods, svcs.TxCategories, svcs.Ledgers)
 	periodHandler := webhandlers.NewPeriodHandler(deps, svcs.Projects, svcs.Periods, svcs.Reports, svcs.Ledgers)
 	reportHandler := webhandlers.NewReportHandler(deps, svcs.Projects, svcs.Reports, svcs.Periods)
+	reportHandler.Export = svcs.Export
 	settingsHandler := webhandlers.NewSettingsHandler(deps, svcs.Projects, svcs.Ledgers, d.MCP.Scopes)
+	settingsHandler.Wipe = svcs.Wipe
 	firstRunHandler := webhandlers.NewFirstRunHandler(deps, svcs.Projects, svcs.Wallets, svcs.WalletOpen, svcs.TxCategories, svcs.Ledgers)
 	moreHandler := webhandlers.NewMoreHandler(deps, svcs.Projects)
 	adminHandler := webhandlers.NewAdminHandler(deps, webhandlers.AdminDeps{

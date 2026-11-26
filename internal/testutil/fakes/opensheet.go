@@ -62,6 +62,7 @@ type Opensheet struct {
 	fail    map[string]*opensheetFailure
 	log     []OpensheetRequest
 	header  bool
+	control opensheetControl
 }
 
 // NewOpensheet starts a fake serving org/project behind token; it stops when t ends.
@@ -76,6 +77,7 @@ func NewOpensheet(t testing.TB, org, project, token string) *Opensheet {
 	mux.HandleFunc("PUT "+base+"/rows/{id}", f.replace)
 	mux.HandleFunc("PATCH "+base+"/rows/{id}", f.patch)
 	mux.HandleFunc("DELETE "+base+"/rows/{id}", f.remove)
+	f.routeControl(mux)
 	mux.HandleFunc("/", f.unrouted)
 	f.srv = httptest.NewServer(mux)
 	t.Cleanup(f.srv.Close)

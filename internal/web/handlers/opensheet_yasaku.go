@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"net/url"
 	"slices"
 	"strconv"
 	"strings"
@@ -21,11 +22,13 @@ import (
 type OpensheetHandler struct {
 	Deps
 	Opensheet *opensheetsync.Service
+	// Auth is nil when opensheet.audience is empty, which hides Connect and leaves only the API-key setup.
+	Auth OpensheetAuth
 }
 
-// NewOpensheetHandler wires the handler; d carries Orgs and Projects.
-func NewOpensheetHandler(d Deps, svc *opensheetsync.Service) *OpensheetHandler {
-	return &OpensheetHandler{Deps: d, Opensheet: svc}
+// NewOpensheetHandler wires the handler; d carries Orgs and Projects, and a nil auth hides Connect.
+func NewOpensheetHandler(d Deps, svc *opensheetsync.Service, auth OpensheetAuth) *OpensheetHandler {
+	return &OpensheetHandler{Deps: d, Opensheet: svc, Auth: auth}
 }
 
 // Register wires the Opensheet routes onto mux.
@@ -37,6 +40,9 @@ func (h *OpensheetHandler) Register(mux web.Mux) {
 	mux.HandleFunc("POST "+base+"/enabled", h.PostEnabled)
 	mux.HandleFunc("POST "+base+"/sync", h.PostSync)
 	mux.HandleFunc("POST "+base+"/delete", h.PostDelete)
+	mux.HandleFunc("POST "+base+"/connect", h.PostConnect)
+	mux.HandleFunc("POST "+base+"/provision", h.PostProvision)
+	mux.HandleFunc("GET "+OpensheetCallbackPath, h.GetCallback)
 }
 
 // GetPage renders the module page: status, tutorial and form.
@@ -234,12 +240,17 @@ func (h *OpensheetHandler) view(sc ProjectScope, form *templates.OpensheetForm) 
 	if err != nil {
 		return v, err
 	}
+	h.connectView(sc, &v, st)
 	v.Pending, v.Failing, v.GivenUp = st.Pending, st.Failing, st.GivenUp
 	v.State = sheetState(st)
 	if l := st.Link; l != nil {
 		v.Linked, v.Enabled, v.Verified, v.AutoDisabled = true, l.Enabled, l.VerifiedAt != nil, l.AutoDisabled()
 		v.AwaitingFirstSync = l.AwaitingFirstSync()
 		v.LastSyncedAt, v.KeyHint = l.LastSyncedAt, l.APIKeyHint
+		v.SheetTitle, v.GrantLink = l.SheetTitle, l.Credential == opensheetsync.CredentialGrant
+		if l.GoogleFileID != "" {
+			v.SheetURL = "https://docs.google.com/spreadsheets/d/" + url.PathEscape(l.GoogleFileID)
+		}
 		v.Streak, v.AutoDisabledAt, v.VerifiedAt = l.FailureStreak, l.AutoDisabledAt, l.VerifiedAt
 		// NOTE: a passing Save resets the streak and keeps last_error, so a zero streak means the error predates the current settings.
 		if l.FailureStreak > 0 || l.AutoDisabled() {

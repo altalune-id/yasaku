@@ -35,6 +35,10 @@ var upsertGuardExemptions = map[string]string{ //nolint:gochecknoglobals // Immu
 	"limits/sqlite.go:SetOverride":      "limit_overrides is global — an override names its own user, org or project subject, so the table has no org_id column and only operators write it",
 }
 
+func isStoreFile(name string) bool {
+	return storeFileNames[name] || strings.HasSuffix(name, "_postgres.go") || strings.HasSuffix(name, "_sqlite.go")
+}
+
 type conflictSite struct {
 	key     string
 	pos     string
@@ -79,7 +83,7 @@ func collectConflictSites(t *testing.T) []conflictSite {
 		if err != nil {
 			return err
 		}
-		if d.IsDir() || !storeFileNames[d.Name()] {
+		if d.IsDir() || !isStoreFile(d.Name()) {
 			return nil
 		}
 		file, parseErr := parser.ParseFile(fset, path, nil, 0)

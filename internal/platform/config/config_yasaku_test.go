@@ -34,3 +34,15 @@ func TestOpensheet_BlankBaseURLIsUnmounted(t *testing.T) {
 		t.Fatal("a blank base URL must not mount the module")
 	}
 }
+
+func TestLoad_OpensheetAudienceFromEnv(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("YASAKU_OPENSHEET_AUDIENCE", "https://sheets.example.com/api")
+	cfg, err := Load("", withCwdOverride(t, t.TempDir()), withGenesisFallback(t))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Opensheet.Audience != "https://sheets.example.com/api" {
+		t.Fatalf("opensheet.audience = %q", cfg.Opensheet.Audience)
+	}
+}

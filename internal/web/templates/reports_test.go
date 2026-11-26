@@ -78,13 +78,9 @@ func TestReports_ChartsLoadOnlyWhenDrawnAndJSOnlyCardsStartHidden(t *testing.T) 
 	}
 }
 
-func TestReports_ExportShowsOnlyWithSheets(t *testing.T) {
+func TestReports_ExportDownloadsTheZip(t *testing.T) {
 	d := web.LayoutData{ActiveOrg: &web.ActiveOrg{Slug: "acme"}}
-	if strings.Contains(render(t, ReportsPage(d, reportsFixture())), "report.export") {
-		t.Error("export shows without the Sheets module")
-	}
-	d.Opensheet = true
-	requireContains(t, render(t, ReportsPage(d, reportsFixture())), `href="/orgs/acme/projects/home/opensheet"`, "report.export")
+	requireContains(t, render(t, ReportsPage(d, reportsFixture())), `href="/orgs/acme/projects/home/export.zip"`, "report.export")
 }
 
 func TestPercentChange_RoundsHalfAwayFromZero(t *testing.T) {

@@ -26,6 +26,9 @@ type OpensheetLinks struct {
 	CreatedByKeyID    sqlite.ColumnString
 	CreatedAt         sqlite.ColumnString
 	UpdatedAt         sqlite.ColumnString
+	Credential        sqlite.ColumnString
+	SheetTitle        sqlite.ColumnString
+	GoogleFileID      sqlite.ColumnString
 
 	AllColumns sqlite.ColumnList
 }
@@ -53,10 +56,13 @@ func NewOpensheetLinks(tablePrefix string) *OpensheetLinks {
 		createdByKeyID    = sqlite.StringColumn("created_by_key_id")
 		createdAt         = sqlite.StringColumn("created_at")
 		updatedAt         = sqlite.StringColumn("updated_at")
+		credential        = sqlite.StringColumn("credential")
+		sheetTitle        = sqlite.StringColumn("sheet_title")
+		googleFileID      = sqlite.StringColumn("google_file_id")
 		all               = sqlite.ColumnList{
 			id, orgID, projectID, osOrg, osProject, apiKeySealed, apiKeyHint,
 			transactionsSheet, walletsSheet, categoriesSheet, enabled, verifiedAt, lastError, lastSyncedAt,
-			failureStreak, autoDisabledAt, createdBy, createdByKeyID, createdAt, updatedAt,
+			failureStreak, autoDisabledAt, createdBy, createdByKeyID, createdAt, updatedAt, credential, sheetTitle, googleFileID,
 		}
 	)
 	return &OpensheetLinks{
@@ -67,6 +73,6 @@ func NewOpensheetLinks(tablePrefix string) *OpensheetLinks {
 		Enabled: enabled, VerifiedAt: verifiedAt, LastError: lastError, LastSyncedAt: lastSyncedAt,
 		FailureStreak: failureStreak, AutoDisabledAt: autoDisabledAt,
 		CreatedBy: createdBy, CreatedByKeyID: createdByKeyID, CreatedAt: createdAt, UpdatedAt: updatedAt,
-		AllColumns: all,
+		Credential: credential, SheetTitle: sheetTitle, GoogleFileID: googleFileID, AllColumns: all,
 	}
 }

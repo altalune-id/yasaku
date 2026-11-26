@@ -8,6 +8,7 @@ import (
 
 	"altalune.id/yasaku/internal/apperror"
 	"altalune.id/yasaku/internal/ledger"
+	"altalune.id/yasaku/internal/legal"
 	"altalune.id/yasaku/internal/platform/authz"
 	"altalune.id/yasaku/internal/project"
 	"altalune.id/yasaku/internal/web"
@@ -37,11 +38,12 @@ var settingsTimezones = []string{
 //nolint:gochecknoglobals // immutable table
 var settingsCurrencies = []string{"IDR", "USD", "SGD", "MYR", "EUR", "JPY"}
 
-// SettingsHandler serves the per-project ledger settings screen.
+// SettingsHandler serves the per-project ledger settings screen; a nil Wipe answers the wipe route with 404.
 type SettingsHandler struct {
 	Deps
 	Ledgers   *ledger.Service
 	MCPScopes []string
+	Wipe      *ledger.WipeWorkflow
 }
 
 // NewSettingsHandler wires the handler; mcpScopes are the scopes the MCP surface publishes.
@@ -55,6 +57,7 @@ func (h *SettingsHandler) Register(mux web.Mux) {
 	mux.HandleFunc("GET /orgs/{org}/projects/{project}/settings", h.GetSettings)
 	mux.HandleFunc("POST /orgs/{org}/projects/{project}/settings", h.PostSettings)
 	mux.HandleFunc("POST /orgs/{org}/projects/{project}/rename", h.PostRename)
+	mux.HandleFunc("POST /orgs/{org}/projects/{project}/wipe", h.PostWipe)
 }
 
 // GetSettings renders the stored settings, falling back to the project defaults.
@@ -72,6 +75,11 @@ func (h *SettingsHandler) GetSettings(w http.ResponseWriter, r *http.Request) {
 	v := h.view(sc, holds(sc.req, authz.LedgerSettings))
 	v.Timezone, v.Currency, v.PeriodStartDay = st.Timezone, string(st.Currency), st.PeriodStartDay
 	v.NameSaved = sc.req.URL.Query().Get("saved") == "name"
+	v.Wiped = sc.req.URL.Query().Get("saved") == "wiped"
+	v.WipedPartial = sc.req.URL.Query().Get("saved") == "wiped_partial"
+	if sc.req.URL.Query().Get("wipe") == "mismatch" {
+		v.WipeError, v.WipeErrorCode = appErrorBanner(&ledger.WipeConfirmMismatchError{})
+	}
 	Render(w, sc.req, templates.SettingsLayout(h.layout(sc), v))
 }
 
@@ -116,6 +124,39 @@ func (h *SettingsHandler) PostRename(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, web.Path(h.Cfg.HTTP.BasePath, projectPath(sc.org.Slug, sc.project.Slug, "/settings?saved=name")), http.StatusSeeOther) //nolint:gosec // G710: both slugs come from the store and passed their slug patterns
+}
+
+//i18n:use settings.wipe_owner_only
+
+// PostWipe wipes the project's ledger data for a built-in owner whose confirmation is the project's name, then returns to settings.
+func (h *SettingsHandler) PostWipe(w http.ResponseWriter, r *http.Request) {
+	if h.Wipe == nil {
+		http.NotFound(w, r)
+		return
+	}
+	sc, ok := h.RequireProject(w, r)
+	if !ok {
+		return
+	}
+	r = sc.req
+	if err := r.ParseForm(); err != nil {
+		h.ErrorPage(w, r, http.StatusBadRequest, pageTitle(r, "error_title.bad_request"), "Could not parse form body.")
+		return
+	}
+	_, err := h.Wipe.Run(r.Context(), r.PostForm.Get("confirm"))
+	switch {
+	case err == nil:
+		http.Redirect(w, r, web.Path(h.Cfg.HTTP.BasePath, projectPath(sc.org.Slug, sc.project.Slug, "/settings?saved=wiped")), http.StatusSeeOther) //nolint:gosec // G710: both slugs come from the store and passed their slug patterns
+	case ledger.IsWipeSetupIncompleteError(err):
+		http.Redirect(w, r, web.Path(h.Cfg.HTTP.BasePath, projectPath(sc.org.Slug, sc.project.Slug, "/settings?saved=wiped_partial")), http.StatusSeeOther) //nolint:gosec // G710: both slugs come from the store and passed their slug patterns
+	case ledger.IsWipeOwnerOnlyError(err):
+		h.forbidNonManager(w, r, "settings.wipe_owner_only", "Only an owner can wipe this project's data.")
+	case ledger.IsWipeConfirmMismatchError(err):
+		http.Redirect(w, r, web.Path(h.Cfg.HTTP.BasePath, projectPath(sc.org.Slug, sc.project.Slug, "/settings?wipe=mismatch")), http.StatusSeeOther) //nolint:gosec // G710: both slugs come from the store and passed their slug patterns
+	default:
+		h.LogErr("web settings: wipe", err)
+		h.ErrorPage(w, r, http.StatusInternalServerError, pageTitle(r, "error_title.save_failed"), "Could not wipe the project's data.", err)
+	}
 }
 
 // PostSettings validates and persists the submitted settings, rendering a typed refusal as a banner.
@@ -201,6 +242,8 @@ func (h *SettingsHandler) view(sc ProjectScope, canManage bool) templates.Settin
 		Timezones:   settingsTimezones,
 		Currencies:  settingsCurrencies,
 		StartDays:   settingsStartDays(),
+		CanWipe:     h.Wipe != nil && ledger.CanWipe(sc.req.Context()),
+		BackupDays:  legal.BackupDays,
 	}
 	if h.Caps.MCPEnabled {
 		v.MCPEndpoint = h.Cfg.MCP.Audience

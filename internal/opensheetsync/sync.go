@@ -31,7 +31,7 @@ const (
 // Syncer runs opensheet.sync: it leases each dirty row, pushes the row's current state and settles the version it pushed.
 type Syncer struct {
 	store      Store
-	sealer     sealer.Sealer
+	creds      *Credentials
 	endpoint   Endpoint
 	source     Source
 	jobs       Queue
@@ -41,14 +41,15 @@ type Syncer struct {
 	now        func() time.Time
 }
 
-// SyncerDeps is what a Syncer needs beyond its store, logger and reporter; Jobs takes follow-up jobs only when Queued, so an inline run never chains.
+// SyncerDeps is what a Syncer needs beyond its store, logger and reporter; Jobs takes follow-up jobs only when Queued, so an inline run never chains, and a nil Credentials reads API keys with Sealer and leaves grant links needing a reconnect.
 type SyncerDeps struct {
-	Sealer   sealer.Sealer
-	Endpoint Endpoint
-	Source   Source
-	Jobs     Queue
-	Queued   bool
-	Now      func() time.Time
+	Sealer      sealer.Sealer
+	Credentials *Credentials
+	Endpoint    Endpoint
+	Source      Source
+	Jobs        Queue
+	Queued      bool
+	Now         func() time.Time
 }
 
 // NewSyncer binds the sync job to its store, the sealed key, the opensheet endpoint and the source of current rows; a nil unexpected logs.
@@ -61,8 +62,12 @@ func NewSyncer(store Store, log *slog.Logger, unexpected apperror.UnexpectedFunc
 	if unexpected == nil {
 		unexpected = apperror.NewReporter(log, false).Unexpected
 	}
+	creds := d.Credentials
+	if creds == nil {
+		creds = NewCredentials(d.Sealer, nil, nil, log)
+	}
 	return &Syncer{
-		store: store, sealer: d.Sealer, endpoint: d.Endpoint, source: d.Source, jobs: d.Jobs, queued: d.Queued,
+		store: store, creds: creds, endpoint: d.Endpoint, source: d.Source, jobs: d.Jobs, queued: d.Queued,
 		log: log, unexpected: unexpected, now: now,
 	}
 }
@@ -91,21 +96,25 @@ func (s *Syncer) Sync(ctx context.Context, projectID uuid.UUID, refs []Ref) erro
 	if !l.Enabled {
 		return nil
 	}
-	key, err := openKey(s.sealer, l)
+	bearer, c, err := s.client(ctx, l, "")
 	if err != nil {
-		return s.refuse(ctx, l, &SyncRefusedError{Code: "key", Cause: &KeyUnreadableError{Cause: err}})
-	}
-	c, err := s.endpoint.client(l.OSOrg, l.OSProject, key)
-	if err != nil {
-		return s.refuse(ctx, l, &SyncRefusedError{Code: "config", Cause: err})
+		return err
 	}
 	refs = Dedupe(refs)
-	pushed, done := 0, 0
+	pushed, done, renewed := 0, 0, false
 	for _, r := range refs {
 		if !rowBudget(ctx) {
 			break
 		}
 		n, err := s.syncRow(ctx, c, l, r)
+		if !renewed && tokenExpired(l, err) {
+			renewed = true
+			if _, c, err = s.client(ctx, l, bearer); err != nil {
+				return err
+			}
+			pushed += n
+			n, err = s.syncRow(ctx, c, l, r)
+		}
 		pushed += n
 		done++
 		switch {
@@ -125,6 +134,32 @@ func (s *Syncer) Sync(ctx context.Context, projectID uuid.UUID, refs []Ref) erro
 		s.followUp(ctx, l)
 	}
 	return nil
+}
+
+const codeTokenExpired = "TKN001"
+
+// NOTE: stale is the token opensheet just refused as expired, so the grant refreshes past it; an empty stale takes the current token.
+func (s *Syncer) client(ctx context.Context, l *Link, stale string) (string, *opensheet.Client, error) {
+	bearer, err := s.creds.bearer(ctx, l, stale)
+	switch {
+	case IsKeyUnreadableError(err):
+		return "", nil, s.refuse(ctx, l, &SyncRefusedError{Code: "key", Cause: err})
+	case IsReconnectNeededError(err):
+		return "", nil, s.refuse(ctx, l, &SyncRefusedError{Code: "grant", Cause: err})
+	case err != nil:
+		return "", nil, s.fail(ctx, "opensheetsync.Sync: bearer", err, "project_id", l.ProjectID)
+	}
+	c, err := s.endpoint.client(l.OSOrg, l.OSProject, bearer)
+	if err != nil {
+		return "", nil, s.refuse(ctx, l, &SyncRefusedError{Code: "config", Cause: err})
+	}
+	return bearer, c, nil
+}
+
+// NOTE: opensheet answers an expired OAuth access token with 401 TKN001; a grant link refreshes and retries the row once per job.
+func tokenExpired(l *Link, err error) bool {
+	sr, ok := errors.AsType[*SyncRefusedError](err)
+	return ok && l.Credential == CredentialGrant && sr.Code == codeTokenExpired
 }
 
 // NOTE: a mark during the push leaves the row dirty after its settle, so the holder pushes again, at most maxPasses times.
@@ -188,6 +223,17 @@ func (s *Syncer) push(ctx context.Context, c *opensheet.Client, l *Link, st Stat
 		return err
 	}
 	if !found {
+		// NOTE: a wipe removes the rows and the link in one commit, so a row gone with the link this job loaded is never removed from the Sheet.
+		cur, err := s.store.LinkByProject(ctx, l.OrgID, l.ProjectID)
+		if IsLinkNotFoundError(err) {
+			return nil
+		}
+		if err != nil {
+			return s.fail(ctx, "opensheetsync.Sync: link re-check", err, "project_id", l.ProjectID)
+		}
+		if cur.ID != l.ID {
+			return nil
+		}
 		return remove(ctx, c, sheet, id)
 	}
 	tab, _ := TabFor(st.Entity)

@@ -300,3 +300,24 @@ func translateSQLiteDeleteError(err error, id string) error {
 	}
 	return nil
 }
+
+// DeleteAllInProject removes every row in the tenant project on ctx and reports how many rows went.
+func (s *sqliteStore) DeleteAllInProject(ctx context.Context) (int64, error) {
+	tx, owned, tc, err := s.txAcquire(ctx)
+	if err != nil {
+		return 0, err
+	}
+	// SECURITY: org and project predicates; SQLite has no row level security at all.
+	stmt := s.table.DELETE().
+		WHERE(s.table.OrgID.EQ(sqlite.String(tc.OrgID.String())).
+			AND(s.table.ProjectID.EQ(sqlite.String(tc.ProjectID.String()))))
+	res, execErr := stmt.ExecContext(ctx, tx)
+	if execErr != nil {
+		return 0, s.endTx(tx, owned, fmt.Errorf("wallet.sqlite.DeleteAllInProject: %w", execErr))
+	}
+	n, raErr := res.RowsAffected()
+	if raErr != nil {
+		return 0, s.endTx(tx, owned, fmt.Errorf("wallet.sqlite.DeleteAllInProject: rows affected: %w", raErr))
+	}
+	return n, s.endTx(tx, owned, nil)
+}

@@ -1,6 +1,10 @@
 package templates
 
-import "altalune.id/yasaku/internal/web"
+import (
+	"strings"
+
+	"altalune.id/yasaku/internal/web"
+)
 
 type LoginView struct {
 	Error      string
@@ -99,19 +103,43 @@ templ LoginPage(d web.LayoutData, v LoginView) {
 			</p>
 		}
 		if v.TermsURL != "" || v.PrivacyURL != "" {
-			<p data-legal-links class="mt-8 flex items-center justify-center gap-2 text-xs text-base-content/70">
-				if v.TermsURL != "" {
-					<a href={ templ.SafeURL(v.TermsURL) } class="link link-hover">{ d.Tr("title.terms") }</a>
-				}
-				if v.TermsURL != "" && v.PrivacyURL != "" {
-					<span aria-hidden="true">·</span>
-				}
-				if v.PrivacyURL != "" {
-					<a href={ templ.SafeURL(v.PrivacyURL) } class="link link-hover">{ d.Tr("title.privacy") }</a>
-				}
+			<p data-legal-links class="mt-8 text-center text-xs text-pretty text-base-content/70">
+				@consentSentence(d, loginLegalDocs(d, v))
 			</p>
 		}
 	</section>
+}
+
+type legalDoc struct {
+	href  string
+	label string
+}
+
+func loginLegalDocs(d web.LayoutData, v LoginView) []legalDoc {
+	var docs []legalDoc
+	if v.TermsURL != "" {
+		docs = append(docs, legalDoc{href: v.TermsURL, label: d.Tr("title.terms")})
+	}
+	if v.PrivacyURL != "" {
+		docs = append(docs, legalDoc{href: v.PrivacyURL, label: d.Tr("title.privacy")})
+	}
+	return docs
+}
+
+// NOTE: login.consent is split around its {{.Docs}} placeholder, so the locale owns the words on both sides.
+func consentAround(d web.LayoutData) (before, after string) { //nolint:nonamedreturns // two strings differ only by role
+	before, after, _ = strings.Cut(d.Tr("login.consent", "Docs", "\x00"), "\x00")
+	return before, after
+}
+
+templ consentSentence(d web.LayoutData, docs []legalDoc) {
+	{{ before, after := consentAround(d) }}
+	switch len(docs) {
+		case 1:
+			{ before }<a href={ templ.SafeURL(docs[0].href) } class="link link-hover">{ docs[0].label }</a>{ after }
+		case 2:
+			{ before }<a href={ templ.SafeURL(docs[0].href) } class="link link-hover">{ docs[0].label }</a>{ " " + d.Tr("welcome.and") + " " }<a href={ templ.SafeURL(docs[1].href) } class="link link-hover">{ docs[1].label }</a>{ after }
+	}
 }
 
 templ LoginLayout(d web.LayoutData, v LoginView) {

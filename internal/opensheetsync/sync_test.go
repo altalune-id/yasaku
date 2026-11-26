@@ -816,3 +816,51 @@ func TestSync_SendsMoneyColumnsAsNumbersOnCreateAndPatch(t *testing.T) {
 	row, _ := e.sheets.Row("yasaku-wallets", walletID.String())
 	require.Equal(t, "-12500.5", row["balance"], "a negative balance with cents survives as a number")
 }
+
+type linkGoneAfterClaim struct {
+	opensheetsync.Store
+	once    sync.Once
+	replace bool
+}
+
+func (s *linkGoneAfterClaim) Claim(ctx context.Context, orgID, projectID uuid.UUID, ref opensheetsync.Ref, token uuid.UUID, at time.Time, ttl time.Duration) (opensheetsync.State, bool, error) {
+	st, ok, err := s.Store.Claim(ctx, orgID, projectID, ref, token, at, ttl)
+	s.once.Do(func() {
+		err = errors.Join(err, s.DeleteLink(ctx, orgID, projectID))
+		if s.replace {
+			l := opensheetsync.NewLink(orgID, projectID, uuid.New(), uuid.Nil, at)
+			l.Configure(opensheetsync.Settings{OSOrg: "acme", OSProject: "home", Sheets: opensheetsync.DefaultSheetSlugs()}, []byte("sealed"), "", at)
+			err = errors.Join(err, s.SaveLink(ctx, l))
+		}
+	})
+	return st, ok, err
+}
+
+func TestPush_LinkGoneSkipsRemove(t *testing.T) {
+	for _, replaced := range []bool{false, true} {
+		t.Run(map[bool]string{false: "removed", true: "replaced by a new link"}[replaced], func(t *testing.T) { pushAfterLinkGone(t, replaced) })
+	}
+}
+
+func pushAfterLinkGone(t *testing.T, replaced bool) {
+	t.Helper()
+	e := newSyncEnv(t)
+	r := e.tx(t, "x")
+	require.NoError(t, e.syncer.Sync(e.ctx, e.tc.ProjectID, []opensheetsync.Ref{r}))
+	e.source.mu.Lock()
+	delete(e.source.txs, r.ID)
+	e.source.mu.Unlock()
+	require.NoError(t, e.mirror.Mark(e.ctx, r))
+
+	syncer := opensheetsync.NewSyncer(&linkGoneAfterClaim{Store: e.store, replace: replaced}, slog.New(slog.DiscardHandler),
+		apperror.NewReporter(slog.New(slog.DiscardHandler), false).Unexpected, opensheetsync.SyncerDeps{
+			Sealer:   e.sealer,
+			Endpoint: opensheetsync.Endpoint{BaseURL: e.sheets.URL(), AllowPrivateHosts: true, Timeout: 2 * time.Second},
+			Source:   e.source, Now: func() time.Time { return e.now },
+		})
+	require.NoError(t, syncer.Sync(e.ctx, e.tc.ProjectID, []opensheetsync.Ref{r}))
+	require.Zero(t, e.sheets.CountRequests(http.MethodDelete, "yasaku-transactions"), "a wipe never blanks the Sheet")
+	row, ok := e.sheets.Row("yasaku-transactions", r.ID.String())
+	require.True(t, ok)
+	require.Empty(t, row["deleted_at"])
+}

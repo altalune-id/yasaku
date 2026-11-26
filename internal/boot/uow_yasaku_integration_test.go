@@ -31,12 +31,14 @@ import (
 )
 
 type pgServices struct {
-	svcs  *Services
-	db    *sql.DB
-	q     func(string) string
-	ctx   context.Context
-	tc    tenant.Context
-	store opensheetsync.Store
+	svcs   *Services
+	db     *sql.DB
+	q      func(string) string
+	ctx    context.Context
+	tc     tenant.Context
+	store  opensheetsync.Store
+	grants opensheetsync.GrantStore
+	issuer *fakeIssuer
 }
 
 // NOTE: AllowBypassRLS, as the other Postgres fixtures do; these tests are about locks, not about RLS.
@@ -59,8 +61,9 @@ func newPgServices(t *testing.T, mounted bool) pgServices {
 		// NOTE: a disabled queue with nothing bound: a kick reports an undeclared job and returns, which keeps these tests about the write path.
 		Queue: queue.Disabled(log),
 	}
+	var issuer *fakeIssuer
 	if mounted {
-		mountOpensheet(cfg)
+		issuer = mountOpensheetGrants(t, cfg)
 		key, kErr := sealer.ParseKey(testEncryptionKey)
 		require.NoError(t, kErr)
 		k.Sealer, err = sealer.New(key)
@@ -81,7 +84,7 @@ func newPgServices(t *testing.T, mounted bool) pgServices {
 	tc := tenant.Context{OrgID: orgID, ProjectID: projID, UserID: userID}
 	return pgServices{
 		svcs: svcs, db: sqlDB, q: q, ctx: fakes.Owner(context.Background(), tc), tc: tc,
-		store: opensheetsync.NewStore(cfg.DB, k.Pool, k.PgConn),
+		store: opensheetsync.NewStore(cfg.DB, k.Pool, k.PgConn), grants: opensheetsync.NewGrantStore(cfg.DB, k.Pool, k.PgConn), issuer: issuer,
 	}
 }
 
@@ -180,4 +183,9 @@ func TestMark_Postgres_RenameAndReviseNeverDeadlock(t *testing.T) {
 		require.NoError(t, g.Wait())
 	}
 	require.Equal(t, 5, p.dirty(t, "transaction"), "the transactions were marked, so the test exercised the state-row locks")
+}
+
+func TestWipe_Postgres_ClosedPeriodsGoneAndProjectUsable(t *testing.T) {
+	p := newPgServices(t, true)
+	runWipeScenario(t, wipeFixture{svcs: p.svcs, ctx: p.ctx, tc: p.tc, store: p.store, grants: p.grants, issuer: p.issuer, name: "Cash"})
 }

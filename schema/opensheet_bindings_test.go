@@ -66,6 +66,7 @@ func TestOpensheetBindings_MatchTheMigratedColumns(t *testing.T) {
 	}
 	prefix := cfg.DB.TablePrefix
 	links, state := sqliteColumns(ctx, t, db, prefix+"opensheet_links"), sqliteColumns(ctx, t, db, prefix+"opensheet_sync_state")
+	grants := sqliteColumns(ctx, t, db, prefix+"opensheet_grants")
 	for _, tc := range []struct {
 		name string
 		got  []string
@@ -75,6 +76,8 @@ func TestOpensheetBindings_MatchTheMigratedColumns(t *testing.T) {
 		{"postgres opensheet_sync_state", pgNames(pgent.NewOpensheetSyncState("", prefix).AllColumns), state},
 		{"sqlite opensheet_links", sqliteNames(sqliteent.NewOpensheetLinks(prefix).AllColumns), links},
 		{"sqlite opensheet_sync_state", sqliteNames(sqliteent.NewOpensheetSyncState(prefix).AllColumns), state},
+		{"postgres opensheet_grants", pgNames(pgent.NewOpensheetGrants("", prefix).AllColumns), grants},
+		{"sqlite opensheet_grants", sqliteNames(sqliteent.NewOpensheetGrants(prefix).AllColumns), grants},
 	} {
 		if !slices.Equal(tc.got, tc.want) {
 			t.Errorf("%s binding columns = %v, migration has %v", tc.name, tc.got, tc.want)

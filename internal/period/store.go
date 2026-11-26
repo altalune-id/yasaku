@@ -21,6 +21,8 @@ type Store interface {
 	Neighbors(ctx context.Context, orgID, projectID, id uuid.UUID) (prev, next *Period, err error)
 	SaveClosing(ctx context.Context, c *Closing) error
 	ListClosings(ctx context.Context, orgID, projectID, periodID uuid.UUID) ([]*Closing, error)
+	// DeleteAllInProject removes every period and closing of the tenant project on ctx and reports how many went; only a wipe calls it.
+	DeleteAllInProject(ctx context.Context) (int64, error)
 }
 
 // LockingStore is the optional Store extension whose read takes a row lock inside the caller's unit of work.

@@ -8,6 +8,8 @@ type OpensheetConfig struct {
 	BaseURL string `yaml:"baseURL" mapstructure:"baseURL" awareness:"bootstrap" validate:"omitempty,http_url"`
 	// SECURITY: lets BaseURL resolve to a private address, as Railway private networking does; leave false on a public host.
 	AllowPrivateHosts bool `yaml:"allowPrivateHosts" mapstructure:"allowPrivateHosts" awareness:"bootstrap"`
+	// Audience is opensheet's API resource identifier (RFC 8707); empty hides the OAuth connect.
+	Audience string `yaml:"audience" mapstructure:"audience" awareness:"bootstrap"`
 }
 
 // Mounted reports whether the Opensheet module is mounted at all.
