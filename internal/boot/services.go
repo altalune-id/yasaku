@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/altalune-id/oidcrp"
 	"github.com/google/uuid"
 
 	"altalune.id/yasaku/internal/apikey"
@@ -79,14 +80,18 @@ type Services struct {
 	Periods      *period.Service
 	Transactions *transaction.Service
 	Reports      *report.Service
+	Export       *report.Exporter
 
 	// Opensheet is nil when opensheet.baseURL is empty, as are OpensheetSync and OpensheetMirror.
 	Opensheet       *opensheetsync.Service
 	OpensheetSync   *opensheetsync.Syncer
 	OpensheetMirror *opensheetsync.Mirror
+	// OpensheetAuth is the OAuth client for opensheet's API; nil also when opensheet.audience or oidc.issuer is empty.
+	OpensheetAuth *oidcrp.Client
 
 	Onboard    *user.OnboardWorkflow
 	WalletOpen *wallet.OpenWorkflow
+	Wipe       *ledger.WipeWorkflow
 
 	Authn       authn.Chain
 	KeyAuthn    *apikey.Authenticator
@@ -155,7 +160,14 @@ func buildServices(cfg *config.Config, k *platform.Kernel, caps capabilities.Cap
 	walletOpen := wallet.NewOpenWorkflow(wallets, transactions, openingDaterFor(periods), wallet.UnitOfWork(uow), log, reporter.Unexpected)
 	opensheet, opensheetSync := osw.services(k, log, opensheetSource{
 		txs: transactions, wallets: wallets, cats: txCategories, periods: periods, ledgers: ledgers,
-	}, uow)
+	}, uow, recorder)
+	export := report.NewExporter(exportSource{wallets: wallets, cats: txCategories, txs: transactions, periods: periods},
+		ledgers, uow, recorder, log, reporter.Unexpected)
+	wipe := ledger.NewWipeWorkflow(ledger.WipeDeps{
+		Projects: projectNamer{store: projectStore}, Opensheet: opensheetDisconnector(opensheet), Limits: limiter,
+		Transactions: transactionStore, Periods: periodStore, Wallets: walletStore, Categories: txCategoryStore,
+		Seeder: txCategories, Current: currentPeriod{periods: periods}, Audit: recorder, UnitOfWork: uow,
+	}, log, reporter.Unexpected)
 
 	invitesEnabled := cfg.Mode == config.ModeCloud || cfg.OIDC.Issuer != ""
 
@@ -265,6 +277,9 @@ func buildServices(cfg *config.Config, k *platform.Kernel, caps capabilities.Cap
 	keys := apikey.NewService(keyStore, keyScheme, orgs, projectServiceForAPIKeys{svc: projects}, log, reporter.Unexpected,
 		apikey.WithAudit(uow, recorder))
 	orgs.OnMemberRemoved(keys.RevokePersonalOf)
+	if osw.creds != nil {
+		orgs.OnMemberRemoved(osw.creds.RevokeMember)
+	}
 	// SECURITY: key first, so its shape gate rejects a non-key credential without a DB call.
 	tenantResolution := user.WithTenantResolution(
 		orgStoreForOnboard{store: orgStore},
@@ -307,13 +322,16 @@ func buildServices(cfg *config.Config, k *platform.Kernel, caps capabilities.Cap
 		Periods:      periods,
 		Transactions: transactions,
 		Reports:      reports,
+		Export:       export,
 
 		Opensheet:       opensheet,
 		OpensheetSync:   opensheetSync,
 		OpensheetMirror: osw.mirror,
+		OpensheetAuth:   osw.auth,
 
 		Onboard:    onboardWorkflow,
 		WalletOpen: walletOpen,
+		Wipe:       wipe,
 
 		Authn:       chain,
 		KeyAuthn:    keyAuthn,

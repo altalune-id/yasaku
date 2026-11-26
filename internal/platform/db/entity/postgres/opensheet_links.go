@@ -26,6 +26,9 @@ type OpensheetLinks struct {
 	CreatedByKeyID    postgres.ColumnString
 	CreatedAt         postgres.ColumnTimestampz
 	UpdatedAt         postgres.ColumnTimestampz
+	Credential        postgres.ColumnString
+	SheetTitle        postgres.ColumnString
+	GoogleFileID      postgres.ColumnString
 
 	AllColumns postgres.ColumnList
 }
@@ -56,10 +59,13 @@ func NewOpensheetLinks(schema, tablePrefix string) *OpensheetLinks {
 		createdByKeyID    = postgres.StringColumn("created_by_key_id")
 		createdAt         = postgres.TimestampzColumn("created_at")
 		updatedAt         = postgres.TimestampzColumn("updated_at")
+		credential        = postgres.StringColumn("credential")
+		sheetTitle        = postgres.StringColumn("sheet_title")
+		googleFileID      = postgres.StringColumn("google_file_id")
 		all               = postgres.ColumnList{
 			id, orgID, projectID, osOrg, osProject, apiKeySealed, apiKeyHint,
 			transactionsSheet, walletsSheet, categoriesSheet, enabled, verifiedAt, lastError, lastSyncedAt,
-			failureStreak, autoDisabledAt, createdBy, createdByKeyID, createdAt, updatedAt,
+			failureStreak, autoDisabledAt, createdBy, createdByKeyID, createdAt, updatedAt, credential, sheetTitle, googleFileID,
 		}
 	)
 	return &OpensheetLinks{
@@ -70,6 +76,6 @@ func NewOpensheetLinks(schema, tablePrefix string) *OpensheetLinks {
 		Enabled: enabled, VerifiedAt: verifiedAt, LastError: lastError, LastSyncedAt: lastSyncedAt,
 		FailureStreak: failureStreak, AutoDisabledAt: autoDisabledAt,
 		CreatedBy: createdBy, CreatedByKeyID: createdByKeyID, CreatedAt: createdAt, UpdatedAt: updatedAt,
-		AllColumns: all,
+		Credential: credential, SheetTitle: sheetTitle, GoogleFileID: googleFileID, AllColumns: all,
 	}
 }

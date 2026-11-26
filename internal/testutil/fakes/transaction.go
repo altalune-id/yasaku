@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"altalune.id/yasaku/internal/platform/tenant"
 	"altalune.id/yasaku/internal/transaction"
 	"altalune.id/yasaku/money"
 )
@@ -278,4 +279,22 @@ func (f *Transaction) Locks() []uuid.UUID {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return append([]uuid.UUID(nil), f.locks...)
+}
+
+// DeleteAllInProject removes every row in the tenant project on ctx and reports how many went.
+func (f *Transaction) DeleteAllInProject(ctx context.Context) (int64, error) {
+	tc, err := tenant.From(ctx)
+	if err != nil {
+		return 0, err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var n int64
+	for id, row := range f.data {
+		if row.OrgID == tc.OrgID && row.ProjectID == tc.ProjectID {
+			delete(f.data, id)
+			n++
+		}
+	}
+	return n, nil
 }

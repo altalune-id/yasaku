@@ -58,6 +58,9 @@ type pgLinkRow struct {
 	CreatedByKeyID    *uuid.UUID `alias:"opensheet_links.created_by_key_id"`
 	CreatedAt         time.Time  `alias:"opensheet_links.created_at"`
 	UpdatedAt         time.Time  `alias:"opensheet_links.updated_at"`
+	Credential        string     `alias:"opensheet_links.credential"`
+	SheetTitle        *string    `alias:"opensheet_links.sheet_title"`
+	GoogleFileID      *string    `alias:"opensheet_links.google_file_id"`
 }
 
 func (r *pgLinkRow) toLink() *Link {
@@ -68,7 +71,8 @@ func (r *pgLinkRow) toLink() *Link {
 		Enabled: r.Enabled, VerifiedAt: utcPtr(r.VerifiedAt), LastError: r.LastError, LastSyncedAt: utcPtr(r.LastSyncedAt),
 		FailureStreak: int(r.FailureStreak), AutoDisabledAt: utcPtr(r.AutoDisabledAt),
 		CreatedBy: derefUUID(r.CreatedBy), CreatedByKeyID: derefUUID(r.CreatedByKeyID),
-		CreatedAt: r.CreatedAt.UTC(), UpdatedAt: r.UpdatedAt.UTC(),
+		CreatedAt: r.CreatedAt.UTC(), UpdatedAt: r.UpdatedAt.UTC(), Credential: Credential(r.Credential),
+		SheetTitle: derefString(r.SheetTitle), GoogleFileID: derefString(r.GoogleFileID),
 	}
 }
 
@@ -117,7 +121,8 @@ func (s *postgresStore) SaveLink(ctx context.Context, l *Link) error {
 			l.ID, l.OrgID, l.ProjectID, l.OSOrg, l.OSProject, l.APIKeySealed, l.APIKeyHint,
 			l.Sheets.Transactions, l.Sheets.Wallets, l.Sheets.Categories, l.Enabled, pgTimeArg(l.VerifiedAt),
 			l.LastError, pgTimeArg(l.LastSyncedAt), int64(l.FailureStreak), pgTimeArg(l.AutoDisabledAt),
-			pgUUIDArg(l.CreatedBy), pgUUIDArg(l.CreatedByKeyID), l.CreatedAt.UTC(), l.UpdatedAt.UTC(),
+			pgUUIDArg(l.CreatedBy), pgUUIDArg(l.CreatedByKeyID), l.CreatedAt.UTC(), l.UpdatedAt.UTC(), string(l.Credential),
+			textArg(l.SheetTitle), textArg(l.GoogleFileID),
 		).
 		ON_CONFLICT(t.ProjectID).
 		// SECURITY: the conflict clause carries the tenant predicate; without it a Save naming another org's project rewrites that org's link.
@@ -135,6 +140,9 @@ func (s *postgresStore) SaveLink(ctx context.Context, l *Link) error {
 			t.FailureStreak.SET(postgres.Int32(int32(l.FailureStreak))), //nolint:gosec // a streak stops at DisableAfter
 			t.AutoDisabledAt.SET(pgTimeExpr(l.AutoDisabledAt)),
 			t.UpdatedAt.SET(postgres.TimestampzT(l.UpdatedAt.UTC())),
+			t.Credential.SET(postgres.String(string(l.Credential))),
+			t.SheetTitle.SET(pgTextExpr(l.SheetTitle)),
+			t.GoogleFileID.SET(pgTextExpr(l.GoogleFileID)),
 		).WHERE(t.OrgID.EQ(postgres.UUID(l.OrgID))))
 	res, err := stmt.ExecContext(ctx, tx)
 	if err != nil {
@@ -286,6 +294,13 @@ func pgTimeExpr(t *time.Time) postgres.TimestampzExpression {
 	return postgres.TimestampzT(t.UTC())
 }
 
+func pgTextExpr(s string) postgres.StringExpression {
+	if s == "" {
+		return pgent.NullText()
+	}
+	return postgres.String(s)
+}
+
 func pgUUIDArg(id uuid.UUID) any {
 	if id == uuid.Nil {
 		return nil
@@ -306,4 +321,18 @@ func derefUUID(id *uuid.UUID) uuid.UUID {
 		return uuid.Nil
 	}
 	return *id
+}
+
+func derefString(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
+func textArg(s string) any {
+	if s == "" {
+		return nil
+	}
+	return s
 }

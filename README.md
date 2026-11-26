@@ -111,6 +111,8 @@ exported surface is frozen, additive changes only. Everything under
 
 Invite issuance requires `mode=cloud` or `oidc.issuer` set. `/signup/complete` runs only in cloud mode; the T&C checkbox appears when `compliance.requireAcceptance=true`.
 
+Self-hosting for more than one person needs OIDC: without `oidc.issuer` nobody can be invited. Limits are unlimited when self-hosted; the operator sets them with `yasaku admin limits` ([deployment](docs/deployment/yasaku.md#limits)).
+
 ## Documentation
 
 | Doc                                                   | For                                                  |

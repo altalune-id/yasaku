@@ -14,6 +14,7 @@ import (
 	"altalune.id/yasaku/civil"
 	"altalune.id/yasaku/internal/apperror"
 	"altalune.id/yasaku/internal/platform/authz"
+	pdb "altalune.id/yasaku/internal/platform/db"
 	"altalune.id/yasaku/internal/platform/sealer"
 	"altalune.id/yasaku/internal/platform/tenant"
 )
@@ -27,14 +28,16 @@ const (
 // UnitOfWork runs fn so that every write inside it commits or rolls back together.
 type UnitOfWork func(ctx context.Context, fn func(ctx context.Context) error) error
 
-// ServiceDeps is what Service needs beyond its store, logger and reporter.
+// ServiceDeps is what Service needs beyond its store, logger and reporter; a nil Credentials reads API keys with Sealer and holds no grants, and a nil Audit records nothing.
 type ServiceDeps struct {
-	Mirror     *Mirror
-	Sealer     sealer.Sealer
-	Endpoint   Endpoint
-	Source     Source
-	UnitOfWork UnitOfWork
-	Now        func() time.Time
+	Audit       Auditor
+	Mirror      *Mirror
+	Sealer      sealer.Sealer
+	Credentials *Credentials
+	Endpoint    Endpoint
+	Source      Source
+	UnitOfWork  UnitOfWork
+	Now         func() time.Time
 }
 
 // Service manages a project's opensheet link: the Test, Save, the Enabled switch, the backfill and removal.
@@ -44,9 +47,11 @@ type Service struct {
 	unexpected apperror.UnexpectedFunc
 	mirror     *Mirror
 	sealer     sealer.Sealer
+	creds      *Credentials
 	endpoint   Endpoint
 	source     Source
 	uow        UnitOfWork
+	audit      Auditor
 	now        func() time.Time
 }
 
@@ -54,7 +59,10 @@ type Service struct {
 func NewService(store Store, log *slog.Logger, unexpected apperror.UnexpectedFunc, d ServiceDeps) *Service {
 	s := &Service{
 		store: store, log: log.With("module", "opensheetsync"), unexpected: unexpected,
-		mirror: d.Mirror, sealer: d.Sealer, endpoint: d.Endpoint, source: d.Source, uow: d.UnitOfWork, now: d.Now,
+		mirror: d.Mirror, sealer: d.Sealer, creds: d.Credentials, endpoint: d.Endpoint, source: d.Source, uow: d.UnitOfWork, audit: d.Audit, now: d.Now,
+	}
+	if s.creds == nil {
+		s.creds = NewCredentials(d.Sealer, nil, nil, log)
 	}
 	if s.uow == nil {
 		s.uow = func(ctx context.Context, fn func(ctx context.Context) error) error { return fn(ctx) }
@@ -65,9 +73,10 @@ func NewService(store Store, log *slog.Logger, unexpected apperror.UnexpectedFun
 	return s
 }
 
-// Status is the module page's state: the link, nil when there is none, the project's backlog and its latest refused rows.
+// Status is the module page's state: the link, nil when there is none, how its grant stands, the project's backlog and its latest refused rows.
 type Status struct {
-	Link *Link
+	Link   *Link
+	Access Access
 	Backlog
 	Rows []FailedRow
 }
@@ -90,10 +99,17 @@ func (s *Service) Status(ctx context.Context) (Status, error) {
 	}
 	l, err := s.store.LinkByProject(ctx, tc.OrgID, tc.ProjectID)
 	if IsLinkNotFoundError(err) {
-		return Status{}, nil
+		l, err = nil, nil
 	}
 	if err != nil {
 		return Status{}, s.unexpected(ctx, "opensheetsync.Status: link", err, "project_id", tc.ProjectID)
+	}
+	access, err := s.access(ctx, tc, l)
+	if err != nil {
+		return Status{}, s.unexpected(ctx, "opensheetsync.Status: grant", err, "project_id", tc.ProjectID)
+	}
+	if l == nil {
+		return Status{Access: access}, nil
 	}
 	b, err := s.store.Backlog(ctx, tc.OrgID, tc.ProjectID)
 	if err != nil {
@@ -103,7 +119,7 @@ func (s *Service) Status(ctx context.Context) (Status, error) {
 	if err != nil {
 		return Status{}, s.unexpected(ctx, "opensheetsync.Status: failing rows", err, "project_id", tc.ProjectID)
 	}
-	return Status{Link: l, Backlog: b, Rows: s.labelled(ctx, rows)}, nil
+	return Status{Link: l, Access: access, Backlog: b, Rows: s.labelled(ctx, rows)}, nil
 }
 
 func (s *Service) labelled(ctx context.Context, rows []RowFailure) []FailedRow {
@@ -271,19 +287,81 @@ func (s *Service) SyncNow(ctx context.Context) (int64, error) {
 	return n, nil
 }
 
-// Delete removes the link and its sync state; the sheet's rows are left alone.
+// Delete removes the link, its sync state and the project's grant, then revokes the grant best-effort; the sheet's rows are left alone.
 func (s *Service) Delete(ctx context.Context) error {
 	ctx, span := tracer.Start(ctx, "opensheetsync.Delete")
 	defer span.End()
 
-	tc, err := s.manager(ctx)
+	revoke, err := s.PrepareRevoke(ctx)
 	if err != nil {
 		return err
 	}
-	if err := s.store.DeleteLink(ctx, tc.OrgID, tc.ProjectID); err != nil {
-		return s.passOrReport(ctx, "opensheetsync.Delete: delete", err, tc)
+	tc, _ := tenant.From(ctx)
+	found, err := s.unlink(ctx, "opensheet.disconnected")
+	if err != nil {
+		return err
 	}
+	if !found {
+		return &LinkNotFoundError{ProjectID: tc.ProjectID.String()}
+	}
+	s.creds.revoke(ctx, revoke, tc.ProjectID)
 	return nil
+}
+
+// PrepareRevoke reads the project's grant and returns what revokes it at the upstream IdP, or nil when there is none; run it before a unit of work that unlinks.
+func (s *Service) PrepareRevoke(ctx context.Context) (func(ctx context.Context) error, error) {
+	tc, err := s.manager(ctx)
+	if err != nil {
+		return nil, err
+	}
+	revoke, err := s.creds.PrepareRevoke(ctx, tc.OrgID, tc.ProjectID)
+	if err != nil {
+		return nil, s.unexpected(ctx, "opensheetsync.PrepareRevoke", err, "org_id", tc.OrgID, "project_id", tc.ProjectID)
+	}
+	return revoke, nil
+}
+
+// Unlink removes the link, its sync state and the project's grant in the caller's unit of work, never calling opensheet; no link is not an error.
+func (s *Service) Unlink(ctx context.Context) error {
+	_, err := s.unlink(ctx, "")
+	return err
+}
+
+func (s *Service) unlink(ctx context.Context, action string) (bool, error) {
+	tc, err := s.manager(ctx)
+	if err != nil {
+		return false, err
+	}
+	run := s.uow
+	if _, ok := pdb.CurrentTx(ctx); ok {
+		run = func(ctx context.Context, fn func(ctx context.Context) error) error { return fn(ctx) }
+	}
+	var found bool
+	err = run(ctx, func(ctx context.Context) error {
+		if s.creds.grants != nil {
+			err := s.creds.grants.store.DeleteGrant(ctx, tc.OrgID, tc.ProjectID)
+			if err != nil && !IsGrantNotFoundError(err) {
+				return err
+			}
+			found = err == nil
+		}
+		err := s.store.DeleteLink(ctx, tc.OrgID, tc.ProjectID)
+		if IsLinkNotFoundError(err) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		found = true
+		if action == "" {
+			return nil
+		}
+		return s.record(ctx, action, tc)
+	})
+	if err != nil {
+		return false, s.passOrReport(ctx, "opensheetsync.Delete: delete", err, tc)
+	}
+	return found, nil
 }
 
 // SECURITY: only a principal holding ledger:settings re-points the mirror; a key holds it only through a creator who does.
@@ -315,6 +393,9 @@ func (s *Service) resolve(ctx context.Context, tc tenant.Context, in Settings) (
 	if err != nil {
 		return in, nil, s.unexpected(ctx, "opensheetsync: link", err, "project_id", tc.ProjectID)
 	}
+	if existing != nil && existing.Credential == CredentialGrant {
+		return in, existing, &InvalidSettingError{Field: "api_key", Reason: "this project is connected through OpenSheet; disconnect it first"}
+	}
 	if err := in.Validate(existing == nil); err != nil {
 		return in, existing, err
 	}
@@ -330,7 +411,10 @@ func (s *Service) resolve(ctx context.Context, tc tenant.Context, in Settings) (
 }
 
 func (s *Service) savedKey(ctx context.Context, tc tenant.Context, l *Link) (string, error) {
-	key, err := openKey(s.sealer, l)
+	key, err := s.creds.Bearer(ctx, l)
+	if IsReconnectNeededError(err) {
+		return "", err
+	}
 	if sealer.IsOpenFailedError(err) {
 		s.log.WarnContext(ctx, "opensheetsync: the saved API key cannot be opened; it must be entered again",
 			slog.String("project_id", tc.ProjectID.String()))

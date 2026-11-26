@@ -37,7 +37,11 @@ func publishedConsoleHandlers(all []web.Register) []web.Register {
 func yasakuConsoleHandlers(deps webhandlers.Deps, s *Services) []web.Register {
 	var hs []web.Register
 	if s.Opensheet != nil {
-		hs = append(hs, webhandlers.NewOpensheetHandler(deps, s.Opensheet))
+		var auth webhandlers.OpensheetAuth
+		if s.OpensheetAuth != nil {
+			auth = s.OpensheetAuth
+		}
+		hs = append(hs, webhandlers.NewOpensheetHandler(deps, s.Opensheet, auth))
 	}
 	return hs
 }

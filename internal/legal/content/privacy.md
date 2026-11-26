@@ -1,39 +1,47 @@
 ---
 title: Privacy Policy
-updated: 2026-09-02
+updated: 2026-11-25
 ---
 
-<!-- SAMPLE — replace before public release. This is placeholder privacy text for a self-hosted yasaku deployment. Consult counsel before publishing. -->
+This policy explains what this yasaku service stores, who can see it, and how you take it out or delete it. "We" means the operator of this service.
 
-# Privacy Policy
+## 1. What we store
 
-This policy explains what the operator of this deployment collects, why, and what they do with it.
+- Your account: email address, display name and the organizations you belong to.
+- Your ledger: projects, wallets, categories, transactions with their notes, and budget periods.
+- Settings and access: project settings, members and their roles, invites, and API keys.
+- An activity log of changes to your organization, such as members joining, keys created and data wiped.
+- Basic technical logs (time, request path, IP address) needed to run and secure the service.
 
-## 1. What is collected
+## 2. AI assistants
 
-- Account details you provide, such as your email address and display name.
-- Content you enter into the Service, such as projects and todos.
-- Basic technical logs (timestamps, request paths, source IP) needed to operate and secure the deployment.
+When you connect an AI assistant to a project, it reads and records entries in that project with the access you grant it. What the assistant reads is also processed by the company that runs it, under that company's own terms.
 
-## 2. Why it is collected
+## 3. Your OpenSheet copy
 
-- To authenticate you and keep your session safe.
-- To store the content you asked the Service to keep.
-- To detect and respond to abuse or security incidents.
+When you turn on OpenSheet sync, your wallets, categories and transactions are copied to the Google Sheet you chose. That copy lives in your Google account. Disconnecting OpenSheet or wiping a project leaves the Sheet as it is.
 
-## 3. Sharing
+## 4. Sharing
 
-The operator does not sell your data. Data is shared with third parties only when required by law or when necessary to run the Service (for example, an identity provider you signed in through).
+We never sell your data. We share it only when the law requires it, or with the services we need to run yasaku, such as the identity provider you sign in with and our hosting provider.
 
-## 4. Retention
+## 5. Staff access
 
-Account and content data are retained while your account is active. Technical logs are retained only as long as needed for security and operational purposes.
+Our staff can open your organization only to help with a support request. A support visit is read-only: staff cannot change anything. Each visit records the reason, the owners of the organization are emailed when it starts, and every visit is listed in the organization's Activity page.
 
-## 5. Your choices
+## 6. How long we keep it
 
-- You can request removal of your account by contacting the operator.
-- You can sign out at any time to end your session on this device.
+- Your account and ledger stay while your account is active.
+- Activity records are kept for at least 1 year.
+- Deleted data stays in our database backups for up to 7 days, then it is gone.
 
-## 6. Contact
+## 7. Take it out or delete it
 
-Direct privacy questions to the operator of this deployment.
+- Download a project's wallets, categories, transactions and periods as CSV files from the project settings at any time.
+- An owner can wipe a project's data from the project settings.
+- To delete your account, email %CONTACT%.
+- We confirm an account deletion within 72 hours and finish within 30 days.
+
+## 8. Contact
+
+Send privacy questions to %CONTACT%.

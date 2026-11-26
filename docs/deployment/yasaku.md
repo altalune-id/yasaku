@@ -151,6 +151,17 @@ the CLI, which opens the database as `migrate` does:
 Keys: `user.orgs_created`, `user.orgs_joined`, `org.members`, `org.projects`, `org.custom_roles`,
 `project.wallets`. A key only takes the subject it counts against.
 
+## Self-hosting for several people
+
+Invites need OIDC. Without `oidc.issuer` only the genesis user and password-set users sign in, and
+the invite form stays hidden. Set `YASAKU_OIDC_ISSUER` before adding people.
+
+## Backups
+
+The privacy policy and the wipe dialog state that deleted data leaves the backups within
+`legal.BackupDays` days (7). Set the database's backup or history retention to that number, or
+change the constant and the privacy policy together.
+
 ## Local dev
 
 The queue is off by default, so jobs run inline. To run against NATS:

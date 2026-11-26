@@ -1,16 +1,20 @@
 package handlers
 
 import (
+	"bytes"
 	"cmp"
 	"math"
 	"net/http"
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
+	"altalune.id/yasaku/internal/i18n"
 	"altalune.id/yasaku/internal/period"
+	"altalune.id/yasaku/internal/platform/authz"
 	"altalune.id/yasaku/internal/project"
 	"altalune.id/yasaku/internal/report"
 	"altalune.id/yasaku/internal/web"
@@ -25,11 +29,12 @@ const reportMaxSlices = 5
 //i18n:use report.other
 const reportOtherKey = "report.other"
 
-// ReportHandler renders the read-only reporting page for one project.
+// ReportHandler renders the read-only reporting page and the CSV export for one project; a nil Export answers the export route with 404.
 type ReportHandler struct {
 	Deps
 	Reports *report.Service
 	Periods *period.Service
+	Export  *report.Exporter
 }
 
 // NewReportHandler wires the handler.
@@ -41,6 +46,41 @@ func NewReportHandler(d Deps, projects *project.Service, reports *report.Service
 // Register wires the report routes onto mux.
 func (h *ReportHandler) Register(mux web.Mux) {
 	mux.HandleFunc("GET /orgs/{org}/projects/{project}/reports", h.GetReports)
+	mux.HandleFunc("GET /orgs/{org}/projects/{project}/export.zip", h.GetExport)
+}
+
+//i18n:use report.export_denied
+
+// GetExport downloads the project's wallets, categories, transactions and periods as a zip of CSV files.
+func (h *ReportHandler) GetExport(w http.ResponseWriter, r *http.Request) {
+	if h.Export == nil {
+		http.NotFound(w, r)
+		return
+	}
+	sc, ok := h.RequireProject(w, r)
+	if !ok {
+		return
+	}
+	var buf bytes.Buffer
+	if err := h.Export.WriteZip(sc.req.Context(), &buf); err != nil {
+		switch {
+		case authz.IsDeniedError(err):
+			h.forbidNonManager(w, sc.req, "report.export_denied", "You need to see wallets, categories and transactions to export them.")
+			return
+		case authz.IsSupportReadOnlyError(err):
+			h.ErrorPage(w, sc.req, http.StatusForbidden, pageTitle(sc.req, "error_title.not_allowed"),
+				i18n.TranslatorFrom(sc.req.Context()).T("authz.support_read_only", "Org", sc.org.Name), &authz.SupportReadOnlyError{Org: sc.org.Name})
+			return
+		}
+		h.LogErr("web report: export", err)
+		h.ErrorPage(w, sc.req, http.StatusInternalServerError, pageTitle(sc.req, "error_title.load_failed"), "Could not export the project.", err)
+		return
+	}
+	name := sc.project.Slug + "-" + time.Now().UTC().Format("2006-01-02") + ".zip"
+	w.Header().Set("Content-Type", "application/zip")
+	w.Header().Set("Content-Disposition", `attachment; filename="`+name+`"`)
+	w.Header().Set("Cache-Control", "no-store")
+	_, _ = w.Write(buf.Bytes())
 }
 
 // GetReports renders the totals, spending, comparison, flows and cashflow for one period.

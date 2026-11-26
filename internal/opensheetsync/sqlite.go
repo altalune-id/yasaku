@@ -58,6 +58,9 @@ type sqliteLinkRow struct {
 	CreatedByKeyID    *string `alias:"opensheet_links.created_by_key_id"`
 	CreatedAt         string  `alias:"opensheet_links.created_at"`
 	UpdatedAt         string  `alias:"opensheet_links.updated_at"`
+	Credential        string  `alias:"opensheet_links.credential"`
+	SheetTitle        *string `alias:"opensheet_links.sheet_title"`
+	GoogleFileID      *string `alias:"opensheet_links.google_file_id"`
 }
 
 func (r *sqliteLinkRow) toLink() (*Link, error) {
@@ -65,7 +68,8 @@ func (r *sqliteLinkRow) toLink() (*Link, error) {
 	l := &Link{
 		OSOrg: r.OSOrg, OSProject: r.OSProject, APIKeySealed: r.APIKeySealed, APIKeyHint: r.APIKeyHint,
 		Sheets:  SheetSlugs{Transactions: r.TransactionsSheet, Wallets: r.WalletsSheet, Categories: r.CategoriesSheet},
-		Enabled: r.Enabled != 0, LastError: r.LastError, FailureStreak: int(r.FailureStreak),
+		Enabled: r.Enabled != 0, LastError: r.LastError, FailureStreak: int(r.FailureStreak), Credential: Credential(r.Credential),
+		SheetTitle: derefString(r.SheetTitle), GoogleFileID: derefString(r.GoogleFileID),
 	}
 	ids := []struct {
 		dst *uuid.UUID
@@ -168,7 +172,8 @@ func (s *sqliteStore) SaveLink(ctx context.Context, l *Link) error {
 			l.Sheets.Transactions, l.Sheets.Wallets, l.Sheets.Categories, boolInt(l.Enabled), sqliteTimeArg(l.VerifiedAt),
 			l.LastError, sqliteTimeArg(l.LastSyncedAt), int64(l.FailureStreak), sqliteTimeArg(l.AutoDisabledAt),
 			sqliteUUIDArg(l.CreatedBy), sqliteUUIDArg(l.CreatedByKeyID),
-			sqliteent.SQLiteTime(l.CreatedAt), sqliteent.SQLiteTime(l.UpdatedAt),
+			sqliteent.SQLiteTime(l.CreatedAt), sqliteent.SQLiteTime(l.UpdatedAt), string(l.Credential),
+			textArg(l.SheetTitle), textArg(l.GoogleFileID),
 		).
 		ON_CONFLICT(t.ProjectID).
 		// SECURITY: SQLite has no RLS, so this tenant predicate is the only thing stopping a Save from rewriting another org's link.
@@ -186,6 +191,9 @@ func (s *sqliteStore) SaveLink(ctx context.Context, l *Link) error {
 			t.FailureStreak.SET(sqlite.Int(int64(l.FailureStreak))),
 			t.AutoDisabledAt.SET(sqliteTimeExpr(l.AutoDisabledAt)),
 			t.UpdatedAt.SET(sqlite.String(sqliteent.SQLiteTime(l.UpdatedAt))),
+			t.Credential.SET(sqlite.String(string(l.Credential))),
+			t.SheetTitle.SET(sqliteTextExpr(l.SheetTitle)),
+			t.GoogleFileID.SET(sqliteTextExpr(l.GoogleFileID)),
 		).WHERE(t.OrgID.EQ(sqlite.String(l.OrgID.String()))))
 	res, err := stmt.ExecContext(ctx, tx)
 	if err != nil {
@@ -720,6 +728,13 @@ func sqliteTimeExpr(t *time.Time) sqlite.StringExpression {
 		return sqliteent.NullText()
 	}
 	return sqlite.String(sqliteent.SQLiteTime(*t))
+}
+
+func sqliteTextExpr(s string) sqlite.StringExpression {
+	if s == "" {
+		return sqliteent.NullText()
+	}
+	return sqlite.String(s)
 }
 
 func sqliteUUIDArg(id uuid.UUID) any {

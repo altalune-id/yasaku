@@ -24,4 +24,6 @@ type Store interface {
 	RecentByCategory(ctx context.Context, orgID, projectID, categoryID uuid.UUID, limit int) ([]RecentEntry, error)
 	// LockWallet excludes other LockWallet holders for one wallet until the caller's transaction ends. SECURITY: it errors when no transaction is open, because a lock released immediately is no lock at all.
 	LockWallet(ctx context.Context, orgID, projectID, walletID uuid.UUID) error
+	// DeleteAllInProject removes every row of the tenant project on ctx and reports how many went; only a wipe calls it.
+	DeleteAllInProject(ctx context.Context) (int64, error)
 }

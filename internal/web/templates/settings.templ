@@ -35,7 +35,16 @@ type SettingsView struct {
 	ErrorCode      string
 	MCPEndpoint    string
 	MCPScopes      []string
+	Wiped          bool
+	WipedPartial   bool
+	WipeError      string
+	WipeErrorCode  string
+	CanWipe        bool
+	BackupDays     int
 }
+
+// SettingsWipeDialogID is the wipe confirmation dialog.
+const SettingsWipeDialogID = "settings-wipe"
 
 templ settingsGeneral(d web.LayoutData, v SettingsView) {
 	if v.CanRename {
@@ -230,10 +239,25 @@ templ SettingsPage(d web.LayoutData, v SettingsView) {
 			if v.Error != "" {
 				@ErrorBanner(d, v.Error, v.ErrorCode)
 			}
+			if v.WipeError != "" {
+				@ErrorBanner(d, v.WipeError, v.WipeErrorCode)
+			}
 			if v.NameSaved {
 				<div role="status" class="alert alert-soft alert-success">
 					@icons.Icon("check", "size-4")
 					<span>{ d.Tr("settings.name_saved") }</span>
+				</div>
+			}
+			if v.Wiped {
+				<div role="status" class="alert alert-soft alert-success">
+					@icons.Icon("check", "size-4")
+					<span>{ d.Tr("settings.wiped") }</span>
+				</div>
+			}
+			if v.WipedPartial {
+				<div role="status" class={ flashClass("warn") }>
+					@icons.Icon("info", "size-4")
+					<span>{ d.Tr("settings.wiped_partial") }</span>
 				</div>
 			}
 			if v.Saved {
@@ -248,10 +272,56 @@ templ SettingsPage(d web.LayoutData, v SettingsView) {
 			if d.Caps.MCPEnabled {
 				@settingsMCPBlock(d, v)
 			}
+			@settingsDataBlock(d, v)
 		</div>
 	</section>
 }
 
+templ settingsDataBlock(d web.LayoutData, v SettingsView) {
+	<section class="flex min-w-0 flex-col gap-3 rounded-box border border-base-300 p-4" aria-labelledby="settings-data-title">
+		<h2 id="settings-data-title" class="flex items-center gap-2 text-base font-semibold">
+			@icons.Icon("folder", "size-4")
+			{ d.Tr("settings.data") }
+		</h2>
+		<p class="text-sm text-base-content/70">{ d.Tr("settings.export_hint") }</p>
+		<div class="flex flex-wrap gap-2">
+			<a href={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/export.zip")) } class="btn btn-ghost" download>
+				@icons.Icon("sheet", "size-4")
+				{ d.Tr("settings.export") }
+			</a>
+			if v.CanWipe {
+				<button type="button" data-dialog-open={ SettingsWipeDialogID } aria-haspopup="dialog" class="btn btn-ghost text-error">
+					@icons.Icon("trash-2", "size-4")
+					{ d.Tr("settings.wipe") }
+				</button>
+			}
+		</div>
+	</section>
+}
+
+templ settingsWipeDialog(d web.LayoutData, v SettingsView) {
+	@ConfirmModal(d, ConfirmModalProps{
+		ID:           SettingsWipeDialogID,
+		Title:        d.Tr("settings.wipe_title", "Project", v.ProjectName),
+		Body:         d.Tr("settings.wipe_body", "Project", v.ProjectName, "Days", strconv.Itoa(v.BackupDays)),
+		Action:       d.ProjectPath(v.ProjectSlug, "/wipe"),
+		ConfirmLabel: d.Tr("settings.wipe"),
+	}) {
+		if d.Opensheet {
+			<p class="text-sm text-pretty">{ d.Tr("settings.wipe_sheet") }</p>
+		}
+		<a href={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/export.zip")) } class="link text-sm" download>{ d.Tr("settings.wipe_export_first") }</a>
+		{{ confirm := FieldProps{ID: "settings-wipe-confirm", Label: d.Tr("settings.wipe_confirm", "Project", v.ProjectName)} }}
+		@FormField(confirm) {
+			<input { confirm.Attrs()... } name="confirm" type="text" required autocomplete="off" class="input w-full text-base"/>
+		}
+	}
+}
+
 templ SettingsLayout(d web.LayoutData, v SettingsView) {
-	@Layout(web.WithContent(d, SettingsPage(d, v)))
+	if v.CanWipe {
+		@Layout(web.WithDialogs(web.WithContent(d, SettingsPage(d, v)), settingsWipeDialog(d, v)))
+	} else {
+		@Layout(web.WithContent(d, SettingsPage(d, v)))
+	}
 }

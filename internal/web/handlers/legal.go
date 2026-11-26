@@ -28,6 +28,7 @@ func (h *LegalHandler) get(slug, fallbackKey string) http.HandlerFunc {
 			h.ErrorPage(w, r, http.StatusInternalServerError, pageTitle(r, "error_title.load_failed"), "Could not load the document.", err)
 			return
 		}
+		doc = doc.WithContact(h.Cfg.Compliance.ContactEmail)
 		title := doc.Title
 		if title == "" {
 			title = pageTitle(r, fallbackKey)

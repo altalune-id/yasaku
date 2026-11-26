@@ -11,8 +11,8 @@ domain interfaces — SQLite is dev/demo, Postgres is production.
 
 ```
 schema/
-├── migrations/postgres/    # 001_init … 024_roles, VERSION
-├── migrations/sqlite/      # 001_init … 021_roles, VERSION
+├── migrations/postgres/    # 001_init … 026_opensheet_sheet_title, VERSION
+├── migrations/sqlite/      # 001_init … 023_opensheet_sheet_title, VERSION
 ├── migrator.go             # goose runner, template rendering, embed FS
 ├── migrator_templatefs.go  # per-boot template-rendered file system
 ├── rls_guard.go            # boot-time BYPASSRLS assertion
@@ -53,6 +53,9 @@ erDiagram
     projects ||--o{ api_key_projects : "granted"
     projects ||--o{ webhook_endpoints : "sends to"
     webhook_endpoints ||--o{ webhook_deliveries : "attempts"
+    projects ||--o| opensheet_links : "mirrors to"
+    opensheet_links ||--o{ opensheet_sync_state : "tracks"
+    projects ||--o| opensheet_grants : "OAuth grant"
 
     users {
         uuid id PK
@@ -124,6 +127,22 @@ erDiagram
         uuid key_id FK
         uuid project_id FK
     }
+    opensheet_links {
+        uuid project_id UK
+        uuid org_id FK
+        text credential "api_key|grant"
+        bytea api_key_sealed "null for a grant link"
+        text sheet_title "null for a key link"
+        text google_file_id "null for a key link"
+    }
+    opensheet_grants {
+        uuid project_id PK
+        uuid org_id FK
+        uuid connected_by "no FK"
+        bytea refresh_sealed
+        bytea access_sealed "null until refreshed"
+        text status "ok|reconnect_needed"
+    }
 ```
 
 Also tenant-scoped: `blog_categories`, `blog_tags`, `outbox_entries`, `bootstrap`, `audit_events`.
@@ -136,6 +155,19 @@ Also tenant-scoped: `blog_categories`, `blog_tags`, `outbox_entries`, `bootstrap
 - **A held role cannot be deleted.** The foreign key is `NO ACTION`, so deleting the org still
   cascades through its roles and their holders in one statement.
 - Pinned by the `TestMigration024_*` tests in both dialects.
+
+## OpenSheet grants
+
+- **One grant per project.** `opensheet_grants` holds the sealed OAuth refresh and access tokens a
+  `grant` link presents to opensheet; an `api_key` link keeps its sealed key on the link.
+- **A key link always has a key.** `opensheet_links_key_check` is `credential = 'grant' OR
+COALESCE(length(api_key_sealed), 0) > 0`; a bare `length()` would pass a NULL key.
+- **SQLite rebuilds `opensheet_links`** and copies `opensheet_sync_state` out and back, because the
+  drop cascades to it inside goose's transaction.
+- **A provisioned link names its spreadsheet.** `sheet_title` and `google_file_id` come from
+  opensheet's `Provision`; a key link leaves both NULL.
+- Pinned by `TestMigration025_GrantLinkAllowsNoKey`, `TestMigration022_SyncStateSurvivesRebuild`,
+  `TestMigration026_SheetTitleNullableAndReversible` and `TestMigration023_SheetTitleRoundTrips`.
 
 ## Audit log
 
@@ -215,9 +247,9 @@ pinned by `TestMigrateUp_DefinerFunctionsAreOwnedByTheMigrationRole`,
 
 yasaku keeps one numbering per dialect. Its own migrations (`007_yasaku`,
 `016_key_authorship`, `017_opensheet`, `018_opensheet_resync`, `019_user_prefs`, `020_limits`, `021_audit`,
-`022_revoke_orphan_keys`, `023_support`, `024_roles` on Postgres;
+`022_revoke_orphan_keys`, `023_support`, `024_roles`, `025_opensheet_grants` on Postgres;
 `005_yasaku`, `013_key_authorship`, `014_opensheet`, `015_opensheet_resync`,
-`016_user_prefs`, `017_limits`, `018_audit`, `019_revoke_orphan_keys`, `020_support`, `021_roles` on SQLite) interleave with the template's. A template migration lands at yasaku's
+`016_user_prefs`, `017_limits`, `018_audit`, `019_revoke_orphan_keys`, `020_support`, `021_roles`, `022_opensheet_grants` on SQLite) interleave with the template's. A template migration lands at yasaku's
 next free number with byte-identical content, so template `007_apikey` is
 yasaku `008_apikey`. Never renumber or edit an applied migration. Production has
 applied everything up to the version it ran.

@@ -5,8 +5,6 @@ updated: 2026-09-02
 
 <!-- SAMPLE — replace before public release. This is placeholder legal text for a self-hosted yasaku deployment. Consult counsel before publishing. -->
 
-# Terms of Service
-
 By using this deployment of yasaku ("the Service"), you agree to the terms below.
 
 ## 1. Acceptance
@@ -19,7 +17,7 @@ You are responsible for the accuracy of the details you provide and for the secu
 
 ## 3. Acceptable use
 
-Do not use the Service to violate any applicable law, to abuse other users, or to interfere with the operation of the deployment.
+Do not use the Service to violate any applicable law, to abuse other users, or to interfere with the operation of the deployment. Fair-use limits apply.
 
 ## 4. Content
 

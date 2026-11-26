@@ -142,6 +142,8 @@ const (
 	CodeOpensheetRowRefused          = "OSL014"
 	CodeOpensheetKeyUnreadable       = "OSL015"
 	CodeOpensheetPrivateEndpoint     = "OSL016"
+	CodeOpensheetReconnectNeeded     = "OSL017"
+	CodeOpensheetConnectFailed       = "OSL018"
 
 	CodeMCPUnauthenticated = "MCP001"
 
@@ -182,4 +184,6 @@ const (
 
 	CodeSupportReasonRequired = "SUP001"
 	CodeSupportReadOnly       = "SUP004"
+
+	CodeDataWipeConfirmMismatch = "DAT001"
 )

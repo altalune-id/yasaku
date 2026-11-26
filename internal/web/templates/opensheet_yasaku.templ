@@ -84,7 +84,33 @@ type OpensheetView struct {
 	NextRetryAt    *time.Time
 	Rows           []OpensheetRowError
 	RowsMore       int
+	// CanConnect is set when opensheet.audience is, so the page leads with Connect and keeps the API-key setup behind a collapse.
+	CanConnect   bool
+	OpensheetURL string
+	// Access is how the project's grant stands: "", pending, ok, reconnect or member_left (opensheetsync.Access).
+	Access          string
+	ConnectKey      string
+	ConnectCode     string
+	SetupNeeded     bool
+	PickProjects    []OpensheetChoice
+	PickCredentials []OpensheetChoice
+	SheetTitle      string
+	SheetURL        string
+	// GrantLink marks a link that uses the OAuth grant; its API-key settings stay hidden until Disconnect.
+	GrantLink bool
 }
+
+// OpensheetChoice is one option of the picker.
+type OpensheetChoice struct {
+	ID    string
+	Label string
+}
+
+func (v OpensheetView) picking() bool { return v.Access == "pending" && v.CanManage }
+
+func (v OpensheetView) connectCard() bool { return v.CanConnect && !v.picking() && !v.Linked }
+
+func (v OpensheetView) grantLost() bool { return v.Access == "reconnect" || v.Access == "member_left" }
 
 // OpensheetRowError is one entry the mirror could not copy.
 type OpensheetRowError struct {
@@ -194,7 +220,11 @@ templ opensheetRemoveDialog(d web.LayoutData, v OpensheetView) {
 
 templ OpensheetPage(d web.LayoutData, v OpensheetView) {
 	<section class="flex max-w-2xl flex-col gap-4 lg:gap-6">
-		@PageHeader(d.Tr("nav.opensheet"), d.Tr("opensheet.subtitle"))
+		if v.CanConnect {
+			@PageHeader(d.Tr("opensheet.connect.heading"), d.Tr("opensheet.connect.subtitle"))
+		} else {
+			@PageHeader(d.Tr("nav.opensheet"), d.Tr("opensheet.subtitle"))
+		}
 		@OpensheetModule(d, v)
 	</section>
 }
@@ -202,8 +232,17 @@ templ OpensheetPage(d web.LayoutData, v OpensheetView) {
 // OpensheetModule is the swappable module body: every successful action replaces #opensheet-module.
 templ OpensheetModule(d web.LayoutData, v OpensheetView) {
 	<div id="opensheet-module" class="flex flex-col gap-4 lg:gap-6">
-		if v.Linked {
+		if !v.connectCard() {
+			@opensheetConnectBanner(d, v)
+		}
+		if v.picking() && v.SetupNeeded {
+			@opensheetSetupNeeded(d, v)
+		} else if v.picking() {
+			@opensheetPicker(d, v)
+		} else if v.Linked {
 			@OpensheetStatus(d, v)
+		} else if v.CanConnect {
+			@opensheetConnect(d, v)
 		} else {
 			<section aria-labelledby="gs-setup-h" class="card min-w-0 border border-base-300 bg-base-100">
 				<div class="card-body gap-3 p-4">
@@ -212,7 +251,9 @@ templ OpensheetModule(d web.LayoutData, v OpensheetView) {
 				</div>
 			</section>
 		}
-		@opensheetSoon(d)
+		if !v.CanConnect {
+			@opensheetSoon(d)
+		}
 	</div>
 }
 
@@ -422,6 +463,7 @@ templ OpensheetStatus(d web.LayoutData, v OpensheetView) {
 					<span class="text-sm">{ d.Tr("opensheet.sync_toggle") + ": " + v.syncWord(d) }</span>
 				}
 			</div>
+			@opensheetReconnect(d, v)
 			@opensheetBanner(d, v)
 			<dl data-opensheet-pending={ strconv.FormatInt(v.Pending, 10) } class="grid grid-cols-2 gap-3 rounded-box bg-base-200 p-3 sm:grid-cols-4">
 				@opensheetFact(d.Tr("opensheet.status.last_sync")) {
@@ -445,7 +487,16 @@ templ OpensheetStatus(d web.LayoutData, v OpensheetView) {
 				@opensheetRows(d, v)
 			}
 			<div class="flex flex-col">
-				<p class="min-w-0 text-sm break-words">{ d.Tr("opensheet.connected_target", "Target", v.Form.OSOrg+" / "+v.Form.OSProject) }</p>
+				if v.SheetTitle != "" {
+					<p class="flex min-w-0 flex-wrap items-center gap-x-2 text-sm break-words" data-opensheet-linked-sheet="true">
+						<span>{ d.Tr("opensheet.linked_sheet", "Title", v.SheetTitle) }</span>
+						if v.SheetURL != "" {
+							<a href={ templ.SafeURL(v.SheetURL) } target="_blank" rel="noopener" class="link link-primary">{ d.Tr("opensheet.open_sheet") }</a>
+						}
+					</p>
+				} else {
+					<p class="min-w-0 text-sm break-words">{ d.Tr("opensheet.connected_target", "Target", v.Form.OSOrg+" / "+v.Form.OSProject) }</p>
+				}
 				if v.KeyHint != "" {
 					<p class="min-w-0 text-sm break-words">{ d.Tr("opensheet.key_ending", "Hint", v.KeyHint) }</p>
 				}
@@ -470,8 +521,10 @@ templ OpensheetStatus(d web.LayoutData, v OpensheetView) {
 				</p>
 			}
 			<p class="text-xs text-base-content/70">{ d.Tr("opensheet.numbers_note") }</p>
-			@AppCollapseOpen("gs-settings", "border border-base-300", v.State == OpensheetPaused, textTitle(d.Tr("opensheet.form.title"))) {
-				@opensheetSetup(d, v)
+			if !v.GrantLink {
+				@AppCollapseOpen("gs-settings", "border border-base-300", v.State == OpensheetPaused, textTitle(d.Tr("opensheet.form.title"))) {
+					@opensheetSetup(d, v)
+				}
 			}
 		</div>
 	</section>
@@ -716,4 +769,195 @@ templ opensheetSoon(d web.LayoutData) {
 			</ul>
 		</div>
 	</section>
+}
+
+templ opensheetConnectBanner(d web.LayoutData, v OpensheetView) {
+	if v.ConnectKey != "" {
+		<div role="alert" data-opensheet-connect-outcome={ v.ConnectKey } class={ flashClass("warn") + " items-start text-sm" }>
+			@icons.Icon("info", "size-5 shrink-0")
+			<div class="flex min-w-0 flex-col gap-2">
+				<p>
+					{ d.Tr(v.ConnectKey) }
+					if v.ConnectCode != "" {
+						{ " " }
+						<code dir="ltr" class="font-mono text-xs">{ v.ConnectCode }</code>
+					}
+				</p>
+			</div>
+		</div>
+	}
+}
+
+templ opensheetConnectButton(d web.LayoutData, v OpensheetView, label, size, errTarget string) {
+	<form
+		method="post"
+		action={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/opensheet/connect")) }
+		hx-post={ d.ProjectPath(v.ProjectSlug, "/opensheet/connect") }
+		hx-nonce={ d.Nonce }
+		hx-swap="none"
+		hx-status:4xx={ "target:" + errTarget + " swap:innerHTML" }
+		hx-status:5xx={ "target:" + errTarget + " swap:innerHTML" }
+		class="contents"
+	>
+		<button type="submit" class={ "btn btn-primary", size }>
+			<span class="loading loading-spinner loading-sm htmx-indicator hidden in-[.htmx-request]:inline-block" aria-hidden="true"></span>
+			{ label }
+		</button>
+	</form>
+}
+
+templ opensheetOpenLink(d web.LayoutData, v OpensheetView, class string) {
+	<a href={ templ.SafeURL(v.OpensheetURL) } target="_blank" rel="noopener" class={ class }>
+		{ d.Tr("opensheet.connect.open") }
+	</a>
+}
+
+templ opensheetConnect(d web.LayoutData, v OpensheetView) {
+	<section aria-labelledby="gs-connect-h" class="card min-w-0 border border-base-300 bg-base-100" data-opensheet-connect="true">
+		<div class="card-body gap-4 p-4">
+			<h2 id="gs-connect-h" class="sr-only">{ d.Tr("opensheet.connect.card_heading") }</h2>
+			<p class="flex flex-wrap items-center gap-x-2 text-sm">
+				<span>{ d.Tr("opensheet.connect.via") }</span>
+				@opensheetOpenLink(d, v, "link link-primary inline-flex items-center gap-1")
+			</p>
+			<div class="flex flex-col gap-2">
+				<h3 class="text-sm font-semibold">{ d.Tr("opensheet.connect.before") }</h3>
+				<ul class="flex flex-col gap-1 text-sm">
+					<li class="flex items-center gap-2">
+						@icons.Icon("check", "size-4 shrink-0 text-success")
+						<span>{ d.Tr("opensheet.connect.need_project") }</span>
+					</li>
+					<li class="flex items-center gap-2">
+						@icons.Icon("check", "size-4 shrink-0 text-success")
+						<span>{ d.Tr("opensheet.connect.need_google") }</span>
+					</li>
+				</ul>
+			</div>
+			@opensheetConnectBanner(d, v)
+			if v.CanManage {
+				<div class="flex flex-col gap-2">
+					<div id="opensheet-connect-error" class="empty:hidden"></div>
+					<div>
+						if v.ConnectKey != "" {
+							@opensheetConnectButton(d, v, d.Tr("opensheet.connect.again"), "", "#opensheet-connect-error")
+						} else {
+							@opensheetConnectButton(d, v, d.Tr("opensheet.connect.button"), "", "#opensheet-connect-error")
+						}
+					</div>
+					<p class="text-xs text-base-content/70">{ d.Tr("opensheet.connect.hint") }</p>
+				</div>
+			} else {
+				<p class="flex items-center gap-2 text-sm text-base-content/70" data-opensheet-read-only="1">
+					@icons.Icon("lock", "size-4 shrink-0")
+					<span>{ d.Tr("opensheet.member_hint") }</span>
+				</p>
+			}
+			if v.CanManage {
+				@AppCollapse("gs-api-key", "border border-base-300", textTitle(d.Tr("opensheet.connect.api_key_instead"))) {
+					@opensheetSetup(d, v)
+				}
+			}
+		</div>
+	</section>
+}
+
+templ opensheetPicker(d web.LayoutData, v OpensheetView) {
+	<section aria-labelledby="gs-pick-h" class="card min-w-0 border border-base-300 bg-base-100" data-opensheet-picker="true">
+		<form
+			method="post"
+			action={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/opensheet/provision")) }
+			hx-post={ d.ProjectPath(v.ProjectSlug, "/opensheet/provision") }
+			hx-nonce={ d.Nonce }
+			hx-target="#opensheet-module"
+			hx-swap="outerHTML"
+			hx-disable="find button"
+			hx-status:422="target:#opensheet-module swap:outerHTML"
+			hx-status:4xx="target:#hx-error swap:innerHTML"
+			hx-status:5xx="target:#hx-error swap:innerHTML"
+			class="card-body gap-4 p-4"
+		>
+			<h2 id="gs-pick-h" class="font-semibold">{ d.Tr("opensheet.picker.title") }</h2>
+			@pageBanner(d, v.ErrorKey, v.ErrorMsg, v.ErrorCode)
+			{{ proj := FieldProps{ID: "opensheet-pick-project", Label: d.Tr("opensheet.picker.project")} }}
+			@FormField(proj) {
+				<select { proj.Attrs()... } name="os_project_id" required class="select w-full">
+					for _, p := range v.PickProjects {
+						<option value={ p.ID } selected?={ len(v.PickProjects) == 1 }>{ p.Label }</option>
+					}
+				</select>
+			}
+			{{ cred := FieldProps{ID: "opensheet-pick-credential", Label: d.Tr("opensheet.picker.credential")} }}
+			@FormField(cred) {
+				<select { cred.Attrs()... } name="credential_id" required class="select w-full">
+					for _, c := range v.PickCredentials {
+						<option value={ c.ID } selected?={ len(v.PickCredentials) == 1 }>{ c.Label }</option>
+					}
+				</select>
+			}
+			<p class="text-sm text-base-content/70">{ d.Tr("opensheet.picker.copy_note") }</p>
+			<div class="flex flex-wrap gap-2">
+				<button type="submit" class="btn btn-primary">
+					<span class="loading loading-spinner loading-sm htmx-indicator hidden in-[.htmx-request]:inline-block" aria-hidden="true"></span>
+					{ d.Tr("opensheet.picker.create") }
+				</button>
+				@opensheetCancelConnect(d, v)
+			</div>
+		</form>
+	</section>
+}
+
+templ opensheetSetupNeeded(d web.LayoutData, v OpensheetView) {
+	<section aria-labelledby="gs-setup-needed-h" class="card min-w-0 border border-base-300 bg-base-100" data-opensheet-setup-needed="true">
+		<div class="card-body gap-3 p-4">
+			<h2 id="gs-setup-needed-h" class="font-semibold">{ d.Tr("opensheet.setup.title") }</h2>
+			<p class="text-sm">{ d.Tr("opensheet.setup.body") }</p>
+			<div class="flex flex-wrap gap-2">
+				<a href={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/opensheet")) } class="btn btn-primary">
+					@icons.Icon("refresh-cw", "size-4")
+					{ d.Tr("opensheet.setup.refresh") }
+				</a>
+				@opensheetOpenLink(d, v, "btn")
+				@opensheetCancelConnect(d, v)
+			</div>
+		</div>
+	</section>
+}
+
+// NOTE: a plain htmx button, not a form, because the picker renders it inside its own form.
+templ opensheetCancelConnect(d web.LayoutData, v OpensheetView) {
+	<button
+		type="button"
+		data-opensheet-cancel-connect="true"
+		hx-post={ d.ProjectPath(v.ProjectSlug, "/opensheet/delete") }
+		hx-nonce={ d.Nonce }
+		hx-target="#opensheet-module"
+		hx-swap="outerHTML"
+		hx-status:4xx="target:#hx-error swap:innerHTML"
+		hx-status:5xx="target:#hx-error swap:innerHTML"
+		class="btn btn-ghost"
+	>{ d.Tr("opensheet.picker.cancel") }</button>
+}
+
+templ opensheetReconnect(d web.LayoutData, v OpensheetView) {
+	if v.grantLost() {
+		<div role="alert" data-opensheet-reconnect={ v.Access } class={ flashClass("warn") + " items-start text-sm" }>
+			@icons.Icon("unlink", "size-5 shrink-0")
+			<div class="flex min-w-0 flex-col gap-2">
+				<p class="font-semibold">{ d.Tr("opensheet.reconnect.title") }</p>
+				if v.Access == "member_left" {
+					<p>{ d.Tr("opensheet.reconnect.member_left") }</p>
+				} else {
+					<p>{ d.Tr("opensheet.reconnect.body") }</p>
+				}
+				if v.CanManage && v.CanConnect {
+					<div class="flex flex-wrap gap-2">
+						@opensheetConnectButton(d, v, d.Tr("opensheet.reconnect.button"), "btn-sm", "#hx-error")
+						<button type="button" data-dialog-open={ OpensheetRemoveDialogID } aria-haspopup="dialog" class="btn btn-ghost btn-sm text-error">
+							{ d.Tr("opensheet.remove") }
+						</button>
+					</div>
+				}
+			</div>
+		</div>
+	}
 }

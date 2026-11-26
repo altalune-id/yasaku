@@ -114,3 +114,64 @@ func IsUnknownCurrencyError(err error) bool {
 	_, ok := errors.AsType[*UnknownCurrencyError](err)
 	return ok
 }
+
+// WipeConfirmMismatchError refuses a wipe whose confirmation is not the project's name.
+type WipeConfirmMismatchError struct{}
+
+func (e *WipeConfirmMismatchError) Error() string {
+	return "ledger: wipe: confirmation does not match the project name"
+}
+
+// ToAppError converts the typed error into the wire envelope.
+func (e *WipeConfirmMismatchError) ToAppError() *apperror.AppError {
+	return apperror.New(
+		apperror.CodeDataWipeConfirmMismatch,
+		"Type the project name exactly to wipe its data",
+		codes.InvalidArgument,
+		&apperrorv1.ErrorDetail{Code: apperror.CodeDataWipeConfirmMismatch},
+	)
+}
+
+// IsWipeConfirmMismatchError reports whether err's chain contains a *WipeConfirmMismatchError.
+func IsWipeConfirmMismatchError(err error) bool {
+	_, ok := errors.AsType[*WipeConfirmMismatchError](err)
+	return ok
+}
+
+// WipeOwnerOnlyError refuses a wipe by anyone but a built-in owner of the project's org.
+type WipeOwnerOnlyError struct{}
+
+func (e *WipeOwnerOnlyError) Error() string {
+	return "ledger: wipe: only an owner can wipe a project"
+}
+
+// ToAppError converts the typed error into the wire envelope.
+func (e *WipeOwnerOnlyError) ToAppError() *apperror.AppError {
+	return apperror.New(
+		apperror.CodePermissionDenied,
+		"Only an owner can wipe this project's data",
+		codes.PermissionDenied,
+		&apperrorv1.ErrorDetail{Code: apperror.CodePermissionDenied, Meta: map[string]string{"role": "owner"}},
+	)
+}
+
+// IsWipeOwnerOnlyError reports whether err's chain contains a *WipeOwnerOnlyError.
+func IsWipeOwnerOnlyError(err error) bool {
+	_, ok := errors.AsType[*WipeOwnerOnlyError](err)
+	return ok
+}
+
+// WipeSetupIncompleteError reports a wipe that committed but whose reseed of default categories or current period failed.
+type WipeSetupIncompleteError struct{ Cause error }
+
+func (e *WipeSetupIncompleteError) Error() string {
+	return "ledger: wipe: data wiped, setup failed: " + e.Cause.Error()
+}
+
+func (e *WipeSetupIncompleteError) Unwrap() error { return e.Cause }
+
+// IsWipeSetupIncompleteError reports whether err's chain contains a *WipeSetupIncompleteError.
+func IsWipeSetupIncompleteError(err error) bool {
+	_, ok := errors.AsType[*WipeSetupIncompleteError](err)
+	return ok
+}

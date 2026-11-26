@@ -143,6 +143,15 @@ func KeyHint(key string) string {
 	return string(r[len(r)-hintLen:])
 }
 
+// Credential is what a link presents to opensheet as its bearer token.
+type Credential string
+
+// Credentials a link can hold.
+const (
+	CredentialAPIKey Credential = "api_key"
+	CredentialGrant  Credential = "grant"
+)
+
 // Link is a project's connection to opensheet: where to mirror, the sealed key and whether the mirror runs.
 type Link struct {
 	ID             uuid.UUID
@@ -165,6 +174,11 @@ type Link struct {
 	CreatedByKeyID uuid.UUID
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
+	// Credential is the API key in APIKeySealed, or the project's OAuth grant, which leaves APIKeySealed empty.
+	Credential Credential
+	// SheetTitle and GoogleFileID name the spreadsheet Provision created; "" on a link saved with a key.
+	SheetTitle   string
+	GoogleFileID string
 }
 
 // NewLink starts a project's link with the default sheet slugs, off and unverified.
@@ -172,7 +186,7 @@ func NewLink(orgID, projectID, by, byKey uuid.UUID, at time.Time) *Link {
 	at = at.UTC()
 	return &Link{
 		ID: uuid.New(), OrgID: orgID, ProjectID: projectID, Sheets: DefaultSheetSlugs(),
-		CreatedBy: by, CreatedByKeyID: byKey, CreatedAt: at, UpdatedAt: at,
+		CreatedBy: by, CreatedByKeyID: byKey, CreatedAt: at, UpdatedAt: at, Credential: CredentialAPIKey,
 	}
 }
 

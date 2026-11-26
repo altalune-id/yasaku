@@ -172,10 +172,13 @@ func IsContractUnsatisfiedError(err error) bool {
 	return ok
 }
 
-// UnavailableError reports opensheet failing to answer for a sheet: a timeout, a rate limit or a 5xx.
+// UnavailableError reports opensheet failing to answer: a timeout, a rate limit or a 5xx; Sheet is "" when the call was not about one sheet.
 type UnavailableError struct{ Sheet, Cause string }
 
 func (e *UnavailableError) Error() string {
+	if e.Sheet == "" {
+		return "opensheetsync: opensheet unavailable: " + e.Cause
+	}
 	return "opensheetsync: opensheet unavailable for " + e.Sheet + ": " + e.Cause
 }
 
@@ -332,5 +335,63 @@ func (e *PrivateEndpointError) ToAppError() *apperror.AppError {
 // IsPrivateEndpointError reports whether err's tree contains a *PrivateEndpointError.
 func IsPrivateEndpointError(err error) bool {
 	_, ok := errors.AsType[*PrivateEndpointError](err)
+	return ok
+}
+
+// GrantNotFoundError reports that the project holds no OAuth grant to opensheet.
+type GrantNotFoundError struct{ ProjectID string }
+
+func (e *GrantNotFoundError) Error() string {
+	return "opensheetsync: grant: not found: project=" + e.ProjectID
+}
+
+// ToAppError converts the typed error into the wire envelope.
+func (e *GrantNotFoundError) ToAppError() *apperror.AppError {
+	return (&ReconnectNeededError{}).ToAppError()
+}
+
+// IsGrantNotFoundError reports whether err's tree contains a *GrantNotFoundError.
+func IsGrantNotFoundError(err error) bool {
+	_, ok := errors.AsType[*GrantNotFoundError](err)
+	return ok
+}
+
+// ReconnectNeededError reports a project whose OAuth grant to opensheet is gone, refused or unreadable, so a person must connect again.
+type ReconnectNeededError struct{ Cause error }
+
+func (e *ReconnectNeededError) Error() string {
+	return "opensheetsync: reconnect needed: " + causeText(e.Cause)
+}
+
+func (e *ReconnectNeededError) Unwrap() error { return e.Cause }
+
+// ToAppError converts the typed error into the wire envelope.
+func (e *ReconnectNeededError) ToAppError() *apperror.AppError {
+	return appErr(apperror.CodeOpensheetReconnectNeeded, "Yasaku lost access to OpenSheet; reconnect to resume updates", codes.FailedPrecondition, nil)
+}
+
+// IsReconnectNeededError reports whether err's tree contains a *ReconnectNeededError.
+func IsReconnectNeededError(err error) bool {
+	_, ok := errors.AsType[*ReconnectNeededError](err)
+	return ok
+}
+
+// ConnectFailedError reports an OAuth connect to opensheet that did not end with a usable grant, such as a token response without a refresh token.
+type ConnectFailedError struct{ Cause error }
+
+func (e *ConnectFailedError) Error() string {
+	return "opensheetsync: connect failed: " + causeText(e.Cause)
+}
+
+func (e *ConnectFailedError) Unwrap() error { return e.Cause }
+
+// ToAppError converts the typed error into the wire envelope.
+func (e *ConnectFailedError) ToAppError() *apperror.AppError {
+	return appErr(apperror.CodeOpensheetConnectFailed, "Connecting to OpenSheet failed; try again", codes.FailedPrecondition, nil)
+}
+
+// IsConnectFailedError reports whether err's tree contains a *ConnectFailedError.
+func IsConnectFailedError(err error) bool {
+	_, ok := errors.AsType[*ConnectFailedError](err)
 	return ok
 }

@@ -116,7 +116,7 @@ func newOpensheetFixtureWith(t *testing.T, endpoint func(*opensheetsync.Endpoint
 		UnitOfWork: func(ctx context.Context, fn func(context.Context) error) error { return db.RunInTx(ctx, pool, fn) },
 	})
 	mux := http.NewServeMux()
-	handlers.NewOpensheetHandler(f.Deps, svc).Register(mux)
+	handlers.NewOpensheetHandler(f.Deps, svc, nil).Register(mux)
 	return &opensheetFixture{walletFixture: f, sheets: sheets, store: store, mux: mux, jobs: jobs}
 }
 
@@ -188,7 +188,7 @@ func TestOpensheet_TestFailsThenPasses(t *testing.T) {
 	f.sheets.AddSheet("yasaku-transactions", fakes.OpensheetSheet{Columns: []string{"id", "date"}, Writable: true})
 	nodel := f.doHTMX(t, f.mux, http.MethodPost, "/opensheet/test", opensheetForm(opensheetTestKey))
 	assert.Contains(t, nodel.Body.String(), `data-opensheet-deleted-at-hint="yasaku-transactions"`, "the checklist says why deleted_at is needed")
-	assert.Contains(t, nodel.Body.String(), "opensheet mungkin masih memakai baris judul lama", "a header fixed a moment ago may not be in opensheet yet")
+	assert.Contains(t, nodel.Body.String(), "OpenSheet mungkin masih memakai baris judul lama", "a header fixed a moment ago may not be in opensheet yet")
 
 	f.publishAll(true)
 	passing := f.doHTMX(t, f.mux, http.MethodPost, "/opensheet/test", opensheetForm(opensheetTestKey))

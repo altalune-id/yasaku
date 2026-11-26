@@ -86,6 +86,8 @@ rules (append-only, `900`-`999` reserved) are the same, and `TestCodes_EveryRefI
 | `OSL014` | `apperror.CodeOpensheetRowRefused`          | Opensheet Row Refused            |
 | `OSL015` | `apperror.CodeOpensheetKeyUnreadable`       | Opensheet API Key Unreadable     |
 | `OSL016` | `apperror.CodeOpensheetPrivateEndpoint`     | Opensheet Base URL Is Private    |
+| `OSL017` | `apperror.CodeOpensheetReconnectNeeded`     | Opensheet Reconnect Needed       |
+| `OSL018` | `apperror.CodeOpensheetConnectFailed`       | Opensheet Connect Failed         |
 
 `OSL004` covers opensheet's 404 mask and a 401 or 403 during the Test: an unknown slug, a wrong org
 or project, a revoked key, a key without the scope and a key not granted the sheet all look the same
@@ -102,6 +104,20 @@ refusal.
 `OSL016` means `opensheet.baseURL` resolves to a private address while `opensheet.allowPrivateHosts`
 is off. Set `YASAKU_OPENSHEET_ALLOW_PRIVATE_HOSTS=true` when opensheet runs on a private network. The
 Test answers it per tab; the sync job treats it as a link-level `config` refusal.
+
+`OSL017` means the project's OAuth grant to OpenSheet is gone, refused (`invalid_grant`) or no longer
+opens. A person connects again; the sync job treats it as a link-level `grant` refusal.
+
+`OSL018` means an OAuth connect to OpenSheet ended without a usable grant, such as a token response
+without a refresh token.
+
+## DAT — Project data
+
+| Code     | Constant                               | Meaning                    |
+| -------- | -------------------------------------- | -------------------------- |
+| `DAT001` | `apperror.CodeDataWipeConfirmMismatch` | Wipe Confirmation Mismatch |
+
+`DAT001` means the wipe confirmation is not the project's name, exactly. Nothing is deleted.
 
 ## MCP — Reserved
 

@@ -24,12 +24,14 @@ scheduler job.
 | `contract.go`                                                       | the sheet contract `Contract()`, the one table behind the Test, the tutorial and the mapper              |
 | `facts.go`, `mapper.go`                                             | the facts read from the domain services and their sheet rows                                             |
 | `shape.go`                                                          | `CheckTab`, the Test's verdict on one tab's `/capabilities`                                              |
-| `errors.go`, `classify.go`                                          | typed errors `OSL001`-`OSL016`; which opensheet answer is link-level, row-level or retried               |
+| `errors.go`, `classify.go`                                          | typed errors `OSL001`-`OSL018`; which opensheet answer is link-level, row-level or retried               |
 | `store.go`, `postgres.go`, `pgwriter.go`, `sqlite.go`, `factory.go` | the `Store` port (links and `opensheet_sync_state`) and its adapters                                     |
 | `mirror.go`                                                         | `Mirror`: `Mark` inside the write's unit of work, `Kick` after it, `KickDirty`, `Reconcile`              |
 | `job.go`, `sync.go`, `source.go`                                    | the `opensheet.sync` v1 payload; `Syncer`, which pushes rows; the `Source` port over the domain services |
-| `service.go`                                                        | `Service`: `Status`, `Test`, `Save`, `SetEnabled`, `SyncNow`, `Delete`                                   |
+| `service.go`                                                        | `Service`: `Status`, `Test`, `Save`, `SetEnabled`, `SyncNow`, `Delete`, `PrepareRevoke`, `Unlink`        |
 | `secret.go`, `endpoint.go`                                          | the sealed API key; the opensheet client built from server config                                        |
+| `grant.go`, `grant_postgres.go`, `grant_sqlite.go`                  | the `GrantStore` port (`opensheet_grants`, one OAuth grant per project) and its adapters                 |
+| `credential.go`                                                     | `Credentials`: a link's bearer token, the API key or a grant's access token refreshed single-flight      |
 | `consumer.go`, `scheduler.go`                                       | the `queue.Provider` for `opensheet.sync`; the `scheduler.Provider` for `opensheet-reconcile`            |
 
 The transaction, wallet and category modules each declare their own `Mirror` port (`mirror.go`) and

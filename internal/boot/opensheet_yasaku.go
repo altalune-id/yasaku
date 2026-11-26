@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/altalune-id/oidcrp"
 	"github.com/google/uuid"
 
 	"altalune.id/yasaku/internal/category"
@@ -20,6 +21,7 @@ import (
 	"altalune.id/yasaku/internal/platform/tenant"
 	"altalune.id/yasaku/internal/transaction"
 	"altalune.id/yasaku/internal/wallet"
+	webhandlers "altalune.id/yasaku/internal/web/handlers"
 )
 
 // NOTE: opensheetWiring is the Opensheet module's mirror half, which the domain services need before the module's own services exist; zero when the module is unmounted.
@@ -29,6 +31,8 @@ type opensheetWiring struct {
 	endpoint opensheetsync.Endpoint
 	jobs     opensheetsync.Queue
 	queued   bool
+	creds    *opensheetsync.Credentials
+	auth     *oidcrp.Client
 }
 
 // SECURITY: opensheet.baseURL is server config; no tenant input reaches the endpoint.
@@ -54,7 +58,14 @@ func newOpensheetWiring(cfg *config.Config, k *platform.Kernel, jobs opensheetsy
 	}
 	store := opensheetsync.NewStore(cfg.DB, k.Pool, k.PgConn)
 	queued := cfg.Queue.Enabled
+	auth := opensheetOAuthClient(cfg)
+	var rp opensheetsync.Refresher
+	if auth != nil {
+		rp = auth
+	}
 	return opensheetWiring{
+		creds:    opensheetsync.NewCredentials(k.Sealer, opensheetsync.NewGrantStore(cfg.DB, k.Pool, k.PgConn), rp, log),
+		auth:     auth,
 		store:    store,
 		mirror:   opensheetsync.NewMirror(store, jobs, queued, log, k.Reporter.Unexpected, time.Now),
 		endpoint: endpoint,
@@ -63,16 +74,33 @@ func newOpensheetWiring(cfg *config.Config, k *platform.Kernel, jobs opensheetsy
 	}, nil
 }
 
-func (w opensheetWiring) services(k *platform.Kernel, log *slog.Logger, src opensheetsync.Source, uow tenant.UnitOfWork) (*opensheetsync.Service, *opensheetsync.Syncer) {
+func (w opensheetWiring) services(k *platform.Kernel, log *slog.Logger, src opensheetsync.Source, uow tenant.UnitOfWork, rec opensheetsync.Auditor) (*opensheetsync.Service, *opensheetsync.Syncer) {
 	if w.mirror == nil {
 		return nil, nil
 	}
 	svc := opensheetsync.NewService(w.store, log, k.Reporter.Unexpected, opensheetsync.ServiceDeps{
-		Mirror: w.mirror, Sealer: k.Sealer, Endpoint: w.endpoint, Source: src,
+		Audit: rec, Mirror: w.mirror, Sealer: k.Sealer, Credentials: w.creds, Endpoint: w.endpoint, Source: src,
 		UnitOfWork: opensheetsync.UnitOfWork(uow), Now: time.Now,
 	})
-	d := opensheetsync.SyncerDeps{Sealer: k.Sealer, Endpoint: w.endpoint, Source: src, Jobs: w.jobs, Queued: w.queued, Now: time.Now}
+	d := opensheetsync.SyncerDeps{Sealer: k.Sealer, Credentials: w.creds, Endpoint: w.endpoint, Source: src, Jobs: w.jobs, Queued: w.queued, Now: time.Now}
 	return svc, opensheetsync.NewSyncer(w.store, log, k.Reporter.Unexpected, d)
+}
+
+// NOTE: nil without opensheet.audience or oidc.issuer, which leaves grant links needing a reconnect.
+func opensheetOAuthClient(cfg *config.Config) *oidcrp.Client {
+	audience := strings.TrimSpace(cfg.Opensheet.Audience)
+	if audience == "" || cfg.OIDC.Issuer == "" {
+		return nil
+	}
+	return oidcrp.New(oidcrp.Config{
+		Issuer:       cfg.OIDC.Issuer,
+		ClientID:     cfg.OIDC.ClientID,
+		ClientSecret: cfg.OIDC.ClientSecret,
+		RedirectURI:  strings.TrimRight(cfg.HTTP.BaseURL, "/") + cfg.HTTP.BasePath + webhandlers.OpensheetCallbackPath,
+		Scopes:       opensheetsync.GrantScopes(),
+		Resource:     audience,
+		HTTPClient:   oidcHTTPClient(),
+	})
 }
 
 type mirrorPort[R any] struct {

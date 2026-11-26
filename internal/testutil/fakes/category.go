@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 
 	"altalune.id/yasaku/internal/blog/category"
+	"altalune.id/yasaku/internal/platform/tenant"
 )
 
 // Category is an in-memory category.Store.
@@ -111,4 +112,22 @@ func (r *Category) Delete(ctx context.Context, id uuid.UUID) error {
 	}
 	delete(r.rows, id)
 	return nil
+}
+
+// DeleteAllInProject removes every row in the tenant project on ctx and reports how many went.
+func (r *Category) DeleteAllInProject(ctx context.Context) (int64, error) {
+	tc, err := tenant.From(ctx)
+	if err != nil {
+		return 0, err
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var n int64
+	for id, row := range r.rows {
+		if row.OrgID == tc.OrgID && row.ProjectID == tc.ProjectID {
+			delete(r.rows, id)
+			n++
+		}
+	}
+	return n, nil
 }
