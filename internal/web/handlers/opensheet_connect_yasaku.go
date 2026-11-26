@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 
 	"altalune.id/yasaku/internal/apperror"
+	"altalune.id/yasaku/internal/i18n"
 	"altalune.id/yasaku/internal/opensheetsync"
 	"altalune.id/yasaku/internal/platform/authz"
 	"altalune.id/yasaku/internal/web"
@@ -194,11 +195,8 @@ func (h *OpensheetHandler) PostProvision(w http.ResponseWriter, r *http.Request)
 		h.ErrorPage(w, sc.req, http.StatusBadRequest, pageTitle(sc.req, "error_title.bad_request"), "Could not parse form body.")
 		return
 	}
-	pick := opensheetsync.Pick{
-		OSProjectID:  strings.TrimSpace(sc.req.PostForm.Get("os_project_id")),
-		CredentialID: strings.TrimSpace(sc.req.PostForm.Get("credential_id")),
-		ProjectName:  sc.project.Name,
-	}
+	osProject, credential, _ := strings.Cut(strings.TrimSpace(sc.req.PostForm.Get("target")), ":")
+	pick := opensheetsync.Pick{OSProjectID: osProject, CredentialID: credential, ProjectName: sc.project.Name}
 	if _, err := h.Opensheet.Provision(sc.req.Context(), pick); err != nil {
 		h.refuse(w, sc, nil, nil, err, templates.OpensheetModule)
 		return
@@ -221,6 +219,8 @@ func connectBanner(outcome string) banner {
 	return banner{}
 }
 
+//i18n:use opensheet.picker.target_option
+
 func (h *OpensheetHandler) connectView(sc ProjectScope, v *templates.OpensheetView, st opensheetsync.Status) {
 	access := st.Access
 	if st.Link != nil && st.Link.Credential != opensheetsync.CredentialGrant {
@@ -241,19 +241,36 @@ func (h *OpensheetHandler) connectView(sc ProjectScope, v *templates.OpensheetVi
 		v.ErrorKey, v.ErrorMsg, v.ErrorCode = b.Key, b.Msg, b.Code
 		return
 	}
-	v.SetupNeeded = !choices.Ready()
-	for _, p := range choices.Projects {
-		v.PickProjects = append(v.PickProjects, templates.OpensheetChoice{ID: p.ID, Label: p.Name + " (" + p.OrgSlug + "/" + p.Slug + ")"})
+	for _, tg := range choices.Targets {
+		v.PickTargets = append(v.PickTargets, templates.OpensheetChoice{
+			ID: tg.Project.ID + ":" + tg.Credential.ID,
+			Label: i18n.TranslatorFrom(sc.req.Context()).T("opensheet.picker.target_option", "Project", tg.Project.Name, "Org", tg.Project.OrgSlug, "Slug", tg.Project.Slug,
+				"Email", cmp.Or(tg.Credential.GoogleAccountEmail, tg.Credential.Name)),
+		})
 	}
-	names := map[string]string{}
-	for _, p := range choices.Projects {
-		names[p.ID] = p.Name
+	h.setupView(v, choices)
+}
+
+func (h *OpensheetHandler) setupView(v *templates.OpensheetView, choices opensheetsync.Choices) {
+	base := h.Cfg.Opensheet.BaseURL
+	v.SetupURL = base
+	if root, err := url.JoinPath(base, "/"); err == nil {
+		v.SetupURL = root
 	}
-	for _, c := range choices.Credentials {
-		label := cmp.Or(c.GoogleAccountEmail, c.Name)
-		if len(choices.Projects) > 1 {
-			label += " (" + names[c.ProjectID] + ")"
-		}
-		v.PickCredentials = append(v.PickCredentials, templates.OpensheetChoice{ID: c.ID, Label: label})
+	switch choices.Setup() {
+	case opensheetsync.SetupReady:
+		return
+	case opensheetsync.SetupNoAccount:
+		v.Setup = "no_account"
+		return
+	}
+	v.Setup = "no_google"
+	if len(choices.Projects) != 1 {
+		return
+	}
+	p := choices.Projects[0]
+	v.SetupProject = p.Name
+	if u, err := url.JoinPath(base, "orgs", url.PathEscape(p.OrgSlug), "projects", url.PathEscape(p.Slug), "credentials"); err == nil {
+		v.SetupURL = u
 	}
 }

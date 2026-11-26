@@ -39,14 +39,40 @@ type Pick struct {
 	ProjectName  string
 }
 
-// Choices are the opensheet projects and Google credentials the grant's person reaches; empty when opensheet does not know them.
-type Choices struct {
-	Projects    []opensheet.Project
-	Credentials []opensheet.Credential
+// Target is an opensheet project paired with one of its usable Google credentials.
+type Target struct {
+	Project    opensheet.Project
+	Credential opensheet.Credential
 }
 
-// Ready reports whether there is a project and a Google credential to pick.
-func (c Choices) Ready() bool { return len(c.Projects) > 0 && len(c.Credentials) > 0 }
+// Setup names what the grant's person still has to do in opensheet before a Sheet can be created.
+type Setup int
+
+// Setup steps: ready to pick, no opensheet project, or no project with a working Google account.
+const (
+	SetupReady Setup = iota
+	SetupNoAccount
+	SetupNoGoogle
+)
+
+// Choices are the opensheet projects the grant's person reaches and the usable project and credential pairs; empty when opensheet does not know them.
+type Choices struct {
+	Projects []opensheet.Project
+	Targets  []Target
+}
+
+// Setup reports the step missing before a pick, or SetupReady.
+func (c Choices) Setup() Setup {
+	switch {
+	case len(c.Targets) > 0:
+		return SetupReady
+	case len(c.Projects) == 0:
+		return SetupNoAccount
+	}
+	return SetupNoGoogle
+}
+
+func usable(c opensheet.Credential) bool { return c.Kind == "google_oauth" && c.Status == "active" }
 
 // GrantScopes are the scopes a connect asks opensheet for; a grant missing any of them is refused.
 func GrantScopes() []string {
@@ -179,7 +205,11 @@ func (s *Service) Choices(ctx context.Context) (Choices, error) {
 			return Choices{}, s.controlErr(ctx, "opensheetsync.Choices: credentials", err, tc)
 		}
 		out.Projects = append(out.Projects, p)
-		out.Credentials = append(out.Credentials, creds...)
+		for _, cr := range creds {
+			if usable(cr) && cr.ProjectID == p.ID {
+				out.Targets = append(out.Targets, Target{Project: p, Credential: cr})
+			}
+		}
 	}
 	return out, nil
 }
@@ -197,17 +227,14 @@ func (s *Service) Provision(ctx context.Context, pick Pick) (*Link, error) {
 	if err != nil {
 		return nil, err
 	}
-	// SECURITY: the form names ids; only a project and credential opensheet lists for this person are provisioned into.
-	pi := slices.IndexFunc(choices.Projects, func(p opensheet.Project) bool { return p.ID == pick.OSProjectID })
-	if pi < 0 {
-		return nil, &InvalidSettingError{Field: "os_project_id", Reason: "pick a project OpenSheet lists for you"}
+	// SECURITY: the form names ids; only a usable pair opensheet lists for this person is provisioned into.
+	ti := slices.IndexFunc(choices.Targets, func(tg Target) bool {
+		return tg.Project.ID == pick.OSProjectID && tg.Credential.ID == pick.CredentialID
+	})
+	if pick.OSProjectID == "" || pick.CredentialID == "" || ti < 0 {
+		return nil, &InvalidSettingError{Field: "target", Reason: "pick a project and Google account OpenSheet lists for you"}
 	}
-	if !slices.ContainsFunc(choices.Credentials, func(c opensheet.Credential) bool {
-		return c.ID == pick.CredentialID && c.ProjectID == pick.OSProjectID
-	}) {
-		return nil, &InvalidSettingError{Field: "credential_id", Reason: "pick a Google account of that project"}
-	}
-	osp := choices.Projects[pi]
+	osp := choices.Targets[ti].Project
 	slugs := ProvisionSlugs(tc.ProjectID)
 	req := opensheet.ProvisionRequest{
 		ProjectID: osp.ID, CredentialID: pick.CredentialID, IdempotencyKey: "yasaku:" + tc.ProjectID.String(),
