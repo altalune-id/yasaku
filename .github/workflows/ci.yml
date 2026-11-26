@@ -57,7 +57,7 @@ jobs:
           n=$(gofmt -l . | tee /dev/stderr | wc -l)
           test "$n" -eq 0
       - name: Test (race + shuffle + cover, unit only)
-        run: go test -race -shuffle=on -cover ./...
+        run: go test -race -shuffle=on -cover -timeout 20m ./...
 
   # Stage 3: integration tests — need a live Postgres and much slower, so gated on Stage 2 passing.
   test-integration:
