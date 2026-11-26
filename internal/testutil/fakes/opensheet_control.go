@@ -1,6 +1,7 @@
 package fakes
 
 import (
+	"cmp"
 	"encoding/json"
 	"net/http"
 	"slices"
@@ -12,9 +13,10 @@ type OpensheetProject struct {
 	ID, OrgID, OrgSlug, Slug, Name string
 }
 
-// OpensheetCredential is a Google credential of a fake opensheet project.
+// OpensheetCredential is a credential of a fake opensheet project; an empty Kind lists as google_oauth, an empty Status as active, and a set ProjectID other than its project's is listed under that project anyway.
 type OpensheetCredential struct {
-	ID, ProjectID, Name, Kind, Email string
+	ID, ProjectID, Name, Kind, Status, Email string
+	listedUnder                              string
 }
 
 // OpensheetProvision is one Provision call the fake control plane received.
@@ -47,7 +49,7 @@ func (f *Opensheet) AddProject(p OpensheetProject, creds ...OpensheetCredential)
 	defer f.mu.Unlock()
 	f.control.projects = append(f.control.projects, p)
 	for _, c := range creds {
-		c.ProjectID = p.ID
+		c.ProjectID, c.listedUnder = cmp.Or(c.ProjectID, p.ID), p.ID
 		f.control.creds = append(f.control.creds, c)
 	}
 }
@@ -106,9 +108,10 @@ func (f *Opensheet) listCredentials(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewDecoder(r.Body).Decode(&in)
 	out := []map[string]string{}
 	for _, c := range f.control.creds {
-		if c.ProjectID == in.ProjectID {
+		if c.listedUnder == in.ProjectID {
 			out = append(out, map[string]string{
-				"id": c.ID, "projectId": c.ProjectID, "name": c.Name, "kind": c.Kind, "status": "active", "googleAccountEmail": c.Email,
+				"id": c.ID, "projectId": c.ProjectID, "name": c.Name, "kind": cmp.Or(c.Kind, "google_oauth"),
+				"status": cmp.Or(c.Status, "active"), "googleAccountEmail": c.Email,
 			})
 		}
 	}

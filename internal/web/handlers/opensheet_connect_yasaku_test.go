@@ -236,11 +236,10 @@ func TestConnect_SavesGrantThenPickerProvisions(t *testing.T) {
 	require.Equal(t, http.StatusOK, page.Code)
 	body := page.Body.String()
 	assert.Contains(t, body, f.en("opensheet.picker.title"))
-	assert.Contains(t, body, `value="osp-1" selected`, "a single project is preselected")
-	assert.Contains(t, body, `value="cred-1" selected`, "a single Google account is preselected")
+	assert.Contains(t, body, `value="osp-1:cred-1" selected`, "the first pair is preselected")
 	assert.Contains(t, body, f.en("opensheet.picker.copy_note"))
 
-	rec := f.send(t, http.MethodPost, f.path("/opensheet/provision"), f.Principal, nil, url.Values{"os_project_id": {"osp-1"}, "credential_id": {"cred-1"}})
+	rec := f.send(t, http.MethodPost, f.path("/opensheet/provision"), f.Principal, nil, url.Values{"target": {"osp-1:cred-1"}})
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	l, err := f.store.LinkByProject(f.tenantCtx(), f.OrgID, f.ProjectID)
 	require.NoError(t, err)
@@ -366,7 +365,7 @@ func TestConnect_Audited(t *testing.T) {
 	f := newConnectFixture(t)
 	f.addOpensheetProject()
 	f.connect(t)
-	rec := f.send(t, http.MethodPost, f.path("/opensheet/provision"), f.Principal, nil, url.Values{"os_project_id": {"osp-1"}, "credential_id": {"cred-1"}})
+	rec := f.send(t, http.MethodPost, f.path("/opensheet/provision"), f.Principal, nil, url.Values{"target": {"osp-1:cred-1"}})
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	assert.Equal(t, []string{"opensheet.connected"}, f.actions(t))
 
@@ -384,10 +383,45 @@ func TestPicker_UnknownOpensheetPersonShowsSetup(t *testing.T) {
 	page := f.send(t, http.MethodGet, f.path("/opensheet"), f.Principal, nil, nil)
 	require.Equal(t, http.StatusOK, page.Code)
 	body := page.Body.String()
-	assert.Contains(t, body, f.en("opensheet.setup.title"))
-	assert.Contains(t, body, f.en("opensheet.setup.body"))
-	assert.Contains(t, body, `href="`+f.sheets.URL()+`" target="_blank" rel="noopener"`)
+	assert.Contains(t, body, f.en("opensheet.setup.no_project.title"))
+	assert.Contains(t, body, f.en("opensheet.setup.no_project.body"))
+	assert.Contains(t, body, f.en("opensheet.setup.return_hint"))
 	assert.NotContains(t, body, f.en("opensheet.picker.title"))
+}
+
+func TestPicker_NoProjectShowsCreateProjectStep(t *testing.T) {
+	t.Parallel()
+	f := newConnectFixture(t)
+	f.seedGrant(t, f.ProjectID, opensheetsync.GrantOK)
+	body := f.send(t, http.MethodGet, f.path("/opensheet"), f.Principal, nil, nil).Body.String()
+	assert.Contains(t, body, f.en("opensheet.setup.no_project.title"))
+	assert.Contains(t, body, `href="`+f.sheets.URL()+`/" target="_blank" rel="noopener"`)
+	assert.Contains(t, body, f.en("opensheet.setup.no_project.action"))
+}
+
+func TestPicker_NoGoogleDeepLinksToCredentials(t *testing.T) {
+	t.Parallel()
+	f := newConnectFixture(t)
+	f.sheets.AddProject(fakes.OpensheetProject{ID: "osp-1", OrgSlug: "acme", Slug: "books", Name: "Books"},
+		fakes.OpensheetCredential{ID: "stale", Status: "reauth_needed", Email: "ana@gmail.com"})
+	f.seedGrant(t, f.ProjectID, opensheetsync.GrantOK)
+	body := f.send(t, http.MethodGet, f.path("/opensheet"), f.Principal, nil, nil).Body.String()
+	assert.Contains(t, body, f.en("opensheet.setup.no_google.title"))
+	assert.Contains(t, body, f.en("opensheet.setup.no_google.body", "Project", "Books"))
+	assert.Contains(t, body, `href="`+f.sheets.URL()+`/orgs/acme/projects/books/credentials" target="_blank" rel="noopener"`)
+	assert.Contains(t, body, f.en("opensheet.setup.no_google.action"))
+}
+
+func TestPicker_NoGoogleManyProjectsLinksToRoot(t *testing.T) {
+	t.Parallel()
+	f := newConnectFixture(t)
+	f.sheets.AddProject(fakes.OpensheetProject{ID: "osp-1", OrgSlug: "acme", Slug: "books", Name: "Books"})
+	f.sheets.AddProject(fakes.OpensheetProject{ID: "osp-2", OrgSlug: "beta", Slug: "work", Name: "Work"})
+	f.seedGrant(t, f.ProjectID, opensheetsync.GrantOK)
+	body := f.send(t, http.MethodGet, f.path("/opensheet"), f.Principal, nil, nil).Body.String()
+	assert.Contains(t, body, f.en("opensheet.setup.no_google.body_many"))
+	assert.Contains(t, body, `href="`+f.sheets.URL()+`/" target="_blank" rel="noopener"`)
+	assert.NotContains(t, body, "/credentials")
 }
 
 func TestPicker_NoGoogleCredentialShowsSetup(t *testing.T) {
@@ -396,7 +430,7 @@ func TestPicker_NoGoogleCredentialShowsSetup(t *testing.T) {
 	f.sheets.AddProject(fakes.OpensheetProject{ID: "osp-1", OrgSlug: "acme", Slug: "home", Name: "Home"})
 	f.seedGrant(t, f.ProjectID, opensheetsync.GrantOK)
 	page := f.send(t, http.MethodGet, f.path("/opensheet"), f.Principal, nil, nil)
-	assert.Contains(t, page.Body.String(), f.en("opensheet.setup.title"))
+	assert.Contains(t, page.Body.String(), f.en("opensheet.setup.no_google.title"))
 }
 
 func TestPicker_ForeignCredentialRefused(t *testing.T) {
@@ -406,9 +440,34 @@ func TestPicker_ForeignCredentialRefused(t *testing.T) {
 	f.sheets.AddProject(fakes.OpensheetProject{ID: "osp-2", OrgSlug: "beta", Slug: "work", Name: "Work"},
 		fakes.OpensheetCredential{ID: "cred-2", Name: "Bo", Kind: "google_oauth", Email: "bo@gmail.com"})
 	f.seedGrant(t, f.ProjectID, opensheetsync.GrantOK)
-	rec := f.send(t, http.MethodPost, f.path("/opensheet/provision"), f.Principal, nil, url.Values{"os_project_id": {"osp-1"}, "credential_id": {"cred-2"}})
-	assert.Equal(t, http.StatusUnprocessableEntity, rec.Code)
+	for _, target := range []string{"osp-1:cred-2", "osp-1:", "nocolon", ":cred-1", ""} {
+		rec := f.send(t, http.MethodPost, f.path("/opensheet/provision"), f.Principal, nil, url.Values{"target": {target}})
+		assert.Equal(t, http.StatusUnprocessableEntity, rec.Code, target)
+	}
 	assert.Empty(t, f.sheets.Provisions())
+}
+
+func TestPicker_OneSelectOfValidPairs(t *testing.T) {
+	t.Parallel()
+	f := newConnectFixture(t)
+	f.sheets.AddProject(fakes.OpensheetProject{ID: "A", OrgSlug: "acme", Slug: "books", Name: "Books"},
+		fakes.OpensheetCredential{ID: "A1", Email: "ana@gmail.com"},
+		fakes.OpensheetCredential{ID: "A2", Kind: "service_account", Email: "bot@iam.gserviceaccount.com"})
+	f.sheets.AddProject(fakes.OpensheetProject{ID: "B", OrgSlug: "beta", Slug: "work", Name: "Work"},
+		fakes.OpensheetCredential{ID: "B1", Email: "bo@gmail.com"},
+		fakes.OpensheetCredential{ID: "B2", Status: "reauth_needed", Email: "old@gmail.com"})
+	f.seedGrant(t, f.ProjectID, opensheetsync.GrantOK)
+	body := f.send(t, http.MethodGet, f.path("/opensheet"), f.Principal, nil, nil).Body.String()
+	assert.Equal(t, 1, strings.Count(body, `name="target"`))
+	assert.NotContains(t, body, `name="credential_id"`)
+	assert.NotContains(t, body, `name="os_project_id"`)
+	assert.Contains(t, body, `value="A:A1" selected`)
+	assert.Contains(t, body, `value="B:B1"`)
+	assert.NotContains(t, body, `value="A:A2"`)
+	assert.NotContains(t, body, `value="B:B2"`)
+	assert.Contains(t, body, f.en("opensheet.picker.target_option", "Project", "Work", "Org", "beta", "Slug", "work", "Email", "bo@gmail.com"))
+	assert.Contains(t, body, f.en("opensheet.picker.target_hint"))
+	assert.Contains(t, body, f.en("opensheet.picker.missing_link"))
 }
 
 func TestProvisionSlugsArePerProject(t *testing.T) {
@@ -492,7 +551,7 @@ func TestDisconnect_RevokesAndKeepsSheet(t *testing.T) {
 	f := newConnectFixture(t)
 	f.addOpensheetProject()
 	f.connect(t)
-	rec := f.send(t, http.MethodPost, f.path("/opensheet/provision"), f.Principal, nil, url.Values{"os_project_id": {"osp-1"}, "credential_id": {"cred-1"}})
+	rec := f.send(t, http.MethodPost, f.path("/opensheet/provision"), f.Principal, nil, url.Values{"target": {"osp-1:cred-1"}})
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	before := len(f.sheets.Requests())
 

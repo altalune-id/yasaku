@@ -153,7 +153,7 @@ func probeRoutes() []probeRoute {
 		{http.MethodPost, pbase + "/opensheet/sync", url.Values{}},
 		{http.MethodPost, pbase + "/opensheet/delete", url.Values{}},
 		{http.MethodPost, pbase + "/opensheet/connect", url.Values{}},
-		{http.MethodPost, pbase + "/opensheet/provision", url.Values{"os_project_id": {"probe"}, "credential_id": {"probe"}}},
+		{http.MethodPost, pbase + "/opensheet/provision", url.Values{"target": {"probe:probe"}}},
 		{http.MethodGet, "/opensheet/oauth/callback", nil},
 		{http.MethodPost, pbase + "/apikeys", url.Values{"name": {"Probe Key"}, "scopes": {authn.ScopeYasakuRead}}},
 		{http.MethodPost, pbase + "/apikeys/" + id + "/revoke", url.Values{}},

@@ -91,11 +91,13 @@ type OpensheetView struct {
 	Access          string
 	ConnectKey      string
 	ConnectCode     string
-	SetupNeeded     bool
-	PickProjects    []OpensheetChoice
-	PickCredentials []OpensheetChoice
-	SheetTitle      string
-	SheetURL        string
+	// Setup names the step missing in opensheet before a pick: "", no_account or no_google.
+	Setup        string
+	SetupProject string
+	SetupURL     string
+	PickTargets  []OpensheetChoice
+	SheetTitle   string
+	SheetURL     string
 	// GrantLink marks a link that uses the OAuth grant; its API-key settings stay hidden until Disconnect.
 	GrantLink bool
 }
@@ -235,7 +237,7 @@ templ OpensheetModule(d web.LayoutData, v OpensheetView) {
 		if !v.connectCard() {
 			@opensheetConnectBanner(d, v)
 		}
-		if v.picking() && v.SetupNeeded {
+		if v.picking() && v.Setup != "" {
 			@opensheetSetupNeeded(d, v)
 		} else if v.picking() {
 			@opensheetPicker(d, v)
@@ -878,22 +880,17 @@ templ opensheetPicker(d web.LayoutData, v OpensheetView) {
 		>
 			<h2 id="gs-pick-h" class="font-semibold">{ d.Tr("opensheet.picker.title") }</h2>
 			@pageBanner(d, v.ErrorKey, v.ErrorMsg, v.ErrorCode)
-			{{ proj := FieldProps{ID: "opensheet-pick-project", Label: d.Tr("opensheet.picker.project")} }}
-			@FormField(proj) {
-				<select { proj.Attrs()... } name="os_project_id" required class="select w-full">
-					for _, p := range v.PickProjects {
-						<option value={ p.ID } selected?={ len(v.PickProjects) == 1 }>{ p.Label }</option>
+			{{ target := FieldProps{ID: "opensheet-pick-target", Label: d.Tr("opensheet.picker.target"), Hint: d.Tr("opensheet.picker.target_hint")} }}
+			@FormField(target) {
+				<select { target.Attrs()... } name="target" required class="select w-full">
+					for i, c := range v.PickTargets {
+						<option value={ c.ID } selected?={ i == 0 }>{ c.Label }</option>
 					}
 				</select>
 			}
-			{{ cred := FieldProps{ID: "opensheet-pick-credential", Label: d.Tr("opensheet.picker.credential")} }}
-			@FormField(cred) {
-				<select { cred.Attrs()... } name="credential_id" required class="select w-full">
-					for _, c := range v.PickCredentials {
-						<option value={ c.ID } selected?={ len(v.PickCredentials) == 1 }>{ c.Label }</option>
-					}
-				</select>
-			}
+			<p class="text-sm">
+				<a href={ templ.SafeURL(v.OpensheetURL) } target="_blank" rel="noopener" class="link">{ d.Tr("opensheet.picker.missing_link") }</a>
+			</p>
 			<p class="text-sm text-base-content/70">{ d.Tr("opensheet.picker.copy_note") }</p>
 			<div class="flex flex-wrap gap-2">
 				<button type="submit" class="btn btn-primary">
@@ -909,14 +906,30 @@ templ opensheetPicker(d web.LayoutData, v OpensheetView) {
 templ opensheetSetupNeeded(d web.LayoutData, v OpensheetView) {
 	<section aria-labelledby="gs-setup-needed-h" class="card min-w-0 border border-base-300 bg-base-100" data-opensheet-setup-needed="true">
 		<div class="card-body gap-3 p-4">
-			<h2 id="gs-setup-needed-h" class="font-semibold">{ d.Tr("opensheet.setup.title") }</h2>
-			<p class="text-sm">{ d.Tr("opensheet.setup.body") }</p>
+			if v.Setup == "no_account" {
+				<h2 id="gs-setup-needed-h" class="font-semibold">{ d.Tr("opensheet.setup.no_project.title") }</h2>
+				<p class="text-sm">{ d.Tr("opensheet.setup.no_project.body") }</p>
+			} else {
+				<h2 id="gs-setup-needed-h" class="font-semibold">{ d.Tr("opensheet.setup.no_google.title") }</h2>
+				if v.SetupProject != "" {
+					<p class="text-sm">{ d.Tr("opensheet.setup.no_google.body", "Project", v.SetupProject) }</p>
+				} else {
+					<p class="text-sm">{ d.Tr("opensheet.setup.no_google.body_many") }</p>
+				}
+			}
+			<p class="text-sm text-base-content/70">{ d.Tr("opensheet.setup.return_hint") }</p>
 			<div class="flex flex-wrap gap-2">
-				<a href={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/opensheet")) } class="btn btn-primary">
+				<a href={ templ.SafeURL(v.SetupURL) } target="_blank" rel="noopener" class="btn btn-primary">
+					if v.Setup == "no_account" {
+						{ d.Tr("opensheet.setup.no_project.action") }
+					} else {
+						{ d.Tr("opensheet.setup.no_google.action") }
+					}
+				</a>
+				<a href={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/opensheet")) } class="btn">
 					@icons.Icon("refresh-cw", "size-4")
 					{ d.Tr("opensheet.setup.refresh") }
 				</a>
-				@opensheetOpenLink(d, v, "btn")
 				@opensheetCancelConnect(d, v)
 			</div>
 		</div>
