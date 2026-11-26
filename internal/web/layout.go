@@ -136,6 +136,8 @@ type LayoutData struct {
 	Opensheet bool
 	// Support is the staff member's open support visit; nil outside one.
 	Support *SupportBanner
+	// OrgCreateBlocked is the limit message shown on every new-organization control; empty while the user may create one.
+	OrgCreateBlocked string
 }
 
 // SupportBanner is what the chrome shows during a support visit.

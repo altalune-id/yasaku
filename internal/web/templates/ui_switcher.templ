@@ -102,14 +102,7 @@ templ switcherList(d web.LayoutData, projectIcon string) {
 				</a>
 			</li>
 		}
-		if d.Caps.OrgCreation {
-			<li>
-				<a href={ templ.SafeURL(d.Href("/orgs/new")) }>
-					@icons.Icon("plus", "size-4")
-					{ d.Tr("nav.new_organization") }
-				</a>
-			</li>
-		}
+		@newOrgItem(d, d.Tr("nav.new_organization"))
 	</ul>
 }
 

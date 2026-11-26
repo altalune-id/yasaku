@@ -993,6 +993,20 @@ func TestAuthHandler_GetAdminLogin(t *testing.T) {
 	assert.Equal(t, http.StatusOK, rec.Code)
 }
 
+func TestAuthHandler_GetAdminLogin_RedirectsWithoutLocalLogin(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.Deps.Caps.LocalIdentity = false
+	f.Deps.Caps.ExternalIdentity = true
+	h := handlers.NewAuthHandler(f.Deps, newAuthSvc(t, f), f.Users, f.Orgs, f.Projects, nil, nil)
+	mux := http.NewServeMux()
+	h.Register(mux)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/admin-login", nil))
+	assert.Equal(t, http.StatusSeeOther, rec.Code)
+	assert.Equal(t, "/login", rec.Header().Get("Location"))
+}
+
 func TestAuthHandler_PostLogin_BadCreds(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
