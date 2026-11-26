@@ -244,7 +244,23 @@ templ orgMenu(d web.LayoutData) {
 		@orgLinks(d, o.Slug)
 	} else {
 		<li class="menu-title mt-1 flex h-8 justify-center px-3 py-0">{ d.Tr("common.workspace") }</li>
-		@menuLink(d.Href("/orgs/new"), "plus", d.Tr("nav.create_organization"), false)
+		@newOrgItem(d, d.Tr("nav.create_organization"))
+	}
+}
+
+templ newOrgItem(d web.LayoutData, label string) {
+	if d.Caps.OrgCreation && d.OrgCreateBlocked == "" {
+		@menuLink(d.Href("/orgs/new"), "plus", label, false)
+	} else if d.Caps.OrgCreation {
+		<li class="menu-disabled" data-limit-blocked>
+			<span class="items-start">
+				@icons.Icon("plus", "size-4 shrink-0 mt-0.5 text-base-content/50")
+				<span class="flex min-w-0 flex-col">
+					<span class="truncate text-base-content/50">{ label }</span>
+					<span class="whitespace-normal text-xs text-base-content/70">{ d.OrgCreateBlocked }</span>
+				</span>
+			</span>
+		</li>
 	}
 }
 

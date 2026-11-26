@@ -136,10 +136,14 @@ func (h *AuthHandler) GetAdminLogin(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, ResolveReturnTo(h.Cfg.HTTP.BasePath, ""), http.StatusSeeOther)
 		return
 	}
+	if !h.localAuthEnabled(r.Context()) {
+		http.Redirect(w, r, web.Path(h.Cfg.HTTP.BasePath, "/login"), http.StatusSeeOther)
+		return
+	}
 	terms, privacy := h.legalURLs()
 	Render(w, r, templates.LoginLayout(h.Base(r, pageTitle(r, "title.admin_sign_in")), templates.LoginView{
 		AdminForce: true,
-		LocalAuth:  h.localAuthEnabled(r.Context()),
+		LocalAuth:  true,
 		TermsURL:   terms,
 		PrivacyURL: privacy,
 	}))

@@ -120,3 +120,69 @@ func TestOrgNew_EnabledBelowLimit(t *testing.T) {
 		assert.NotContains(t, body, "You can create one organization", path)
 	}
 }
+
+func TestLayoutOrgCreate_DisabledAtLimitEnabledBelow(t *testing.T) {
+	t.Parallel()
+	const reason = "You can create one organization on the Free plan."
+	const link = `href="/orgs/new"`
+	for name, atLimit := range map[string]bool{"at the limit": true, "below": false} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			f := newFixture(t)
+			f.Cfg.Mode = config.ModeCloud
+			ctx := context.Background()
+			uid, other := uuid.New(), uuid.New()
+			creator := other
+			if atLimit {
+				creator = uid
+			}
+			o, err := f.Orgs.Create(ctx, org.CreateRequest{Slug: "acme", Name: "Acme", OwnerID: creator})
+			require.NoError(t, err)
+			if !atLimit {
+				_, err = f.Orgs.AddMember(ctx, o.ID, uid, org.RoleMember)
+				require.NoError(t, err)
+			}
+			f.Deps.Orgs = org.NewService(f.OrgStore, f.Deps.Caps, discardLogger(), passthroughUnexpected(), fakes.UnitOfWork,
+				org.WithLimits(limits.NewService(fakes.NewLimits(), config.ModeCloud)))
+			mux := http.NewServeMux()
+			handlers.NewProjectHandler(f.Deps, f.Deps.Projects).Register(mux)
+			body := get(t, mux, f, "/orgs/acme/projects", session.Principal{UserID: uid, ActiveOrgID: o.ID})
+			if atLimit {
+				assert.NotContains(t, body, link)
+				assert.Contains(t, body, limitBlocked)
+				assert.Contains(t, body, reason)
+				return
+			}
+			assert.Contains(t, body, link)
+			assert.NotContains(t, body, reason)
+		})
+	}
+}
+
+func TestLayoutOrgCreate_HiddenWhenCreationOff(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.Deps.Caps.OrgCreation = false
+	mux := http.NewServeMux()
+	handlers.NewOrgHandler(f.Deps, f.Deps.Orgs).Register(mux)
+	body := get(t, mux, f, "/orgs", session.Principal{UserID: uuid.New()})
+	assert.NotContains(t, body, `href="/orgs/new"`)
+}
+
+func TestLayoutOrgCreate_SidebarDisabledWithoutActiveOrg(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.Cfg.Mode = config.ModeCloud
+	ctx := context.Background()
+	uid := uuid.New()
+	store := fakes.NewLimits()
+	require.NoError(t, store.SetOverride(ctx, limits.Subject{Kind: limits.SubjectUser, ID: uid}, limits.UserOrgsCreated, 0, uuid.Nil))
+	f.Deps.Orgs = org.NewService(f.OrgStore, f.Deps.Caps, discardLogger(), passthroughUnexpected(), fakes.UnitOfWork,
+		org.WithLimits(limits.NewService(store, config.ModeCloud)))
+	mux := http.NewServeMux()
+	handlers.NewOrgHandler(f.Deps, f.Deps.Orgs).Register(mux)
+	body := get(t, mux, f, "/orgs", session.Principal{UserID: uid})
+	assert.NotContains(t, body, `href="/orgs/new"`)
+	assert.Contains(t, body, "nav.create_organization")
+	assert.Contains(t, body, limitBlocked)
+}
