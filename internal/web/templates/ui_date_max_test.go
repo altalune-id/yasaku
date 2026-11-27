@@ -32,12 +32,12 @@ function pickable(iso) {
   return new Promise(function (done) {
     setTimeout(function () {
       var month = cal.querySelector("calendar-month").shadowRoot;
-      var days = Array.prototype.filter.call(month.querySelectorAll("button"), function (b) {
+      var label = new Intl.DateTimeFormat(cal.locale, { month: "long", day: "numeric", timeZone: "UTC" }).format(new Date(iso + "T00:00:00Z"));
+      var b = Array.prototype.find.call(month.querySelectorAll("button"), function (b) {
         var p = b.getAttribute("part") || "";
-        return p.indexOf("day") >= 0 && p.indexOf("outside") < 0;
+        return p.indexOf("day") >= 0 && p.indexOf("outside") < 0 && b.getAttribute("aria-label") === label;
       });
-      var b = days[Number(iso.slice(8)) - 1];
-      done(b ? !b.disabled : null);
+      done(b ? !b.disabled : false);
     }, 200);
   });
 }
