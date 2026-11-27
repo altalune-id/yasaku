@@ -23,7 +23,7 @@ import (
 
 type orgs struct{ system map[uuid.UUID]bool }
 
-func (o orgs) IsSystem(_ context.Context, id uuid.UUID) (bool, error) { return o.system[id], nil }
+func (o orgs) IsStaffOrg(_ context.Context, id uuid.UUID) (bool, error) { return o.system[id], nil }
 
 type orgNames map[uuid.UUID]string
 

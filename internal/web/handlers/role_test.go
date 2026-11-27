@@ -25,9 +25,9 @@ import (
 	"altalune.id/yasaku/internal/web/handlers"
 )
 
-type notSystemOrgs struct{}
+type staffOrgs map[uuid.UUID]bool
 
-func (notSystemOrgs) IsSystem(context.Context, uuid.UUID) (bool, error) { return false, nil }
+func (s staffOrgs) IsStaffOrg(_ context.Context, id uuid.UUID) (bool, error) { return s[id], nil }
 
 type rolePerms struct{ store *fakes.Role }
 
@@ -50,6 +50,7 @@ type roleFixture struct {
 	admin uuid.UUID
 	roles *role.Service
 	store *fakes.Role
+	staff staffOrgs
 	mux   *http.ServeMux
 }
 
@@ -66,7 +67,8 @@ func newRoleFixture(t *testing.T, maxRoles int64) *roleFixture {
 	lim := fakes.NewLimits()
 	require.NoError(t, lim.SetOverride(ctx, limits.Subject{Kind: limits.SubjectOrg, ID: o.ID}, limits.OrgCustomRoles, maxRoles, uuid.Nil))
 	store := fakes.NewRole()
-	roles := role.NewService(store, notSystemOrgs{}, discardLogger(), passthroughUnexpected(), fakes.UnitOfWork,
+	staff := staffOrgs{}
+	roles := role.NewService(store, staff, discardLogger(), passthroughUnexpected(), fakes.UnitOfWork,
 		role.WithLimits(limits.NewService(lim, config.ModeCloud), storeOrgNames{f.OrgStore}))
 	f.Deps.Roles = roles
 	mux := http.NewServeMux()
@@ -75,7 +77,7 @@ func newRoleFixture(t *testing.T, maxRoles int64) *roleFixture {
 	send := invite.NewSendWorkflow(f.InvStore, nopMailer{}, "http://localhost", discardLogger(), passthroughUnexpected())
 	invites := invite.NewService(f.InvStore, send, nil, true, discardLogger(), passthroughUnexpected(), invite.WithPermissions(rolePerms{store}), invite.WithRoleNames(rolePerms{store}))
 	handlers.NewInviteHandler(f.Deps, f.Orgs, invites).Register(mux)
-	return &roleFixture{handlerFixture: f, org: o, owner: owner, admin: admin, roles: roles, store: store, mux: mux}
+	return &roleFixture{handlerFixture: f, org: o, owner: owner, admin: admin, roles: roles, store: store, staff: staff, mux: mux}
 }
 
 func (rf *roleFixture) seed(t *testing.T, name string, perms ...authz.Permission) *role.Role {
@@ -110,6 +112,22 @@ func TestRoles_ListShowsBuiltinsAndCustom(t *testing.T) {
 	assert.Contains(t, body, `data-dialog-open="role-delete-`+free.ID.String()+`"`, "an unheld role can be deleted")
 	assert.NotContains(t, body, `data-dialog-open="role-delete-`+held.ID.String()+`"`, "a held role cannot be deleted")
 	assert.Contains(t, body, `aria-describedby="role-held-`+held.ID.String()+`"`, "the disabled delete says why")
+}
+
+func TestRoles_StaffOrgShowsReasonWithoutControls(t *testing.T) {
+	t.Parallel()
+	rf := newRoleFixture(t, 5)
+	legacy := rf.seed(t, "Bookkeeper", authz.WalletsRead)
+	rf.staff[rf.org.ID] = true
+
+	w := rf.do(t, http.MethodGet, "/orgs/acme/roles", nil, rf.owner)
+	require.Equal(t, http.StatusOK, w.Code)
+	body := w.Body.String()
+	assert.Contains(t, body, "Custom roles aren&#39;t available in the platform staff organization.")
+	assert.Contains(t, body, "Built-in")
+	assert.NotContains(t, body, "/orgs/acme/roles/new", "no New role control")
+	assert.NotContains(t, body, "/orgs/acme/roles/"+legacy.ID.String(), "no edit control")
+	assert.NotContains(t, body, "role-delete-"+legacy.ID.String(), "no delete control")
 }
 
 func TestRoles_AdminSeesListButCannotEdit(t *testing.T) {

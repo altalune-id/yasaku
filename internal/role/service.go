@@ -20,9 +20,9 @@ import (
 //nolint:gochecknoglobals // OTel tracer is a package-level fixture, not runtime state.
 var tracer trace.Tracer = otel.Tracer("altalune.id/yasaku/internal/role")
 
-// Orgs tells whether an org is the system org.
+// Orgs tells whether an org is the staff org, which refuses custom roles.
 type Orgs interface {
-	IsSystem(ctx context.Context, orgID uuid.UUID) (bool, error)
+	IsStaffOrg(ctx context.Context, orgID uuid.UUID) (bool, error)
 }
 
 // Limiter locks a subject's row and refuses a create past its limit.
@@ -241,14 +241,27 @@ func (s *Service) writable(ctx context.Context) (tenant.Context, error) {
 	if err := authz.Can(ctx, authz.RolesWrite); err != nil {
 		return tenant.Context{}, err
 	}
-	system, err := s.orgs.IsSystem(ctx, tc.OrgID)
+	allowed, err := s.Allowed(ctx)
 	if err != nil {
-		return tenant.Context{}, s.unexpected(ctx, "role: system org", err, "org_id", tc.OrgID.String())
+		return tenant.Context{}, err
 	}
-	if system {
+	if !allowed {
 		return tenant.Context{}, &SystemOrgError{}
 	}
 	return tc, nil
+}
+
+// Allowed reports whether the caller's org may hold custom roles; the staff org may not.
+func (s *Service) Allowed(ctx context.Context) (bool, error) {
+	tc, err := tenant.From(ctx)
+	if err != nil {
+		return false, err
+	}
+	staff, err := s.orgs.IsStaffOrg(ctx, tc.OrgID)
+	if err != nil {
+		return false, s.unexpected(ctx, "role: staff org", err, "org_id", tc.OrgID.String())
+	}
+	return !staff, nil
 }
 
 func (s *Service) byID(ctx context.Context, id uuid.UUID, op string) (*Role, error) {

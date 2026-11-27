@@ -55,7 +55,13 @@ func (h *RoleHandler) renderList(w http.ResponseWriter, sc OrgScope, status int,
 		h.ErrorPage(w, r, http.StatusInternalServerError, pageTitle(r, "error_title.list_failed"), "Could not load roles.", err)
 		return
 	}
-	v := templates.RolesView{OrgSlug: o.Slug, CanEdit: holds(r, authz.RolesWrite), Error: errMsg, ErrorCode: errCode}
+	allowed, err := h.Roles.Allowed(r.Context())
+	if err != nil {
+		h.LogErr("web role: allowed", err)
+		h.ErrorPage(w, r, http.StatusInternalServerError, pageTitle(r, "error_title.list_failed"), "Could not load roles.", err)
+		return
+	}
+	v := templates.RolesView{OrgSlug: o.Slug, CanEdit: allowed && holds(r, authz.RolesWrite), StaffOrg: !allowed, Error: errMsg, ErrorCode: errCode}
 	for _, name := range []string{"owner", "admin", "member"} {
 		v.Builtins = append(v.Builtins, templates.BuiltinRoleRow{Name: name, Perms: len(authz.Builtin(name))})
 	}

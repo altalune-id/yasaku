@@ -33,6 +33,7 @@ type RolesView struct {
 	Builtins      []BuiltinRoleRow
 	Roles         []RoleRow
 	CanEdit       bool
+	StaffOrg      bool
 	CreateBlocked string
 	Error         string
 	ErrorCode     string
@@ -67,6 +68,9 @@ templ RolesPage(d web.LayoutData, v RolesView) {
 					{ d.Tr("roles.new") }
 				}
 			}
+		}
+		if v.StaffOrg {
+			<p role="status" class="-mt-2 text-sm text-base-content/70" data-staff-org>{ d.Tr("roles.staff_org") }</p>
 		}
 		if v.CanEdit && v.CreateBlocked != "" {
 			<p id="role-create-blocked" role="status" class="-mt-2 text-sm text-base-content/70">{ v.CreateBlocked }</p>

@@ -48,6 +48,21 @@ func (c Counter) IsStaff(ctx context.Context, userID uuid.UUID) (bool, error) {
 	return c.store.IsStaff(ctx, userID)
 }
 
+// IsStaffOrg reports whether orgID is the system org on a deployment with support access, the org whose built-in roles decide staff.
+func (c Counter) IsStaffOrg(ctx context.Context, orgID uuid.UUID) (bool, error) {
+	if !c.caps.SupportAccess {
+		return false, nil
+	}
+	o, err := c.store.SystemOrg(ctx)
+	if IsNotFoundError(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return o.ID == orgID, nil
+}
+
 // OrgName returns orgID's display name.
 func (c Counter) OrgName(ctx context.Context, orgID uuid.UUID) (string, error) {
 	o, err := c.store.ByID(ctx, orgID)

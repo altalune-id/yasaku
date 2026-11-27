@@ -309,7 +309,7 @@ func buildServices(cfg *config.Config, k *platform.Kernel, caps capabilities.Cap
 		Projects:   projects,
 		Todos:      todos,
 		Invites:    invites,
-		Roles:      role.NewService(roleStore, systemOrgs{store: orgStore}, log, reporter.Unexpected, uow, role.WithLimits(limiter, members), role.WithAudit(recorder)),
+		Roles:      role.NewService(roleStore, members, log, reporter.Unexpected, uow, role.WithLimits(limiter, members), role.WithAudit(recorder)),
 		Onboards:   onboards,
 		Posts:      posts,
 		Categories: categories,

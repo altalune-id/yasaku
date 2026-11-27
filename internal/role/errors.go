@@ -63,7 +63,7 @@ func IsInvalidPermissionError(err error) bool {
 	return ok
 }
 
-// SystemOrgError refuses custom roles in the system org, whose built-in roles decide who is staff.
+// SystemOrgError refuses custom roles in the staff org, whose built-in roles decide who is staff.
 type SystemOrgError struct{}
 
 func (*SystemOrgError) Error() string { return "role: custom roles are refused in the system org" }
