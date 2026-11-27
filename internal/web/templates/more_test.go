@@ -111,14 +111,31 @@ func TestMorePage_ListsEveryPageTipsResetAndAppearance(t *testing.T) {
 	if strings.Count(out, `block truncate text-sm text-base-content/70`) != 8 {
 		t.Error("every link row keeps its description on one line")
 	}
+	if strings.Contains(out, `href="/orgs/acme/roles"`) || strings.Contains(out, `href="/orgs/acme/activity"`) {
+		t.Error("Roles and Activity stay hidden from a plain member, as in the rail")
+	}
 	d.Opensheet = false
 	if strings.Contains(render(t, MorePage(d)), "/opensheet") {
 		t.Error("the opensheet row follows the module switch")
 	}
 }
 
+func TestMorePage_ListsRolesAndActivityForAnOrgManager(t *testing.T) {
+	d := shellData("more", false)
+	d.ActiveOrg.CanManage = true
+	out := render(t, MorePage(d))
+	for _, want := range []string{`href="/orgs/acme/roles"`, `href="/orgs/acme/activity"`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("More lacks %s: the dock hides the rail on a phone, so More is the only way there", want)
+		}
+	}
+	if rows := strings.Count(out, `class="list-row`); rows != 10 {
+		t.Errorf("rows = %d, want 10", rows)
+	}
+}
+
 func TestMoreDescriptions_FitOneLineInEveryLocale(t *testing.T) {
-	keys := []string{"more.desc_categories", "more.desc_periods", "more.desc_opensheet", "more.desc_settings", "more.desc_apikeys", "more.desc_organization", "more.desc_org_apikeys", "more.tips_again_desc"}
+	keys := []string{"more.desc_categories", "more.desc_periods", "more.desc_opensheet", "more.desc_settings", "more.desc_apikeys", "more.desc_organization", "more.desc_org_apikeys", "more.desc_roles", "more.desc_activity", "more.tips_again_desc"}
 	bundle := i18n.NewEmbeddedBundle(i18n.EnUS)
 	for _, loc := range bundle.All() {
 		tr := bundle.For(loc)
