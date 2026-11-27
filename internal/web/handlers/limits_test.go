@@ -120,31 +120,6 @@ func TestInvites_NoCounterWhenUnlimited(t *testing.T) {
 	assert.NotContains(t, rec.Body.String(), "data-seats")
 }
 
-func TestOrgNew_DisabledWithReason(t *testing.T) {
-	t.Parallel()
-	f := newFixture(t)
-	f.Cfg.Mode = config.ModeCloud
-	ctx := context.Background()
-	uid := uuid.New()
-	orgs := org.NewService(f.OrgStore, f.Deps.Caps, discardLogger(), passthroughUnexpected(), fakes.UnitOfWork,
-		org.WithLimits(limits.NewService(fakes.NewLimits(), config.ModeCloud)))
-	_, err := orgs.Create(ctx, org.CreateRequest{Slug: "acme", Name: "Acme", OwnerID: uid})
-	require.NoError(t, err)
-
-	h := handlers.NewOrgHandler(f.Deps, orgs)
-	mux := http.NewServeMux()
-	h.Register(mux)
-	reason := "You can create one organization on the Free plan."
-	for _, path := range []string{"/orgs", "/orgs/new"} {
-		rec := httptest.NewRecorder()
-		mux.ServeHTTP(rec, f.authedRequest(t, http.MethodGet, path, "", session.Principal{UserID: uid}))
-		body := rec.Body.String()
-		assert.Equal(t, http.StatusOK, rec.Code, path)
-		assert.Contains(t, body, reason, path)
-		assert.NotContains(t, body, `class="btn btn-primary">nav.create_organization`, path)
-	}
-}
-
 func TestLayout_SignInNoticeShownOnceThenCleared(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)

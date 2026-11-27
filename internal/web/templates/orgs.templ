@@ -15,19 +15,19 @@ type OrgsView struct {
 templ OrgsPage(d web.LayoutData, v OrgsView) {
 	<section>
 		@PageHeader(d.Tr("orgs.title"), d.Tr("orgs.subtitle")) {
-			if d.Caps.OrgCreation && v.CreateBlocked != "" {
+			if orgCreateShown(d) && v.CreateBlocked != "" {
 				<button type="button" class="btn btn-primary" disabled aria-describedby="org-create-blocked" data-limit-blocked>
 					@icons.Icon("plus", "size-4")
 					{ d.Tr("nav.new_organization") }
 				</button>
-			} else if d.Caps.OrgCreation {
+			} else if orgCreateShown(d) {
 				@AppButton(d.Href("/orgs/new"), "btn-primary", nil) {
 					@icons.Icon("plus", "size-4")
 					{ d.Tr("nav.new_organization") }
 				}
 			}
 		}
-		if d.Caps.OrgCreation && v.CreateBlocked != "" {
+		if orgCreateShown(d) && v.CreateBlocked != "" {
 			<p id="org-create-blocked" role="status" class="mt-4 text-sm text-base-content/70">{ v.CreateBlocked }</p>
 		}
 		if v.Error != "" {
@@ -36,7 +36,7 @@ templ OrgsPage(d web.LayoutData, v OrgsView) {
 		if len(v.Orgs) == 0 {
 			<div class="mt-6 rounded-lg border border-dashed border-base-300 bg-base-100 p-8 text-center">
 				<p class="text-sm text-base-content/70">{ d.Tr("orgs.empty") }</p>
-				if d.Caps.OrgCreation && v.CreateBlocked == "" {
+				if orgCreateShown(d) && v.CreateBlocked == "" {
 					<a href={ templ.SafeURL(d.Href("/orgs/new")) } class="btn btn-primary mt-4">{ d.Tr("orgs.create_first") }</a>
 				}
 			</div>

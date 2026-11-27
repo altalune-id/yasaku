@@ -88,21 +88,49 @@ func TestInviteSend_DisabledAtLimitEnabledBelow(t *testing.T) {
 	}
 }
 
-func TestOrgNew_DisabledAtLimit(t *testing.T) {
+func TestOrgNew_HiddenAtALimitOfOne(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	f.Cfg.Mode = config.ModeCloud
 	uid := uuid.New()
 	_, err := f.Orgs.Create(context.Background(), org.CreateRequest{Slug: "acme", Name: "Acme", OwnerID: uid})
 	require.NoError(t, err)
-	orgs := org.NewService(f.OrgStore, f.Deps.Caps, discardLogger(), passthroughUnexpected(), fakes.UnitOfWork,
+	f.Deps.Orgs = org.NewService(f.OrgStore, f.Deps.Caps, discardLogger(), passthroughUnexpected(), fakes.UnitOfWork,
 		org.WithLimits(limits.NewService(fakes.NewLimits(), config.ModeCloud)))
 	mux := http.NewServeMux()
-	handlers.NewOrgHandler(f.Deps, orgs).Register(mux)
+	handlers.NewOrgHandler(f.Deps, f.Deps.Orgs).Register(mux)
+	body := get(t, mux, f, "/orgs", session.Principal{UserID: uid})
+	assert.NotContains(t, body, limitBlocked, "a limit of one stays silent until plans ship")
+	assert.NotContains(t, body, "You can create one organization")
+	assert.NotContains(t, body, `href="/orgs/new"`)
+	assert.NotContains(t, body, "nav.new_organization")
+
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, f.authedRequest(t, http.MethodGet, "/orgs/new", "", session.Principal{UserID: uid}))
+	assert.Equal(t, http.StatusSeeOther, rec.Code)
+	assert.Equal(t, "/orgs", rec.Header().Get("Location"))
+}
+
+func TestOrgNew_DisabledAtALimitAboveOne(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.Cfg.Mode = config.ModeCloud
+	ctx := context.Background()
+	uid := uuid.New()
+	for _, slug := range []string{"acme", "beta"} {
+		_, err := f.Orgs.Create(ctx, org.CreateRequest{Slug: slug, Name: slug, OwnerID: uid})
+		require.NoError(t, err)
+	}
+	store := fakes.NewLimits()
+	require.NoError(t, store.SetOverride(ctx, limits.Subject{Kind: limits.SubjectUser, ID: uid}, limits.UserOrgsCreated, 2, uuid.Nil))
+	f.Deps.Orgs = org.NewService(f.OrgStore, f.Deps.Caps, discardLogger(), passthroughUnexpected(), fakes.UnitOfWork,
+		org.WithLimits(limits.NewService(store, config.ModeCloud)))
+	mux := http.NewServeMux()
+	handlers.NewOrgHandler(f.Deps, f.Deps.Orgs).Register(mux)
 	for _, path := range []string{"/orgs", "/orgs/new"} {
 		body := get(t, mux, f, path, session.Principal{UserID: uid})
 		assert.Contains(t, body, limitBlocked, path)
-		assert.Contains(t, body, "You can create one organization", path)
+		assert.Contains(t, body, "You can create 2 organizations", path)
 	}
 }
 
@@ -121,7 +149,7 @@ func TestOrgNew_EnabledBelowLimit(t *testing.T) {
 	}
 }
 
-func TestLayoutOrgCreate_DisabledAtLimitEnabledBelow(t *testing.T) {
+func TestLayoutOrgCreate_HiddenAtALimitOfOneEnabledBelow(t *testing.T) {
 	t.Parallel()
 	const reason = "You can create one organization on the Free plan."
 	const link = `href="/orgs/new"`
@@ -149,8 +177,8 @@ func TestLayoutOrgCreate_DisabledAtLimitEnabledBelow(t *testing.T) {
 			body := get(t, mux, f, "/orgs/acme/projects", session.Principal{UserID: uid, ActiveOrgID: o.ID})
 			if atLimit {
 				assert.NotContains(t, body, link)
-				assert.Contains(t, body, limitBlocked)
-				assert.Contains(t, body, reason)
+				assert.NotContains(t, body, limitBlocked)
+				assert.NotContains(t, body, reason)
 				return
 			}
 			assert.Contains(t, body, link)

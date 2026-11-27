@@ -1414,12 +1414,12 @@ func newOrgItem(d web.LayoutData, label string) templ.Component {
 			templ_7745c5c3_Var64 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		if d.Caps.OrgCreation && d.OrgCreateBlocked == "" {
+		if orgCreateShown(d) && d.OrgCreateBlocked == "" {
 			templ_7745c5c3_Err = menuLink(d.Href("/orgs/new"), "plus", label, false).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-		} else if d.Caps.OrgCreation {
+		} else if orgCreateShown(d) {
 			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 97, "<li class=\"menu-disabled\" data-limit-blocked><span class=\"items-start\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
@@ -2381,6 +2381,10 @@ func layoutDir(d web.LayoutData) string {
 		return d.Dir
 	}
 	return "ltr"
+}
+
+func orgCreateShown(d web.LayoutData) bool {
+	return d.Caps.OrgCreation && !d.OrgCreateHidden
 }
 
 func canManageOrg(d web.LayoutData) bool {

@@ -123,7 +123,9 @@ func (d Deps) layout(r *http.Request, title string, nav web.ActiveNav, pinnedOrg
 	}
 	base.ActiveOrg, base.OtherOrgs = splitOrgs(orgs, cmp.Or(pinnedOrg, p.ActiveOrgID))
 	if d.Caps.OrgCreation {
-		base.OrgCreateBlocked, _ = d.limitBlocked(r, d.Orgs.CreateAllowed(ctx, p.UserID), "layout: org create allowed")
+		createErr := d.Orgs.CreateAllowed(ctx, p.UserID)
+		base.OrgCreateHidden = orgCreateQuiet(createErr)
+		base.OrgCreateBlocked, _ = d.limitBlocked(r, createErr, "layout: org create allowed")
 	}
 	d.applySupport(ctx, &base, p, pinnedOrg)
 	if base.ActiveOrg == nil {

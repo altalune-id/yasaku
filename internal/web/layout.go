@@ -138,6 +138,8 @@ type LayoutData struct {
 	Support *SupportBanner
 	// OrgCreateBlocked is the limit message shown on every new-organization control; empty while the user may create one.
 	OrgCreateBlocked string
+	// OrgCreateHidden hides every new-organization control: the user reached a limit of one.
+	OrgCreateHidden bool
 }
 
 // SupportBanner is what the chrome shows during a support visit.

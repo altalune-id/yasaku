@@ -17,6 +17,11 @@ func (d Deps) limitMessage(ctx context.Context, err error) (string, bool) {
 	return limits.Message(i18n.From(ctx).String(), d.Cfg.Mode, re, d.Cfg.Compliance.ContactEmail), true
 }
 
+func orgCreateQuiet(err error) bool {
+	re, ok := errors.AsType[*limits.ReachedError](err)
+	return ok && re.Max == 1
+}
+
 func (d Deps) limitBlocked(r *http.Request, err error, logMsg string) (msg, code string) { //nolint:nonamedreturns // message and code differ in role
 	if err == nil {
 		return "", ""

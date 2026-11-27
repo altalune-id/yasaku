@@ -1062,7 +1062,9 @@ limits.message.org_projects_cloud:
 limits.message.org_projects_selfhosted:
   one: "{{.Org}} can have {{.Max}} project. Rename the project or wipe its data to reuse it."
   other: "{{.Org}} can have {{.Max}} projects. Rename a project or wipe its data to reuse it."
-limits.message.user_orgs_created: "You can create one organization on the Free plan."
+limits.message.user_orgs_created:
+  one: "You can create {{.Max}} organization on the Free plan."
+  other: "You can create {{.Max}} organizations on the Free plan."
 limits.message.user_orgs_joined:
   one: "You're already in {{.Max}} organization, the most allowed. Leave it to join {{.Org}}."
   other: "You're already in {{.Max}} organizations, the most allowed. Leave one to join {{.Org}}."

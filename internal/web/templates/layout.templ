@@ -249,9 +249,9 @@ templ orgMenu(d web.LayoutData) {
 }
 
 templ newOrgItem(d web.LayoutData, label string) {
-	if d.Caps.OrgCreation && d.OrgCreateBlocked == "" {
+	if orgCreateShown(d) && d.OrgCreateBlocked == "" {
 		@menuLink(d.Href("/orgs/new"), "plus", label, false)
-	} else if d.Caps.OrgCreation {
+	} else if orgCreateShown(d) {
 		<li class="menu-disabled" data-limit-blocked>
 			<span class="items-start">
 				@icons.Icon("plus", "size-4 shrink-0 mt-0.5 text-base-content/50")
@@ -462,6 +462,10 @@ func layoutDir(d web.LayoutData) string {
 		return d.Dir
 	}
 	return "ltr"
+}
+
+func orgCreateShown(d web.LayoutData) bool {
+	return d.Caps.OrgCreation && !d.OrgCreateHidden
 }
 
 func canManageOrg(d web.LayoutData) bool {

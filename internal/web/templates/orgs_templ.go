@@ -57,7 +57,7 @@ func OrgsPage(d web.LayoutData, v OrgsView) templ.Component {
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			if d.Caps.OrgCreation && v.CreateBlocked != "" {
+			if orgCreateShown(d) && v.CreateBlocked != "" {
 				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<button type=\"button\" class=\"btn btn-primary\" disabled aria-describedby=\"org-create-blocked\" data-limit-blocked>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
@@ -83,7 +83,7 @@ func OrgsPage(d web.LayoutData, v OrgsView) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-			} else if d.Caps.OrgCreation {
+			} else if orgCreateShown(d) {
 				templ_7745c5c3_Var4 := templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 					templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 					templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
@@ -126,7 +126,7 @@ func OrgsPage(d web.LayoutData, v OrgsView) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		if d.Caps.OrgCreation && v.CreateBlocked != "" {
+		if orgCreateShown(d) && v.CreateBlocked != "" {
 			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "<p id=\"org-create-blocked\" role=\"status\" class=\"mt-4 text-sm text-base-content/70\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
@@ -169,7 +169,7 @@ func OrgsPage(d web.LayoutData, v OrgsView) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			if d.Caps.OrgCreation && v.CreateBlocked == "" {
+			if orgCreateShown(d) && v.CreateBlocked == "" {
 				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "<a href=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
