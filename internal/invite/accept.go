@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"altalune.id/yasaku/internal/apperror"
 	"altalune.id/yasaku/internal/limits"
@@ -156,6 +157,16 @@ func (w *AcceptWorkflow) Execute(ctx context.Context, req AcceptRequest) (*Accep
 	tctx := tenant.Into(ctx, tenant.Context{OrgID: inv.OrgID, UserID: usr.ID})
 	m := &MembershipRef{OrgID: inv.OrgID, UserID: usr.ID, Role: inv.Role, RoleID: inv.RoleID}
 	err = w.uow(tctx, func(tctx context.Context) error {
+		existing, err := w.orgs.MembershipOf(tctx, inv.OrgID, usr.ID)
+		if err == nil {
+			m = existing
+			return w.saveInvite(ctx, tctx, inv)
+		}
+		if !IsMembershipMissingError(err) {
+			span.RecordError(err)
+			return w.unexpected(ctx, "invite.Accept: membership lookup", fmt.Errorf("invite.Accept: membership lookup: %w", err),
+				"org_id", inv.OrgID, "user_id", usr.ID)
+		}
 		if err := w.checkJoin(tctx, usr.ID, o); err != nil {
 			return err
 		}
@@ -164,10 +175,8 @@ func (w *AcceptWorkflow) Execute(ctx context.Context, req AcceptRequest) (*Accep
 			return w.unexpected(ctx, "invite.Accept: save membership", fmt.Errorf("invite.Accept: save membership: %w", err),
 				"org_id", inv.OrgID, "user_id", usr.ID)
 		}
-		if err := w.invites.Save(tctx, inv); err != nil {
-			span.RecordError(err)
-			return w.unexpected(ctx, "invite.Accept: save invite", fmt.Errorf("invite.Accept: save invite: %w", err),
-				"invite_id", inv.ID)
+		if err := w.saveInvite(ctx, tctx, inv); err != nil {
+			return err
 		}
 		if err := record(tctx, w.audit, audit.Event{Action: "member.joined", TargetKind: "user", TargetID: usr.ID.String(),
 			Detail: map[string]string{"name": usr.Email, "email": usr.Email, "role": string(inv.Role)}}); err != nil {
@@ -179,6 +188,14 @@ func (w *AcceptWorkflow) Execute(ctx context.Context, req AcceptRequest) (*Accep
 		return nil, err
 	}
 	return &AcceptResult{Invite: inv, User: usr, Membership: m}, nil
+}
+
+func (w *AcceptWorkflow) saveInvite(ctx, tctx context.Context, inv *Invite) error {
+	if err := w.invites.Save(tctx, inv); err != nil {
+		trace.SpanFromContext(ctx).RecordError(err)
+		return w.unexpected(ctx, "invite.Accept: save invite", fmt.Errorf("invite.Accept: save invite: %w", err), "invite_id", inv.ID)
+	}
+	return nil
 }
 
 func (w *AcceptWorkflow) checkJoin(ctx context.Context, userID uuid.UUID, o *OrgRef) error {

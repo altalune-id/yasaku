@@ -25,6 +25,10 @@ type fakeOrgs struct {
 	ListForUserErr error
 	// SaveMembershipErr makes every SaveMembership call fail with it.
 	SaveMembershipErr error
+	// MembershipErr makes every MembershipOf call fail with it.
+	MembershipErr error
+	// staleReads makes the first N MembershipOf calls miss, as a read before a concurrent join would.
+	staleReads int
 }
 
 func newFakeOrgs() *fakeOrgs {
@@ -79,11 +83,18 @@ func (f *fakeOrgs) ListForUser(_ context.Context, userID uuid.UUID) ([]*user.Org
 func (f *fakeOrgs) MembershipOf(_ context.Context, orgID, userID uuid.UUID) (*user.MembershipRef, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.MembershipErr != nil {
+		return nil, f.MembershipErr
+	}
+	if f.staleReads > 0 {
+		f.staleReads--
+		return nil, &user.MembershipMissingError{}
+	}
 	if m, ok := f.memberships[[2]uuid.UUID{orgID, userID}]; ok {
 		cp := *m
 		return &cp, nil
 	}
-	return nil, &user.NotFoundError{}
+	return nil, &user.MembershipMissingError{}
 }
 
 func (f *fakeOrgs) SaveMembership(_ context.Context, m *user.MembershipRef) error {
@@ -596,5 +607,75 @@ func TestOnboardMemberJoined_AuditedInSameTx(t *testing.T) {
 	recs := a.Records()
 	if len(recs) != 1 || recs[0].Action != "member.joined" || recs[0].OrgID != orgID || recs[0].TargetID != userID.String() {
 		t.Fatalf("got %+v", recs)
+	}
+}
+
+func TestOnboard_AcceptKeepsExistingMembership(t *testing.T) {
+	t.Parallel()
+	for _, mode := range []string{user.PolicyModeSelfhosted, user.PolicyModeCloud} {
+		t.Run(mode, func(t *testing.T) {
+			t.Parallel()
+			orgs := newFakeOrgs()
+			invites := newFakeInvites()
+			o := &user.OrgRef{ID: uuid.New(), Slug: "acme", Name: "Acme", OwnerID: uuid.New(), CreatedAt: time.Now().UTC(), System: true}
+			if err := orgs.Save(context.Background(), o); err != nil {
+				t.Fatal(err)
+			}
+			ownerID := uuid.New()
+			ownerRoleID := uuid.New()
+			orgs.memberships[[2]uuid.UUID{o.ID, ownerID}] = &user.MembershipRef{OrgID: o.ID, UserID: ownerID, Role: "owner", RoleID: ownerRoleID}
+			if mode == user.PolicyModeSelfhosted {
+				orgs.staleReads = 1
+			}
+			inviteID := uuid.New()
+			if err := invites.Save(context.Background(), &user.InviteRef{
+				ID: inviteID, OrgID: o.ID, Email: "owner@example.com", Role: "member",
+				ExpiresAt: time.Now().UTC().Add(time.Hour),
+			}); err != nil {
+				t.Fatal(err)
+			}
+
+			wf := user.NewOnboardWorkflow(fakes.NewUser(), orgs, newFakeProjects(), invites, user.Policy{Mode: mode}, newTestLogger(), noopUnexpected(),
+				user.WithOnboardUnitOfWork(fakes.UnitOfWork))
+			res, err := wf.Onboard(context.Background(), ownerID, "owner@example.com")
+			if err != nil {
+				t.Fatalf("Onboard: %v", err)
+			}
+			if res.OrgID != o.ID {
+				t.Errorf("orgID=%v want %v", res.OrgID, o.ID)
+			}
+			m := orgs.memberships[[2]uuid.UUID{o.ID, ownerID}]
+			if m.Role != "owner" || m.RoleID != ownerRoleID {
+				t.Errorf("an existing owner must keep their membership, got role=%q role_id=%v", m.Role, m.RoleID)
+			}
+			if invites.pending(inviteID) {
+				t.Error("the invite must still be marked accepted")
+			}
+		})
+	}
+}
+
+func TestOnboard_AcceptMembershipLookupFailureFails(t *testing.T) {
+	t.Parallel()
+	orgs := newFakeOrgs()
+	invites := newFakeInvites()
+	o := &user.OrgRef{ID: uuid.New(), Slug: "acme", Name: "Acme", OwnerID: uuid.New(), CreatedAt: time.Now().UTC()}
+	if err := orgs.Save(context.Background(), o); err != nil {
+		t.Fatal(err)
+	}
+	orgs.MembershipErr = errors.New("db down")
+	if err := invites.Save(context.Background(), &user.InviteRef{
+		ID: uuid.New(), OrgID: o.ID, Email: "alice@example.com", Role: "member",
+		ExpiresAt: time.Now().UTC().Add(time.Hour),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	wf := user.NewOnboardWorkflow(fakes.NewUser(), orgs, newFakeProjects(), invites, user.Policy{Mode: user.PolicyModeCloud}, newTestLogger(), noopUnexpected())
+	if _, err := wf.Onboard(context.Background(), uuid.New(), "alice@example.com"); err == nil {
+		t.Fatal("a failed membership lookup must fail the accept, not overwrite a row it could not read")
+	}
+	if len(orgs.memberships) != 0 {
+		t.Errorf("no membership may be written, got %d", len(orgs.memberships))
 	}
 }
