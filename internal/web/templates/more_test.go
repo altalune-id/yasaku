@@ -105,10 +105,10 @@ func TestMorePage_ListsEveryPageTipsResetAndAppearance(t *testing.T) {
 	if strings.Contains(strings.ToLower(out), "csv") {
 		t.Error("no export exists")
 	}
-	if rows := strings.Count(out, `class="list-row`); rows != 8 {
-		t.Errorf("rows = %d, want 8: one list as in the prototype, Organization leads to Members and its Invites", rows)
+	if rows := strings.Count(out, `class="list-row`); rows != 11 {
+		t.Errorf("rows = %d, want 11: the pages list, the tips reset and the account block", rows)
 	}
-	if strings.Count(out, `block truncate text-sm text-base-content/70`) != 8 {
+	if strings.Count(out, `block truncate text-sm text-base-content/70`) != 10 {
 		t.Error("every link row keeps its description on one line")
 	}
 	if strings.Contains(out, `href="/orgs/acme/roles"`) || strings.Contains(out, `href="/orgs/acme/activity"`) {
@@ -117,6 +117,20 @@ func TestMorePage_ListsEveryPageTipsResetAndAppearance(t *testing.T) {
 	d.Opensheet = false
 	if strings.Contains(render(t, MorePage(d)), "/opensheet") {
 		t.Error("the opensheet row follows the module switch")
+	}
+}
+
+func TestMorePage_OffersAccountSettingsAndSignOut(t *testing.T) {
+	out := render(t, MorePage(shellData("more", false)))
+	for _, want := range []string{
+		`Signed in as`,
+		`href="/settings/tokens"`,
+		`<form method="post" action="/logout"`,
+		`Sign out`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("More lacks %s: the dock hides the rail user menu on a phone", want)
+		}
 	}
 }
 
@@ -129,8 +143,8 @@ func TestMorePage_ListsRolesAndActivityForAnOrgManager(t *testing.T) {
 			t.Errorf("More lacks %s: the dock hides the rail on a phone, so More is the only way there", want)
 		}
 	}
-	if rows := strings.Count(out, `class="list-row`); rows != 10 {
-		t.Errorf("rows = %d, want 10", rows)
+	if rows := strings.Count(out, `class="list-row`); rows != 13 {
+		t.Errorf("rows = %d, want 13", rows)
 	}
 }
 
