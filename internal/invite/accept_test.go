@@ -60,6 +60,7 @@ type fakeOrgs struct {
 	// ByIDErr, MembershipErr, SaveMembershipErr — inject failures.
 	ByIDErr           error
 	SaveMembershipErr error
+	MembershipErr     error
 }
 
 func newFakeOrgs() *fakeOrgs {
@@ -105,11 +106,14 @@ func (f *fakeOrgs) SaveMembership(ctx context.Context, m *invite.MembershipRef) 
 func (f *fakeOrgs) MembershipOf(_ context.Context, orgID, userID uuid.UUID) (*invite.MembershipRef, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.MembershipErr != nil {
+		return nil, f.MembershipErr
+	}
 	if m, ok := f.mems[[2]uuid.UUID{orgID, userID}]; ok {
 		cp := *m
 		return &cp, nil
 	}
-	return nil, &notFoundErr{msg: "membership: not found"}
+	return nil, &invite.MembershipMissingError{}
 }
 
 type notFoundErr struct{ msg string }
@@ -300,5 +304,62 @@ func TestAccept_MembershipAndInviteCommitTogether(t *testing.T) {
 	}
 	if _, err := orgs.MembershipOf(context.Background(), orgID, usr.ID); err == nil {
 		t.Fatal("membership must roll back with the failed invite save")
+	}
+}
+
+func TestAccept_ExistingOwnerKeepsRole(t *testing.T) {
+	t.Parallel()
+	store := fakes.NewInvite()
+	users := newFakeUsers()
+	orgs := newFakeOrgs()
+	orgID := uuid.New()
+	ownerID := uuid.New()
+	ownerRoleID := uuid.New()
+	if err := users.Save(context.Background(), &invite.UserRef{ID: ownerID, Email: "owner@example.com", Name: "Owner", Source: "oidc"}); err != nil {
+		t.Fatal(err)
+	}
+	orgs.mems[[2]uuid.UUID{orgID, ownerID}] = &invite.MembershipRef{OrgID: orgID, UserID: ownerID, Role: invite.RoleOwner, RoleID: ownerRoleID}
+	inv, raw := seedAcceptable(t, store, orgs, orgID, "owner@example.com", time.Hour)
+
+	unex := 0
+	wf := invite.NewAcceptWorkflow(store, users, orgs, newTestLogger(), noopUnexpected(&unex), invite.WithUnitOfWork(fakes.UnitOfWork))
+	res, err := wf.Execute(context.Background(), invite.AcceptRequest{Token: raw, Email: "owner@example.com"})
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	m, err := orgs.MembershipOf(context.Background(), orgID, ownerID)
+	if err != nil {
+		t.Fatalf("MembershipOf: %v", err)
+	}
+	if m.Role != invite.RoleOwner || m.RoleID != ownerRoleID {
+		t.Errorf("an existing owner must keep their membership, got role=%q role_id=%v", m.Role, m.RoleID)
+	}
+	if res.Membership.Role != invite.RoleOwner {
+		t.Errorf("result must report the kept membership, got %q", res.Membership.Role)
+	}
+	got, err := store.ByID(seedCtx(orgID), inv.ID)
+	if err != nil {
+		t.Fatalf("ByID: %v", err)
+	}
+	if got.UsedAt == nil {
+		t.Error("the invite must still be marked used")
+	}
+}
+
+func TestAccept_MembershipLookupFailureFailsAccept(t *testing.T) {
+	t.Parallel()
+	store := fakes.NewInvite()
+	users := newFakeUsers()
+	orgs := newFakeOrgs()
+	orgs.MembershipErr = errors.New("db down")
+	orgID := uuid.New()
+	_, raw := seedAcceptable(t, store, orgs, orgID, "alice@example.com", time.Hour)
+
+	wf := newAcceptWorkflow(t, store, users, orgs, nil)
+	if _, err := wf.Execute(context.Background(), invite.AcceptRequest{Token: raw, Email: "alice@example.com"}); err == nil {
+		t.Fatal("a failed membership lookup must fail the accept, not overwrite a row it could not read")
+	}
+	if len(orgs.mems) != 0 {
+		t.Errorf("no membership may be written, got %d", len(orgs.mems))
 	}
 }

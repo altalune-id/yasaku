@@ -147,3 +147,34 @@ func TestRoleShrink_NarrowsExistingKey(t *testing.T) {
 	require.NoError(t, err)
 	requireRole001(t, c.rpc(t, key, yasakuv1connect.TransactionServiceRecordExpenseProcedure, expense), "the narrowed key")
 }
+
+// TestAccept_ExistingOwnerKeepsMembership proves a member invite sent to an owner's email leaves the owner's row untouched, through the real stores.
+func TestAccept_ExistingOwnerKeepsMembership(t *testing.T) {
+	c := newCanSurfaces(t)
+	_, err := c.srv.Platform.Pool.W.ExecContext(t.Context(), "UPDATE "+c.srv.Cfg.DB.TablePrefix+"memberships SET system = 1 WHERE org_id = ? AND user_id = ?",
+		c.org.ID.String(), c.owner.String())
+	require.NoError(t, err)
+	before, err := c.srv.Orgs.MembershipOf(c.ownerCtx(), c.org.ID, c.owner)
+	require.NoError(t, err)
+	require.Equal(t, org.RoleOwner, before.Role)
+	require.True(t, before.System)
+
+	inv, err := c.srv.Invites.Send(c.ownerCtx(), invite.SendRequest{Email: tokenEmail, Role: invite.RoleMember})
+	require.NoError(t, err)
+	_, err = c.srv.Platform.Pool.W.ExecContext(t.Context(), "UPDATE "+c.srv.Cfg.DB.TablePrefix+"invites SET token_hash = ? WHERE id = ?",
+		invite.HashToken("owner-token"), inv.ID.String())
+	require.NoError(t, err)
+
+	res, err := c.srv.Invites.Accept(t.Context(), invite.AcceptRequest{Token: "owner-token", Email: tokenEmail})
+	require.NoError(t, err)
+	assert.Equal(t, c.owner, res.User.ID)
+
+	after, err := c.srv.Orgs.MembershipOf(c.ownerCtx(), c.org.ID, c.owner)
+	require.NoError(t, err)
+	assert.Equal(t, org.RoleOwner, after.Role, "the owner must not be demoted")
+	assert.Equal(t, before.RoleID, after.RoleID)
+	assert.True(t, after.System, "the system flag must survive")
+
+	_, err = c.srv.Invites.Accept(t.Context(), invite.AcceptRequest{Token: "owner-token", Email: tokenEmail})
+	assert.True(t, invite.IsAlreadyUsedError(err), "the invite is consumed, got %T: %v", err, err)
+}

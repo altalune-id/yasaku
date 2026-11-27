@@ -235,14 +235,18 @@ func joinRefusedSignup(err error, userID uuid.UUID, email string) error {
 func (w *OnboardWorkflow) acceptInvite(ctx context.Context, inv *InviteRef, userID uuid.UUID) error {
 	tctx := tenant.Into(ctx, tenant.Context{OrgID: inv.OrgID, UserID: userID})
 	return w.uow(tctx, func(tctx context.Context) error {
+		_, err := w.orgs.MembershipOf(tctx, inv.OrgID, userID)
+		if err == nil {
+			return w.markAccepted(ctx, tctx, inv)
+		}
+		if !IsMembershipMissingError(err) {
+			return w.unexpected(ctx, "user.Onboard: membership lookup", err)
+		}
 		if err := w.checkJoin(tctx, userID, inv.OrgID); err != nil {
 			return err
 		}
-		now := w.now()
-		accepted := *inv
-		accepted.AcceptedAt = &now
-		if err := w.invites.Save(tctx, &accepted); err != nil {
-			return w.unexpected(ctx, "user.Onboard: accept invite", err)
+		if err := w.markAccepted(ctx, tctx, inv); err != nil {
+			return err
 		}
 		m := &MembershipRef{OrgID: inv.OrgID, UserID: userID, Role: inv.Role, RoleID: inv.RoleID}
 		if err := w.orgs.SaveMembership(tctx, m); err != nil {
@@ -258,6 +262,16 @@ func (w *OnboardWorkflow) acceptInvite(ctx context.Context, inv *InviteRef, user
 		}
 		return nil
 	})
+}
+
+func (w *OnboardWorkflow) markAccepted(ctx, tctx context.Context, inv *InviteRef) error {
+	now := w.now()
+	accepted := *inv
+	accepted.AcceptedAt = &now
+	if err := w.invites.Save(tctx, &accepted); err != nil {
+		return w.unexpected(ctx, "user.Onboard: accept invite", err)
+	}
+	return nil
 }
 
 func (w *OnboardWorkflow) findAnyPendingInvite(ctx context.Context, userEmail string) (*InviteRef, error) {
