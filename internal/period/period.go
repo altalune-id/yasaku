@@ -110,7 +110,10 @@ func FirstStart(today civil.Date, startDay int) civil.Date {
 	return civil.Date{Year: prev.Year, Month: prev.Month, Day: day}
 }
 
-// CycleEnd returns the last day of the cycle that begins on start: the day before the next cycle start.
+// EarlyPayDays is how many days before the usual payday a period may start and still count as that payday's cycle.
+const EarlyPayDays = 7
+
+// CycleEnd returns the last day of the cycle that begins on start: the day before the next cycle start, a start up to EarlyPayDays before a payday counting as that payday's cycle.
 func CycleEnd(start civil.Date, startDay int) civil.Date {
 	return nextCycleStart(start, startDay).AddDays(-1)
 }
@@ -134,12 +137,20 @@ func SuggestedEnd(start, today civil.Date, latest *civil.Date, startDay int) civ
 }
 
 func nextCycleStart(start civil.Date, startDay int) civil.Date {
+	next := paydayAfter(start, startDay)
+	if !start.AddDays(EarlyPayDays).Before(next) {
+		next = paydayAfter(next, startDay)
+	}
+	return next
+}
+
+func paydayAfter(d civil.Date, startDay int) civil.Date {
 	day := ClampStartDay(startDay)
-	next := civil.Date{Year: start.Year, Month: start.Month, Day: day}
-	if !start.Before(next) {
-		next = civil.Date{Year: start.Year, Month: start.Month + 1, Day: day}
-		if start.Month == time.December {
-			next = civil.Date{Year: start.Year + 1, Month: time.January, Day: day}
+	next := civil.Date{Year: d.Year, Month: d.Month, Day: day}
+	if !d.Before(next) {
+		next = civil.Date{Year: d.Year, Month: d.Month + 1, Day: day}
+		if d.Month == time.December {
+			next = civil.Date{Year: d.Year + 1, Month: time.January, Day: day}
 		}
 	}
 	return next

@@ -144,6 +144,31 @@ func TestCycleEnd(t *testing.T) {
 	assert.Equal(t, civil.Date{Year: 2026, Month: 10, Day: 24}, period.CycleEnd(civil.Date{Year: 2026, Month: 9, Day: 25}, 25))
 }
 
+func TestCycleEnd_EarlyPayBelongsToTheComingCycle(t *testing.T) {
+	d := func(y int, m time.Month, day int) civil.Date { return civil.Date{Year: y, Month: m, Day: day} }
+	tests := []struct {
+		name     string
+		start    civil.Date
+		startDay int
+		want     civil.Date
+	}{
+		{"paid one day early", d(2026, 11, 27), 28, d(2026, 12, 27)},
+		{"paid a week early", d(2026, 11, 21), 28, d(2026, 12, 27)},
+		{"a close eight days before payday keeps the short cycle", d(2026, 11, 20), 28, d(2026, 11, 27)},
+		{"paid on payday", d(2026, 11, 28), 28, d(2026, 12, 27)},
+		{"paid late", d(2026, 11, 30), 28, d(2026, 12, 27)},
+		{"early pay across the year end", d(2026, 12, 25), 28, d(2027, 1, 27)},
+		{"early pay for a first-of-month payday in february", d(2026, 2, 26), 1, d(2026, 3, 31)},
+		{"early pay for a january first payday", d(2026, 12, 29), 1, d(2027, 1, 31)},
+		{"paid on the last day of january", d(2027, 1, 31), 1, d(2027, 2, 28)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, period.CycleEnd(tt.start, tt.startDay))
+		})
+	}
+}
+
 func TestLatestClosed(t *testing.T) {
 	current := mustPeriod(t, civil.Date{Year: 2026, Month: 9, Day: 25})
 	older := closedAt(t, civil.Date{Year: 2026, Month: 7, Day: 25}, civil.Date{Year: 2026, Month: 8, Day: 24})
