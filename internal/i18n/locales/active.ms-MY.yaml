@@ -1091,6 +1091,7 @@ roles.custom_heading: "Peranan tersuai"
 roles.builtin_heading: "Peranan terbina dalam"
 roles.builtin_badge: "Terbina dalam"
 roles.empty: "Belum ada peranan tersuai."
+roles.staff_org: "Peranan tersuai tidak tersedia dalam organisasi kakitangan platform."
 roles.permissions_count:
   other: "{{.Count}} kebenaran"
 roles.in_use: "Dipegang oleh ahli atau jemputan. Tukar peranan mereka sebelum memadamnya."

@@ -1091,6 +1091,7 @@ roles.custom_heading: "カスタムロール"
 roles.builtin_heading: "組み込みロール"
 roles.builtin_badge: "組み込み"
 roles.empty: "カスタムロールはまだありません。"
+roles.staff_org: "プラットフォームのスタッフ組織ではカスタムロールを使用できません。"
 roles.permissions_count:
   other: "{{.Count}} 件の権限"
 roles.in_use: "メンバーまたは招待が使用中です。削除する前にそのロールを変更してください。"

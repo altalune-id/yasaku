@@ -1091,6 +1091,7 @@ roles.custom_heading: "Peran kustom"
 roles.builtin_heading: "Peran bawaan"
 roles.builtin_badge: "Bawaan"
 roles.empty: "Belum ada peran kustom."
+roles.staff_org: "Peran kustom tidak tersedia di organisasi staf platform."
 roles.permissions_count:
   other: "{{.Count}} izin"
 roles.in_use: "Dipakai oleh anggota atau undangan. Ubah peran mereka sebelum menghapusnya."

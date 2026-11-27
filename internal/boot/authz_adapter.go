@@ -25,19 +25,6 @@ func (n roleNames) RoleName(ctx context.Context, roleID uuid.UUID) (string, erro
 	return r.Name, nil
 }
 
-type systemOrgs struct{ store org.Store }
-
-func (s systemOrgs) IsSystem(ctx context.Context, orgID uuid.UUID) (bool, error) {
-	o, err := s.store.SystemOrg(ctx)
-	if org.IsNotFoundError(err) {
-		return false, nil
-	}
-	if err != nil {
-		return false, err
-	}
-	return o.ID == orgID, nil
-}
-
 func (a roleSourceAdapter) CustomPermissions(ctx context.Context, roleID uuid.UUID) ([]authz.Permission, error) {
 	return a.roles.Permissions(ctx, roleID)
 }

@@ -1115,6 +1115,7 @@ roles.custom_heading: "Custom roles"
 roles.builtin_heading: "Built-in roles"
 roles.builtin_badge: "Built-in"
 roles.empty: "No custom roles yet."
+roles.staff_org: "Custom roles aren't available in the platform staff organization."
 roles.permissions_count:
   one: "{{.Count}} permission"
   other: "{{.Count}} permissions"

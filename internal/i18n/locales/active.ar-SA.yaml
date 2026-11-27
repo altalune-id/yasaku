@@ -1151,6 +1151,7 @@ roles.custom_heading: "أدوار مخصّصة"
 roles.builtin_heading: "أدوار مضمّنة"
 roles.builtin_badge: "مضمّن"
 roles.empty: "لا توجد أدوار مخصّصة بعد."
+roles.staff_org: "الأدوار المخصّصة غير متاحة في مؤسسة فريق عمل المنصّة."
 roles.permissions_count:
   zero: "لا صلاحيات"
   one: "صلاحية واحدة"
