@@ -18,12 +18,12 @@
     "lint-staged": "lint-staged"
   },
   "devDependencies": {
-    "@bufbuild/buf": "^1.73.0",
+    "@bufbuild/buf": "^1.75.0",
     "husky": "9.1.7",
     "lint-staged": "15.2.10",
-    "oxfmt": "0.79.0",
-    "oxlint": "1.94.0",
-    "prettier": "3.9.9"
+    "oxfmt": "0.80.0",
+    "oxlint": "1.95.0",
+    "prettier": "3.10.1"
   },
   "lint-staged": {
     "*.go": ["gofmt -l -e"],
