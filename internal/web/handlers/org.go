@@ -51,10 +51,15 @@ func (h *OrgHandler) GetNew(w http.ResponseWriter, r *http.Request) {
 		h.orgCreationDisabled(w, r)
 		return
 	}
+	d := h.Layout(r, pageTitle(r, "nav.create_organization"), web.ActiveNav{Scope: web.NavScopeOrg})
+	if d.OrgCreateHidden {
+		http.Redirect(w, r, ResolveReturnTo(h.Cfg.HTTP.BasePath, "/orgs"), http.StatusSeeOther) //nolint:gosec // G710: destination sanitized via ResolveReturnTo → SanitizeReturnTo
+		return
+	}
 	v := templates.OrgNewView{Slug: slugs.Generate()}
 	v.Error, v.ErrorCode = h.createBlocked(r, p.UserID)
 	v.Blocked = v.Error != ""
-	Render(w, r, templates.OrgNewLayout(h.Layout(r, pageTitle(r, "nav.create_organization"), web.ActiveNav{Scope: web.NavScopeOrg}), v))
+	Render(w, r, templates.OrgNewLayout(d, v))
 }
 
 // PostCreate handles POST /orgs (org creation is capability-gated).

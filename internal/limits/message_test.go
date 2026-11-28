@@ -56,7 +56,10 @@ func TestMessage_PluralizesOnMax(t *testing.T) {
 
 func TestMessage_PlainKeyWithCountOne(t *testing.T) {
 	e := &limits.ReachedError{Key: limits.UserOrgsCreated, Max: 1}
-	assert.Equal(t, "You can create one organization on the Free plan.", limits.Message("en-US", config.ModeCloud, e, ""))
+	assert.Equal(t, "You can create 1 organization on the Free plan.", limits.Message("en-US", config.ModeCloud, e, ""))
+	e.Max = 2
+	assert.Equal(t, "You can create 2 organizations on the Free plan.", limits.Message("en-US", config.ModeCloud, e, ""), "the org limit message follows Max once plans raise it")
+	assert.Equal(t, "Anda dapat membuat 2 organisasi pada paket Gratis.", limits.Message("id-ID", config.ModeCloud, e, ""))
 	joined := &limits.ReachedError{Key: limits.UserOrgsJoined, Max: 1, Name: "Acme"}
 	assert.NotContains(t, limits.Message("id-ID", config.ModeCloud, joined, ""), "limits.message", "a locale with a plain string still renders at Max 1")
 }
