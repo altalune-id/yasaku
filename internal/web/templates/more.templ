@@ -32,6 +32,10 @@ templ MorePage(d web.LayoutData) {
 				if o := d.ActiveOrg; o != nil {
 					@moreRow(d.Href("/orgs/"+o.Slug+"/members"), "users", d.Tr("more.organization"), d.Tr("more.desc_organization", "Org", o.Name))
 					@moreRow(d.Href("/orgs/"+o.Slug+"/apikeys"), "key", d.Tr("more.org_apikeys"), d.Tr("more.desc_org_apikeys"))
+					if canManageOrg(d) {
+						@moreRow(d.Href("/orgs/"+o.Slug+"/roles"), "lock", d.Tr("nav.roles"), d.Tr("more.desc_roles"))
+						@moreRow(d.Href("/orgs/"+o.Slug+"/activity"), "list-checks", d.Tr("nav.activity"), d.Tr("more.desc_activity"))
+					}
 				}
 			</ul>
 			<form method="post" action={ templ.SafeURL(d.Href("/tips/reset")) } class="contents">
@@ -56,6 +60,30 @@ templ MorePage(d web.LayoutData) {
 				<p class="text-sm text-base-content/70">{ d.Tr("more.appearance_desc") }</p>
 				@ThemePicker(d)
 			</section>
+			if d.Principal != nil {
+				<form method="post" action={ templ.SafeURL(d.Href("/logout")) } class="contents">
+					<ul class="list rounded-box border border-base-300" aria-label={ d.Tr("common.signed_in_as") }>
+						<li class="list-row items-center">
+							<span class="grid size-10 place-items-center rounded-full bg-primary text-sm font-semibold text-primary-content">
+								{ userInitial(d.Principal.Email) }
+							</span>
+							<span class="list-col-grow min-w-0">
+								<span class="block truncate text-sm text-base-content/70">{ d.Tr("common.signed_in_as") }</span>
+								<span class="block truncate font-medium">{ d.Principal.Email }</span>
+							</span>
+						</li>
+						@moreRow(d.Href("/settings/tokens"), "settings", d.Tr("nav.settings"), d.Tr("nav.personal_tokens"))
+						<li>
+							<button type="submit" class="list-row min-h-11 w-full items-center text-start text-error hover:bg-base-200">
+								<span class="grid size-10 place-items-center rounded-full bg-base-200">
+									@icons.Icon("log-out", "size-5")
+								</span>
+								<span class="list-col-grow min-w-0 font-medium">{ d.Tr("common.sign_out") }</span>
+							</button>
+						</li>
+					</ul>
+				</form>
+			}
 		</div>
 	</section>
 }
