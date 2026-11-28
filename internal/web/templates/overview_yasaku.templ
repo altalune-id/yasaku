@@ -140,22 +140,28 @@ templ homePeriodNav(d web.LayoutData, v YasakuOverviewView) {
 }
 
 templ homeEnded(d web.LayoutData, v YasakuOverviewView) {
-	<div data-home-ended class="card border border-accent/50 bg-accent/10">
+	<div data-home-ended class="card card-border border-info/30 bg-info/5" aria-labelledby="home-payday-title">
 		<div class="card-body gap-2 p-4">
-			<p class="flex min-w-0 items-start gap-2 font-semibold">
-				@icons.Icon("calendar-check", "size-5 shrink-0 text-accent")
-				<span class="min-w-0 break-words">{ d.Tr("overview.ended", "Period", PeriodLabelText(d, v.Period), "Amount", Money(d, v.Expense)) }</span>
+			<p id="home-payday-title" class="flex min-w-0 items-start gap-2 font-semibold">
+				@icons.Icon("banknote", "size-5 shrink-0 text-info")
+				<span class="min-w-0 break-words">{ d.Tr("overview.payday_title") }</span>
 			</p>
-			<div class="card-actions">
-				@AppButton(d.ProjectPath(v.ProjectSlug, "/reports?period="+v.PeriodID), "", nil) {
-					{ d.Tr("overview.see_report") }
-				}
+			if canManageOrg(d) {
+				<p class="break-words text-sm text-base-content/70">{ d.Tr("overview.payday_body", "Period", PeriodLabelText(d, v.Period), "Amount", Money(d, v.Expense)) }</p>
+			} else {
+				<p class="break-words text-sm text-base-content/70">{ d.Tr("overview.payday_body_member", "Period", PeriodLabelText(d, v.Period), "Amount", Money(d, v.Expense)) }</p>
+			}
+			<form method="post" action={ templ.SafeURL(d.ProjectPath(v.ProjectSlug, "/periods/"+v.PeriodID+"/snooze")) } class="card-actions">
 				if canManageOrg(d) {
-					@AppButton(d.ProjectPath(v.ProjectSlug, "/periods/"+v.PeriodID+"/close"), "btn-ghost", nil) {
+					@AppButton(d.ProjectPath(v.ProjectSlug, "/periods/"+v.PeriodID+"/close"), "btn-primary", nil) {
 						{ periodCloseNamed(d, v.Period) }
 					}
 				}
-			</div>
+				<button type="submit" class="btn btn-ghost">{ d.Tr("overview.not_yet") }</button>
+				@AppButton(d.ProjectPath(v.ProjectSlug, "/reports?period="+v.PeriodID), "btn-ghost", nil) {
+					{ d.Tr("overview.see_report") }
+				}
+			</form>
 		</div>
 	</div>
 }

@@ -141,6 +141,7 @@ func probeRoutes() []probeRoute {
 		{http.MethodPost, pbase + "/transactions/" + id + "/delete", url.Values{}},
 		{http.MethodPost, pbase + "/periods/" + id + "/close", url.Values{"end_date": {"2026-09-30"}}},
 		{http.MethodPost, pbase + "/periods/" + id + "/reopen", url.Values{}},
+		{http.MethodPost, pbase + "/periods/" + id + "/snooze", url.Values{}},
 		{http.MethodPost, pbase + "/periods/" + id + "/rename", url.Values{"name": {"Renamed Period"}}},
 		{http.MethodPost, pbase + "/settings", url.Values{
 			"timezone": {"Asia/Jakarta"}, "currency": {"IDR"}, "period_start_day": {"25"},

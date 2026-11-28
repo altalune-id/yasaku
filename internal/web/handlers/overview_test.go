@@ -6,6 +6,7 @@ import (
 	"html"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"regexp"
 	"strings"
 	"testing"
@@ -347,6 +348,81 @@ func TestHome_EndedPeriodShowsTheCloseBanner(t *testing.T) {
 	assert.Contains(t, body, "data-home-ended")
 	assert.Contains(t, body, "Rp\u00a0123.000")
 	assert.Contains(t, body, `href="`+f.path("/periods/"+old.ID.String()+"/close")+`"`)
+}
+
+func TestHome_PaydayBannerAsksBeforeClosing(t *testing.T) {
+	t.Parallel()
+	f := newTxFixture(t)
+	past := f.withClock(time.Now().AddDate(0, 0, -45))
+	_, err := past.EnsureCurrent(f.projectCtx(t))
+	require.NoError(t, err)
+
+	body := f.home(t, "/overview").Body.String()
+
+	assert.Contains(t, body, "Gaji sudah masuk?", "the banner asks instead of announcing an end")
+	assert.Contains(t, body, `class="btn btn-ghost">Belum</button>`)
+}
+
+func TestHome_NotYetHidesThePaydayBannerForThreeDays(t *testing.T) {
+	t.Parallel()
+	f := newTxFixture(t)
+	past := f.withClock(time.Now().AddDate(0, 0, -45))
+	old, err := past.EnsureCurrent(f.projectCtx(t))
+	require.NoError(t, err)
+	mux := http.NewServeMux()
+	f.overviewHandler().Register(mux)
+
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, f.request(t, http.MethodPost, f.path("/periods/"+old.ID.String()+"/snooze"), url.Values{}, false))
+	require.Equal(t, http.StatusSeeOther, rec.Code)
+	assert.Equal(t, f.path("/overview"), rec.Header().Get("Location"))
+	cookies := rec.Result().Cookies()
+	require.Len(t, cookies, 1)
+	assert.Equal(t, "payday_snooze_"+old.ID.String(), cookies[0].Name)
+	assert.Equal(t, 3*24*60*60, cookies[0].MaxAge)
+
+	r := f.request(t, http.MethodGet, f.path("/overview"), nil, false)
+	r.AddCookie(cookies[0])
+	home := httptest.NewRecorder()
+	mux.ServeHTTP(home, r)
+	assert.NotContains(t, home.Body.String(), "data-home-ended")
+
+	other := f.request(t, http.MethodGet, f.path("/overview"), nil, false)
+	other.AddCookie(&http.Cookie{Name: "payday_snooze_" + uuid.NewString(), Value: "1"})
+	again := httptest.NewRecorder()
+	mux.ServeHTTP(again, other)
+	assert.Contains(t, again.Body.String(), "data-home-ended", "a snooze covers only its own period")
+}
+
+func TestHome_PaydayBannerForAMemberHasNoClose(t *testing.T) {
+	t.Parallel()
+	f := newTxFixture(t)
+	past := f.withClock(time.Now().AddDate(0, 0, -45))
+	old, err := past.EnsureCurrent(f.projectCtx(t))
+	require.NoError(t, err)
+	octx := fakes.Owner(context.Background(), tenant.Context{OrgID: f.OrgID, UserID: f.Principal.UserID})
+	member := uuid.New()
+	_, err = f.Orgs.AddMember(octx, f.OrgID, member, org.RoleMember)
+	require.NoError(t, err)
+	f.Principal.UserID = member
+
+	body := f.home(t, "/overview").Body.String()
+
+	assert.Contains(t, body, "data-home-ended")
+	assert.Contains(t, body, "Pengeluaran Anda di ")
+	assert.Contains(t, body, `class="btn btn-ghost">Belum</button>`)
+	assert.NotContains(t, body, `href="`+f.path("/periods/"+old.ID.String()+"/close")+`"`, "a member cannot close the period")
+}
+
+func TestHome_NotYetRejectsABadPeriodID(t *testing.T) {
+	t.Parallel()
+	f := newTxFixture(t)
+	mux := http.NewServeMux()
+	f.overviewHandler().Register(mux)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, f.request(t, http.MethodPost, f.path("/periods/not-a-uuid/snooze"), url.Values{}, false))
+	assert.Equal(t, http.StatusNotFound, rec.Code)
+	assert.Empty(t, rec.Result().Cookies())
 }
 
 func TestHome_RunningPeriodHasNoCloseBanner(t *testing.T) {

@@ -67,6 +67,33 @@ func NewOverviewHandler(
 // Register wires the overview route onto mux.
 func (h *OverviewHandler) Register(mux web.Mux) {
 	mux.HandleFunc("GET /orgs/{org}/projects/{project}/overview", h.GetOverview)
+	mux.HandleFunc("POST /orgs/{org}/projects/{project}/periods/{id}/snooze", h.PostSnooze)
+}
+
+const paydaySnoozeDays = 3
+
+func paydaySnoozeCookie(periodID string) string { return "payday_snooze_" + periodID }
+
+// PostSnooze hides the payday banner of one period in this browser for paydaySnoozeDays.
+func (h *OverviewHandler) PostSnooze(w http.ResponseWriter, r *http.Request) {
+	sc, ok := h.RequireProject(w, r)
+	if !ok {
+		return
+	}
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	web.SetCookie(w, web.CookieOpts{
+		Name:         paydaySnoozeCookie(id.String()),
+		Value:        "1",
+		BasePath:     h.Cfg.HTTP.BasePath,
+		CookieSecure: h.SecureCookie(r),
+		MaxAge:       paydaySnoozeDays * 24 * 60 * 60,
+	})
+	target := web.Path(h.Cfg.HTTP.BasePath, projectPath(sc.org.Slug, sc.project.Slug, "/overview"))
+	http.Redirect(w, r, target, http.StatusSeeOther) //nolint:gosec // G710: both slugs come from rows already resolved by their own slug patterns
 }
 
 func (h *OverviewHandler) remember(sc ProjectScope) {
@@ -170,7 +197,8 @@ func (h *OverviewHandler) view(sc ProjectScope, d web.LayoutData, wallets []*wal
 	if err != nil {
 		return v, err
 	}
-	v.Ended = end.Before(today)
+	_, notSnoozed := sc.req.Cookie(paydaySnoozeCookie(p.ID.String()))
+	v.Ended = end.Before(today) && notSnoozed != nil
 	return v, nil
 }
 
